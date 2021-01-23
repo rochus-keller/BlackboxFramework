@@ -1,0 +1,1402 @@
+module StdLinks
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20150326, center #33, adding platform detection for wine, Windows 7, and Windows 8
+	   - 20150430, center #44, fixing Unicode support for Link and Target content
+	   - 20150703, center #64, high byte added to Wingdings codes, DefaultAppearance improved
+	   - 20170905, center #173, adding new modifiers to Controllers
+	   - 20170912, center #174, fixing resource keys in StdLinks
+	   - 20170912, center #175, displaying Link and Target properties with mouse-right
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Kernel, Services, 
+		Stores, Ports, Fonts, Models, Views, Controllers, Properties, Dialog, Containers, 
+		TextModels, TextMappers, TextViews, TextControllers, TextSetters, TextRulers, 
+		Strings, StdCmds
+	
+	const 
+		kind* = 0 // constants for Prop.valid
+		cmd* = 1
+		close* = 2
+		always* = 0 // constants for close attribute
+		ifShiftDown* = 1
+		never* = 2
+		minLinkVersion = 0
+		maxLinkVersion = 2
+		minTargVersion = 0
+		maxTargVersion = 1
+	
+	type 
+		Directory* = pointer to (* abstract *) record end 
+		
+		Link* = pointer to record (Views.View) 
+				leftSide-: boolean
+				cmd: pointer to array of char
+				close: integer 
+			end 
+		
+		Target* = pointer to record (Views.View) 
+				leftSide-: boolean
+				ident: pointer to array of char 
+			end 
+		
+		Prop* = pointer to record (Properties.Property) 
+				cmd*: pointer to array of char
+				link-: boolean
+				close*: integer 
+			end 
+		
+		ChangeAttrOp = pointer to record (Stores.Operation) 
+				v: Views.View
+				cmd: pointer to array of char
+				close: integer
+				valid: set 
+			end 
+		
+		StdDirectory = pointer to record (Directory) end 
+		
+		TrapCleaner = pointer to record (Kernel.TrapCleaner) end 
+	
+	var 
+		dir-, stdDir-: Directory
+		par-: Link
+		iconFont: Fonts.Typeface
+		linkLeft, linkRight, targetLeft, targetRight: array 3 of char
+		coloredBackg: boolean
+		
+		cleaner: TrapCleaner
+		
+		dialog*: record 
+				cmd*: array 512 of char
+				type_-: array 32 of char
+				close*: Dialog.List
+				known, valid: set
+				readOnly: boolean  // if container is read only
+			end 
+		fingerprint: integer
+	
+	// Cleaner
+	
+	proc (c: TrapCleaner) Cleanup
+	begin 
+		par := nil
+	end Cleanup
+	
+	// Properties
+	
+	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean)
+		var 
+			valid: set
+	begin 
+		with q: Prop do 
+			valid := p.valid * q.valid
+			equal := true
+			if (cmd in valid) & (p.cmd^ # q.cmd^) then
+				excl(valid, cmd) 
+			end 
+			if (kind in valid) & (p.link # q.link) then
+				excl(valid, kind) 
+			end 
+			if (close in valid) & (p.close # q.close) then
+				excl(valid, close) 
+			end 
+			if p.valid # valid then
+				p.valid := valid
+				equal := false 
+			end  
+		end 
+	end IntersectWith
+	
+	proc (op: ChangeAttrOp) Do
+		var 
+			v: Views.View
+			s: pointer to array of char
+			c: integer
+	begin 
+		v := op.v
+		with 
+		| v: Link do 
+			if cmd in op.valid then
+				s := op.cmd
+				op.cmd := v.cmd
+				v.cmd := s 
+			end 
+			if close in op.valid then
+				c := op.close
+				op.close := v.close
+				v.close := c 
+			end  
+		| v: Target do 
+			if cmd in op.valid then
+				s := op.cmd
+				op.cmd := v.ident
+				v.ident := s 
+			end  
+		end 
+	end Do
+	
+	proc DoChangeAttrOp(v: Views.View; s: pointer to array of char; c: integer; valid: set)
+		var 
+			op: ChangeAttrOp
+	begin 
+		new(op)
+		op.v := v
+		op.valid := valid
+		if close in valid then
+			op.close := c 
+		end 
+		if cmd in valid then
+			new(op.cmd, len(s) + 1)
+			op.cmd^ := s 
+		end 
+		Views.Do(v, "#Std:LinkChange", op)
+	end DoChangeAttrOp
+	
+	proc SetProp(v: Views.View; msg: Properties.SetMsg)
+		var 
+			p: Properties.Property
+	begin 
+		p := msg.prop
+		while p # nil do 
+			with p: Prop do 
+				if (cmd in p.valid) or (close in p.valid) then
+					DoChangeAttrOp(v, p.cmd, p.close, p.valid) 
+				end  
+			else  
+			end 
+			p := p.next 
+		end 
+	end SetProp
+	
+	proc PollProp(v: Views.View; var msg: Properties.PollMsg)
+		var 
+			p: Prop
+	begin 
+		new(p)
+		with v: Link do 
+			p.known := {kind, cmd, close}
+			p.link := true
+			p.cmd := v.cmd
+			p.close := v.close 
+		| v: Target do 
+			p.known := {kind, cmd}
+			p.link := false
+			p.cmd := v.ident 
+		else  
+		end 
+		p.valid := p.known
+		Properties.Insert(msg.prop, p)
+	end PollProp
+	
+	proc InitDialog*
+		var 
+			p: Properties.Property
+	begin 
+		if (TextControllers.Focus() # nil) & (Containers.noSelection in TextControllers.Focus().opts) then
+			// mask mode: dialog cannot be initialized from current selection
+			return  
+		end 
+		dialog.cmd := ""
+		dialog.type_ := ""
+		dialog.close.index := -1
+		dialog.known := {}
+		dialog.valid := {}
+		dialog.readOnly := (TextControllers.Focus() # nil) & (Containers.noCaret in TextControllers.Focus().opts)
+		Properties.CollectProp(p)
+		while p # nil do 
+			with p: Prop do 
+				dialog.valid := p.valid
+				dialog.known := p.known
+				if cmd in p.valid then
+					dialog.cmd := p.cmd 
+				end 
+				if kind in p.valid then
+					if p.link then
+						Dialog.MapString("#Std:Link", dialog.type_) 
+					else 
+						Dialog.MapString("#Std:Target", dialog.type_) 
+					end  
+				end 
+				if close in p.valid then
+					dialog.close.index := p.close 
+				end  
+			else  
+			end 
+			p := p.next 
+		end 
+		Dialog.Update(dialog)
+	end InitDialog
+	
+	proc SetGuard*(var par: Dialog.Par)
+	begin 
+		if dialog.readOnly then
+			par.disabled := true 
+		end 
+	end SetGuard
+	
+	proc Set*
+		var 
+			p: Prop
+	begin 
+		new(p)
+		p.valid := dialog.valid
+		if cmd in p.valid then
+			new(p.cmd, len(dialog.cmd) + 1)
+			p.cmd^ := dialog.cmd 
+		end 
+		p.close := dialog.close.index
+		Properties.EmitProp(nil, p)
+		fingerprint := 0 // force actualization of fields
+	end Set
+	
+	proc LinkGuard*(var par: Dialog.Par)
+	begin 
+		if dialog.known # {} then
+			if close in dialog.known then
+				Dialog.MapString("#Std:Link:", par.label) 
+			else 
+				Dialog.MapString("#Std:Target:", par.label) 
+			end  
+		end 
+	end LinkGuard
+	
+	proc CmdGuard*(var par: Dialog.Par)
+		var 
+			c: Containers.Controller
+			v: Views.View
+			fp: integer
+	begin 
+		if ~(cmd in dialog.known) then
+			par.disabled := true 
+		elsif ~(cmd in dialog.valid) then 
+			par.undef := true 
+		end 
+		Controllers.SetCurrentPath(Controllers.targetPath)
+		fp := 0
+		c := Containers.Focus()
+		if c # nil then
+			c.GetFirstView(Containers.selection, v)
+			while v # nil do 
+				fp := fp + Services.AdrOf(v)
+				c.GetNextView(true, v) 
+			end  
+		end 
+		if fp # fingerprint then
+			fingerprint := fp
+			InitDialog 
+		end 
+		Controllers.ResetCurrentPath()
+	end CmdGuard
+	
+	proc CloseGuard*(var par: Dialog.Par)
+	begin 
+		if ~(close in dialog.known) then
+			par.disabled := true 
+		elsif ~(close in dialog.valid) then 
+			par.undef := true 
+		end 
+		if dialog.readOnly then
+			par.readOnly := true 
+		end 
+	end CloseGuard
+	
+	proc Notifier*(idx, op, from, to_: integer)
+	begin 
+		if op = Dialog.changed then
+			incl(dialog.valid, idx) 
+		end 
+	end Notifier
+	
+	proc (d: Directory) NewLink*(in cmd: array of char): Link end // new abstract
+	proc (d: Directory) NewTarget*(in ident: array of char): Target end // new abstract
+	
+	
+	proc InFrame(f: Views.Frame; x, y: integer): boolean
+	begin 
+		return (f.l <= x) & (x < f.r) & (f.t <= y) & (y < f.b)
+	end InFrame
+	
+	proc Mark(f: Views.Frame; show: boolean)
+	begin 
+		f.MarkRect(f.l, f.t, f.r, f.b, Ports.fill, Ports.hilite, show)
+	end Mark
+	
+	proc ThisPos(v: TextViews.View; f: Views.Frame; x, y: integer): integer
+		// "corrected" v.ThisPos: does not adjust position when crossing 50% boundary of characters
+		var 
+			loc: TextViews.Location
+			pos: integer
+	begin 
+		pos := v.ThisPos(f, x, y)
+		v.GetThisLocation(f, pos, loc)
+		if (loc.y <= y) & (y < loc.y + loc.asc + loc.dsc) & (x < loc.x) then
+			dec(pos) 
+		end 
+		return pos
+	end ThisPos
+	
+	proc GetLinkPair(this: Link; var l, r: Link)
+		// POST: BalancedPair(l, r) & (l # r) & (l = this OR r = this) OR  (l = r = NIL)
+		var 
+			t: TextModels.Model
+			rd: TextModels.Reader
+			v: Views.View
+			level: integer
+	begin 
+		l := nil
+		r := nil
+		level := 1
+		if (this.context # nil) & (this.context is TextModels.Context) then
+			t := this.context(TextModels.Context).ThisModel()
+			rd := t.NewReader(nil)
+			if this.leftSide then
+				rd.SetPos(this.context(TextModels.Context).Pos() + 1)
+				repeat 
+					rd.ReadView(v)
+					if (v # nil) & (v is Link) then
+						if v(Link).leftSide then
+							inc(level) 
+						else 
+							dec(level) 
+						end  
+					end  
+				until (v = nil) or (level = 0) 
+				if v # nil then
+					l := this
+					r := v(Link) 
+				end  
+			else 
+				rd.SetPos(this.context(TextModels.Context).Pos())
+				repeat 
+					rd.ReadPrevView(v)
+					if (v # nil) & (v is Link) then
+						if v(Link).leftSide then
+							dec(level) 
+						else 
+							inc(level) 
+						end  
+					end  
+				until (v = nil) or (level = 0) 
+				if v # nil then
+					l := v(Link)
+					r := this 
+				end  
+			end  
+		end 
+	end GetLinkPair
+	
+	proc GetTargetPair(this: Target; var l, r: Target)
+		// POST: BalancedPair(l, r) & (l # r) & (l = this OR r = this) OR  (l = r = NIL)
+		var 
+			t: TextModels.Model
+			rd: TextModels.Reader
+			v: Views.View
+			level: integer
+	begin 
+		l := nil
+		r := nil
+		level := 1
+		if (this.context # nil) & (this.context is TextModels.Context) then
+			t := this.context(TextModels.Context).ThisModel()
+			rd := t.NewReader(nil)
+			if this.leftSide then
+				rd.SetPos(this.context(TextModels.Context).Pos() + 1)
+				repeat 
+					rd.ReadView(v)
+					if (v # nil) & (v is Target) then
+						if v(Target).leftSide then
+							inc(level) 
+						else 
+							dec(level) 
+						end  
+					end  
+				until (v = nil) or (level = 0) 
+				if v # nil then
+					l := this
+					r := v(Target) 
+				end  
+			else 
+				rd.SetPos(this.context(TextModels.Context).Pos())
+				repeat 
+					rd.ReadPrevView(v)
+					if (v # nil) & (v is Target) then
+						if v(Target).leftSide then
+							dec(level) 
+						else 
+							inc(level) 
+						end  
+					end  
+				until (v = nil) or (level = 0) 
+				if v # nil then
+					l := v(Target)
+					r := this 
+				end  
+			end  
+		end 
+	end GetTargetPair
+	
+	proc GetRange(l, r: Views.View; var beg, end_: integer)
+	begin 
+		beg := l.context(TextModels.Context).Pos()
+		end_ := r.context(TextModels.Context).Pos() + 1
+	end GetRange
+	
+	proc MarkRange(v: TextViews.View; f: Views.Frame; beg, end_: integer; show: boolean)
+		var 
+			b, e: TextViews.Location
+			r, t: integer
+	begin 
+		assert(beg < end_, 20)
+		v.GetThisLocation(f, beg, b)
+		v.GetThisLocation(f, end_, e)
+		if (b.pos < e.pos) or (b.pos = e.pos) & (b.x < e.x) then
+			if b.start # e.start then
+				r := f.r
+				t := b.y + b.asc + b.dsc
+				f.MarkRect(b.x, b.y, r, t, Ports.fill, Ports.hilite, show)
+				if t < e.y then
+					f.MarkRect(0, t, r, e.y, Ports.fill, Ports.hilite, show) 
+				end 
+				b.x := f.l
+				b.y := e.y 
+			end 
+			f.MarkRect(b.x, b.y, e.x, e.y + e.asc + e.dsc, Ports.fill, Ports.hilite, show) 
+		end 
+	end MarkRange
+	
+	proc Reveal(left, right: Views.View; str: array of char; opname: Stores.OpName)
+		var 
+			con: TextModels.Context
+			t: TextModels.Model
+			pos: integer
+			w: TextMappers.Formatter
+			op: Stores.Operation
+	begin 
+		con := left.context(TextModels.Context)
+		t := con.ThisModel()
+		pos := con.Pos()
+		w.ConnectTo(t)
+		w.SetPos(pos)
+		if con.Attr() # nil then
+			w.rider.SetAttr(con.Attr()) 
+		end 
+		Models.BeginScript(t, opname, op)
+		t.Delete(pos, pos + 1)
+		w.WriteChar("<")
+		if str # "" then
+			w.WriteString(str) 
+		end 
+		w.WriteChar(">")
+		con := right.context(TextModels.Context)
+		pos := con.Pos()
+		w.SetPos(pos)
+		if con.Attr() # nil then
+			w.rider.SetAttr(con.Attr()) 
+		end 
+		t.Delete(pos, pos + 1)
+		w.WriteString("<>")
+		Models.EndScript(t, op)
+	end Reveal
+	
+	proc RevealCmd(v: Link)
+		var 
+			left, right: Link
+	begin 
+		GetLinkPair(v, left, right)
+		if left # nil then
+			if v.cmd # nil then
+				Reveal(left, right, v.cmd^, "#Std:Reveal Link Command") 
+			else 
+				Reveal(left, right, "", "#Std:Reveal Link Command") 
+			end  
+		end 
+	end RevealCmd
+	
+	proc RevealTarget(targ: Target)
+		var 
+			left, right: Target
+	begin 
+		GetTargetPair(targ, left, right)
+		if left # nil then
+			if left.ident # nil then
+				Reveal(left, right, left.ident^, "#Std:Reveal Target Ident") 
+			else 
+				Reveal(left, right, "", "#Std:Reveal Target Ident") 
+			end  
+		end 
+	end RevealTarget
+	
+	proc CallCmd(v: Link; close: boolean)
+		var 
+			res: integer
+	begin 
+		Kernel.PushTrapCleaner(cleaner)
+		par := v
+		if v.cmd^ # "" then
+			if close & (v.close = ifShiftDown) or (v.close = always) then
+				StdCmds.CloseDialog 
+			end 
+			Dialog.Call(v.cmd^, "#Std:Link Call Failed", res) 
+		end 
+		par := nil
+		Kernel.PopTrapCleaner(cleaner)
+	end CallCmd
+	
+	proc TrackSingle(f: Views.Frame; var in_: boolean)
+		var 
+			x, y: integer
+			modifiers: set
+			in0, isDown: boolean
+	begin 
+		in_ := false
+		repeat 
+			f.Input(x, y, modifiers, isDown)
+			in0 := in_
+			in_ := InFrame(f, x, y)
+			if in_ # in0 then
+				Mark(f, in_) 
+			end  
+		until ~isDown 
+		if in_ then
+			Mark(f, false) 
+		end 
+	end TrackSingle
+	
+	proc TrackRange(v: TextViews.View; f: Views.Frame; l, r: Views.View; x, y: integer
+		var in_: boolean)
+		var 
+			pos, beg, end_: integer
+			modifiers: set
+			in0, isDown: boolean
+	begin 
+		in_ := false
+		GetRange(l, r, beg, end_)
+		pos := ThisPos(v, f, x, y)
+		if (beg <= pos) & (pos < end_) then
+			repeat 
+				f.Input(x, y, modifiers, isDown)
+				pos := ThisPos(v, f, x, y)
+				in0 := in_
+				in_ := (beg <= pos) & (pos < end_)
+				if in_ # in0 then
+					MarkRange(v, f, beg, end_, in_) 
+				end  
+			until ~isDown 
+			if in_ then
+				MarkRange(v, f, beg, end_, false) 
+			end  
+		end 
+	end TrackRange
+	
+	proc OpenProperties(l, r: Views.View; c: TextControllers.Controller
+		in type_, cmd: array of char; close: integer; known: set)
+		var 
+			beg, end_, res: integer
+			linksProp: array 256 of char
+	begin 
+		GetRange(l, r, beg, end_)
+		c.SetSelection(beg, end_)
+		Dialog.MapString("#Std:Links.Prop", linksProp)
+		Dialog.Call(linksProp, "", res)
+		if Containers.noSelection in c.opts then // mask mode: cannot use selection
+			Dialog.MapString(type_, dialog.type_)
+			dialog.cmd := cmd
+			dialog.close.index := close
+			dialog.known := known
+			dialog.valid := known
+			dialog.readOnly := true
+			fingerprint := 0
+			Dialog.Update(dialog) 
+		end 
+	end OpenProperties
+	
+	proc Track(v: Link; f: Views.Frame; c: TextControllers.Controller
+		x, y: integer; modifiers: set)
+		// PRE: (c # NIL) & (f.view.ThisModel() = v.context.ThisModel())  OR  (c = NIL) & (f.view = v)
+		var 
+			l, r: Link
+			in_: boolean
+	begin 
+		GetLinkPair(v, l, r)
+		if l # nil then
+			if (Controllers.popup in modifiers) & (c # nil) then
+				c.SetSelection(0, 0) 
+			end 
+			if c # nil then
+				TrackRange(c.view, f, l, r, x, y, in_) 
+			else 
+				TrackSingle(f, in_) 
+			end 
+			if in_ then
+				if Controllers.modify in modifiers then
+					if (Controllers.popup in modifiers) & (c # nil) then
+						OpenProperties(l, r, c, "#Std:Link", l.cmd, l.close, {kind, cmd, close}) 
+					elsif (c # nil) & ~(Containers.noCaret in c.opts) then 
+						RevealCmd(l)  // for backwards compatibility
+					end  
+				else 
+					CallCmd(l, Controllers.extend in modifiers) 
+				end  
+			end  
+		end 
+	end Track
+	
+	proc TrackTarget(targ: Target; f: Views.Frame; c: TextControllers.Controller
+		x, y: integer; modifiers: set)
+		var 
+			in_: boolean
+			l, r: Target
+	begin 
+		GetTargetPair(targ, l, r)
+		if l # nil then
+			if (Controllers.popup in modifiers) & (c # nil) then
+				c.SetSelection(0, 0) 
+			end 
+			if c # nil then
+				TrackRange(c.view, f, l, r, x, y, in_) 
+			else 
+				TrackSingle(f, in_) 
+			end 
+			if in_ then
+				if (Controllers.modify in modifiers) & (c # nil) then
+					if Controllers.popup in modifiers then
+						OpenProperties(l, r, c, "#Std:Target", l.ident, -1, {kind, cmd, close}) 
+					elsif ~(Containers.noCaret in c.opts) then 
+						RevealTarget(targ)  // for backwards compatibility
+					end  
+				end  
+			end  
+		end 
+	end TrackTarget
+	
+	proc (v: Link) CopyFromSimpleView-(source: Views.View)
+	begin 
+		with source: Link do 
+			assert(source.leftSide = (source.cmd # nil), 100)
+			v.leftSide := source.leftSide
+			v.close := source.close
+			if source.cmd # nil then
+				new(v.cmd, len(source.cmd^))
+				v.cmd^ := source.cmd^ 
+			else 
+				v.cmd := nil 
+			end  
+		end 
+	end CopyFromSimpleView
+	
+	proc (t: Target) CopyFromSimpleView-(source: Views.View)
+	begin 
+		with source: Target do 
+			assert(source.leftSide = (source.ident # nil), 100)
+			t.leftSide := source.leftSide
+			if source.ident # nil then
+				new(t.ident, len(source.ident^))
+				t.ident^ := source.ident^ 
+			else 
+				t.ident := nil 
+			end  
+		end 
+	end CopyFromSimpleView
+	
+	proc (v: Link) Internalize-(var rd: Stores.Reader)
+		var 
+			len_, version, pos: integer
+	begin 
+		v.Internalize^(rd)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minLinkVersion, maxLinkVersion, version)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadBool(v.leftSide)
+		rd.ReadInt(len_)
+		if len_ = 0 then
+			v.cmd := nil 
+		else 
+			new(v.cmd, len_)
+			if version <= 1 then
+				rd.ReadXString(v.cmd^) 
+			else 
+				rd.ReadString(v.cmd^) 
+			end  
+		end 
+		v.leftSide := v.cmd # nil
+		if v.leftSide then
+			if version >= 1 then
+				rd.ReadInt(v.close) 
+			else 
+				Strings.Find(v.cmd, "StdLinks.ShowTarget", 0, pos)
+				if (pos # 0) then
+					v.close := ifShiftDown 
+				else 
+					v.close := never 
+				end  
+			end  
+		end 
+	end Internalize
+	
+	proc HasWideChars(in s: array of char): boolean
+		var 
+			i: integer
+			ch: char
+	begin 
+		i := 0
+		ch := s[0]
+		while (ch # 0x) & (ch <= 0ffx) do 
+			inc(i)
+			ch := s[i] 
+		end 
+		return ch # 0x
+	end HasWideChars
+	
+	(* version history for left side Link:
+	   0: 'cmd' stored as ASCII, standard closing behavior only
+	   1: like 0 but 'close' attribute added for non-standard closing behavior
+	   2. like 1 but 'cmd' stored as Unicode *)
+	proc (v: Link) Externalize-(var wr: Stores.Writer)
+		var 
+			pos, version: integer
+	begin 
+		v.Externalize^(wr)
+		if v.leftSide then
+			if HasWideChars(v.cmd) then
+				version := 2 
+			else 
+				Strings.Find(v.cmd, "StdLinks.ShowTarget", 0, pos)
+				if (pos = 0) & (v.close = never) or (v.close = ifShiftDown) then
+					version := 0 
+				else 
+					version := 1 
+				end  
+			end  
+		else 
+			version := 0 
+		end 
+		wr.WriteVersion(version)
+		wr.WriteBool(v.cmd # nil)
+		if v.cmd = nil then
+			wr.WriteInt(0) 
+		else 
+			wr.WriteInt(len(v.cmd^))
+			if version <= 1 then
+				wr.WriteXString(v.cmd^) 
+			else 
+				wr.WriteString(v.cmd^) 
+			end  
+		end 
+		if version >= 1 then
+			wr.WriteInt(v.close) 
+		end 
+	end Externalize
+	
+	proc (t: Target) Internalize-(var rd: Stores.Reader)
+		var 
+			len_, version: integer
+	begin 
+		t.Internalize^(rd)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minTargVersion, maxTargVersion, version)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadBool(t.leftSide)
+		rd.ReadInt(len_)
+		if len_ = 0 then
+			t.ident := nil 
+		else 
+			new(t.ident, len_)
+			if version = 0 then
+				rd.ReadXString(t.ident^) 
+			else 
+				rd.ReadString(t.ident^) 
+			end  
+		end 
+		t.leftSide := t.ident # nil
+	end Internalize
+	
+	(* version history for left side Target:
+	   0: 'ident' stored as ASCII
+	   1: like 0 but 'ident' stored as Unicode *)
+	proc (t: Target) Externalize-(var wr: Stores.Writer)
+		var 
+			version: integer
+	begin 
+		t.Externalize^(wr)
+		if t.leftSide & HasWideChars(t.ident) then
+			version := 1 
+		else 
+			version := 0 
+		end 
+		wr.WriteVersion(version)
+		wr.WriteBool(t.ident # nil)
+		if t.ident = nil then
+			wr.WriteInt(0) 
+		else 
+			wr.WriteInt(len(t.ident^))
+			if version = 0 then
+				wr.WriteXString(t.ident^) 
+			else 
+				wr.WriteString(t.ident^) 
+			end  
+		end 
+	end Externalize
+	
+	proc RestoreView(v: Views.View; f: Views.Frame; icon: array of char)
+		var 
+			c: Models.Context
+			a: TextModels.Attributes
+			font: Fonts.Font
+			color: Ports.Color
+			asc, dsc, w: integer
+	begin 
+		c := v.context
+		if (c # nil) & (c is TextModels.Context) then
+			a := c(TextModels.Context).Attr()
+			font := Fonts.dir.This(iconFont, a.font.size_, {}, Fonts.normal)
+			color := a.color 
+		else 
+			font := Fonts.dir.Default()
+			color := Ports.black 
+		end 
+		if coloredBackg then
+			f.DrawRect(f.l, f.t, f.r, f.b, Ports.fill, Ports.grey25) 
+		end 
+		font.GetBounds(asc, dsc, w)
+		f.DrawString(1 * Ports.mm div 2, asc, color, icon, font)
+	end RestoreView
+	
+	proc (v: Link) Restore*(f: Views.Frame; l, t, r, b: integer)
+	begin 
+		if v.leftSide then
+			RestoreView(v, f, linkLeft) 
+		else 
+			RestoreView(v, f, linkRight) 
+		end 
+	end Restore
+	
+	proc (targ: Target) Restore*(f: Views.Frame; l, t, r, b: integer)
+	begin 
+		if targ.leftSide then
+			RestoreView(targ, f, targetLeft) 
+		else 
+			RestoreView(targ, f, targetRight) 
+		end 
+	end Restore
+	
+	proc SizePref(v: Views.View; icon: array of char; var msg: Properties.SizePref)
+		var 
+			c: Models.Context
+			a: TextModels.Attributes
+			font: Fonts.Font
+			asc, dsc, w: integer
+	begin 
+		c := v.context
+		if (c # nil) & (c is TextModels.Context) then
+			a := c(TextModels.Context).Attr()
+			font := Fonts.dir.This(iconFont, a.font.size_, {}, Fonts.normal) 
+		else 
+			font := Fonts.dir.Default() 
+		end 
+		msg.w := font.StringWidth(icon) + 1 * Ports.mm
+		font.GetBounds(asc, dsc, w)
+		msg.h := asc + dsc
+	end SizePref
+	
+	proc (v: Link) HandlePropMsg-(var msg: Properties.Message)
+		var 
+			a: TextModels.Attributes
+			c: Models.Context
+			asc, dsc, w: integer
+			l, r: Link
+	begin 
+		with msg: Properties.SizePref do 
+			if v.leftSide then
+				SizePref(v, linkLeft, msg) 
+			else 
+				SizePref(v, linkRight, msg) 
+			end  
+		| msg: Properties.FocusPref do 
+			msg.hotFocus := true 
+		| msg: Properties.ResizePref do 
+			msg.fixed := true 
+		| msg: TextModels.Pref do 
+			msg.opts := {TextModels.hideable} 
+		| msg: TextControllers.FilterPref do 
+			msg.filter := true 
+		| msg: TextSetters.Pref do 
+			c := v.context
+			if (c # nil) & (c is TextModels.Context) then
+				a := c(TextModels.Context).Attr()
+				a.font.GetBounds(asc, dsc, w)
+				msg.dsc := dsc 
+			end  
+		| msg: Properties.PollMsg do 
+			if v.leftSide then
+				PollProp(v, msg) 
+			else 
+				GetLinkPair(v, l, r)
+				if l # nil then
+					PollProp(l, msg) 
+				end  
+			end  
+		| msg: Properties.SetMsg do 
+			if v.leftSide then
+				SetProp(v, msg) 
+			else 
+				GetLinkPair(v, l, r)
+				SetProp(l, msg) 
+			end  
+		else  
+		end 
+	end HandlePropMsg
+	
+	proc (targ: Target) HandlePropMsg-(var msg: Properties.Message)
+		var 
+			a: TextModels.Attributes
+			c: Models.Context
+			asc, dsc, w: integer
+			l, r: Target
+	begin 
+		with msg: Properties.SizePref do 
+			if targ.leftSide then
+				SizePref(targ, targetLeft, msg) 
+			else 
+				SizePref(targ, targetRight, msg) 
+			end  
+		| msg: Properties.FocusPref do 
+			msg.hotFocus := true 
+		| msg: Properties.ResizePref do 
+			msg.fixed := true 
+		| msg: TextModels.Pref do 
+			msg.opts := {TextModels.hideable} 
+		| msg: TextControllers.FilterPref do 
+			msg.filter := true 
+		| msg: TextSetters.Pref do 
+			c := targ.context
+			if (c # nil) & (c is TextModels.Context) then
+				a := c(TextModels.Context).Attr()
+				a.font.GetBounds(asc, dsc, w)
+				msg.dsc := dsc 
+			end  
+		| msg: Properties.PollMsg do 
+			if targ.leftSide then
+				PollProp(targ, msg) 
+			else 
+				GetTargetPair(targ, l, r)
+				if l # nil then
+					PollProp(l, msg) 
+				end  
+			end  
+		| msg: Properties.SetMsg do 
+			if targ.leftSide then
+				SetProp(targ, msg) 
+			else 
+				GetTargetPair(targ, l, r)
+				SetProp(l, msg) 
+			end  
+		else  
+		end 
+	end HandlePropMsg
+	
+	proc isHot(v: Views.View; f: Views.Frame; leftSide: boolean; c: TextControllers.Controller
+		x, y: integer; mod_: set): boolean
+		var 
+			pos, beg, end_: integer
+	begin 
+		// ignore 'pick' (alt, cmd, and middle clicks) in edit mode
+		if ~(Containers.noCaret in c.opts) & (Controllers.pick in mod_) then
+			return false 
+		end 
+		pos := ThisPos(c.view, f, x, y)
+		// ignore clicks in selection
+		c.GetSelection(beg, end_)
+		if (end_ > beg) & (pos >= beg) & (pos <= end_) then
+			return false 
+		end 
+		if leftSide then
+			return pos >= v.context(TextModels.Context).Pos() 
+		else 
+			return pos <= v.context(TextModels.Context).Pos() 
+		end 
+	end isHot
+	
+	proc (v: Link) HandleCtrlMsg*(f: Views.Frame
+		var msg: Controllers.Message; var focus: Views.View)
+	begin 
+		with msg: Controllers.PollCursorMsg do 
+			msg.cursor := Ports.refCursor 
+		| msg: TextControllers.FilterPollCursorMsg do 
+			if isHot(v, f, v.leftSide, msg.controller, msg.x, msg.y, {}) then
+				msg.cursor := Ports.refCursor
+				msg.done := true 
+			end  
+		| msg: Controllers.TrackMsg do 
+			Track(v, f, nil, msg.x, msg.y, msg.modifiers) 
+		| msg: TextControllers.FilterTrackMsg do 
+			if isHot(v, f, v.leftSide, msg.controller, msg.x, msg.y, msg.modifiers) then
+				Track(v, f, msg.controller, msg.x, msg.y, msg.modifiers)
+				msg.done := true 
+			end  
+		else  
+		end 
+	end HandleCtrlMsg
+	
+	proc (targ: Target) HandleCtrlMsg*(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View)
+	begin 
+		with msg: Controllers.TrackMsg do 
+			TrackTarget(targ, f, nil, msg.x, msg.y, msg.modifiers) 
+		| msg: TextControllers.FilterTrackMsg do 
+			if (msg.modifiers * {Controllers.extend, Controllers.modify} # {}) 
+				& isHot(targ, f, targ.leftSide, msg.controller, msg.x, msg.y, msg.modifiers) then
+				TrackTarget(targ, f, msg.controller, msg.x, msg.y, msg.modifiers)
+				msg.done := true 
+			end  
+		else  
+		end 
+	end HandleCtrlMsg
+	
+	proc (v: Link) GetCmd*(var cmd: array of char) // new
+	begin 
+		assert(v.leftSide, 20)
+		assert(v.cmd # nil, 100)
+		cmd := v.cmd
+	end GetCmd
+	
+	proc (t: Target) GetIdent*(var ident: array of char) // new
+	begin 
+		assert(t.leftSide, 20)
+		assert(t.ident # nil, 100)
+		ident := t.ident
+	end GetIdent
+	
+	// --------------- create commands and menu guards ------------------------
+	
+	proc GetParam(c: TextControllers.Controller; var param: array of char
+		var lbrBeg, lbrEnd, rbrBeg, rbrEnd: integer)
+		var 
+			rd: TextModels.Reader
+			i, beg, end_: integer
+			ch0, ch1, ch2: char
+	begin 
+		param[0] := 0x
+		lbrBeg := -1
+		if (c # nil) & c.HasSelection() then
+			rd := c.text.NewReader(nil)
+			c.GetSelection(beg, end_)
+			if end_ - beg > 4 then
+				rd.SetPos(beg)
+				rd.ReadChar(ch0)
+				rd.SetPos(end_ - 2)
+				rd.ReadChar(ch1)
+				rd.ReadChar(ch2)
+				if (ch0 = "<") & (ch1 = "<") & (ch2 = ">") then
+					rd.SetPos(beg + 1)
+					rd.ReadChar(ch0)
+					i := 0
+					while ~rd.eot & (ch0 # ">") do 
+						if i < len(param) - 1 then
+							param[i] := ch0
+							inc(i) 
+						end 
+						rd.ReadChar(ch0) 
+					end 
+					param[i] := 0x
+					lbrBeg := beg
+					lbrEnd := rd.Pos()
+					rbrBeg := end_ - 2
+					rbrEnd := end_ 
+				end  
+			end 
+			if lbrBeg = -1 then // lbrBeg = -1 means selection without syntax
+				rd.SetPos(beg)
+				rd.ReadChar(ch0)
+				i := 0
+				while ~rd.eot & (ch0 # 0x) do 
+					if i < len(param) - 1 then
+						param[i] := ch0
+						inc(i) 
+					end 
+					rd.ReadChar(ch0) 
+				end 
+				param[i] := 0x 
+			end  
+		end 
+	end GetParam
+	
+	proc CreateGuard*(var par: Dialog.Par)
+		var 
+			param: array 512 of char
+			lbrBeg, lbrEnd, rbrBeg, rbrEnd: integer
+	begin 
+		GetParam(TextControllers.Focus(), param, lbrBeg, lbrEnd, rbrBeg, rbrEnd)
+		par.disabled := param = ""
+	end CreateGuard
+	
+	proc InsertionAttr(c: TextControllers.Controller; pos: integer): TextModels.Attributes
+		var 
+			rd: TextModels.Reader
+			r: TextRulers.Ruler
+			a: TextModels.Attributes
+			ch: char
+	begin 
+		rd := c.text.NewReader(nil)
+		a := nil
+		rd.SetPos(pos)
+		rd.ReadChar(ch)
+		a := rd.attr
+		if a = nil then
+			c.view.PollDefaults(r, a) 
+		end 
+		return a
+	end InsertionAttr
+	
+	proc CreateLink*
+		var 
+			lbrBeg, lbrEnd, rbrBeg, rbrEnd, beg, end_: integer
+			left, right: Link
+			c: TextControllers.Controller
+			cmd: array 512 of char
+			op: Stores.Operation
+			w: TextModels.Writer
+			a: TextModels.Attributes
+	begin 
+		c := TextControllers.Focus()
+		GetParam(TextControllers.Focus(), cmd, lbrBeg, lbrEnd, rbrBeg, rbrEnd)
+		if cmd # "" then
+			w := c.text.NewWriter(nil)
+			Models.BeginScript(c.text, "#Std:Create Link", op)
+			if lbrBeg >= 0 then
+				a := InsertionAttr(c, rbrBeg)
+				c.text.Delete(rbrBeg, rbrEnd)
+				right := dir.NewLink("")
+				w.SetPos(rbrBeg)
+				if a # nil then
+					w.SetAttr(a) 
+				end 
+				w.WriteView(right, 0, 0)
+				a := InsertionAttr(c, lbrBeg)
+				c.text.Delete(lbrBeg, lbrEnd)
+				left := dir.NewLink(cmd)
+				w.SetPos(lbrBeg)
+				if a # nil then
+					w.SetAttr(a) 
+				end 
+				w.WriteView(left, 0, 0) 
+			else  // selection is unformatted and used as link text
+				c.GetSelection(beg, end_)
+				a := InsertionAttr(c, beg)
+				if a # nil then
+					w.SetAttr(a) 
+				end 
+				right := dir.NewLink("")
+				w.SetPos(end_)
+				w.WriteView(right, 0, 0)
+				left := dir.NewLink("dummy")
+				left.cmd[0] := 0x
+				w.SetPos(beg)
+				w.WriteView(left, 0, 0)
+				a := TextModels.NewColor(w.attr, Ports.blue)
+				a := TextModels.NewStyle(a, a.font.style + {Fonts.underline})
+				c.text.SetAttr(beg + 1, end_ + 1, a) 
+			end 
+			Models.EndScript(c.text, op)
+			if lbrBeg < 0 then
+				OpenProperties(left, right, c, "#Std:Link", left.cmd, ifShiftDown, {kind..close}) 
+			end  
+		end 
+	end CreateLink
+	
+	proc CreateTarget*
+		var 
+			lbrBeg, lbrEnd, rbrBeg, rbrEnd, beg, end_: integer
+			left, right: Target
+			c: TextControllers.Controller
+			ident: array 512 of char
+			op: Stores.Operation
+			w: TextModels.Writer
+			a: TextModels.Attributes
+	begin 
+		c := TextControllers.Focus()
+		GetParam(TextControllers.Focus(), ident, lbrBeg, lbrEnd, rbrBeg, rbrEnd)
+		if ident # "" then
+			w := c.text.NewWriter(nil)
+			Models.BeginScript(c.text, "#Std:Create Target", op)
+			if lbrBeg >= 0 then
+				a := InsertionAttr(c, rbrBeg)
+				c.text.Delete(rbrBeg, rbrEnd)
+				right := dir.NewTarget("")
+				w.SetPos(rbrBeg)
+				if a # nil then
+					w.SetAttr(a) 
+				end 
+				w.WriteView(right, 0, 0)
+				a := InsertionAttr(c, lbrBeg)
+				c.text.Delete(lbrBeg, lbrEnd)
+				left := dir.NewTarget(ident)
+				w.SetPos(lbrBeg)
+				if a # nil then
+					w.SetAttr(a) 
+				end 
+				w.WriteView(left, 0, 0) 
+			else  // selection is unformatted and used as target text
+				c.GetSelection(beg, end_)
+				a := InsertionAttr(c, beg)
+				if a # nil then
+					w.SetAttr(a) 
+				end 
+				right := dir.NewTarget("")
+				w.SetPos(end_)
+				w.WriteView(right, 0, 0)
+				left := dir.NewTarget("dummy")
+				left.ident[0] := 0x
+				w.SetPos(beg)
+				w.WriteView(left, 0, 0) 
+			end 
+			Models.EndScript(c.text, op)
+			if lbrBeg < 0 then
+				OpenProperties(left, right, c, "#Std:Target", left.ident, -1, {kind, cmd}) 
+			end  
+		end 
+	end CreateTarget
+	
+	proc ShowTarget*(in ident: array of char)
+		var 
+			c: TextControllers.Controller
+			rd: TextModels.Reader
+			v: Views.View
+			left, right: Target
+			beg, end_: integer
+	begin 
+		c := TextControllers.Focus()
+		if c # nil then
+			rd := c.text.NewReader(nil)
+			repeat 
+				rd.ReadView(v) 
+			until rd.eot or (v # nil) & (v is Target) & v(Target).leftSide & (v(Target).ident^ = ident) 
+			if ~rd.eot then
+				GetTargetPair(v(Target), left, right)
+				if (left # nil) & (right # nil) then
+					beg := left.context(TextModels.Context).Pos()
+					end_ := right.context(TextModels.Context).Pos() + 1
+					c.SetSelection(beg, end_)
+					c.view.SetOrigin(beg, 0) 
+				else 
+					Dialog.ShowParamMsg("#Std:Target Not Found", ident, "", "") 
+				end  
+			else 
+				Dialog.ShowParamMsg("#Std:Target Not Found", ident, "", "") 
+			end  
+		end 
+	end ShowTarget
+	
+	
+	// programming interface
+	
+	proc (d: StdDirectory) NewLink(in cmd: array of char): Link
+		var 
+			link: Link
+			i: integer
+	begin 
+		new(link)
+		link.leftSide := cmd # ""
+		if link.leftSide then
+			i := 0
+			while cmd[i] # 0x do 
+				inc(i) 
+			end 
+			new(link.cmd, i + 1)
+			link.cmd^ := cmd 
+		else 
+			link.cmd := nil 
+		end 
+		link.close := ifShiftDown
+		return link
+	end NewLink
+	
+	proc (d: StdDirectory) NewTarget(in ident: array of char): Target
+		var 
+			t: Target
+			i: integer
+	begin 
+		new(t)
+		t.leftSide := ident # ""
+		if t.leftSide then
+			i := 0
+			while ident[i] # 0x do 
+				inc(i) 
+			end 
+			new(t.ident, i + 1)
+			t.ident^ := ident 
+		else 
+			t.ident := nil 
+		end 
+		return t
+	end NewTarget
+	
+	proc SetDir*(d: Directory)
+	begin 
+		assert(d # nil, 20)
+		dir := d
+	end SetDir
+	
+	proc Init
+		var 
+			font: Fonts.Font
+			d: StdDirectory
+		
+		proc DefaultAppearance
+		begin 
+			font := Fonts.dir.Default()
+			iconFont := font.typeface
+			linkLeft := "=>"
+			linkRight := "<="
+			targetLeft := ">>"
+			targetRight := "<<"
+			coloredBackg := true
+		end DefaultAppearance
+	
+	begin 
+		new(d)
+		dir := d
+		stdDir := d
+		if Dialog.IsWindows() & ~Dialog.IsWine() then
+			iconFont := "Wingdings"
+			font := Fonts.dir.This(iconFont, 10 * Fonts.point, (* arbitrary *){}, Fonts.normal)
+			if font.IsAlien() then
+				DefaultAppearance 
+			else 
+				// high byte F0 required for Russian Windows versions
+				linkLeft := 0f0f6x // "" ""
+				linkRight := 0f0f5x
+				targetLeft := 0f0a4x // "" ""
+				targetRight := 0f0a1x
+				coloredBackg := false 
+			end  
+		else 
+			DefaultAppearance 
+		end 
+		new(cleaner)
+		dialog.close.SetResources("#Std:links")
+	end Init
+
+begin
+	Init
+end StdLinks

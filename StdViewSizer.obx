@@ -1,0 +1,209 @@
+module StdViewSizer
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20160321, center #110, use mapped strings for labels in all forms
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Services, Ports, Dialog, Views, Containers, Properties
+	
+	const 
+		width = 1
+		height = 2
+	
+	var 
+		size_*: record 
+				typeName-: Dialog.String
+				w*, h*: real
+				proportional*, fixedW, fixedH: boolean
+				unit, scaleW, scaleH, lastChanged: integer
+				unitText: array 12 of char
+				view: Views.View
+				container: Containers.Controller 
+			end 
+	
+	proc ConnectDialog(v: Views.View; c: Containers.Controller)
+		var 
+			pref: Properties.ResizePref
+	begin 
+		if (v # nil) & (v.context # nil) then
+			if Dialog.metricSystem then
+				size_.unit := Ports.mm * 10
+				size_.unitText := "#Std:cm" 
+			else 
+				size_.unit := Ports.inch
+				size_.unitText := "#Std:inch" 
+			end 
+			size_.view := v
+			size_.container := c
+			Services.GetTypeName(v, size_.typeName)
+			v.context.GetSize(size_.scaleW, size_.scaleH)
+			size_.w := size_.scaleW / size_.unit
+			size_.h := size_.scaleH / size_.unit
+			pref.fixed := false
+			pref.horFitToPage := false
+			pref.verFitToPage := false
+			pref.horFitToWin := false
+			pref.verFitToWin := false
+			Views.HandlePropMsg(v, pref)
+			size_.fixedW := pref.fixed
+			size_.fixedH := pref.fixed
+			size_.proportional := false 
+		else 
+			size_.view := nil
+			size_.container := c
+			size_.typeName := "" 
+		end 
+		Dialog.Update(size_)
+	end ConnectDialog
+	
+	proc SetViewSize*
+	begin 
+		if size_.view # nil then
+			size_.view.context.SetSize(short(entier(size_.w * size_.unit + 0.5)), 
+			short(entier(size_.h * size_.unit + 0.5)))
+			if size_.container # nil then
+				size_.container.SetSingleton(size_.view) 
+			end 
+			ConnectDialog(size_.view, size_.container) 
+		else 
+			Dialog.Beep 
+		end 
+	end SetViewSize
+	
+	proc InitDialog*
+		var 
+			v: Views.View
+			c: Containers.Controller
+	begin 
+		c := Containers.Focus()
+		if c # nil then
+			v := c.Singleton() 
+		else 
+			v := nil 
+		end 
+		if (v # size_.view) or (c # size_.container) then
+			ConnectDialog(v, c) 
+		end 
+	end InitDialog
+	
+	proc ResetDialog*
+		var 
+			proportional: boolean
+			v: Views.View
+	begin 
+		proportional := size_.proportional
+		v := size_.view
+		size_.view := nil
+		InitDialog
+		if proportional & (v = size_.view) then
+			size_.proportional := true
+			Dialog.Update(size_) 
+		end 
+	end ResetDialog
+	
+	proc WidthGuard*(var par: Dialog.Par)
+	begin 
+		InitDialog
+		par.disabled := size_.view = nil
+		par.readOnly := size_.fixedW
+	end WidthGuard
+	
+	proc HeightGuard*(var par: Dialog.Par)
+	begin 
+		InitDialog
+		par.disabled := size_.view = nil
+		par.readOnly := size_.fixedH
+	end HeightGuard
+	
+	proc ProportionGuard*(var par: Dialog.Par)
+	begin 
+		par.disabled := (size_.view = nil) or size_.fixedW or size_.fixedH or (size_.scaleW = 0) or (size_.scaleH = 0)
+	end ProportionGuard
+	
+	proc UnitGuard*(var par: Dialog.Par)
+	begin 
+		if size_.view # nil then
+			par.label := size_.unitText 
+		else 
+			par.label := "" 
+		end 
+	end UnitGuard
+	
+	proc AdjustDialogToPref(fixedW, fixedH: boolean)
+		var 
+			w, h: integer
+			w0, h0: real
+			pref: Properties.SizePref
+	begin 
+		w := short(entier(size_.w * size_.unit + 0.5))
+		h := short(entier(size_.h * size_.unit + 0.5))
+		if size_.proportional & (w > 0) & (h > 0) & (size_.scaleW > 0) & (size_.scaleH > 0) then
+			Properties.ProportionalConstraint(size_.scaleW, size_.scaleH, fixedW, fixedH, w, h) 
+		end 
+		pref.w := w
+		pref.h := h
+		pref.fixedW := fixedW
+		pref.fixedH := fixedH
+		Views.HandlePropMsg(size_.view, pref)
+		if ~fixedW then
+			w0 := pref.w / size_.unit 
+		else 
+			w0 := size_.w 
+		end 
+		if ~fixedH then
+			h0 := pref.h / size_.unit 
+		else 
+			h0 := size_.h 
+		end 
+		if (w0 # size_.w) or (h0 # size_.h) then
+			size_.w := w0
+			size_.h := h0
+			Dialog.Update(size_) 
+		end 
+	end AdjustDialogToPref
+	
+	proc WNotifier*(op, from, to_: integer)
+	begin 
+		if size_.w > 0 then
+			AdjustDialogToPref(true, false)
+			size_.lastChanged := width 
+		elsif size_.w # 0 then 
+			Dialog.Beep 
+		end 
+	end WNotifier
+	
+	proc HNotifier*(op, from, to_: integer)
+	begin 
+		if size_.h > 0 then
+			AdjustDialogToPref(false, true)
+			size_.lastChanged := height 
+		elsif size_.h # 0 then 
+			Dialog.Beep 
+		end 
+	end HNotifier
+	
+	proc ProportionNotifier*(op, from, to_: integer)
+	begin 
+		if (op = Dialog.changed) & size_.proportional then
+			if size_.lastChanged = width then
+				AdjustDialogToPref(true, false) 
+			elsif size_.lastChanged = height then 
+				AdjustDialogToPref(false, true) 
+			end  
+		end 
+	end ProportionNotifier
+
+end StdViewSizer

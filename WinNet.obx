@@ -1,0 +1,1415 @@
+definition WinNet
+
+
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20151013, center #78, fixing type of WinNet.hostent.h_addr_list
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import WinApi
+	
+	const  // macros
+		INVALID_SOCKET = -1
+		WNNC_NET_MSNET = 65536
+		WNNC_NET_LANMAN = 131072
+		WNNC_NET_NETWARE = 196608
+		WNNC_NET_VINES = 262144
+		WNNC_NET_10NET = 327680
+		WNNC_NET_LOCUS = 393216
+		WNNC_NET_SUN_PC_NFS = 458752
+		WNNC_NET_LANSTEP = 524288
+		WNNC_NET_9TILES = 589824
+		WNNC_NET_LANTASTIC = 655360
+		WNNC_NET_AS400 = 720896
+		WNNC_NET_FTP_NFS = 786432
+		WNNC_NET_PATHWORKS = 851968
+		WNNC_NET_LIFENET = 917504
+		WNNC_NET_POWERLAN = 983040
+		WNNC_NET_BWNFS = 1048576
+		WNNC_NET_COGENT = 1114112
+		WNNC_NET_FARALLON = 1179648
+		WNNC_NET_APPLETALK = 1245184
+		RESOURCE_CONNECTED = 1
+		RESOURCE_GLOBALNET = 2
+		RESOURCE_REMEMBERED = 3
+		RESOURCE_RECENT = 4
+		RESOURCE_CONTEXT = 5
+		RESOURCETYPE_ANY = 0
+		RESOURCETYPE_DISK = 1
+		RESOURCETYPE_PRINT = 2
+		RESOURCETYPE_RESERVED = 8
+		RESOURCETYPE_UNKNOWN = -1
+		RESOURCEUSAGE_CONNECTABLE = 1
+		RESOURCEUSAGE_CONTAINER = 2
+		RESOURCEUSAGE_NOLOCALDEVICE = 4
+		RESOURCEUSAGE_SIBLING = 8
+		RESOURCEUSAGE_ALL = 3
+		RESOURCEUSAGE_RESERVED = 80000000h
+		RESOURCEDISPLAYTYPE_GENERIC = 0
+		RESOURCEDISPLAYTYPE_DOMAIN = 1
+		RESOURCEDISPLAYTYPE_SERVER = 2
+		RESOURCEDISPLAYTYPE_SHARE = 3
+		RESOURCEDISPLAYTYPE_FILE = 4
+		RESOURCEDISPLAYTYPE_GROUP = 5
+		RESOURCEDISPLAYTYPE_NETWORK = 6
+		RESOURCEDISPLAYTYPE_ROOT = 7
+		RESOURCEDISPLAYTYPE_SHAREADMIN = 8
+		RESOURCEDISPLAYTYPE_DIRECTORY = 9
+		RESOURCEDISPLAYTYPE_TREE = 10
+		NETPROPERTY_PERSISTENT = 1
+		CONNECT_UPDATE_PROFILE = {0}
+		CONNECT_UPDATE_RECENT = {1}
+		CONNECT_TEMPORARY = {2}
+		CONNECT_INTERACTIVE = {3}
+		CONNECT_PROMPT = {4}
+		CONNECT_NEED_DRIVE = {5}
+		CONNECT_REFCOUNT = {6}
+		CONNECT_REDIRECT = {7}
+		CONNECT_LOCALDRIVE = {8}
+		CONNECT_CURRENT_MEDIA = {9}
+		CONNDLG_RO_PATH = {0}
+		CONNDLG_CONN_POINT = {1}
+		CONNDLG_USE_MRU = {2}
+		CONNDLG_HIDE_BOX = {3}
+		CONNDLG_PERSIST = {4}
+		CONNDLG_NOT_PERSIST = {5}
+		DISC_UPDATE_PROFILE = 1
+		DISC_NO_FORCE = 64
+		UNIVERSAL_NAME_INFO_LEVEL = 1
+		REMOTE_NAME_INFO_LEVEL = 2
+		WNFMT_MULTILINE = {0}
+		WNFMT_ABBREVIATED = {1}
+		WNFMT_INENUM = {4}
+		WNFMT_CONNECTION = {5}
+		NETINFO_DLL16 = {0}
+		NETINFO_DISKRED = {2}
+		NETINFO_PRINTERRED = {3}
+		RP_LOGON = 1
+		RP_INIFILE = 2
+		PP_DISPLAYERRORS = 1
+		WN_SUCCESS = 0
+		WN_NO_ERROR = 0
+		WN_NOT_SUPPORTED = 50
+		WN_CANCEL = 1223
+		WN_RETRY = 1237
+		WN_NET_ERROR = 59
+		WN_MORE_DATA = 234
+		WN_BAD_POINTER = 487
+		WN_BAD_VALUE = 87
+		WN_BAD_USER = 2202
+		WN_BAD_PASSWORD = 86
+		WN_ACCESS_DENIED = 5
+		WN_FUNCTION_BUSY = 170
+		WN_WINDOWS_ERROR = 59
+		WN_OUT_OF_MEMORY = 8
+		WN_NO_NETWORK = 1222
+		WN_EXTENDED_ERROR = 1208
+		WN_BAD_LEVEL = 124
+		WN_BAD_HANDLE = 6
+		WN_NOT_INITIALIZING = 1247
+		WN_NO_MORE_DEVICES = 1248
+		WN_NOT_CONNECTED = 2250
+		WN_OPEN_FILES = 2401
+		WN_DEVICE_IN_USE = 2404
+		WN_BAD_NETNAME = 67
+		WN_BAD_LOCALNAME = 1200
+		WN_ALREADY_CONNECTED = 85
+		WN_DEVICE_ERROR = 31
+		WN_CONNECTION_CLOSED = 1201
+		WN_NO_NET_OR_BAD_PATH = 1203
+		WN_BAD_PROVIDER = 1204
+		WN_CANNOT_OPEN_PROFILE = 1205
+		WN_BAD_PROFILE = 1206
+		WN_BAD_DEV_TYPE = 66
+		WN_DEVICE_ALREADY_REMEMBERED = 1202
+		WN_NO_MORE_ENTRIES = 259
+		WN_NOT_CONTAINER = 1207
+		WN_NOT_AUTHENTICATED = 1244
+		WN_NOT_LOGGED_ON = 1245
+		WN_NOT_VALIDATED = 1311
+		WNCON_FORNETCARD = 1
+		WNCON_NOTROUTED = 2
+		WNCON_SLOWLINK = 4
+		WNCON_DYNAMIC = 8
+		NCBNAMSZ = 16
+		MAX_LANA = 254
+		NAME_FLAGS_MASK = 135
+		GROUP_NAME = 128
+		UNIQUE_NAME = 0
+		REGISTERING = 0
+		REGISTERED = 4
+		DEREGISTERED = 5
+		DUPLICATE = 6
+		DUPLICATE_DEREG = 7
+		LISTEN_OUTSTANDING = 1
+		CALL_PENDING = 2
+		SESSION_ESTABLISHED = 3
+		HANGUP_PENDING = 4
+		HANGUP_COMPLETE = 5
+		SESSION_ABORTED = 6
+		ALL_TRANSPORTS = "M"
+		MS_NBF = "MNBF"
+		NCBCALL = 16
+		NCBLISTEN = 17
+		NCBHANGUP = 18
+		NCBSEND = 20
+		NCBRECV = 21
+		NCBRECVANY = 22
+		NCBCHAINSEND = 23
+		NCBDGSEND = 32
+		NCBDGRECV = 33
+		NCBDGSENDBC = 34
+		NCBDGRECVBC = 35
+		NCBADDNAME = 48
+		NCBDELNAME = 49
+		NCBRESET = 50
+		NCBASTAT = 51
+		NCBSSTAT = 52
+		NCBCANCEL = 53
+		NCBADDGRNAME = 54
+		NCBENUM = 55
+		NCBUNLINK = 112
+		NCBSENDNA = 113
+		NCBCHAINSENDNA = 114
+		NCBLANSTALERT = 115
+		NCBACTION = 119
+		NCBFINDNAME = 120
+		NCBTRACE = 121
+		ASYNCH = 128
+		NRC_GOODRET = 0
+		NRC_BUFLEN = 1
+		NRC_ILLCMD = 3
+		NRC_CMDTMO = 5
+		NRC_INCOMP = 6
+		NRC_BADDR = 7
+		NRC_SNUMOUT = 8
+		NRC_NORES = 9
+		NRC_SCLOSED = 10
+		NRC_CMDCAN = 11
+		NRC_DUPNAME = 13
+		NRC_NAMTFUL = 14
+		NRC_ACTSES = 15
+		NRC_LOCTFUL = 17
+		NRC_REMTFUL = 18
+		NRC_ILLNN = 19
+		NRC_NOCALL = 20
+		NRC_NOWILD = 21
+		NRC_INUSE = 22
+		NRC_NAMERR = 23
+		NRC_SABORT = 24
+		NRC_NAMCONF = 25
+		NRC_IFBUSY = 33
+		NRC_TOOMANY = 34
+		NRC_BRIDGE = 35
+		NRC_CANOCCR = 36
+		NRC_CANCEL = 38
+		NRC_DUPENV = 48
+		NRC_ENVNOTDEF = 52
+		NRC_OSRESNOTAV = 53
+		NRC_MAXAPPS = 54
+		NRC_NOSAPS = 55
+		NRC_NORESOURCES = 56
+		NRC_INVADDRESS = 57
+		NRC_INVDDID = 59
+		NRC_LOCKFAIL = 60
+		NRC_OPENERR = 63
+		NRC_SYSTEM = 64
+		NRC_PENDING = 255
+		INCL_WINSOCK_API_PROTOTYPES = 1
+		INCL_WINSOCK_API_TYPEDEFS = 0
+		FD_SETSIZE = 64
+		IOCPARM_MASK = 127
+		IOC_VOID = 536870912
+		IOC_OUT = 1073741824
+		IOC_IN = 80000000h
+		IOC_INOUT = -1073741824
+		IPPROTO_IP = 0
+		IPPROTO_ICMP = 1
+		IPPROTO_IGMP = 2
+		IPPROTO_GGP = 3
+		IPPROTO_TCP = 6
+		IPPROTO_PUP = 12
+		IPPROTO_UDP = 17
+		IPPROTO_IDP = 22
+		IPPROTO_ND = 77
+		IPPROTO_RAW = 255
+		IPPROTO_MAX = 256
+		IPPORT_ECHO = 7
+		IPPORT_DISCARD = 9
+		IPPORT_SYSTAT = 11
+		IPPORT_DAYTIME = 13
+		IPPORT_NETSTAT = 15
+		IPPORT_FTP = 21
+		IPPORT_TELNET = 23
+		IPPORT_SMTP = 25
+		IPPORT_TIMESERVER = 37
+		IPPORT_NAMESERVER = 42
+		IPPORT_WHOIS = 43
+		IPPORT_MTP = 57
+		IPPORT_TFTP = 69
+		IPPORT_RJE = 77
+		IPPORT_FINGER = 79
+		IPPORT_TTYLINK = 87
+		IPPORT_SUPDUP = 95
+		IPPORT_EXECSERVER = 512
+		IPPORT_LOGINSERVER = 513
+		IPPORT_CMDSERVER = 514
+		IPPORT_EFSSERVER = 520
+		IPPORT_BIFFUDP = 512
+		IPPORT_WHOSERVER = 513
+		IPPORT_ROUTESERVER = 520
+		IPPORT_RESERVED = 1024
+		IMPLINK_IP = 155
+		IMPLINK_LOWEXPER = 156
+		IMPLINK_HIGHEXPER = 158
+		IN_CLASSA_NET = -16777216
+		IN_CLASSA_NSHIFT = 24
+		IN_CLASSA_HOST = 16777215
+		IN_CLASSA_MAX = 128
+		IN_CLASSB_NET = -65536
+		IN_CLASSB_NSHIFT = 16
+		IN_CLASSB_HOST = 65535
+		IN_CLASSB_MAX = 65536
+		IN_CLASSC_NET = -256
+		IN_CLASSC_NSHIFT = 8
+		IN_CLASSC_HOST = 255
+		IN_CLASSD_NET = -268435456
+		IN_CLASSD_NSHIFT = 28
+		IN_CLASSD_HOST = 268435455
+		INADDR_LOOPBACK = 2130706433
+		INADDR_NONE = -1
+		WSADESCRIPTION_LEN = 256
+		WSASYS_STATUS_LEN = 128
+		SOCKET_ERROR = -1
+		SOCK_STREAM = 1
+		SOCK_DGRAM = 2
+		SOCK_RAW = 3
+		SOCK_RDM = 4
+		SOCK_SEQPACKET = 5
+		SO_DEBUG = 1
+		SO_ACCEPTCONN = 2
+		SO_REUSEADDR = 4
+		SO_KEEPALIVE = 8
+		SO_DONTROUTE = 16
+		SO_BROADCAST = 32
+		SO_USELOOPBACK = 64
+		SO_LINGER = 128
+		SO_OOBINLINE = 256
+		SO_DONTLINGER = -129
+		SO_SNDBUF = 4097
+		SO_RCVBUF = 4098
+		SO_SNDLOWAT = 4099
+		SO_RCVLOWAT = 4100
+		SO_SNDTIMEO = 4101
+		SO_RCVTIMEO = 4102
+		SO_ERROR = 4103
+		SO_TYPE = 4104
+		SO_GROUP_ID = 8193
+		SO_GROUP_PRIORITY = 8194
+		SO_MAX_MSG_SIZE = 8195
+		SO_PROTOCOL_INFOA = 8196
+		SO_PROTOCOL_INFOW = 8197
+		SO_PROTOCOL_INFO = 8196
+		PVD_CONFIG = 12289
+		TCP_NODELAY = 1
+		AF_UNSPEC = 0
+		AF_UNIX = 1
+		AF_INET = 2
+		AF_IMPLINK = 3
+		AF_PUP = 4
+		AF_CHAOS = 5
+		AF_NS = 6
+		AF_IPX = 6
+		AF_ISO = 7
+		AF_OSI = 7
+		AF_ECMA = 8
+		AF_DATAKIT = 9
+		AF_CCITT = 10
+		AF_SNA = 11
+		AF_DECnet = 12
+		AF_DLI = 13
+		AF_LAT = 14
+		AF_HYLINK = 15
+		AF_APPLETALK = 16
+		AF_NETBIOS = 17
+		AF_VOICEVIEW = 18
+		AF_FIREFOX = 19
+		AF_UNKNOWN1 = 20
+		AF_BAN = 21
+		AF_ATM = 22
+		AF_MAX = 23
+		PF_UNSPEC = 0
+		PF_UNIX = 1
+		PF_INET = 2
+		PF_IMPLINK = 3
+		PF_PUP = 4
+		PF_CHAOS = 5
+		PF_NS = 6
+		PF_IPX = 6
+		PF_ISO = 7
+		PF_OSI = 7
+		PF_ECMA = 8
+		PF_DATAKIT = 9
+		PF_CCITT = 10
+		PF_SNA = 11
+		PF_DECnet = 12
+		PF_DLI = 13
+		PF_LAT = 14
+		PF_HYLINK = 15
+		PF_APPLETALK = 16
+		PF_VOICEVIEW = 18
+		PF_FIREFOX = 19
+		PF_UNKNOWN1 = 20
+		PF_BAN = 21
+		PF_ATM = 22
+		PF_MAX = 23
+		SOL_SOCKET = 65535
+		SOMAXCONN = 5
+		MSG_OOB = 1
+		MSG_PEEK = 2
+		MSG_DONTROUTE = 4
+		MSG_PARTIAL = 32768
+		MSG_INTERRUPT = 16
+		MSG_MAXIOVLEN = 16
+		MAXGETHOSTSTRUCT = 1024
+		FD_READ_BIT = 0
+		FD_READ = 1
+		FD_WRITE_BIT = 1
+		FD_WRITE = 2
+		FD_OOB_BIT = 2
+		FD_OOB = 4
+		FD_ACCEPT_BIT = 3
+		FD_ACCEPT = 8
+		FD_CONNECT_BIT = 4
+		FD_CONNECT = 16
+		FD_CLOSE_BIT = 5
+		FD_CLOSE = 32
+		FD_QOS_BIT = 6
+		FD_QOS = 64
+		FD_GROUP_QOS_BIT = 7
+		FD_GROUP_QOS = 128
+		FD_MAX_EVENTS = 8
+		FD_ALL_EVENTS = 255
+		WSABASEERR = 10000
+		WSAEINTR = 10004
+		WSAEBADF = 10009
+		WSAEACCES = 10013
+		WSAEFAULT = 10014
+		WSAEINVAL = 10022
+		WSAEMFILE = 10024
+		WSAEWOULDBLOCK = 10035
+		WSAEINPROGRESS = 10036
+		WSAEALREADY = 10037
+		WSAENOTSOCK = 10038
+		WSAEDESTADDRREQ = 10039
+		WSAEMSGSIZE = 10040
+		WSAEPROTOTYPE = 10041
+		WSAENOPROTOOPT = 10042
+		WSAEPROTONOSUPPORT = 10043
+		WSAESOCKTNOSUPPORT = 10044
+		WSAEOPNOTSUPP = 10045
+		WSAEPFNOSUPPORT = 10046
+		WSAEAFNOSUPPORT = 10047
+		WSAEADDRINUSE = 10048
+		WSAEADDRNOTAVAIL = 10049
+		WSAENETDOWN = 10050
+		WSAENETUNREACH = 10051
+		WSAENETRESET = 10052
+		WSAECONNABORTED = 10053
+		WSAECONNRESET = 10054
+		WSAENOBUFS = 10055
+		WSAEISCONN = 10056
+		WSAENOTCONN = 10057
+		WSAESHUTDOWN = 10058
+		WSAETOOMANYREFS = 10059
+		WSAETIMEDOUT = 10060
+		WSAECONNREFUSED = 10061
+		WSAELOOP = 10062
+		WSAENAMETOOLONG = 10063
+		WSAEHOSTDOWN = 10064
+		WSAEHOSTUNREACH = 10065
+		WSAENOTEMPTY = 10066
+		WSAEPROCLIM = 10067
+		WSAEUSERS = 10068
+		WSAEDQUOT = 10069
+		WSAESTALE = 10070
+		WSAEREMOTE = 10071
+		WSASYSNOTREADY = 10091
+		WSAVERNOTSUPPORTED = 10092
+		WSANOTINITIALISED = 10093
+		WSAEDISCON = 10101
+		WSAHOST_NOT_FOUND = 11001
+		HOST_NOT_FOUND = 11001
+		WSATRY_AGAIN = 11002
+		TRY_AGAIN = 11002
+		WSANO_RECOVERY = 11003
+		NO_RECOVERY = 11003
+		WSANO_DATA = 11004
+		NO_DATA = 11004
+		WSANO_ADDRESS = 11004
+		NO_ADDRESS = 11004
+		WSA_IO_PENDING = 10035
+		WSA_IO_INCOMPLETE = 10035
+		WSA_INVALID_HANDLE = 10038
+		WSA_INVALID_PARAMETER = 10022
+		WSA_NOT_ENOUGH_MEMORY = 10055
+		WSA_OPERATION_ABORTED = 10004
+		WSA_MAXIMUM_WAIT_EVENTS = 64
+		WSA_WAIT_FAILED = -1
+		WSA_WAIT_EVENT_0 = 0
+		WSA_WAIT_TIMEOUT = 258
+		WSA_INFINITE = -1
+		CF_ACCEPT = 0
+		CF_REJECT = 1
+		CF_DEFER = 2
+		SD_RECEIVE = 0
+		SD_SEND = 1
+		SD_BOTH = 2
+		SG_UNCONSTRAINED_GROUP = 1
+		SG_CONSTRAINED_GROUP = 2
+		MAX_PROTOCOL_CHAIN = 8
+		BASE_PROTOCOL = 1
+		LAYERED_PROTOCOL = 0
+		WSAPROTOCOL_LEN = 255
+		XP1_CONNECTIONLESS = {0}
+		XP1_GUARANTEED_DELIVERY = {1}
+		XP1_GUARANTEED_ORDER = {2}
+		XP1_MESSAGE_ORIENTED = {3}
+		XP1_PSEUDO_STREAM = {4}
+		XP1_GRACEFUL_CLOSE = {5}
+		XP1_EXPEDITED_DATA = {6}
+		XP1_CONNECT_DATA = {7}
+		XP1_DISCONNECT_DATA = {8}
+		XP1_SUPPORT_BROADCAST = {9}
+		XP1_SUPPORT_MULTIPOINT = {10}
+		XP1_MULTIPOINT_CONTROL_PLANE = {11}
+		XP1_MULTIPOINT_DATA_PLANE = {12}
+		XP1_QOS_SUPPORTED = {13}
+		XP1_INTERRUPT = {14}
+		XP1_UNI_SEND = {15}
+		XP1_UNI_RECV = {16}
+		XP1_IFS_HANDLES = {17}
+		XP1_PARTIAL_MESSAGE = {18}
+		BIGENDIAN = 0
+		LITTLEENDIAN = 1
+		SECURITY_PROTOCOL_NONE = 0
+		JL_SENDER_ONLY = 1
+		JL_RECEIVER_ONLY = 2
+		JL_BOTH = 4
+		WSA_FLAG_OVERLAPPED = {0}
+		WSA_FLAG_MULTIPOINT_C_ROOT = {1}
+		WSA_FLAG_MULTIPOINT_C_LEAF = {2}
+		WSA_FLAG_MULTIPOINT_D_ROOT = {3}
+		WSA_FLAG_MULTIPOINT_D_LEAF = {4}
+		IOC_UNIX = 0
+		IOC_WS2 = 134217728
+		IOC_PROTOCOL = 268435456
+		IOC_VENDOR = 402653184
+		SIO_ASSOCIATE_HANDLE = -2013265919
+		SIO_ENABLE_CIRCULAR_QUEUEING = 671088642
+		SIO_FIND_ROUTE = 1207959555
+		SIO_FLUSH = 671088644
+		SIO_GET_BROADCAST_ADDRESS = 1207959557
+		SIO_GET_EXTENSION_FUNCTION_POINTER = 1207959558
+		SIO_GET_QOS = 1207959559
+		SIO_GET_GROUP_QOS = 1207959560
+		SIO_MULTIPOINT_LOOPBACK = -2013265911
+		SIO_MULTICAST_SCOPE = -2013265910
+		SIO_SET_QOS = -2013265909
+		SIO_SET_GROUP_QOS = -2013265908
+		SIO_TRANSLATE_HANDLE = -939524083
+		TH_NETDEV = 1
+		TH_TAPI = 2
+		SO_CONNDATA = 28672
+		SO_CONNOPT = 28673
+		SO_DISCDATA = 28674
+		SO_DISCOPT = 28675
+		SO_CONNDATALEN = 28676
+		SO_CONNOPTLEN = 28677
+		SO_DISCDATALEN = 28678
+		SO_DISCOPTLEN = 28679
+		SO_OPENTYPE = 28680
+		SO_SYNCHRONOUS_ALERT = 16
+		SO_SYNCHRONOUS_NONALERT = 32
+		SO_MAXDG = 28681
+		SO_MAXPATHDG = 28682
+		SO_UPDATE_ACCEPT_CONTEXT = 28683
+		SO_CONNECT_TIME = 28684
+		TCP_BSDURGENT = 28672
+		TF_DISCONNECT = 1
+		TF_REUSE_SOCKET = 2
+	
+	const  // enumerations
+		BestEffortService = 0
+		PredictiveService = 1
+		GuaranteedService = 2
+	
+	type 
+		NETRESOURCEA = cstruct 
+				dwScope: integer
+				dwType: integer
+				dwDisplayType: integer
+				dwUsage: integer
+				lpLocalName: WinApi.PtrSTR
+				lpRemoteName: WinApi.PtrSTR
+				lpComment: WinApi.PtrSTR
+				lpProvider: WinApi.PtrSTR 
+			end 
+		PtrNETRESOURCEA = unsafe pointer to NETRESOURCEA
+		NETRESOURCEW = cstruct 
+				dwScope: integer
+				dwType: integer
+				dwDisplayType: integer
+				dwUsage: integer
+				lpLocalName: WinApi.PtrWSTR
+				lpRemoteName: WinApi.PtrWSTR
+				lpComment: WinApi.PtrWSTR
+				lpProvider: WinApi.PtrWSTR 
+			end 
+		PtrNETRESOURCEW = unsafe pointer to NETRESOURCEW
+		NETRESOURCE = NETRESOURCEA
+		PtrNETRESOURCE = PtrNETRESOURCEA
+		CONNECTDLGSTRUCTA = cstruct 
+				cbStructure: integer
+				hwndOwner: WinApi.HWND
+				lpConnRes: PtrNETRESOURCEA
+				dwFlags: set
+				dwDevNum: integer 
+			end 
+		PtrCONNECTDLGSTRUCTA = unsafe pointer to CONNECTDLGSTRUCTA
+		CONNECTDLGSTRUCTW = cstruct 
+				cbStructure: integer
+				hwndOwner: WinApi.HWND
+				lpConnRes: PtrNETRESOURCEW
+				dwFlags: set
+				dwDevNum: integer 
+			end 
+		PtrCONNECTDLGSTRUCTW = unsafe pointer to CONNECTDLGSTRUCTW
+		CONNECTDLGSTRUCT = CONNECTDLGSTRUCTA
+		PtrCONNECTDLGSTRUCT = PtrCONNECTDLGSTRUCTA
+		DISCDLGSTRUCTA = cstruct 
+				cbStructure: integer
+				hwndOwner: WinApi.HWND
+				lpLocalName: WinApi.PtrSTR
+				lpRemoteName: WinApi.PtrSTR
+				dwFlags: set 
+			end 
+		PtrDISCDLGSTRUCTA = unsafe pointer to DISCDLGSTRUCTA
+		DISCDLGSTRUCTW = cstruct 
+				cbStructure: integer
+				hwndOwner: WinApi.HWND
+				lpLocalName: WinApi.PtrWSTR
+				lpRemoteName: WinApi.PtrWSTR
+				dwFlags: set 
+			end 
+		PtrDISCDLGSTRUCTW = unsafe pointer to DISCDLGSTRUCTW
+		DISCDLGSTRUCT = DISCDLGSTRUCTA
+		PtrDISCDLGSTRUCT = PtrDISCDLGSTRUCTA
+		UNIVERSAL_NAME_INFOA = cstruct 
+				lpUniversalName: WinApi.PtrSTR 
+			end 
+		PtrUNIVERSAL_NAME_INFOA = unsafe pointer to UNIVERSAL_NAME_INFOA
+		UNIVERSAL_NAME_INFOW = cstruct 
+				lpUniversalName: WinApi.PtrWSTR 
+			end 
+		PtrUNIVERSAL_NAME_INFOW = unsafe pointer to UNIVERSAL_NAME_INFOW
+		UNIVERSAL_NAME_INFO = UNIVERSAL_NAME_INFOA
+		PtrUNIVERSAL_NAME_INFO = PtrUNIVERSAL_NAME_INFOA
+		REMOTE_NAME_INFOA = cstruct 
+				lpUniversalName: WinApi.PtrSTR
+				lpConnectionName: WinApi.PtrSTR
+				lpRemainingPath: WinApi.PtrSTR 
+			end 
+		PtrREMOTE_NAME_INFOA = unsafe pointer to REMOTE_NAME_INFOA
+		REMOTE_NAME_INFOW = cstruct 
+				lpUniversalName: WinApi.PtrWSTR
+				lpConnectionName: WinApi.PtrWSTR
+				lpRemainingPath: WinApi.PtrWSTR 
+			end 
+		PtrREMOTE_NAME_INFOW = unsafe pointer to REMOTE_NAME_INFOW
+		REMOTE_NAME_INFO = REMOTE_NAME_INFOA
+		PtrREMOTE_NAME_INFO = PtrREMOTE_NAME_INFOA
+		NETINFOSTRUCT = cstruct 
+				cbStructure: integer
+				dwProviderVersion: integer
+				dwStatus: set
+				dwCharacteristics: integer
+				dwHandle: integer
+				wNetType: shortint
+				dwPrinters: integer
+				dwDrives: integer 
+			end 
+		PtrNETINFOSTRUCT = unsafe pointer to NETINFOSTRUCT
+		FNGETPROFILEPATHA = proc (pszUsername: WinApi.PtrSTR; pszBuffer: WinApi.PtrSTR; cbBuffer: integer): integer
+		FNGETPROFILEPATHW = proc (pszUsername: WinApi.PtrWSTR; pszBuffer: WinApi.PtrWSTR; cbBuffer: integer): integer
+		FNRECONCILEPROFILEA = proc (pszCentralFile: WinApi.PtrSTR; pszLocalFile: WinApi.PtrSTR; dwFlags: set): integer
+		FNRECONCILEPROFILEW = proc (pszCentralFile: WinApi.PtrWSTR; pszLocalFile: WinApi.PtrWSTR; dwFlags: set): integer
+		FNPROCESSPOLICIESA = proc (hwnd: WinApi.HWND; pszPath: WinApi.PtrSTR; pszUsername: WinApi.PtrSTR; pszComputerName: WinApi.PtrSTR; dwFlags: set): WinApi.BOOL
+		FNPROCESSPOLICIESW = proc (hwnd: WinApi.HWND; pszPath: WinApi.PtrWSTR; pszUsername: WinApi.PtrWSTR; pszComputerName: WinApi.PtrWSTR; dwFlags: set): WinApi.BOOL
+		NETCONNECTINFOSTRUCT = cstruct 
+				cbStructure: integer
+				dwFlags: set
+				dwSpeed: integer
+				dwDelay: integer
+				dwOptDataSize: integer 
+			end 
+		PtrNETCONNECTINFOSTRUCT = unsafe pointer to NETCONNECTINFOSTRUCT
+		PtrNCB = unsafe pointer to NCB
+		NCB = cstruct 
+				ncb_command: char
+				ncb_retcode: char
+				ncb_lsn: char
+				ncb_num: char
+				ncb_buffer: WinApi.PtrSTR
+				ncb_length: shortint
+				ncb_callname: carray 16 of char
+				ncb_name: carray 16 of char
+				ncb_rto: char
+				ncb_sto: char
+				ncb_post: proc (p0: PtrNCB)
+				ncb_lana_num: char
+				ncb_cmd_cplt: char
+				ncb_reserve: carray 10 of char
+				ncb_event: WinApi.HANDLE 
+			end 
+		ADAPTER_STATUS = cstruct 
+				adapter_address: carray 6 of char
+				rev_major: char
+				reserved0: char
+				adapter_type: char
+				rev_minor: char
+				duration: shortint
+				frmr_recv: shortint
+				frmr_xmit: shortint
+				iframe_recv_err: shortint
+				xmit_aborts: shortint
+				xmit_success: integer
+				recv_success: integer
+				iframe_xmit_err: shortint
+				recv_buff_unavail: shortint
+				t1_timeouts: shortint
+				ti_timeouts: shortint
+				reserved1: integer
+				free_ncbs: shortint
+				max_cfg_ncbs: shortint
+				max_ncbs: shortint
+				xmit_buf_unavail: shortint
+				max_dgram_size: shortint
+				pending_sess: shortint
+				max_cfg_sess: shortint
+				max_sess: shortint
+				max_sess_pkt_size: shortint
+				name_count: shortint 
+			end 
+		PtrADAPTER_STATUS = unsafe pointer to ADAPTER_STATUS
+		NAME_BUFFER = cstruct 
+				name: carray 16 of char
+				name_num: char
+				name_flags: char 
+			end 
+		PtrNAME_BUFFER = unsafe pointer to NAME_BUFFER
+		SESSION_HEADER = cstruct 
+				sess_name: char
+				num_sess: char
+				rcv_dg_outstanding: char
+				rcv_any_outstanding: char 
+			end 
+		PtrSESSION_HEADER = unsafe pointer to SESSION_HEADER
+		SESSION_BUFFER = cstruct 
+				lsn: char
+				state: char
+				local_name: carray 16 of char
+				remote_name: carray 16 of char
+				rcvs_outstanding: char
+				sends_outstanding: char 
+			end 
+		PtrSESSION_BUFFER = unsafe pointer to SESSION_BUFFER
+		LANA_ENUM = cstruct 
+				length: char
+				lana: carray 255 of char 
+			end 
+		PtrLANA_ENUM = unsafe pointer to LANA_ENUM
+		FIND_NAME_HEADER = cstruct 
+				node_count: shortint
+				reserved: char
+				unique_group: char 
+			end 
+		PtrFIND_NAME_HEADER = unsafe pointer to FIND_NAME_HEADER
+		FIND_NAME_BUFFER = cstruct 
+				length: char
+				access_control: char
+				frame_control: char
+				destination_addr: carray 6 of char
+				source_addr: carray 6 of char
+				routing_info: carray 18 of char 
+			end 
+		PtrFIND_NAME_BUFFER = unsafe pointer to FIND_NAME_BUFFER
+		ACTION_HEADER = cstruct 
+				transport_id: integer
+				action_code: shortint
+				reserved: shortint 
+			end 
+		PtrACTION_HEADER = unsafe pointer to ACTION_HEADER
+		u_char = char
+		u_short = shortint
+		u_int = integer
+		u_long = integer
+		SOCKET = u_int
+		fd_set = cstruct 
+				fd_count: u_int
+				fd_array: carray 64 of SOCKET 
+			end 
+		Ptrfd_set = unsafe pointer to fd_set
+		timeval = cstruct 
+				tv_sec: integer
+				tv_usec: integer 
+			end 
+		Ptrtimeval = unsafe pointer to timeval
+		hostent = cstruct 
+				h_name: WinApi.PtrSTR
+				h_aliases: unsafe pointer to (* ? *)carray of WinApi.PtrSTR
+				h_addrtype: shortint
+				h_length: shortint
+				h_addr_list: unsafe pointer to (* ? *)carray of unsafe pointer to carray of char 
+			end 
+		Ptrhostent = unsafe pointer to hostent
+		netent = cstruct 
+				n_name: WinApi.PtrSTR
+				n_aliases: unsafe pointer to (* ? *)carray of WinApi.PtrSTR
+				n_addrtype: shortint
+				n_net: u_long 
+			end 
+		servent = cstruct 
+				s_name: WinApi.PtrSTR
+				s_aliases: unsafe pointer to (* ? *)carray of WinApi.PtrSTR
+				s_port: shortint
+				s_proto: WinApi.PtrSTR 
+			end 
+		Ptrservent = unsafe pointer to servent
+		protoent = cstruct 
+				p_name: WinApi.PtrSTR
+				p_aliases: unsafe pointer to (* ? *)carray of WinApi.PtrSTR
+				p_proto: shortint 
+			end 
+		Ptrprotoent = unsafe pointer to protoent
+		in_addr = cstruct 
+				S_un: cstruct 
+						S_un_b: cstruct 
+								s_b1: u_char
+								s_b2: u_char
+								s_b3: u_char
+								s_b4: u_char 
+							end 
+						S_un_w: cstruct 
+								s_w1: u_short
+								s_w2: u_short 
+							end 
+						S_addr: u_long 
+					end  
+			end 
+		Ptrin_addr = unsafe pointer to in_addr
+		sockaddr_in = cstruct 
+				sin_family: shortint
+				sin_port: u_short
+				sin_addr: in_addr
+				sin_zero: carray 8 of char 
+			end 
+		Ptrsockaddr_in = unsafe pointer to sockaddr_in
+		WSADATA = cstruct 
+				wVersion: shortint
+				wHighVersion: shortint
+				szDescription: carray 257 of char
+				szSystemStatus: carray 129 of char
+				iMaxSockets: shortint
+				iMaxUdpDg: shortint
+				lpVendorInfo: WinApi.PtrSTR 
+			end 
+		PtrWSADATA = unsafe pointer to WSADATA
+		sockaddr = cstruct 
+				sa_family: u_short
+				sa_data: carray 14 of char 
+			end 
+		Ptrsockaddr = unsafe pointer to sockaddr
+		sockproto = cstruct 
+				sp_family: u_short
+				sp_protocol: u_short 
+			end 
+		linger = cstruct 
+				l_onoff: u_short
+				l_linger: u_short 
+			end 
+		Ptrlinger = unsafe pointer to linger
+		WSAEVENT = integer
+		WSAOVERLAPPED = cstruct 
+				Internal: integer
+				InternalHigh: integer
+				Offset: integer
+				OffsetHigh: integer
+				hEvent: WSAEVENT 
+			end 
+		PtrWSAOVERLAPPED = unsafe pointer to WSAOVERLAPPED
+		WSABUF = cstruct 
+				len_: u_long
+				buf: WinApi.PtrSTR 
+			end 
+		PtrWSABUF = unsafe pointer to WSABUF
+		GUARANTEE = integer
+		int32 = integer
+		FLOWSPEC = cstruct 
+				TokenRate: int32
+				TokenBucketSize: int32
+				PeakBandwidth: int32
+				Latency: int32
+				DelayVariation: int32
+				LevelOfGuarantee: GUARANTEE
+				CostOfCall: int32
+				NetworkAvailability: int32 
+			end 
+		PtrFLOWSPEC = unsafe pointer to FLOWSPEC
+		QOS = cstruct 
+				SendingFlowspec: WSABUF
+				ReceivingFlowspec: WSABUF 
+			end 
+		PtrQOS = unsafe pointer to QOS
+		GROUP = integer
+		WSANETWORKEVENTS = cstruct 
+				lNetworkEvents: integer
+				iErrorCode: carray 8 of integer 
+			end 
+		PtrWSANETWORKEVENTS = unsafe pointer to WSANETWORKEVENTS
+		WSAPROTOCOLCHAIN = cstruct 
+				ChainLen: integer
+				ChainEntries: carray 8 of integer 
+			end 
+		PtrWSAPROTOCOLCHAIN = unsafe pointer to WSAPROTOCOLCHAIN
+		WSAPROTOCOL_INFOA = cstruct 
+				dwServiceFlags1: integer
+				dwServiceFlags2: integer
+				dwServiceFlags3: integer
+				dwServiceFlags4: integer
+				dwProviderId: integer
+				dwCatalogEntryId: integer
+				ProtocolChain: WSAPROTOCOLCHAIN
+				iVersion: integer
+				iAddressFamily: integer
+				iMaxSockAddr: integer
+				iMinSockAddr: integer
+				iSocketType: integer
+				iProtocol: integer
+				iNetworkByteOrder: integer
+				iSecurityScheme: integer
+				bMultiple: WinApi.BOOL
+				bFirst: WinApi.BOOL
+				dwMessageSize: integer
+				dwProviderReserved: integer
+				szProtocol: carray 256 of char 
+			end 
+		PtrWSAPROTOCOL_INFOA = unsafe pointer to WSAPROTOCOL_INFOA
+		WSAPROTOCOL_INFOW = cstruct 
+				dwServiceFlags1: integer
+				dwServiceFlags2: integer
+				dwServiceFlags3: integer
+				dwServiceFlags4: integer
+				dwProviderId: integer
+				dwCatalogEntryId: integer
+				ProtocolChain: WSAPROTOCOLCHAIN
+				iVersion: integer
+				iAddressFamily: integer
+				iMaxSockAddr: integer
+				iMinSockAddr: integer
+				iSocketType: integer
+				iProtocol: integer
+				iNetworkByteOrder: integer
+				iSecurityScheme: integer
+				bMultiple: WinApi.BOOL
+				bFirst: WinApi.BOOL
+				dwMessageSize: integer
+				dwProviderReserved: integer
+				szProtocol: carray 256 of char 
+			end 
+		PtrWSAPROTOCOL_INFOW = unsafe pointer to WSAPROTOCOL_INFOW
+		WSAPROTOCOL_INFO = WSAPROTOCOL_INFOA
+		PtrWSAPROTOCOL_INFO = PtrWSAPROTOCOL_INFOA
+		CONDITIONPROC = proc (var lpCallerId: WSABUF; var lpCallerData: WSABUF; var lpSQOS: QOS; var lpGQOS: QOS; var lpCalleeId: WSABUF; var lpCalleeData: WSABUF; var g: GROUP; dwCallbackData: integer): integer
+		WSAOVERLAPPED_COMPLETION_ROUTINE = proc (dwError: integer; cbTransferred: integer; var lpOverlapped: WSAOVERLAPPED; dwFlags: set)
+		SOCKADDR = sockaddr
+		PtrSOCKADDR = Ptrsockaddr
+		SOCKADDR_IN = sockaddr_in
+		PtrSOCKADDR_IN = Ptrsockaddr_in
+		LINGER = linger
+		PtrLINGER = Ptrlinger
+		IN_ADDR = in_addr
+		PtrIN_ADDR = Ptrin_addr
+		FD_SET = fd_set
+		PtrFD_SET = Ptrfd_set
+		HOSTENT = hostent
+		PtrHOSTENT = Ptrhostent
+		SERVENT = servent
+		PtrSERVENT = Ptrservent
+		PROTOENT = protoent
+		PtrPROTOENT = Ptrprotoent
+		TIMEVAL = timeval
+		PtrTIMEVAL = Ptrtimeval
+		TRANSMIT_FILE_BUFFERS = cstruct 
+				Head: WinApi.PtrVoid
+				HeadLength: integer
+				Tail: WinApi.PtrVoid
+				TailLength: integer 
+			end 
+		PtrTRANSMIT_FILE_BUFFERS = unsafe pointer to TRANSMIT_FILE_BUFFERS
+	
+	proc WNetAddConnectionA(lpRemoteName: WinApi.PtrSTR; lpPassword: WinApi.PtrSTR; lpLocalName: WinApi.PtrSTR): integer 
+	// END WNetAddConnectionA;
+	
+	proc WNetAddConnectionW(lpRemoteName: WinApi.PtrWSTR; lpPassword: WinApi.PtrWSTR; lpLocalName: WinApi.PtrWSTR): integer 
+	// END WNetAddConnectionW;
+	
+	proc WNetAddConnection(lpRemoteName: WinApi.PtrSTR; lpPassword: WinApi.PtrSTR; lpLocalName: WinApi.PtrSTR): integer 
+	// END WNetAddConnection;
+	
+	proc WNetAddConnection2A(var lpNetResource: NETRESOURCEA; lpPassword: WinApi.PtrSTR; lpUserName: WinApi.PtrSTR; dwFlags: set): integer 
+	// END WNetAddConnection2A;
+	
+	proc WNetAddConnection2W(var lpNetResource: NETRESOURCEW; lpPassword: WinApi.PtrWSTR; lpUserName: WinApi.PtrWSTR; dwFlags: set): integer 
+	// END WNetAddConnection2W;
+	
+	proc WNetAddConnection2(var lpNetResource: NETRESOURCEA; lpPassword: WinApi.PtrSTR; lpUserName: WinApi.PtrSTR; dwFlags: set): integer 
+	// END WNetAddConnection2;
+	
+	proc WNetAddConnection3A(hwndOwner: WinApi.HWND; var lpNetResource: NETRESOURCEA; lpPassword: WinApi.PtrSTR; lpUserName: WinApi.PtrSTR; dwFlags: set): integer 
+	// END WNetAddConnection3A;
+	
+	proc WNetAddConnection3W(hwndOwner: WinApi.HWND; var lpNetResource: NETRESOURCEW; lpPassword: WinApi.PtrWSTR; lpUserName: WinApi.PtrWSTR; dwFlags: set): integer 
+	// END WNetAddConnection3W;
+	
+	proc WNetAddConnection3(hwndOwner: WinApi.HWND; var lpNetResource: NETRESOURCEA; lpPassword: WinApi.PtrSTR; lpUserName: WinApi.PtrSTR; dwFlags: set): integer 
+	// END WNetAddConnection3;
+	
+	proc WNetCancelConnectionA(lpName: WinApi.PtrSTR; fForce: WinApi.BOOL): integer 
+	// END WNetCancelConnectionA;
+	
+	proc WNetCancelConnectionW(lpName: WinApi.PtrWSTR; fForce: WinApi.BOOL): integer 
+	// END WNetCancelConnectionW;
+	
+	proc WNetCancelConnection(lpName: WinApi.PtrSTR; fForce: WinApi.BOOL): integer 
+	// END WNetCancelConnection;
+	
+	proc WNetCancelConnection2A(lpName: WinApi.PtrSTR; dwFlags: set; fForce: WinApi.BOOL): integer 
+	// END WNetCancelConnection2A;
+	
+	proc WNetCancelConnection2W(lpName: WinApi.PtrWSTR; dwFlags: set; fForce: WinApi.BOOL): integer 
+	// END WNetCancelConnection2W;
+	
+	proc WNetCancelConnection2(lpName: WinApi.PtrSTR; dwFlags: set; fForce: WinApi.BOOL): integer 
+	// END WNetCancelConnection2;
+	
+	proc WNetGetConnectionA(lpLocalName: WinApi.PtrSTR; lpRemoteName: WinApi.PtrSTR; var lpnLength: integer): integer 
+	// END WNetGetConnectionA;
+	
+	proc WNetGetConnectionW(lpLocalName: WinApi.PtrWSTR; lpRemoteName: WinApi.PtrWSTR; var lpnLength: integer): integer 
+	// END WNetGetConnectionW;
+	
+	proc WNetGetConnection(lpLocalName: WinApi.PtrSTR; lpRemoteName: WinApi.PtrSTR; var lpnLength: integer): integer 
+	// END WNetGetConnection;
+	
+	proc WNetUseConnectionA(hwndOwner: WinApi.HWND; var lpNetResource: NETRESOURCEA; lpUserID: WinApi.PtrSTR; lpPassword: WinApi.PtrSTR; dwFlags: set; lpAccessName: WinApi.PtrSTR; var lpBufferSize: integer; var lpResult: integer): integer 
+	// END WNetUseConnectionA;
+	
+	proc WNetUseConnectionW(hwndOwner: WinApi.HWND; var lpNetResource: NETRESOURCEW; lpUserID: WinApi.PtrWSTR; lpPassword: WinApi.PtrWSTR; dwFlags: set; lpAccessName: WinApi.PtrWSTR; var lpBufferSize: integer; var lpResult: integer): integer 
+	// END WNetUseConnectionW;
+	
+	proc WNetUseConnection(hwndOwner: WinApi.HWND; var lpNetResource: NETRESOURCEA; lpUserID: WinApi.PtrSTR; lpPassword: WinApi.PtrSTR; dwFlags: set; lpAccessName: WinApi.PtrSTR; var lpBufferSize: integer; var lpResult: integer): integer 
+	// END WNetUseConnection;
+	
+	proc WNetSetConnectionA(lpName: WinApi.PtrSTR; dwProperties: integer; pvValues: WinApi.PtrVoid): integer 
+	// END WNetSetConnectionA;
+	
+	proc WNetSetConnectionW(lpName: WinApi.PtrWSTR; dwProperties: integer; pvValues: WinApi.PtrVoid): integer 
+	// END WNetSetConnectionW;
+	
+	proc WNetSetConnection(lpName: WinApi.PtrSTR; dwProperties: integer; pvValues: WinApi.PtrVoid): integer 
+	// END WNetSetConnection;
+	
+	proc WNetConnectionDialog(hwnd: WinApi.HWND; dwType: integer): integer 
+	// END WNetConnectionDialog;
+	
+	proc WNetDisconnectDialog(hwnd: WinApi.HWND; dwType: integer): integer 
+	// END WNetDisconnectDialog;
+	
+	proc WNetConnectionDialog1A(var lpConnDlgStruct: CONNECTDLGSTRUCTA): integer 
+	// END WNetConnectionDialog1A;
+	
+	proc WNetConnectionDialog1W(var lpConnDlgStruct: CONNECTDLGSTRUCTW): integer 
+	// END WNetConnectionDialog1W;
+	
+	proc WNetConnectionDialog1(var lpConnDlgStruct: CONNECTDLGSTRUCTA): integer 
+	// END WNetConnectionDialog1;
+	
+	proc WNetDisconnectDialog1A(var lpConnDlgStruct: DISCDLGSTRUCTA): integer 
+	// END WNetDisconnectDialog1A;
+	
+	proc WNetDisconnectDialog1W(var lpConnDlgStruct: DISCDLGSTRUCTW): integer 
+	// END WNetDisconnectDialog1W;
+	
+	proc WNetDisconnectDialog1(var lpConnDlgStruct: DISCDLGSTRUCTA): integer 
+	// END WNetDisconnectDialog1;
+	
+	proc WNetOpenEnumA(dwScope: integer; dwType: integer; dwUsage: integer; var lpNetResource: NETRESOURCEA; var lphEnum: WinApi.HANDLE): integer 
+	// END WNetOpenEnumA;
+	
+	proc WNetOpenEnumW(dwScope: integer; dwType: integer; dwUsage: integer; var lpNetResource: NETRESOURCEW; var lphEnum: WinApi.HANDLE): integer 
+	// END WNetOpenEnumW;
+	
+	proc WNetOpenEnum(dwScope: integer; dwType: integer; dwUsage: integer; var lpNetResource: NETRESOURCEA; var lphEnum: WinApi.HANDLE): integer 
+	// END WNetOpenEnum;
+	
+	proc WNetEnumResourceA(hEnum: WinApi.HANDLE; var lpcCount: integer; lpBuffer: WinApi.PtrVoid; var lpBufferSize: integer): integer 
+	// END WNetEnumResourceA;
+	
+	proc WNetEnumResourceW(hEnum: WinApi.HANDLE; var lpcCount: integer; lpBuffer: WinApi.PtrVoid; var lpBufferSize: integer): integer 
+	// END WNetEnumResourceW;
+	
+	proc WNetEnumResource(hEnum: WinApi.HANDLE; var lpcCount: integer; lpBuffer: WinApi.PtrVoid; var lpBufferSize: integer): integer 
+	// END WNetEnumResource;
+	
+	proc WNetCloseEnum(hEnum: WinApi.HANDLE): integer 
+	// END WNetCloseEnum;
+	
+	proc WNetGetResourceParentA(var lpNetResource: NETRESOURCEA; lpBuffer: WinApi.PtrVoid; var cbBuffer: integer): integer 
+	// END WNetGetResourceParentA;
+	
+	proc WNetGetResourceParentW(var lpNetResource: NETRESOURCEW; lpBuffer: WinApi.PtrVoid; var cbBuffer: integer): integer 
+	// END WNetGetResourceParentW;
+	
+	proc WNetGetResourceParent(var lpNetResource: NETRESOURCEA; lpBuffer: WinApi.PtrVoid; var cbBuffer: integer): integer 
+	// END WNetGetResourceParent;
+	
+	proc WNetGetResourceInformationA(var lpNetResource: NETRESOURCEA; lpBuffer: WinApi.PtrVoid; var cbBuffer: integer; var lplpSystem: WinApi.PtrSTR): integer 
+	// END WNetGetResourceInformationA;
+	
+	proc WNetGetResourceInformationW(var lpNetResource: NETRESOURCEW; lpBuffer: WinApi.PtrVoid; var cbBuffer: integer; var lplpSystem: WinApi.PtrWSTR): integer 
+	// END WNetGetResourceInformationW;
+	
+	proc WNetGetResourceInformation(var lpNetResource: NETRESOURCEA; lpBuffer: WinApi.PtrVoid; var cbBuffer: integer; var lplpSystem: WinApi.PtrSTR): integer 
+	// END WNetGetResourceInformation;
+	
+	proc WNetGetUniversalNameA(lpLocalPath: WinApi.PtrSTR; dwInfoLevel: integer; lpBuffer: WinApi.PtrVoid; var lpBufferSize: integer): integer 
+	// END WNetGetUniversalNameA;
+	
+	proc WNetGetUniversalNameW(lpLocalPath: WinApi.PtrWSTR; dwInfoLevel: integer; lpBuffer: WinApi.PtrVoid; var lpBufferSize: integer): integer 
+	// END WNetGetUniversalNameW;
+	
+	proc WNetGetUniversalName(lpLocalPath: WinApi.PtrSTR; dwInfoLevel: integer; lpBuffer: WinApi.PtrVoid; var lpBufferSize: integer): integer 
+	// END WNetGetUniversalName;
+	
+	proc WNetGetUserA(lpName: WinApi.PtrSTR; lpUserName: WinApi.PtrSTR; var lpnLength: integer): integer 
+	// END WNetGetUserA;
+	
+	proc WNetGetUserW(lpName: WinApi.PtrWSTR; lpUserName: WinApi.PtrWSTR; var lpnLength: integer): integer 
+	// END WNetGetUserW;
+	
+	proc WNetGetUser(lpName: WinApi.PtrSTR; lpUserName: WinApi.PtrSTR; var lpnLength: integer): integer 
+	// END WNetGetUser;
+	
+	proc WNetGetProviderNameA(dwNetType: integer; lpProviderName: WinApi.PtrSTR; var lpBufferSize: integer): integer 
+	// END WNetGetProviderNameA;
+	
+	proc WNetGetProviderNameW(dwNetType: integer; lpProviderName: WinApi.PtrWSTR; var lpBufferSize: integer): integer 
+	// END WNetGetProviderNameW;
+	
+	proc WNetGetProviderName(dwNetType: integer; lpProviderName: WinApi.PtrSTR; var lpBufferSize: integer): integer 
+	// END WNetGetProviderName;
+	
+	proc WNetGetNetworkInformationA(lpProvider: WinApi.PtrSTR; var lpNetInfoStruct: NETINFOSTRUCT): integer 
+	// END WNetGetNetworkInformationA;
+	
+	proc WNetGetNetworkInformationW(lpProvider: WinApi.PtrWSTR; var lpNetInfoStruct: NETINFOSTRUCT): integer 
+	// END WNetGetNetworkInformationW;
+	
+	proc WNetGetNetworkInformation(lpProvider: WinApi.PtrSTR; var lpNetInfoStruct: NETINFOSTRUCT): integer 
+	// END WNetGetNetworkInformation;
+	
+	proc WNetGetLastErrorA(var lpError: integer; lpErrorBuf: WinApi.PtrSTR; nErrorBufSize: integer; lpNameBuf: WinApi.PtrSTR; nNameBufSize: integer): integer 
+	// END WNetGetLastErrorA;
+	
+	proc WNetGetLastErrorW(var lpError: integer; lpErrorBuf: WinApi.PtrWSTR; nErrorBufSize: integer; lpNameBuf: WinApi.PtrWSTR; nNameBufSize: integer): integer 
+	// END WNetGetLastErrorW;
+	
+	proc WNetGetLastError(var lpError: integer; lpErrorBuf: WinApi.PtrSTR; nErrorBufSize: integer; lpNameBuf: WinApi.PtrSTR; nNameBufSize: integer): integer 
+	// END WNetGetLastError;
+	
+	proc MultinetGetConnectionPerformanceA(var lpNetResource: NETRESOURCEA; var lpNetConnectInfoStruct: NETCONNECTINFOSTRUCT): integer 
+	// END MultinetGetConnectionPerformanceA;
+	
+	proc MultinetGetConnectionPerformanceW(var lpNetResource: NETRESOURCEW; var lpNetConnectInfoStruct: NETCONNECTINFOSTRUCT): integer 
+	// END MultinetGetConnectionPerformanceW;
+	
+	proc MultinetGetConnectionPerformance(var lpNetResource: NETRESOURCEA; var lpNetConnectInfoStruct: NETCONNECTINFOSTRUCT): integer 
+	// END MultinetGetConnectionPerformance;
+	
+	proc Netbios(var pncb: NCB): char 
+	// END Netbios;
+	
+	proc __WSAFDIsSet(p0: SOCKET; var p1: fd_set): integer 
+	// END __WSAFDIsSet;
+	
+	proc accept(s: SOCKET; var addr: sockaddr; var addrlen: integer): SOCKET 
+	// END accept;
+	
+	proc bind(s: SOCKET; var name: sockaddr; namelen: integer): integer 
+	// END bind;
+	
+	proc closesocket(s: SOCKET): integer 
+	// END closesocket;
+	
+	proc connect(s: SOCKET; var name: sockaddr; namelen: integer): integer 
+	// END connect;
+	
+	proc ioctlsocket(s: SOCKET; cmd: integer; var argp: u_long): integer 
+	// END ioctlsocket;
+	
+	proc getpeername(s: SOCKET; var name: sockaddr; var namelen: integer): integer 
+	// END getpeername;
+	
+	proc getsockname(s: SOCKET; var name: sockaddr; var namelen: integer): integer 
+	// END getsockname;
+	
+	proc getsockopt(s: SOCKET; level: integer; optname: integer; optval: WinApi.PtrSTR; var optlen: integer): integer 
+	// END getsockopt;
+	
+	proc htonl(hostlong: u_long): u_long 
+	// END htonl;
+	
+	proc htons(hostshort: u_short): u_short 
+	// END htons;
+	
+	proc inet_addr(cp: WinApi.PtrSTR): integer 
+	// END inet_addr;
+	
+	proc inet_ntoa(in_: in_addr): WinApi.PtrSTR 
+	// END inet_ntoa;
+	
+	proc listen(s: SOCKET; backlog: integer): integer 
+	// END listen;
+	
+	proc ntohl(netlong: u_long): u_long 
+	// END ntohl;
+	
+	proc ntohs(netshort: u_short): u_short 
+	// END ntohs;
+	
+	proc recv(s: SOCKET; buf: WinApi.PtrSTR; len_: integer; flags: set): integer 
+	// END recv;
+	
+	proc recvfrom(s: SOCKET; buf: WinApi.PtrSTR; len_: integer; flags: set; var from: sockaddr; var fromlen: integer): integer 
+	// END recvfrom;
+	
+	proc select(nfds: integer; var readfds: fd_set; var writefds: fd_set; var exceptfds: fd_set; var timeout: timeval): integer 
+	// END select;
+	
+	proc send(s: SOCKET; buf: WinApi.PtrSTR; len_: integer; flags: set): integer 
+	// END send;
+	
+	proc sendto(s: SOCKET; buf: WinApi.PtrSTR; len_: integer; flags: set; var to_: sockaddr; tolen: integer): integer 
+	// END sendto;
+	
+	proc setsockopt(s: SOCKET; level: integer; optname: integer; optval: WinApi.PtrSTR; optlen: integer): integer 
+	// END setsockopt;
+	
+	proc shutdown(s: SOCKET; how: integer): integer 
+	// END shutdown;
+	
+	proc socket(af: integer; type_: integer; protocol: integer): SOCKET 
+	// END socket;
+	
+	proc gethostbyaddr(addr: WinApi.PtrSTR; len_: integer; type_: integer): Ptrhostent 
+	// END gethostbyaddr;
+	
+	proc gethostbyname(name: WinApi.PtrSTR): Ptrhostent 
+	// END gethostbyname;
+	
+	proc gethostname(name: WinApi.PtrSTR; namelen: integer): integer 
+	// END gethostname;
+	
+	proc getservbyport(port: integer; proto: WinApi.PtrSTR): Ptrservent 
+	// END getservbyport;
+	
+	proc getservbyname(name: WinApi.PtrSTR; proto: WinApi.PtrSTR): Ptrservent 
+	// END getservbyname;
+	
+	proc getprotobynumber(number: integer): Ptrprotoent 
+	// END getprotobynumber;
+	
+	proc getprotobyname(name: WinApi.PtrSTR): Ptrprotoent 
+	// END getprotobyname;
+	
+	proc WSAStartup(wVersionRequested: shortint; var lpWSAData: WSADATA): integer 
+	// END WSAStartup;
+	
+	proc WSACleanup(): integer 
+	// END WSACleanup;
+	
+	proc WSASetLastError(iError: integer) 
+	// END WSASetLastError;
+	
+	proc WSAGetLastError(): integer 
+	// END WSAGetLastError;
+	
+	proc WSAIsBlocking(): WinApi.BOOL 
+	// END WSAIsBlocking;
+	
+	proc WSAUnhookBlockingHook(): integer 
+	// END WSAUnhookBlockingHook;
+	
+	proc WSASetBlockingHook(lpBlockFunc: WinApi.FARPROC): WinApi.FARPROC 
+	// END WSASetBlockingHook;
+	
+	proc WSACancelBlockingCall(): integer 
+	// END WSACancelBlockingCall;
+	
+	proc WSAAsyncGetServByName(hWnd: WinApi.HWND; wMsg: u_int; name: WinApi.PtrSTR; proto: WinApi.PtrSTR; buf: WinApi.PtrSTR; buflen: integer): WinApi.HANDLE 
+	// END WSAAsyncGetServByName;
+	
+	proc WSAAsyncGetServByPort(hWnd: WinApi.HWND; wMsg: u_int; port: integer; proto: WinApi.PtrSTR; buf: WinApi.PtrSTR; buflen: integer): WinApi.HANDLE 
+	// END WSAAsyncGetServByPort;
+	
+	proc WSAAsyncGetProtoByName(hWnd: WinApi.HWND; wMsg: u_int; name: WinApi.PtrSTR; buf: WinApi.PtrSTR; buflen: integer): WinApi.HANDLE 
+	// END WSAAsyncGetProtoByName;
+	
+	proc WSAAsyncGetProtoByNumber(hWnd: WinApi.HWND; wMsg: u_int; number: integer; buf: WinApi.PtrSTR; buflen: integer): WinApi.HANDLE 
+	// END WSAAsyncGetProtoByNumber;
+	
+	proc WSAAsyncGetHostByName(hWnd: WinApi.HWND; wMsg: u_int; name: WinApi.PtrSTR; buf: WinApi.PtrSTR; buflen: integer): WinApi.HANDLE 
+	// END WSAAsyncGetHostByName;
+	
+	proc WSAAsyncGetHostByAddr(hWnd: WinApi.HWND; wMsg: u_int; addr: WinApi.PtrSTR; len_: integer; type_: integer; buf: WinApi.PtrSTR; buflen: integer): WinApi.HANDLE 
+	// END WSAAsyncGetHostByAddr;
+	
+	proc WSACancelAsyncRequest(hAsyncTaskHandle: WinApi.HANDLE): integer 
+	// END WSACancelAsyncRequest;
+	
+	proc WSAAsyncSelect(s: SOCKET; hWnd: WinApi.HWND; wMsg: u_int; lEvent: integer): integer 
+	// END WSAAsyncSelect;
+	
+	proc WSAAccept(s: SOCKET; var addr: sockaddr; var addrlen: integer; lpfnCondition: CONDITIONPROC; dwCallbackData: integer): SOCKET 
+	// END WSAAccept;
+	
+	proc WSACloseEvent(hEvent: WSAEVENT): WinApi.BOOL 
+	// END WSACloseEvent;
+	
+	proc WSAConnect(s: SOCKET; var name: sockaddr; namelen: integer; var lpCallerData: WSABUF; var lpCalleeData: WSABUF; var lpSQOS: QOS; var lpGQOS: QOS): integer 
+	// END WSAConnect;
+	
+	proc WSACreateEvent(): WSAEVENT 
+	// END WSACreateEvent;
+	
+	proc WSADuplicateSocketA(s: SOCKET; dwProcessId: integer; var lpProtocolInfo: WSAPROTOCOL_INFOA): integer 
+	// END WSADuplicateSocketA;
+	
+	proc WSADuplicateSocketW(s: SOCKET; dwProcessId: integer; var lpProtocolInfo: WSAPROTOCOL_INFOW): integer 
+	// END WSADuplicateSocketW;
+	
+	proc WSADuplicateSocket(s: SOCKET; dwProcessId: integer; var lpProtocolInfo: WSAPROTOCOL_INFOA): integer 
+	// END WSADuplicateSocket;
+	
+	proc WSAEnumNetworkEvents(s: SOCKET; hEventObject: WSAEVENT; var lpNetworkEvents: WSANETWORKEVENTS): integer 
+	// END WSAEnumNetworkEvents;
+	
+	proc WSAEnumProtocolsA(var lpiProtocols: integer; var lpProtocolBuffer: WSAPROTOCOL_INFOA; var lpdwBufferLength: integer): integer 
+	// END WSAEnumProtocolsA;
+	
+	proc WSAEnumProtocolsW(var lpiProtocols: integer; var lpProtocolBuffer: WSAPROTOCOL_INFOW; var lpdwBufferLength: integer): integer 
+	// END WSAEnumProtocolsW;
+	
+	proc WSAEnumProtocols(var lpiProtocols: integer; var lpProtocolBuffer: WSAPROTOCOL_INFOA; var lpdwBufferLength: integer): integer 
+	// END WSAEnumProtocols;
+	
+	proc WSAEventSelect(s: SOCKET; hEventObject: WSAEVENT; lNetworkEvents: integer): integer 
+	// END WSAEventSelect;
+	
+	proc WSAGetOverlappedResult(s: SOCKET; var lpOverlapped: WSAOVERLAPPED; var lpcbTransfer: integer; fWait: WinApi.BOOL; var lpdwFlags: set): WinApi.BOOL 
+	// END WSAGetOverlappedResult;
+	
+	proc WSAGetQOSByName(s: SOCKET; var lpQOSName: WSABUF; var lpQOS: QOS): WinApi.BOOL 
+	// END WSAGetQOSByName;
+	
+	proc WSAHtonl(s: SOCKET; hostlong: u_long; var lpnetlong: u_long): integer 
+	// END WSAHtonl;
+	
+	proc WSAHtons(s: SOCKET; hostshort: u_short; var lpnetshort: u_short): integer 
+	// END WSAHtons;
+	
+	proc WSAIoctl(s: SOCKET; dwIoControlCode: integer; lpvInBuffer: WinApi.PtrVoid; cbInBuffer: integer; lpvOutBuffer: WinApi.PtrVoid; cbOutBuffer: integer; var lpcbBytesReturned: integer; var lpOverlapped: WSAOVERLAPPED; lpCompletionRoutine: WSAOVERLAPPED_COMPLETION_ROUTINE): integer 
+	// END WSAIoctl;
+	
+	proc WSAJoinLeaf(s: SOCKET; var name: sockaddr; namelen: integer; var lpCallerData: WSABUF; var lpCalleeData: WSABUF; var lpSQOS: QOS; var lpGQOS: QOS; dwFlags: set): SOCKET 
+	// END WSAJoinLeaf;
+	
+	proc WSANtohl(s: SOCKET; netlong: u_long; var lphostlong: u_long): integer 
+	// END WSANtohl;
+	
+	proc WSANtohs(s: SOCKET; netshort: u_short; var lphostshort: u_short): integer 
+	// END WSANtohs;
+	
+	proc WSARecv(s: SOCKET; var lpBuffers: WSABUF; dwBufferCount: integer; var lpNumberOfBytesRecvd: integer; var lpFlags: integer; var lpOverlapped: WSAOVERLAPPED; lpCompletionRoutine: WSAOVERLAPPED_COMPLETION_ROUTINE): integer 
+	// END WSARecv;
+	
+	proc WSARecvDisconnect(s: SOCKET; var lpInboundDisconnectData: WSABUF): integer 
+	// END WSARecvDisconnect;
+	
+	proc WSARecvFrom(s: SOCKET; var lpBuffers: WSABUF; dwBufferCount: integer; var lpNumberOfBytesRecvd: integer; var lpFlags: integer; var lpFrom: sockaddr; var lpFromlen: integer; var lpOverlapped: WSAOVERLAPPED; lpCompletionRoutine: WSAOVERLAPPED_COMPLETION_ROUTINE): integer 
+	// END WSARecvFrom;
+	
+	proc WSAResetEvent(hEvent: WSAEVENT): WinApi.BOOL 
+	// END WSAResetEvent;
+	
+	proc WSASend(s: SOCKET; var lpBuffers: WSABUF; dwBufferCount: integer; var lpNumberOfBytesSent: integer; dwFlags: set; var lpOverlapped: WSAOVERLAPPED; lpCompletionRoutine: WSAOVERLAPPED_COMPLETION_ROUTINE): integer 
+	// END WSASend;
+	
+	proc WSASendDisconnect(s: SOCKET; var lpOutboundDisconnectData: WSABUF): integer 
+	// END WSASendDisconnect;
+	
+	proc WSASendTo(s: SOCKET; var lpBuffers: WSABUF; dwBufferCount: integer; var lpNumberOfBytesSent: integer; dwFlags: set; var lpTo: sockaddr; iTolen: integer; var lpOverlapped: WSAOVERLAPPED; lpCompletionRoutine: WSAOVERLAPPED_COMPLETION_ROUTINE): integer 
+	// END WSASendTo;
+	
+	proc WSASetEvent(hEvent: WSAEVENT): WinApi.BOOL 
+	// END WSASetEvent;
+	
+	proc WSASocketA(af: integer; type_: integer; protocol: integer; var lpProtocolInfo: WSAPROTOCOL_INFOA; g: GROUP; dwFlags: set): SOCKET 
+	// END WSASocketA;
+	
+	proc WSASocketW(af: integer; type_: integer; protocol: integer; var lpProtocolInfo: WSAPROTOCOL_INFOW; g: GROUP; dwFlags: set): SOCKET 
+	// END WSASocketW;
+	
+	proc WSASocket(af: integer; type_: integer; protocol: integer; var lpProtocolInfo: WSAPROTOCOL_INFOA; g: GROUP; dwFlags: set): SOCKET 
+	// END WSASocket;
+	
+	proc WSAWaitForMultipleEvents(cEvents: integer; var lphEvents: WSAEVENT; fWaitAll: WinApi.BOOL; dwTimeout: integer; fAlertable: WinApi.BOOL): integer 
+	// END WSAWaitForMultipleEvents;
+	
+	proc WSARecvEx(s: SOCKET; buf: WinApi.PtrSTR; len_: integer; var flags: set): integer 
+	// END WSARecvEx;
+	
+	proc TransmitFile(hSocket: SOCKET; hFile: WinApi.HANDLE; nNumberOfBytesToWrite: integer; nNumberOfBytesPerSend: integer; var lpOverlapped: WinApi.OVERLAPPED; var lpTransmitBuffers: TRANSMIT_FILE_BUFFERS; dwReserved: integer): WinApi.BOOL 
+	// END TransmitFile;
+	
+	proc AcceptEx(sListenSocket: SOCKET; sAcceptSocket: SOCKET; lpOutputBuffer: WinApi.PtrVoid; dwReceiveDataLength: integer; dwLocalAddressLength: integer; dwRemoteAddressLength: integer; var lpdwBytesReceived: integer; var lpOverlapped: WinApi.OVERLAPPED): WinApi.BOOL 
+	// END AcceptEx;
+	
+	proc GetAcceptExSockaddrs(lpOutputBuffer: WinApi.PtrVoid; dwReceiveDataLength: integer; dwLocalAddressLength: integer; dwRemoteAddressLength: integer; var LocalSockaddr: Ptrsockaddr; var LocalSockaddrLength: integer; var RemoteSockaddr: Ptrsockaddr; var RemoteSockaddrLength: integer) 
+// END GetAcceptExSockaddrs;
+
+end WinNet

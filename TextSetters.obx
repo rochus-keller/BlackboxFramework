@@ -1,0 +1,1868 @@
+module TextSetters
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20070820, bh, Reader.sString eliminated
+	   - 20160203, center #96, fixed string detection in GatherString for nonASCII texts
+	   - 20170620, center #163, adding decimal tabs to TextRulers
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	// correct NextPage postcond in docu
+	// make s.r, s.rd reducible?
+	// paraShutoff needs to be controlled by an approx flag to certain ops (later ...?)
+	
+	import 
+		Ports, Stores, Strings, Views, Properties, TextModels, TextRulers
+	
+	const 
+		// Pref.opts, options of setter-aware views; 0 overrides 1
+		lineBreak* = 0
+		wordJoin* = 1
+		wordPart* = 2
+		flexWidth* = 3
+		
+		tab = TextModels.tab
+		line = TextModels.line
+		para = TextModels.para
+		zwspace = TextModels.zwspace
+		nbspace = TextModels.nbspace
+		hyphen = TextModels.hyphen
+		nbhyphen = TextModels.nbhyphen
+		digitspace = TextModels.digitspace
+		softhyphen = TextModels.softhyphen
+		
+		mm = Ports.mm
+		minTabWidth = 2 * Ports.point
+		stdTabWidth = 4 * mm
+		leftLineGap = 2 * Ports.point
+		rightLineGap = 3 * Ports.point
+		adjustMask = {TextRulers.leftAdjust, TextRulers.rightAdjust}
+		centered = {}
+		leftFlush = {TextRulers.leftAdjust}
+		rightFlush = {TextRulers.rightAdjust}
+		blocked = adjustMask
+		
+		boxCacheLen = 64
+		seqCacheLen = 16
+		
+		paraShutoff = max(integer) // longest stretch read backwards to find start of paragraph
+		// unsafe: disabled
+		cachedRulers = false // caching ruler objects trades speed against GC effectiveness
+		periodInWords = false
+		colonInWords = false
+		
+		minVersion = 0
+		maxVersion = 0
+		maxStdVersion = 0
+	
+	
+	type 
+		Pref* = record (Properties.Preference) 
+				opts*: set
+				endW*: integer // preset (to width of view)
+				dsc*: integer  // preset (to dominating line descender)
+			end 
+		
+		
+		Reader* = pointer to (* abstract *) record 
+				r-: TextModels.Reader // look-ahead state
+				// unit
+				string*: array 64 of char // single chars in string[0]
+				view*: Views.View
+				// unit props
+				textOpts*: set
+				mask*: char
+				setterOpts*: set
+				w*, endW*, h*, dsc*: integer
+				attr*: TextModels.Attributes
+				// reading state
+				eot*: boolean
+				pos*: integer
+				x*: integer // to be advanced by client!
+				adjStart*: integer
+				spaces*: integer
+				tabIndex*: integer // tabs being processed; initially -1
+				tabType*: set // type of tab being processed; initially {}
+				// line props
+				vw*: integer
+				hideMarks*: boolean
+				ruler*: TextRulers.Ruler
+				rpos*: integer 
+			end 
+		
+		Setter* = pointer to (* abstract *) record (Stores.Store) 
+				text-: TextModels.Model // connected iff text # NIL
+				defRuler-: TextRulers.Ruler
+				vw-: integer
+				hideMarks-: boolean 
+			end 
+		
+		
+		LineBox* = record 
+				len_*: integer
+				ruler*: TextRulers.Ruler
+				rpos*: integer
+				left*, right*, asc*, dsc*: integer
+				rbox*, bop*, adj*, eot*: boolean // adj => adjW > 0; adj & blocked => spaces > 0
+				views*: boolean
+				skipOff*: integer // chars in [skipOff, len) take endW
+				adjOff*: integer // offset of last block in box - adjust only this block
+				spaces*: integer // valid, > 0 if adj & blocked
+				adjW*: integer // valid if adj - to be distributed over spaces
+				tabW*: array TextRulers.maxTabs of integer  // delta width of tabs (<= 0)
+			end 
+		
+		
+		Directory* = pointer to (* abstract *) record end 
+		
+		
+		Worder = record 
+				box: LineBox; next: integer
+				i: integer 
+			end 
+		
+		StdReader = pointer to record (Reader) 
+				radixChar: char  // the current decimal tab's radix character or 0X if not processing a decimal tab
+			end 
+		
+		StdSetter = pointer to record (Setter) 
+				rd: Reader // subject to reduction?
+				r: TextModels.Reader // subject to reduction?
+				ruler: TextRulers.Ruler
+				rpos: integer
+				key: integer 
+			end 
+		
+		StdDirectory = pointer to record (Directory) end 
+	
+	
+	var 
+		dir-, stdDir-: Directory
+		
+		nextKey: integer
+		boxIndex, seqIndex: integer
+		boxCache: array boxCacheLen of record 
+				key: integer // valid iff key > 0
+				start: integer
+				line: LineBox  // inv ruler = NIL
+			end 
+		seqCache: array seqCacheLen of record 
+				key: integer // valid iff key > 0
+				start, pos: integer  // sequence [start, end), end >= pos
+			end 
+	
+	
+	// Reader
+	
+	proc (rd: Reader) Set*(
+		old: TextModels.Reader
+		text: TextModels.Model; x, pos: integer
+		ruler: TextRulers.Ruler; rpos: integer; vw: integer; hideMarks: boolean
+		) // new extensible
+	begin 
+		assert(text # nil, 20)
+		assert(ruler # nil, 22)
+		rd.r := text.NewReader(old)
+		rd.r.SetPos(pos)
+		rd.r.Read
+		rd.string[0] := 0x
+		rd.view := nil
+		rd.textOpts := {}
+		rd.setterOpts := {}
+		rd.w := 0
+		rd.endW := 0
+		rd.h := 0
+		rd.dsc := 0
+		rd.attr := nil
+		rd.eot := false
+		rd.pos := pos
+		rd.x := x
+		rd.tabIndex := -1
+		rd.tabType := {}
+		rd.adjStart := pos
+		rd.spaces := 0
+		rd.ruler := ruler
+		rd.rpos := rpos
+		rd.vw := vw
+		rd.hideMarks := hideMarks
+	end Set
+	
+	proc (rd: Reader) Read* // new extensible
+	// pre: rd set
+	// post: rd.pos = rd.pos' + Length(rd.string)
+	begin 
+		rd.string[0] := rd.r.char_
+		rd.string[1] := 0x
+		rd.view := rd.r.view
+		rd.textOpts := {}
+		rd.setterOpts := {}
+		rd.w := rd.r.w
+		rd.endW := rd.w
+		rd.h := rd.r.h
+		rd.dsc := 0
+		rd.attr := rd.r.attr
+		rd.eot := rd.r.eot
+		inc(rd.pos)
+		rd.r.Read
+	end Read
+	
+	proc (rd: Reader) AdjustWidth*(start, pos: integer; in box: LineBox
+		var w: integer
+		) end // new abstract
+	
+	proc (rd: Reader) SplitWidth*(w: integer): integer end // new abstract
+	
+	
+	// Setter
+	
+	proc (s: Setter) CopyFrom-(source: Stores.Store) // extensible
+	begin 
+		with source: Setter do 
+			s.text := source.text
+			s.defRuler := source.defRuler
+			s.vw := source.vw
+			s.hideMarks := source.hideMarks 
+		end 
+	end CopyFrom
+	
+	proc (s: Setter) Internalize-(var rd: Stores.Reader) // extensible
+		var 
+			thisVersion: integer
+	begin 
+		s.Internalize^(rd)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minVersion, maxVersion, thisVersion)
+	end Internalize
+	
+	proc (s: Setter) Externalize-(var wr: Stores.Writer) // extensible
+	begin 
+		s.Externalize^(wr)
+		wr.WriteVersion(maxVersion)
+	end Externalize
+	
+	proc (s: Setter) ConnectTo*(text: TextModels.Model
+		defRuler: TextRulers.Ruler; vw: integer; hideMarks: boolean
+		) // new extensible
+	begin 
+		if text # nil then
+			s.text := text
+			s.defRuler := defRuler
+			s.vw := vw
+			s.hideMarks := hideMarks 
+		else 
+			s.text := nil
+			s.defRuler := nil 
+		end 
+	end ConnectTo
+	
+	
+	proc (s: Setter) ThisPage*(pageH: integer; pageNo: integer): integer end // new abstract
+	// pre: connected, 0 <= pageNo
+	// post: (result = -1) & (pageNo >= maxPageNo) OR (result = pageStart(pageNo))
+	
+	proc (s: Setter) NextPage*(pageH: integer; start: integer): integer end // new abstract
+	// pre: connected, ThisPage(pageH, pageNo) = start [with pageNo = NumberOfPageAt(start)]
+	// post: (result = start) & last-page(start) OR result = next-pageStart(start)
+	
+	
+	proc (s: Setter) ThisSequence*(pos: integer): integer end // new abstract
+	// pre: connected, 0 <= pos <= s.text.Length()
+	// post: (result = 0) OR (char(result - 1) IN {line, para})
+	
+	proc (s: Setter) NextSequence*(start: integer): integer end // new abstract
+	// pre: connected, ThisSequence(start) = start
+	// post: (result = start) & last-line(start) OR (ThisSequence(t, result - 1) = start)
+	
+	proc (s: Setter) PreviousSequence*(start: integer): integer end // new abstract
+	// pre: connected, ThisSequence(t, start) = start
+	// post: (result = 0) & (start = 0) OR (result = ThisSequence(t, start - 1))
+	
+	
+	proc (s: Setter) ThisLine*(pos: integer): integer end // new abstract
+	// pre: connected, 0 <= pos <= s.text.Length()
+	// post: result <= pos, (pos < NextLine(result)) OR last-line(result)
+	
+	proc (s: Setter) NextLine*(start: integer): integer end // new abstract
+	// pre: connected, ThisLine(start) = start
+	(* post: (result = 0) & (start = 0) OR
+	   (result = start) & last-line(start) OR
+	   (ThisLine(result - 1) = start) *)
+	
+	proc (s: Setter) PreviousLine*(start: integer): integer end // new abstract
+	// pre: connected, ThisLine(start) = start
+	// post: (result = 0) & (start = 0) OR (result = ThisLine(start - 1))
+	
+	
+	proc (s: Setter) GetWord*(pos: integer; var beg, end_: integer) end // new abstract
+	// pre: connected, 0 <= pos <= s.text.Length()
+	// post: c set, beg <= pos <= end
+	
+	proc (s: Setter) GetLine*(start: integer; var box: LineBox) end // new abstract
+	// pre: connected, ThisLine(start) = start, 0 <= start <= s.text.Length()
+	(* post: (c, box) set (=> box.ruler # NIL), (box.len > 0) OR box.eot,
+	   0 <= box.left <= box.right <= ruler.right *)
+	
+	proc (s: Setter) GetBox*(start, end_, maxW, maxH: integer
+		var w, h: integer
+		) end // new abstract
+	// pre: connected, ThisLine(start) = start, 0 <= start <= end <= s.text.Length()
+	// post: c set, maxW > undefined => w <= maxW, maxH > undefined => h <= maxH
+	
+	
+	proc (s: Setter) NewReader*(old: Reader): Reader end // new abstract
+	// pre: connected
+	
+	
+	proc (s: Setter) GridOffset*(dsc: integer; in box: LineBox): integer end // new abstract
+	// pre: connected, dsc >= 0: dsc is descender of previous line; dsc = -1 for first line
+	// post: dsc + GridOffset(dsc, box) + box.asc = k*ruler.grid (k >= 0) >= ruler.asc + ruler.grid
+	
+	
+	// Directory
+	
+	proc (d: Directory) New*(): Setter end // new abstract
+	
+	
+	// line box cache
+	
+	proc InitCache
+		var 
+			i: integer
+	begin 
+		nextKey := 1
+		boxIndex := 0
+		seqIndex := 0
+		i := 0
+		while i < boxCacheLen do 
+			boxCache[i].key := -1
+			inc(i) 
+		end 
+		i := 0
+		while i < seqCacheLen do 
+			seqCache[i].key := -1
+			inc(i) 
+		end 
+	end InitCache
+	
+	proc ClearCache(key: integer)
+		var 
+			i, j: integer
+	begin 
+		i := 0
+		j := boxIndex
+		while i < boxCacheLen do 
+			if boxCache[i].key = key then
+				boxCache[i].key := -1
+				j := i 
+			end 
+			inc(i) 
+		end 
+		boxIndex := j
+		i := 0
+		j := seqIndex
+		while i < seqCacheLen do 
+			if seqCache[i].key = key then
+				seqCache[i].key := -1
+				j := i 
+			end 
+			inc(i) 
+		end 
+		seqIndex := j
+	end ClearCache
+	
+	
+	proc CacheIndex(key, start: integer): integer
+		var 
+			i: integer
+	begin 
+		return -1
+		i := 0
+		while (i < boxCacheLen) & ~((boxCache[i].key = key) & (boxCache[i].start = start)) do 
+			inc(i) 
+		end 
+		if i = boxCacheLen then
+			i := -1 
+		end 
+		return i
+	end CacheIndex
+	
+	proc GetFromCache(s: StdSetter; i: integer; var l: LineBox)
+	begin 
+		l := boxCache[i].line
+		if ~cachedRulers then
+			if l.rpos >= 0 then
+				s.r := s.text.NewReader(s.r)
+				s.r.SetPos(l.rpos)
+				s.r.Read
+				l.ruler := s.r.view(TextRulers.Ruler) 
+			else 
+				l.ruler := s.defRuler 
+			end  
+		end 
+	end GetFromCache
+	
+	proc AddToCache(key, start: integer; var l: LineBox)
+		var 
+			i: integer
+	begin 
+		i := boxIndex
+		boxIndex := (i + 1) mod boxCacheLen
+		boxCache[i].key := key
+		boxCache[i].start := start
+		boxCache[i].line := l
+		if ~cachedRulers then
+			boxCache[i].line.ruler := nil 
+		end 
+	end AddToCache
+	
+	
+	proc CachedSeqStart(key, pos: integer): integer
+		var 
+			start: integer
+			i: integer
+	begin 
+		i := 0
+		while (i < seqCacheLen) 
+			& ~((seqCache[i].key = key) & (seqCache[i].start <= pos) & (pos <= seqCache[i].pos)) do 
+			inc(i) 
+		end 
+		if i < seqCacheLen then
+			start := seqCache[i].start 
+		else 
+			start := -1 
+		end 
+		return start
+	end CachedSeqStart
+	
+	proc AddSeqStartToCache(key, pos, start: integer)
+		var 
+			i: integer
+	begin 
+		i := 0
+		while (i < seqCacheLen) & ~((seqCache[i].key = key) & (seqCache[i].start = start)) do 
+			inc(i) 
+		end 
+		if i < seqCacheLen then
+			if seqCache[i].pos < pos then
+				seqCache[i].pos := pos 
+			end  
+		else 
+			i := seqIndex
+			seqIndex := (i + 1) mod seqCacheLen
+			seqCache[i].key := key
+			seqCache[i].pos := pos
+			seqCache[i].start := start 
+		end 
+	end AddSeqStartToCache
+	
+	
+	// StdReader
+	
+	(* PROCEDURE WordPart (ch, ch1: CHAR): BOOLEAN;
+	   (* needs more work ... put elsewhere? *)
+	   BEGIN
+	   CASE ORD(ch) OF
+	   ORD("0") .. ORD("9"), ORD("A") .. ORD("Z"), ORD("a") .. ORD("z"),
+	   ORD(digitspace), ORD(nbspace), ORD(nbhyphen), ORD("_"),
+	   0C0H .. 0C6H, 0E0H .. 0E6H,	(* ~ A *)
+	   0C7H, 0E7H,	(* ~ C *)
+	   0C8H .. 0CBH, 0E8H .. 0EBH,	(* ~ E *)
+	   0CCH .. 0CFH, 0ECH .. 0EFH,	(* ~ I *)
+	   0D1H, 0F1H,	(* ~ N *)
+	   0D2H .. 0D6H, 0D8H, 0F2H .. 0F6H, 0F8H,	(* ~ O *)
+	   0D9H .. 0DCH, 0F9H .. 0FCH,	(* ~ U *)
+	   0DDH, 0FDH, 0FFH,	(* ~ Y *)
+	   0DFH:	(* ~ ss *)
+	   RETURN TRUE
+	   | ORD("."), ORD(":"):
+	   IF (ch = ".") & periodInWords OR (ch = ":") & colonInWords THEN
+	   CASE ch1 OF
+	   0X, TextModels.viewcode, tab, line, para, " ":
+	   RETURN FALSE
+	   ELSE RETURN TRUE
+	   END
+	   ELSE RETURN FALSE
+	   END
+	   ELSE RETURN FALSE
+	   END
+	   END WordPart; *)
+	
+	
+	
+	proc WordPart(ch, ch1: char): boolean
+		(* Same as .net function System.Char.IsLetterOrDigit(ch)
+		   + digit space, nonbreaking space, nonbreaking hyphen, & underscore
+		   ch1 unused *)
+		var 
+			low: integer
+	begin 
+		low := ord(ch) mod 256
+		case ord(ch) div 256 of 
+			| 001h, 015h, 034h .. 04ch, 04eh .. 09eh, 0a0h .. 0a3h, 0ach .. 0d6h, 0f9h, 0fch: 
+				return true 
+			| 000h: 
+				case low of 
+					| 030h .. 039h, 041h .. 05ah, 061h .. 07ah, 0aah, 0b5h, 0bah, 0c0h .. 0d6h, 0d8h .. 0f6h, 0f8h .. 0ffh, 
+					ord(digitspace), ord(nbspace), ord(nbhyphen), ord("_"): 
+						return true 
+				else  
+				end  
+			| 002h: 
+				case low of 
+					| 000h .. 041h, 050h .. 0c1h, 0c6h .. 0d1h, 0e0h .. 0e4h, 0eeh: 
+						return true 
+				else  
+				end  
+			| 003h: 
+				case low of 
+					| 07ah, 086h, 088h .. 08ah, 08ch, 08eh .. 0a1h, 0a3h .. 0ceh, 0d0h .. 0f5h, 0f7h .. 0ffh: 
+						return true 
+				else  
+				end  
+			| 004h: 
+				case low of 
+					| 000h .. 081h, 08ah .. 0ceh, 0d0h .. 0f9h: 
+						return true 
+				else  
+				end  
+			| 005h: 
+				case low of 
+					| 000h .. 00fh, 031h .. 056h, 059h, 061h .. 087h, 0d0h .. 0eah, 0f0h .. 0f2h: 
+						return true 
+				else  
+				end  
+			| 006h: 
+				case low of 
+					| 021h .. 03ah, 040h .. 04ah, 060h .. 069h, 06eh .. 06fh, 071h .. 0d3h, 0d5h, 0e5h .. 0e6h, 0eeh .. 0fch, 0ffh: 
+						return true 
+				else  
+				end  
+			| 007h: 
+				case low of 
+					| 010h, 012h .. 02fh, 04dh .. 06dh, 080h .. 0a5h, 0b1h: 
+						return true 
+				else  
+				end  
+			| 009h: 
+				case low of 
+					| 004h .. 039h, 03dh, 050h, 058h .. 061h, 066h .. 06fh, 07dh, 085h .. 08ch, 08fh .. 090h, 093h .. 0a8h, 0aah .. 0b0h, 0b2h, 0b6h .. 0b9h, 0bdh, 0ceh, 0dch .. 0ddh, 0dfh .. 0e1h, 0e6h .. 0f1h: 
+						return true 
+				else  
+				end  
+			| 00ah: 
+				case low of 
+					| 005h .. 00ah, 00fh .. 010h, 013h .. 028h, 02ah .. 030h, 032h .. 033h, 035h .. 036h, 038h .. 039h, 059h .. 05ch, 05eh, 066h .. 06fh, 072h .. 074h, 085h .. 08dh, 08fh .. 091h, 093h .. 0a8h, 0aah .. 0b0h, 0b2h .. 0b3h, 0b5h .. 0b9h, 0bdh, 0d0h, 0e0h .. 0e1h, 0e6h .. 0efh: 
+						return true 
+				else  
+				end  
+			| 00bh: 
+				case low of 
+					| 005h .. 00ch, 00fh .. 010h, 013h .. 028h, 02ah .. 030h, 032h .. 033h, 035h .. 039h, 03dh, 05ch .. 05dh, 05fh .. 061h, 066h .. 06fh, 071h, 083h, 085h .. 08ah, 08eh .. 090h, 092h .. 095h, 099h .. 09ah, 09ch, 09eh .. 09fh, 0a3h .. 0a4h, 0a8h .. 0aah, 0aeh .. 0b9h, 0e6h .. 0efh: 
+						return true 
+				else  
+				end  
+			| 00ch: 
+				case low of 
+					| 005h .. 00ch, 00eh .. 010h, 012h .. 028h, 02ah .. 033h, 035h .. 039h, 060h .. 061h, 066h .. 06fh, 085h .. 08ch, 08eh .. 090h, 092h .. 0a8h, 0aah .. 0b3h, 0b5h .. 0b9h, 0bdh, 0deh, 0e0h .. 0e1h, 0e6h .. 0efh: 
+						return true 
+				else  
+				end  
+			| 00dh: 
+				case low of 
+					| 005h .. 00ch, 00eh .. 010h, 012h .. 028h, 02ah .. 039h, 060h .. 061h, 066h .. 06fh, 085h .. 096h, 09ah .. 0b1h, 0b3h .. 0bbh, 0bdh, 0c0h .. 0c6h: 
+						return true 
+				else  
+				end  
+			| 00eh: 
+				case low of 
+					| 001h .. 030h, 032h .. 033h, 040h .. 046h, 050h .. 059h, 081h .. 082h, 084h, 087h .. 088h, 08ah, 08dh, 094h .. 097h, 099h .. 09fh, 0a1h .. 0a3h, 0a5h, 0a7h, 0aah .. 0abh, 0adh .. 0b0h, 0b2h .. 0b3h, 0bdh, 0c0h .. 0c4h, 0c6h, 0d0h .. 0d9h, 0dch .. 0ddh: 
+						return true 
+				else  
+				end  
+			| 00fh: 
+				case low of 
+					| 000h, 020h .. 029h, 040h .. 047h, 049h .. 06ah, 088h .. 08bh: 
+						return true 
+				else  
+				end  
+			| 010h: 
+				case low of 
+					| 000h .. 021h, 023h .. 027h, 029h .. 02ah, 040h .. 049h, 050h .. 055h, 0a0h .. 0c5h, 0d0h .. 0fah, 0fch: 
+						return true 
+				else  
+				end  
+			| 011h: 
+				case low of 
+					| 000h .. 059h, 05fh .. 0a2h, 0a8h .. 0f9h: 
+						return true 
+				else  
+				end  
+			| 012h: 
+				case low of 
+					| 000h .. 048h, 04ah .. 04dh, 050h .. 056h, 058h, 05ah .. 05dh, 060h .. 088h, 08ah .. 08dh, 090h .. 0b0h, 0b2h .. 0b5h, 0b8h .. 0beh, 0c0h, 0c2h .. 0c5h, 0c8h .. 0d6h, 0d8h .. 0ffh: 
+						return true 
+				else  
+				end  
+			| 013h: 
+				case low of 
+					| 000h .. 010h, 012h .. 015h, 018h .. 05ah, 080h .. 08fh, 0a0h .. 0f4h: 
+						return true 
+				else  
+				end  
+			| 014h: 
+				if low >= 001h then
+					return true 
+				end  
+			| 016h: 
+				case low of 
+					| 000h .. 06ch, 06fh .. 076h, 081h .. 09ah, 0a0h .. 0eah: 
+						return true 
+				else  
+				end  
+			| 017h: 
+				case low of 
+					| 000h .. 00ch, 00eh .. 011h, 020h .. 031h, 040h .. 051h, 060h .. 06ch, 06eh .. 070h, 080h .. 0b3h, 0d7h, 0dch, 0e0h .. 0e9h: 
+						return true 
+				else  
+				end  
+			| 018h: 
+				case low of 
+					| 010h .. 019h, 020h .. 077h, 080h .. 0a8h: 
+						return true 
+				else  
+				end  
+			| 019h: 
+				case low of 
+					| 000h .. 01ch, 046h .. 06dh, 070h .. 074h, 080h .. 0a9h, 0c1h .. 0c7h, 0d0h .. 0d9h: 
+						return true 
+				else  
+				end  
+			| 01ah: 
+				if low < 017h then
+					return true 
+				end  
+			| 01dh: 
+				if low < 0c0h then
+					return true 
+				end  
+			| 01eh: 
+				case low of 
+					| 000h .. 09bh, 0a0h .. 0f9h: 
+						return true 
+				else  
+				end  
+			| 01fh: 
+				case low of 
+					| 000h .. 015h, 018h .. 01dh, 020h .. 045h, 048h .. 04dh, 050h .. 057h, 059h, 05bh, 05dh, 05fh .. 07dh, 080h .. 0b4h, 0b6h .. 0bch, 0beh, 0c2h .. 0c4h, 0c6h .. 0cch, 0d0h .. 0d3h, 0d6h .. 0dbh, 0e0h .. 0ech, 0f2h .. 0f4h, 0f6h .. 0fch: 
+						return true 
+				else  
+				end  
+			| 020h: 
+				case low of 
+					| 071h, 07fh, 090h .. 094h: 
+						return true 
+				else  
+				end  
+			| 021h: 
+				case low of 
+					| 002h, 007h, 00ah .. 013h, 015h, 019h .. 01dh, 024h, 026h, 028h, 02ah .. 02dh, 02fh .. 031h, 033h .. 039h, 03ch .. 03fh, 045h .. 049h: 
+						return true 
+				else  
+				end  
+			| 02ch: 
+				case low of 
+					| 000h .. 02eh, 030h .. 05eh, 080h .. 0e4h: 
+						return true 
+				else  
+				end  
+			| 02dh: 
+				case low of 
+					| 000h .. 025h, 030h .. 065h, 06fh, 080h .. 096h, 0a0h .. 0a6h, 0a8h .. 0aeh, 0b0h .. 0b6h, 0b8h .. 0beh, 0c0h .. 0c6h, 0c8h .. 0ceh, 0d0h .. 0d6h, 0d8h .. 0deh: 
+						return true 
+				else  
+				end  
+			| 030h: 
+				case low of 
+					| 005h .. 006h, 031h .. 035h, 03bh .. 03ch, 041h .. 096h, 09dh .. 09fh, 0a1h .. 0fah, 0fch .. 0ffh: 
+						return true 
+				else  
+				end  
+			| 031h: 
+				case low of 
+					| 005h .. 02ch, 031h .. 08eh, 0a0h .. 0b7h, 0f0h .. 0ffh: 
+						return true 
+				else  
+				end  
+			| 04dh: 
+				if low < 0b6h then
+					return true 
+				end  
+			| 09fh: 
+				if low < 0bch then
+					return true 
+				end  
+			| 0a4h: 
+				if low < 08dh then
+					return true 
+				end  
+			| 0a8h: 
+				case low of 
+					| 000h .. 001h, 003h .. 005h, 007h .. 00ah, 00ch .. 022h: 
+						return true 
+				else  
+				end  
+			| 0d7h: 
+				if low < 0a4h then
+					return true 
+				end  
+			| 0fah: 
+				case low of 
+					| 000h .. 02dh, 030h .. 06ah, 070h .. 0d9h: 
+						return true 
+				else  
+				end  
+			| 0fbh: 
+				case low of 
+					| 000h .. 006h, 013h .. 017h, 01dh, 01fh .. 028h, 02ah .. 036h, 038h .. 03ch, 03eh, 040h .. 041h, 043h .. 044h, 046h .. 0b1h, 0d3h .. 0ffh: 
+						return true 
+				else  
+				end  
+			| 0fdh: 
+				case low of 
+					| 000h .. 03dh, 050h .. 08fh, 092h .. 0c7h, 0f0h .. 0fbh: 
+						return true 
+				else  
+				end  
+			| 0feh: 
+				case low of 
+					| 070h .. 074h, 076h .. 0fch: 
+						return true 
+				else  
+				end  
+			| 0ffh: 
+				case low of 
+					| 010h .. 019h, 021h .. 03ah, 041h .. 05ah, 066h .. 0beh, 0c2h .. 0c7h, 0cah .. 0cfh, 0d2h .. 0d7h, 0dah .. 0dch: 
+						return true 
+				else  
+				end  
+		else  
+		end 
+		return false
+	end WordPart
+	
+	(* PROCEDURE ExtendToEOL (x, right: INTEGER): INTEGER;
+	   BEGIN
+	   IF right - x > 5 * mm THEN RETURN right - x ELSE RETURN 5 * mm END
+	   END ExtendToEOL; *)
+	
+	
+	
+	proc Right(ra: TextRulers.Attributes; vw: integer): integer
+	begin 
+		if TextRulers.rightFixed in ra.opts then
+			return ra.right 
+		else 
+			return vw 
+		end 
+	end Right
+	
+	proc GetViewPref(rd: StdReader)
+		const 
+			maxH = 1600 * Ports.point
+		var 
+			ra: TextRulers.Attributes
+			tp: TextModels.Pref
+			sp: Pref
+	begin 
+		ra := rd.ruler.style.attr
+		tp.opts := {}
+		Views.HandlePropMsg(rd.view, tp)
+		rd.textOpts := tp.opts
+		rd.mask := tp.mask
+		sp.opts := {}
+		sp.dsc := ra.dsc
+		sp.endW := rd.w
+		Views.HandlePropMsg(rd.view, sp)
+		rd.setterOpts := sp.opts
+		rd.dsc := sp.dsc
+		rd.endW := sp.endW
+		if rd.w >= 10000 * mm then
+			rd.w := 10000 * mm 
+		end 
+		if (TextModels.hideable in tp.opts) & rd.hideMarks then
+			rd.h := 0
+			sp.dsc := 0
+			// rd.w := 0;
+			
+			
+			if ~((rd.view is TextRulers.Ruler) 
+				or (TextModels.maskChar in rd.textOpts) & (rd.mask = para)) then
+				rd.w := 0 
+			end  
+		// 
+		elsif rd.h > maxH then 
+			rd.h := maxH 
+		end 
+		if TextModels.maskChar in rd.textOpts then
+			rd.string[0] := rd.mask
+			rd.string[1] := 0x 
+		else 
+			rd.string[0] := TextModels.viewcode 
+		end 
+	end GetViewPref
+	
+	proc GatherString(rd: StdReader)
+		var 
+			i, len_: integer
+			ch, radixChar: char
+	begin 
+		i := 1
+		len_ := len(rd.string) - 1
+		ch := rd.r.char_
+		radixChar := rd.radixChar
+		if rd.string[0] # radixChar then
+			while (i < len_) 
+				& (rd.r.view = nil) 
+				& ((rd.r.attr = rd.attr) or ((rd.attr # nil) & (rd.r.attr # nil) & rd.attr.Equals(rd.r.attr))) 
+				& ((" " < ch) & (ch <= "~") & (ch # "-") 
+				or (ch = digitspace) 
+				or (ch >= nbspace) & (ch < 100x) & (ch # softhyphen) 
+				or Strings.IsAlpha(ch)
+				) 
+				& (ch # radixChar) 
+			do  // rd.r.char > " " => ~rd.eot
+				rd.string[i] := ch
+				inc(i)
+				rd.eot := rd.r.eot
+				rd.r.Read
+				ch := rd.r.char_
+				inc(rd.pos) 
+			end  
+		end 
+		rd.string[i] := 0x
+		rd.setterOpts := {wordJoin}
+		if i = 1 then
+			if WordPart(rd.string[0], 0x) then
+				incl(rd.setterOpts, wordPart) 
+			end  
+		end 
+		rd.w := rd.attr.font.StringWidth(rd.string)
+		rd.endW := rd.w
+	end GatherString
+	
+	proc SpecialChar(rd: StdReader)
+		var 
+			ra: TextRulers.Attributes
+			i, tabs, spaceW, dW: integer
+			type_: set
+	begin 
+		ra := rd.ruler.style.attr
+		case ord(rd.string[0]) of 
+			ord(tab): 
+				rd.textOpts := {TextModels.hideable}
+				rd.endW := minTabWidth
+				rd.adjStart := rd.pos
+				rd.spaces := 0
+				// i := 0; WHILE (i < ra.tabs.len) & (ra.tabs.tab[i].stop < rd.x + minTabWidth) DO INC(i) END;
+				
+				
+				i := rd.tabIndex + 1
+				rd.radixChar := 0x
+				if i < ra.tabs.len_ then
+					type_ := ra.tabs.tab[i].type_
+					rd.w := max(minTabWidth, ra.tabs.tab[i].stop - rd.x)
+					if TextRulers.barTab in type_ then
+						if (TextRulers.rightTab in type_) & ~(TextRulers.centerTab in type_) then
+							rd.w := max(minTabWidth, rd.w - leftLineGap) 
+						elsif ~(TextRulers.centerTab in type_) then 
+							inc(rd.w, rightLineGap) 
+						end  
+					end 
+					if (TextRulers.rightTab in type_) & (TextRulers.centerTab in type_) then
+						rd.radixChar := TextRulers.GetRadixChar(ra, i) 
+					end 
+					rd.tabIndex := i
+					rd.tabType := type_ 
+				else  // for "reasonable" fonts: round to closest multiple of spaces of this font
+					spaceW := rd.attr.font.SStringWidth(" ")
+					if (1 <= spaceW) & (spaceW <= stdTabWidth) then
+						rd.w := (stdTabWidth + spaceW div 2) div spaceW * spaceW 
+					else 
+						rd.w := stdTabWidth 
+					end 
+					rd.tabIndex := TextRulers.maxTabs
+					rd.tabType := {} 
+				end  
+			| ord(line): 
+				rd.setterOpts := {lineBreak}
+				rd.w := 0
+				rd.endW := 0 
+			| ord(para): 
+				(* IF rd.hideMarks THEN
+				   rd.w := 0; rd.h := 0; rd.dsc := 0
+				   ELSE
+				   rd.w := ExtendToEOL(rd.x, Right(ra, rd.vw)) + 1
+				   END;
+				   INC(rd.h, ra.lead);
+				   rd.textOpts := {TextModels.hideable};
+				   rd.endW := rd.w *)
+				
+				
+				// rd.setterOpts := {lineBreak};
+				
+				
+				if rd.hideMarks then
+					rd.h := 0
+					rd.dsc := 0 
+				end 
+				inc(rd.h, ra.lead)
+				rd.textOpts := {TextModels.hideable}
+				if (rd.view = nil) or ~(rd.view is TextRulers.Ruler) then
+					rd.w := 10000 * Ports.mm  // ExtendToEOL(rd.x, Right(ra, rd.vw)) + 1
+				end 
+				rd.endW := rd.w 
+			// 
+			| ord(" "): 
+				rd.setterOpts := {flexWidth}
+				rd.w := rd.attr.font.StringWidth(rd.string)
+				rd.endW := 0
+				inc(rd.spaces) 
+			| ord(zwspace): 
+				rd.w := 0
+				rd.endW := 0 
+			| ord(digitspace): 
+				rd.setterOpts := {wordPart}
+				rd.w := rd.attr.font.StringWidth("0")
+				rd.endW := rd.w 
+			| ord("-"): 
+				rd.setterOpts := {}
+				rd.w := rd.attr.font.StringWidth("-")
+				rd.endW := rd.w 
+			| ord(hyphen): 
+				rd.setterOpts := {}
+				rd.string[0] := "-" // softhyphen
+				rd.w := rd.attr.font.StringWidth("-"(* softhyphen *))
+				rd.endW := rd.w 
+			| ord(nbhyphen): 
+				rd.setterOpts := {wordJoin, wordPart}
+				rd.string[0] := "-" // softhyphen
+				rd.w := rd.attr.font.StringWidth("-"(* softhyphen *))
+				rd.endW := rd.w 
+			| ord(softhyphen): 
+				rd.setterOpts := {wordPart}
+				rd.textOpts := {TextModels.hideable}
+				rd.string[0] := "-"
+				rd.endW := rd.attr.font.StringWidth("-"(* softhyphen *))
+				if rd.hideMarks then
+					rd.w := 0 
+				else 
+					rd.w := rd.endW 
+				end  
+		else 
+			rd.setterOpts := {wordJoin}
+			if WordPart(rd.string[0], rd.r.char_) then
+				incl(rd.setterOpts, wordPart) 
+			end 
+			rd.w := rd.attr.font.StringWidth(rd.string)
+			rd.endW := rd.w 
+		end 
+	end SpecialChar
+	(* PROCEDURE LongChar (rd: StdReader);
+	   VAR ra: TextRulers.Attributes;
+	   BEGIN
+	   ra := rd.ruler.style.attr;
+	   rd.setterOpts := {wordJoin, wordPart};
+	   rd.w := rd.attr.font.StringWidth(rd.string); rd.endW := rd.w
+	   END LongChar; *)
+	
+	
+	
+	proc (rd: StdReader) Read
+		// pre: connected
+		var 
+			ra: TextRulers.Attributes
+			asc, dsc, w: integer
+			ch: char
+	begin 
+		rd.Read^
+		if ~rd.eot then
+			if rd.view = nil then
+				rd.attr.font.GetBounds(asc, dsc, w)
+				rd.h := asc + dsc
+				rd.dsc := dsc 
+			else 
+				GetViewPref(rd) 
+			end 
+			if (rd.view = nil) or (TextModels.maskChar in rd.textOpts) then
+				ch := rd.string[0]
+				if (rd.view = nil) 
+					& ((" " < ch) & (ch < "~") & (ch # "-") 
+					or (ch = digitspace) 
+					or (ch >= nbspace) & (ch # softhyphen)
+					) 
+				then
+					GatherString(rd) 
+				else 
+					SpecialChar(rd) 
+				end  
+			end  
+		else 
+			ra := rd.ruler.style.attr
+			rd.w := 0
+			rd.endW := 0
+			rd.h := ra.asc + ra.dsc
+			rd.dsc := ra.dsc 
+		end 
+	end Read
+	
+	proc (rd: StdReader) AdjustWidth(start, pos: integer; in box: LineBox; var w: integer)
+		var 
+			i: integer
+			form: set
+	begin 
+		if box.adj & (pos >= start + box.adjOff) then
+			form := box.ruler.style.attr.opts * adjustMask
+			if (form = blocked) & (rd.string[0] = " ") then
+				inc(w, box.adjW div box.spaces) 
+			elsif (form # blocked) & (rd.string[0] = tab) then 
+				inc(w, box.adjW)  // is this correct ???
+			end  
+		end 
+		i := rd.tabIndex // rd.string[0] = tab  =>  i >= 0
+		if (rd.string[0] = tab) & (i < box.ruler.style.attr.tabs.len_) then
+			w := box.tabW[i] 
+		end 
+	end AdjustWidth
+	
+	proc (rd: StdReader) SplitWidth(w: integer): integer
+	begin 
+		if (rd.string[1] = 0x) & (rd.view = nil) then
+			return (w + 1) div 2 
+		else 
+			return w 
+		end 
+	end SplitWidth
+	
+	
+	// Worder
+	
+	proc SetWorder(var w: Worder; s: StdSetter; pos: integer; var start: integer)
+		const 
+			wordCutoff = len(s.rd.string)
+	begin 
+		start := s.ThisSequence(pos)
+		if pos - start >= wordCutoff then
+			start := pos
+			while pos - start < wordCutoff do 
+				start := s.PreviousLine(start) 
+			end  
+		end 
+		s.GetLine(start, w.box)
+		w.next := start + w.box.len_
+		s.rd.Set(s.r, s.text, w.box.left, start, w.box.ruler, w.box.rpos, s.vw, s.hideMarks)
+		w.i := 0
+		s.rd.string[0] := 0x
+	end SetWorder
+	
+	proc StepWorder(var w: Worder; s: StdSetter; var part: boolean)
+		var 
+			rd: Reader
+	begin 
+		rd := s.rd
+		if rd.string[w.i] = 0x then
+			if rd.pos < w.next then
+				rd.Read
+				w.i := 0 
+			else 
+				if ~w.box.eot then
+					s.GetLine(w.next, w.box)
+					s.rd.Set(s.r, s.text, w.box.left, w.next, w.box.ruler, w.box.rpos, s.vw, s.hideMarks)
+					rd.Read
+					w.i := 0
+					inc(w.next, w.box.len_) 
+				else 
+					rd.string[0] := 0x 
+				end  
+			end  
+		end 
+		if rd.string[0] = 0x then // end of text
+			part := true 
+		elsif rd.string[1] = 0x then  // special character
+			part := wordPart in rd.setterOpts
+			inc(w.i) 
+		else  // gathered sString
+			part := WordPart(rd.string[w.i], rd.string[w.i + 1])
+			inc(w.i) 
+		end 
+	end StepWorder
+	
+	
+	// StdSetter
+	
+	proc (s: StdSetter) CopyFrom(source: Stores.Store)
+	begin 
+		s.CopyFrom^(source)
+		with source: StdSetter do 
+			s.ruler := source.ruler
+			s.rpos := source.rpos
+			s.key := source.key
+			s.rd := nil
+			s.r := nil 
+		end 
+	end CopyFrom
+	
+	proc (s: StdSetter) Externalize(var wr: Stores.Writer)
+	begin 
+		s.Externalize^(wr)
+		wr.WriteVersion(maxStdVersion)
+	end Externalize
+	
+	proc (s: StdSetter) Internalize(var rd: Stores.Reader)
+		var 
+			thisVersion: integer
+	begin 
+		s.Internalize^(rd)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minVersion, maxStdVersion, thisVersion)
+		if rd.cancelled then
+			return  
+		end 
+		s.text := nil
+		s.defRuler := nil
+		s.ruler := nil
+		s.rd := nil
+		s.r := nil
+	end Internalize
+	
+	
+	proc (s: StdSetter) ConnectTo(text: TextModels.Model
+		defRuler: TextRulers.Ruler; vw: integer; hideMarks: boolean
+		)
+	begin 
+		s.ConnectTo^(text, defRuler, vw, hideMarks)
+		ClearCache(s.key)
+		if text # nil then
+			s.ruler := defRuler
+			s.rpos := -1
+			s.key := nextKey
+			inc(nextKey) 
+		else 
+			s.ruler := nil 
+		end 
+	end ConnectTo
+	
+	
+	proc (s: StdSetter) ThisPage(pageH: integer; pageNo: integer): integer
+		// pre: connected, 0 <= pageNo
+		// post: (result = -1) & (pageNo >= maxPageNo) OR (result = pageStart(pageNo))
+		var 
+			start, prev: integer
+	begin 
+		assert(s.text # nil, 20)
+		assert(pageNo >= 0, 21)
+		start := 0
+		while pageNo > 0 do 
+			prev := start
+			dec(pageNo)
+			start := s.NextPage(pageH, start)
+			if start = prev then
+				start := -1
+				pageNo := 0 
+			end  
+		end 
+		return start
+	end ThisPage
+	
+	proc (s: StdSetter) NextPage(pageH: integer; start: integer): integer
+		// pre: connected, ThisPage(pageH, x) = start
+		// post: (result = s.text.Length()) OR result = next-pageStart(start)
+		const 
+			noBreakInside = TextRulers.noBreakInside
+			pageBreak = TextRulers.pageBreak
+			parJoin = TextRulers.parJoin
+			regular = 0 // state
+			protectInside = 1
+			joinFirst = 2
+			joinNext = 3
+			confirmSpace = 4
+		var 
+			box: LineBox
+			ra: TextRulers.Attributes
+			h, asc, dsc, backup, pos, state: integer
+			isRuler: boolean
+		
+		proc FetchNextLine
+		begin 
+			s.GetLine(pos, box)
+			if box.len_ > 0 then
+				ra := box.ruler.style.attr
+				isRuler := box.rpos = pos
+				asc := box.asc + s.GridOffset(dsc, box)
+				dsc := box.dsc
+				h := asc + dsc 
+			end 
+		end FetchNextLine
+		
+		proc HandleRuler
+			const 
+				norm = 0
+				nbi = 1
+				pj = 2
+			var 
+				strength: integer
+		begin 
+			if isRuler & (pos > start) & ~(pageBreak in ra.opts) then
+				if parJoin in ra.opts then
+					strength := pj 
+				elsif noBreakInside in ra.opts then 
+					strength := nbi 
+				else 
+					strength := norm 
+				end 
+				case state of 
+					| regular: 
+						case strength of 
+							| norm:  
+							| nbi: 
+								state := protectInside
+								backup := pos 
+							| pj: 
+								state := joinFirst
+								backup := pos 
+						end  
+					| protectInside: 
+						case strength of 
+							| norm: 
+								state := regular 
+							| nbi: 
+								backup := pos 
+							| pj: 
+								state := joinFirst
+								backup := pos 
+						end  
+					| joinFirst: 
+						case strength of 
+							| norm: 
+								state := confirmSpace 
+							| nbi: 
+								state := protectInside 
+							| pj: 
+								state := joinNext 
+						end  
+					| joinNext: 
+						case strength of 
+							| norm: 
+								state := confirmSpace 
+							| nbi: 
+								state := protectInside 
+							| pj:  
+						end  
+					| confirmSpace: 
+						case strength of 
+							| norm: 
+								state := regular 
+							| nbi: 
+								state := protectInside
+								backup := pos 
+							| pj: 
+								state := joinFirst
+								backup := pos 
+						end  
+				end  
+			end 
+		end HandleRuler
+		
+		proc IsEmptyLine(): boolean
+		begin 
+			return (box.right = box.left) or s.hideMarks & isRuler & ~(pageBreak in ra.opts)
+		end IsEmptyLine
+	
+	begin 
+		assert(s.text # nil, 20)
+		assert(0 <= start, 21)
+		assert(start <= s.text.Length(), 22)
+		pos := start
+		dsc := -1
+		FetchNextLine
+		if box.len_ > 0 then
+			state := regular
+			repeat  // at least one line per page
+				HandleRuler
+				dec(pageH, h)
+				inc(pos, box.len_)
+				if (state = confirmSpace) & ~IsEmptyLine() then
+					state := regular 
+				end 
+				FetchNextLine 
+			until (box.len_ = 0) or (pageH - h < 0) or isRuler & (pageBreak in ra.opts) 
+			if ~isRuler or ~(pageBreak in ra.opts) then
+				while (box.len_ > 0) & IsEmptyLine() do  // skip empty lines at top of page
+					HandleRuler
+					inc(pos, box.len_)
+					FetchNextLine 
+				end  
+			end 
+			HandleRuler
+			if (state # regular) & ~(isRuler & (pageBreak in ra.opts) or (box.len_ = 0)) then
+				pos := backup 
+			end  
+		end 
+		return pos
+	end NextPage
+	
+	
+	proc (s: StdSetter) NextSequence(start: integer): integer
+		// pre: connected, ThisSequence(start) = start
+		// post: (result = start) & last-line(start) OR (ThisSequence(t, result - 1) = start)
+		var 
+			rd: TextModels.Reader
+			ch: char
+	begin 
+		assert(s.text # nil, 20)
+		s.r := s.text.NewReader(s.r)
+		rd := s.r
+		rd.SetPos(start)
+		repeat 
+			rd.ReadChar(ch) 
+		until rd.eot or (ch = line) or (ch = para) 
+		if rd.eot then
+			return start 
+		else 
+			return rd.Pos() 
+		end 
+	end NextSequence
+	
+	proc (s: StdSetter) ThisSequence(pos: integer): integer
+		// pre: connected, 0 <= pos <= t.Length()
+		// post: (result = 0) OR (char(result - 1) IN {line, para})
+		var 
+			rd: TextModels.Reader
+			start, limit: integer
+			ch: char
+	begin 
+		assert(s.text # nil, 20)
+		assert(0 <= pos, 21)
+		assert(pos <= s.text.Length(), 22)
+		if pos = 0 then
+			return 0 
+		else 
+			start := CachedSeqStart(s.key, pos)
+			if start < 0 then
+				s.r := s.text.NewReader(s.r)
+				rd := s.r
+				rd.SetPos(pos)
+				limit := paraShutoff
+				repeat 
+					rd.ReadPrevChar(ch)
+					dec(limit) 
+				until rd.eot or (ch = line) or (ch = para) or (limit = 0) 
+				if rd.eot then
+					start := 0 
+				else 
+					start := rd.Pos() + 1 
+				end 
+				AddSeqStartToCache(s.key, pos, start) 
+			end 
+			return start 
+		end 
+	end ThisSequence
+	
+	proc (s: StdSetter) PreviousSequence(start: integer): integer
+	// pre: connected, ThisSequence(t, start) = start
+	// post: (result = 0) & (start = 0) OR (result = ThisSequence(t, start - 1))
+	begin 
+		if start <= 1 then
+			return 0 
+		else 
+			return s.ThisSequence(start - 1) 
+		end 
+	end PreviousSequence
+	
+	
+	proc (s: StdSetter) ThisLine(pos: integer): integer
+		// pre: connected
+		var 
+			start, next: integer
+	begin 
+		next := s.ThisSequence(pos)
+		repeat 
+			start := next
+			next := s.NextLine(start) 
+		until (next > pos) or (next = start) 
+		return start
+	end ThisLine
+	
+	proc (s: StdSetter) NextLine(start: integer): integer
+		// pre: connected, ThisLine(start) = start
+		(* post: (result = 0) & (start = 0) OR
+		   (result = start) & last-line(start) OR
+		   (ThisLine(result - 1) = start) *)
+		var 
+			box: LineBox
+			len_: integer
+			i: integer
+			eot: boolean
+	begin 
+		i := CacheIndex(s.key, start)
+		if i >= 0 then
+			len_ := boxCache[i].line.len_
+			eot := boxCache[i].line.eot 
+		else 
+			s.GetLine(start, box)
+			len_ := box.len_
+			eot := box.eot 
+		end 
+		if ~eot then
+			return start + len_ 
+		else 
+			return start 
+		end 
+	end NextLine
+	
+	proc (s: StdSetter) PreviousLine(start: integer): integer
+	// pre: connected, ThisLine(start) = start
+	// post: (result = 0) & (start = 0) OR (result = ThisLine(start - 1))
+	begin 
+		if start <= 1 then
+			start := 0 
+		else 
+			start := s.ThisLine(start - 1) 
+		end 
+		return start
+	end PreviousLine
+	
+	
+	proc (s: StdSetter) GetWord(pos: integer; var beg, end_: integer)
+		// pre: connected, 0 <= pos <= s.text.Length()
+		// post: beg <= pos <= end
+		const 
+			wordCutoff = len(s.rd.string)
+		var 
+			w: Worder
+			part: boolean
+	begin 
+		assert(s.text # nil, 20)
+		assert(0 <= pos, 21)
+		assert(pos <= s.text.Length(), 22)
+		SetWorder(w, s, pos, beg)
+		end_ := beg
+		repeat 
+			StepWorder(w, s, part)
+			inc(end_)
+			if ~part then
+				beg := end_ 
+			end  
+		until end_ >= pos 
+		dec(end_)
+		repeat 
+			StepWorder(w, s, part)
+			inc(end_) 
+		until ~part or (s.rd.string[0] = 0x) or (end_ - beg > wordCutoff) 
+	end GetWord
+	
+	proc (s: StdSetter) GetLine(start: integer; var box: LineBox)
+		type 
+			RadixData = record found: boolean; right: integer end 
+		var 
+			rd: StdReader
+			ra: TextRulers.Attributes
+			brk: LineBox
+			d, off, right, w: integer
+			i, tabsN: integer
+			form: set
+			adj: boolean
+			ch: char
+			boxRadix, brkRadix: RadixData
+		
+		proc TrueW(var b: LineBox; w: integer): integer
+			var 
+				i: integer
+				type_: set
+		begin 
+			i := rd.tabIndex
+			if (0 <= i) & (i < TextRulers.maxTabs) & (rd.string[0] # tab) then
+				type_ := rd.tabType * {TextRulers.centerTab, TextRulers.rightTab}
+				if type_ = {TextRulers.centerTab} then
+					dec(w, b.tabW[i] - max(minTabWidth, b.tabW[i] - w div 2)) 
+				elsif type_ = {TextRulers.rightTab} then 
+					dec(w, b.tabW[i] - max(minTabWidth, b.tabW[i] - w)) 
+				elsif type_ = {TextRulers.centerTab, TextRulers.rightTab} then 
+					if rd.string[0] = rd.radixChar then
+						if boxRadix.found then
+							w := 0 
+						end  
+					elsif ~boxRadix.found then 
+						dec(w, b.tabW[i] - max(minTabWidth, b.tabW[i] - w)) 
+					end  
+				end  
+			end 
+			return w
+		end TrueW
+		
+		proc Enclose(var b: LineBox; w: integer; var radix: RadixData)
+			var 
+				off, i, d: integer
+				type_: set
+		begin 
+			b.len_ := rd.pos - start
+			inc(b.right, w)
+			off := rd.attr.offset
+			i := rd.tabIndex
+			if rd.h - rd.dsc + off > b.asc then
+				b.asc := rd.h - rd.dsc + off 
+			end 
+			if rd.dsc - off > b.dsc then
+				b.dsc := rd.dsc - off 
+			end 
+			if rd.view # nil then
+				b.views := true 
+			end 
+			if (0 <= i) & (i < TextRulers.maxTabs) then
+				type_ := rd.tabType * {TextRulers.centerTab, TextRulers.rightTab}
+				if rd.string[0] = tab then
+					b.tabW[i] := w
+					if type_ = {TextRulers.centerTab, TextRulers.rightTab} then
+						radix.found := false 
+					end  
+				else 
+					if type_ = {TextRulers.centerTab} then
+						d := b.tabW[i] - max(minTabWidth, b.tabW[i] - w div 2)
+						dec(b.tabW[i], d)
+						dec(b.right, d) 
+					elsif type_ = {TextRulers.rightTab} then 
+						d := b.tabW[i] - max(minTabWidth, b.tabW[i] - w)
+						dec(b.tabW[i], d)
+						dec(b.right, d) 
+					elsif type_ = {TextRulers.centerTab, TextRulers.rightTab} then 
+						if rd.string[0] = rd.radixChar then
+							if radix.found then
+								w := b.right - radix.right
+								d := b.tabW[i] - max(minTabWidth, b.tabW[i] - w)
+								dec(b.tabW[i], d)
+								dec(b.right, d)
+								radix.right := b.right 
+							else 
+								radix.found := true
+								radix.right := b.right 
+							end  
+						elsif ~radix.found then 
+							d := b.tabW[i] - max(minTabWidth, b.tabW[i] - w)
+							dec(b.tabW[i], d)
+							dec(b.right, d) 
+						end  
+					end  
+				end  
+			end 
+		end Enclose
+	
+	begin 
+		assert(s.text # nil, 20)
+		assert(0 <= start, 21)
+		assert(start <= s.text.Length(), 22)
+		i := CacheIndex(s.key, start)
+		if i >= 0 then
+			GetFromCache(s, i, box) 
+		else 
+			TextRulers.GetValidRuler(s.text, start, s.rpos, s.ruler, s.rpos)
+			if s.rpos > start then
+				s.ruler := s.defRuler
+				s.rpos := -1 
+			end 
+			box.ruler := s.ruler
+			box.rpos := s.rpos
+			ra := s.ruler.style.attr
+			tabsN := ra.tabs.len_
+			right := Right(ra, s.vw)
+			s.r := s.text.NewReader(s.r)
+			if start = 0 then
+				s.r.SetPos(start)
+				ch := para 
+			else 
+				s.r.SetPos(start - 1)
+				s.r.ReadChar(ch) 
+			end 
+			s.r.Read
+			
+			(* IF s.r.char = para THEN box.rbox := ~s.hideMarks; box.bop := s.hideMarks; box.left := 0
+			   ELSIF ch = para THEN box.rbox := FALSE; box.bop := TRUE; box.left := ra.first
+			   ELSE box.rbox := FALSE; box.bop := FALSE; box.left := ra.left
+			   END; *)
+			
+			
+			if s.r.char_ = para then
+				box.rbox := true
+				box.bop := false
+				box.left := 0 
+			elsif ch = para then 
+				box.rbox := false
+				box.bop := true
+				box.left := ra.first 
+			else 
+				box.rbox := false
+				box.bop := false
+				box.left := ra.left 
+			end 
+			// 
+			box.views := false
+			box.asc := 0
+			box.dsc := 0
+			box.right := box.left
+			box.len_ := 0
+			box.adjOff := 0
+			box.spaces := 0
+			boxRadix.found := false
+			brk.right := 0
+			
+			s.rd := s.NewReader(s.rd)
+			rd := s.rd(StdReader)
+			rd.Set(s.r, s.text, box.left, start, box.ruler, box.rpos, s.vw, s.hideMarks)
+			rd.Read
+			while ~rd.eot & (box.right + (* rd.w *)TrueW(box, rd.w) <= right) 
+				& ~(lineBreak in rd.setterOpts) do 
+				if ~(wordJoin in rd.setterOpts) & (box.right + rd.endW <= right) then
+					// brk := box;
+					brk.len_ := box.len_
+					brk.ruler := box.ruler
+					brk.rpos := box.rpos
+					brk.left := box.left
+					brk.right := box.right
+					brk.asc := box.asc
+					brk.dsc := box.dsc
+					brk.rbox := box.rbox
+					brk.bop := box.bop
+					brk.adj := box.adj
+					brk.eot := box.eot
+					brk.views := box.views
+					brk.skipOff := box.skipOff
+					brk.adjOff := box.adjOff
+					brk.spaces := box.spaces
+					brk.adjW := box.adjW
+					i := 0
+					while i < tabsN do 
+						brk.tabW[i] := box.tabW[i]
+						inc(i) 
+					end 
+					brkRadix := boxRadix
+					// ---
+					Enclose(brk, rd.endW, brkRadix)
+					brk.eot := rd.r.eot  // rd.r.eot one ahead of rd.eot
+				end 
+				box.adjOff := rd.adjStart - start
+				box.spaces := rd.spaces
+				Enclose(box, rd.w, boxRadix)
+				rd.x := box.right
+				rd.Read 
+			end 
+			if (lineBreak in rd.setterOpts) (* & ~box.rbox *)then
+				Enclose(box, 0, boxRadix) 
+			end 
+			box.eot := rd.eot
+			adj := false
+			box.skipOff := box.len_
+			if box.right + rd.w > right then // rd.w > 0 => ~rd.eot & ~(lineBreak IN setterOpts)
+				if ~(wordJoin in rd.setterOpts) & (box.right + rd.endW <= right) then
+					if rd.string[0] = " " then
+						dec(box.spaces) 
+					end 
+					Enclose(box, rd.endW, boxRadix)
+					adj := true 
+				elsif brk.right > 0 then 
+					// box := brk;
+					box.len_ := brk.len_
+					box.ruler := brk.ruler
+					box.rpos := brk.rpos
+					box.left := brk.left
+					box.right := brk.right
+					box.asc := brk.asc
+					box.dsc := brk.dsc
+					box.rbox := brk.rbox
+					box.bop := brk.bop
+					box.adj := brk.adj
+					box.eot := brk.eot
+					box.views := brk.views
+					box.skipOff := brk.skipOff
+					box.adjOff := brk.adjOff
+					box.spaces := brk.spaces
+					box.adjW := brk.adjW
+					i := 0
+					while i < tabsN do 
+						box.tabW[i] := brk.tabW[i]
+						inc(i) 
+					end 
+					// ---
+					box.skipOff := box.len_ - 1
+					adj := true 
+				elsif box.right = box.left then 
+					Enclose(box, rd.w, boxRadix)  // force at least one per line
+				end  
+			elsif (box.right = box.left) & box.eot then 
+				box.asc := ra.asc // force empty line to ruler's default height
+				box.dsc := ra.dsc 
+			end 
+			
+			box.adj := false
+			d := right - box.right
+			if d > 0 then
+				form := ra.opts * adjustMask
+				if form = blocked then
+					if adj & (box.spaces > 0) then
+						box.right := right
+						box.adj := true
+						box.adjW := d 
+					end  
+				elsif form = rightFlush then 
+					if box.adjOff > 0 then
+						box.adjW := d
+						box.adj := true 
+					else 
+						inc(box.left, d) 
+					end 
+					box.right := right 
+				elsif form = centered then 
+					if box.adjOff > 0 then
+						box.adjW := d div 2
+						box.adj := true 
+					else 
+						inc(box.left, d div 2) 
+					end 
+					inc(box.right, d div 2) 
+				end  
+			end 
+			
+			AddToCache(s.key, start, box) 
+		end 
+		
+		assert(box.eot or (box.len_ > 0), 100)
+	end GetLine
+	
+	
+	proc (s: StdSetter) GetBox(start, end_, maxW, maxH: integer; var w, h: integer)
+		var 
+			box: LineBox
+			asc, dsc: integer
+	begin 
+		assert(s.text # nil, 20)
+		assert(0 <= start, 21)
+		assert(start <= end_, 22)
+		assert(end_ <= s.text.Length(), 23)
+		w := 0
+		h := 0
+		dsc := -1
+		if maxW <= Views.undefined then
+			maxW := max(integer) 
+		end 
+		if maxH <= Views.undefined then
+			maxH := max(integer) 
+		end 
+		while (start < end_) & (h < maxH) do 
+			s.GetLine(start, box)
+			if box.rbox then
+				w := max(w, Right(box.ruler.style.attr, s.vw)) 
+			else 
+				w := max(w, box.right) 
+			end 
+			asc := box.asc + s.GridOffset(dsc, box)
+			dsc := box.dsc
+			inc(start, box.len_)
+			inc(h, asc + dsc) 
+		end 
+		w := min(w, maxW)
+		h := min(h, maxH)
+	end GetBox
+	
+	
+	proc (s: StdSetter) NewReader(old: Reader): Reader
+		// pre: connected
+		var 
+			rd: StdReader
+	begin 
+		assert(s.text # nil, 20)
+		if (old # nil) & (old is StdReader) then
+			return old 
+		else 
+			new(rd)
+			return rd 
+		end 
+	end NewReader
+	
+	
+	proc (s: StdSetter) GridOffset(dsc: integer; in box: LineBox): integer
+		var 
+			ra: TextRulers.Attributes
+			h, h0: integer
+	// minimal possible line spacing h0, minimal legal line spacing h
+	begin 
+		if ~box.rbox then
+			ra := box.ruler.style.attr
+			if dsc < 0 then
+				return 0  // no longer try to correct first line's grid position -- should be done when printing...
+			(* h0 := box.asc; h := ra.asc;
+			   IF h < h0 THEN	(* override legal spacing if to small *)
+			   h := h - (h - h0) DIV ra.grid * ra.grid	(* adjust to next larger grid line *)
+			   END;
+			   RETURN h - h0 *)
+			
+			
+			else 
+				h0 := box.asc + dsc
+				h := ra.asc + ra.dsc
+				if h < h0 then // override legal spacing if to small
+					h := h0 
+				end 
+				return -(-h) div ra.grid * ra.grid - h0  // adjust to next larger grid line
+			end  
+		else 
+			return 0 
+		end 
+	end GridOffset
+	
+	
+	// StdDirectory
+	
+	proc (d: StdDirectory) New(): Setter
+		var 
+			s: StdSetter
+	begin 
+		new(s)
+		s.text := nil
+		return s
+	end New
+	
+	
+	// miscellaneous
+	
+	proc Init
+		var 
+			d: StdDirectory
+	begin 
+		InitCache
+		new(d)
+		dir := d
+		stdDir := d
+	end Init
+	
+	proc SetDir*(d: Directory)
+	begin 
+		assert(d # nil, 20)
+		dir := d
+	end SetDir
+
+begin
+	Init
+end TextSetters

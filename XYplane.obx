@@ -1,0 +1,243 @@
+module XYplane
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20070201, bh, Unicode support
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import WinApi, Ports, Stores, Views, Properties, HostPorts, HostWindows
+	
+	const 
+		erase* = 0
+		draw* = 1
+		maxW = 256
+		maxH = 256
+	
+	type 
+		View = pointer to record (Views.View) 
+				dc: WinApi.HANDLE
+				map: WinApi.HANDLE 
+			end 
+	
+	var 
+		X*, Y*, W*, H*: integer
+		current: View
+		frame: Views.Frame
+	
+	proc (v: View) FINALIZE
+		var 
+			res: integer
+	begin 
+		res := WinApi.DeleteDC(v.dc)
+		res := WinApi.DeleteObject(v.map)
+		v.dc := 0
+		v.map := 0
+	end FINALIZE
+	
+	proc Open*
+		var 
+			res: integer
+			v: View
+			dc: WinApi.HANDLE
+	begin 
+		new(v)
+		dc := WinApi.GetDC(0)
+		v.dc := WinApi.CreateCompatibleDC(dc)
+		v.map := WinApi.CreateCompatibleBitmap(dc, W, H)
+		res := WinApi.SelectObject(v.dc, v.map)
+		res := WinApi.ReleaseDC(0, dc)
+		res := WinApi.SelectObject(v.dc, WinApi.GetStockObject(WinApi.WHITE_BRUSH))
+		res := WinApi.SelectObject(v.dc, WinApi.GetStockObject(WinApi.NULL_PEN))
+		res := WinApi.Rectangle(v.dc, 0, 0, W + 1, H + 1)
+		Views.OpenAux(v, "XYplane")
+		current := v
+	end Open
+	
+	proc Dot*(x, y, mode: integer)
+		var 
+			res, u: integer
+			p: HostPorts.Port
+			col: Ports.Color
+	begin 
+		if (x >= 0) & (x < maxW) & (y >= 0) & (y < maxH) then
+			y := maxH - 1 - y
+			if mode = draw then
+				col := Ports.black 
+			else 
+				col := Ports.white 
+			end 
+			res := WinApi.SetPixel(current.dc, x, y, col)
+			if (frame # nil) & (frame.rider # nil) then
+				u := frame.unit
+				p := frame.rider(HostPorts.Rider).port
+				res := WinApi.SetPixel(p.dc, frame.gx div u + x, frame.gy div u + y, col)
+				if res = -1 then
+					frame.DrawRect(x * u, y * u, (x + 1) * u, (y + 1) * u, Ports.fill, col) 
+				end  
+			end  
+		end 
+	end Dot
+	
+	proc IsDot*(x, y: integer): boolean
+	begin 
+		return WinApi.GetPixel(current.dc, x, maxH - 1 - y) # Ports.white
+	end IsDot
+	
+	proc ReadKey*(): char
+		var 
+			res: integer
+			msg: WinApi.MSG
+	begin 
+		if WinApi.PeekMessageW(msg, 0, WinApi.WM_KEYDOWN, WinApi.WM_CHAR, 1) # 0 then
+			if msg.message = WinApi.WM_CHAR then
+				return chr(msg.wParam) 
+			else 
+				res := WinApi.TranslateMessage(msg)
+				res := WinApi.DispatchMessageW(msg) 
+			end  
+		end 
+		return 0x
+	end ReadKey
+	
+	proc Clear*
+		var 
+			res: integer
+	begin 
+		res := WinApi.Rectangle(current.dc, 0, 0, W + 1, H + 1)
+		Views.Update(current, Views.keepFrames)
+	end Clear
+	
+	
+	proc (v: View) Internalize(var rd: Stores.Reader)
+		var 
+			version: integer
+			res, x, y, i: integer
+			dc: WinApi.HANDLE
+			s: set
+	begin 
+		v.Internalize^(rd)
+		if ~rd.cancelled then
+			rd.ReadVersion(0, 0, version)
+			if ~rd.cancelled then
+				dc := WinApi.GetDC(0)
+				v.dc := WinApi.CreateCompatibleDC(dc)
+				v.map := WinApi.CreateCompatibleBitmap(dc, W, H)
+				res := WinApi.SelectObject(v.dc, v.map)
+				res := WinApi.ReleaseDC(0, dc)
+				res := WinApi.SelectObject(v.dc, WinApi.GetStockObject(WinApi.WHITE_BRUSH))
+				res := WinApi.SelectObject(v.dc, WinApi.GetStockObject(WinApi.NULL_PEN))
+				res := WinApi.Rectangle(v.dc, 0, 0, W + 1, H + 1)
+				y := 0
+				while y < maxH do 
+					x := 0
+					while x < maxW do 
+						rd.ReadSet(s)
+						i := 0
+						while i < 32 do 
+							if i in s then
+								res := WinApi.SetPixel(v.dc, x, y, Ports.black) 
+							end 
+							inc(i)
+							inc(x) 
+						end  
+					end 
+					inc(y) 
+				end  
+			end  
+		end 
+	end Internalize
+	
+	proc (v: View) Externalize(var wr: Stores.Writer)
+		var 
+			x, y, i: integer
+			s: set
+	begin 
+		v.Externalize^(wr)
+		wr.WriteVersion(0)
+		y := 0
+		while y < maxH do 
+			x := 0
+			while x < maxW do 
+				i := 0
+				s := {}
+				while i < 32 do 
+					if WinApi.GetPixel(v.dc, x, y) # Ports.white then
+						incl(s, i) 
+					end 
+					inc(i)
+					inc(x) 
+				end 
+				wr.WriteSet(s) 
+			end 
+			inc(y) 
+		end 
+	end Externalize
+	
+	proc (v: View) CopyFromSimpleView(source: Views.View)
+		var 
+			res: integer
+	begin 
+		with source: View do 
+			v.dc := source.dc
+			v.dc := WinApi.CreateCompatibleDC(source.dc)
+			v.map := WinApi.CreateCompatibleBitmap(source.dc, W, H)
+			res := WinApi.SelectObject(v.dc, v.map)
+			res := WinApi.BitBlt(v.dc, 0, 0, W, H, source.dc, 0, 0, 00cc0020h) 
+		end 
+	end CopyFromSimpleView
+	
+	proc (v: View) Restore(f: Views.Frame; l, t, r, b: integer)
+		var 
+			rd: HostPorts.Rider
+			x, y, u, rl, rt, rr, rb: integer
+	begin 
+		rd := f.rider(HostPorts.Rider)
+		if rd.port.wnd # 0 then // copy to screen
+			frame := f
+			f.rider.GetRect(rl, rt, rr, rb)
+			rd.CopyFrom(v.dc, rl - f.gx div f.unit, rt - f.gy div f.unit) 
+		else  // copy to printer
+			u := HostWindows.unit
+			y := 0
+			while y < maxH do 
+				x := 0
+				while x < maxW do 
+					if WinApi.GetPixel(v.dc, x, y) # Ports.white then
+						f.DrawRect(x * u, y * u, (x + 1) * u, (y + 1) * u, Ports.fill, Ports.black) 
+					end 
+					inc(x) 
+				end 
+				inc(y) 
+			end  
+		end 
+	end Restore
+	
+	proc (v: View) HandlePropMsg(var msg: Properties.Message)
+	begin 
+		with msg: Properties.SizePref do 
+			msg.w := W * HostWindows.unit
+			msg.h := H * HostWindows.unit 
+		| msg: Properties.ResizePref do 
+			msg.fixed := true 
+		else  
+		end 
+	end HandlePropMsg
+
+begin
+	X := 0
+	Y := 0
+	W := maxW
+	H := maxH
+end XYplane

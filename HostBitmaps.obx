@@ -1,0 +1,630 @@
+module HostBitmaps
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20070201, bh, Unicode support
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		SYSTEM, WinApi, WinOle, 
+		Files, Fonts, Ports, Stores, Models, Views, Controllers, Containers, Properties, Dialog, Converters, 
+		HostPorts, HostWindows
+	
+	const 
+		minVersion = 0
+		maxVersion = 1
+	
+	type 
+		Model = pointer to record 
+				file: Files.File
+				pos, len_: integer
+				ref: WinApi.HBITMAP 
+			end 
+		
+		StdView = pointer to record (Views.View) 
+				model: Model
+				w, h: integer // in pixels
+				bits: integer  // bit per pixel
+			end 
+		
+		BITMAPINFO8 = cstruct 
+				header: WinApi.BITMAPINFOHEADER
+				colors: array 256 of integer 
+			end 
+		
+		RootContext = pointer to record (Models.Context) 
+				w, h: integer 
+			end 
+		
+		RootView = pointer to record (Views.View) 
+				view: Views.View 
+			end 
+	
+	
+	// helpers for painting to bitmap
+	
+	proc (c: RootContext) ThisModel(): Models.Model
+	begin 
+		return nil
+	end ThisModel
+	
+	proc (c: RootContext) GetSize(var w, h: integer)
+	begin 
+		w := c.w
+		h := c.h
+	end GetSize
+	
+	proc (c: RootContext) Normalize(): boolean
+	begin 
+		return true
+	end Normalize
+	
+	proc (d: RootView) Restore(f: Views.Frame; l, t, r, b: integer)
+	begin 
+		Views.InstallFrame(f, d.view, 0, 0, 0, false)
+	end Restore
+	
+	proc (d: RootView) GetNewFrame(var frame: Views.Frame)
+		var 
+			f: Views.RootFrame
+	begin 
+		new(f)
+		frame := f
+	end GetNewFrame
+	
+	proc (d: RootView) GetBackground(var color: Ports.Color)
+	begin 
+		color := Ports.background
+	end GetBackground
+	
+	proc Paint(dc: WinApi.HDC; v: Views.View; w, h, unit: integer)
+		var 
+			d: RootView
+			c: RootContext
+			p: HostPorts.Port
+			f: Views.RootFrame
+			g: Views.Frame
+	begin 
+		new(p)
+		p.Init(unit, Ports.screen)
+		p.SetSize(w, h)
+		p.SetDC(dc, 0)
+		new(c)
+		c.w := w * p.unit
+		c.h := h * p.unit
+		new(d)
+		d.view := Views.CopyOf(v, Views.shallow)
+		Stores.Join(d, d.view)
+		d.InitContext(c)
+		d.view.InitContext(c)
+		Stores.InitDomain(d)
+		d.GetNewFrame(g)
+		f := g(Views.RootFrame)
+		f.ConnectTo(p)
+		Views.SetRoot(f, d, false, {})
+		Views.AdaptRoot(f)
+		Views.RestoreRoot(f, 0, 0, c.w, c.h)
+	end Paint
+	
+	
+	
+	proc GetHeader(v: StdView; var hdr: WinApi.BITMAPINFOHEADER; var colors: integer)
+	begin 
+		hdr.biSize := size(WinApi.BITMAPINFOHEADER)
+		hdr.biWidth := v.w
+		hdr.biHeight := v.h
+		hdr.biPlanes := 1
+		hdr.biBitCount := short(v.bits)
+		if v.bits = 8 then // use 8 bit & run length encoding
+			hdr.biCompression := WinApi.BI_RLE8
+			colors := 256 
+		elsif v.bits = 24 then  // use 24 bit true color
+			hdr.biCompression := WinApi.BI_RGB
+			colors := 0 
+		elsif v.bits = 0 then  // use jpeg
+			hdr.biCompression := 4 // WinApi.BI_JPEG
+			colors := 0 
+		else 
+			halt(100)  // unsupported format
+		end 
+		hdr.biSizeImage := 0
+		hdr.biXPelsPerMeter := 0
+		hdr.biYPelsPerMeter := 0
+		hdr.biClrUsed := 0
+		hdr.biClrImportant := 0
+	end GetHeader
+	
+	proc Evaluate(v: StdView; dc: WinApi.HDC)
+		var 
+			len_, adr, res, colors, i: integer
+			rd: Stores.Reader
+			info: BITMAPINFO8
+			data: pointer to array of byte
+	begin 
+		rd.ConnectTo(v.model.file)
+		rd.SetPos(v.model.pos)
+		len_ := v.model.len_
+		GetHeader(v, info.header, colors)
+		i := 0
+		while i < colors do 
+			rd.ReadInt(info.colors[i])
+			inc(i)
+			dec(len_, 4) 
+		end 
+		new(data, len_)
+		rd.rider.ReadBytes(data^, 0, len_)
+		v.model.ref := WinApi.CreateCompatibleBitmap(dc, v.w, v.h)
+		info.header.biSizeImage := len_
+		res := WinApi.SetDIBits(dc, v.model.ref, 0, v.h, SYSTEM.ADR(data[0]), 
+			SYSTEM.VAL(WinApi.BITMAPINFO, info), WinApi.DIB_RGB_COLORS)
+		if res = 0 then
+			res := WinApi.GetLastError()
+			if res = WinApi.ERROR_NOT_ENOUGH_MEMORY then
+				halt(101) 
+			else 
+				halt(100) 
+			end  
+		end 
+		assert(v.model.ref # 0, 102)
+	end Evaluate
+	
+	
+	// Model
+	
+	proc (m: Model) FINALIZE
+		var 
+			res: integer
+	begin 
+		if m.ref # 0 then
+			res := WinApi.DeleteObject(m.ref)
+			m.ref := 0 
+		end 
+	end FINALIZE
+	
+	
+	// View
+	
+	proc (v: StdView) Internalize(var rd: Stores.Reader)
+		var 
+			m: Model
+			thisVersion: integer
+	begin 
+		v.Internalize^(rd)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minVersion, maxVersion, thisVersion)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadInt(v.w)
+		rd.ReadInt(v.h)
+		if thisVersion > 0 then
+			rd.ReadInt(v.bits) 
+		else 
+			v.bits := 24 
+		end 
+		new(m)
+		m.file := rd.rider.Base()
+		rd.ReadInt(m.len_)
+		m.pos := rd.Pos()
+		m.ref := 0 // lazy allocation of bitmap data
+		v.model := m
+		rd.SetPos(m.pos + m.len_)
+	end Internalize
+	
+	proc (v: StdView) Externalize(var wr: Stores.Writer)
+		var 
+			len_, res, colors, i: integer
+			r: Files.Reader
+			b: byte
+			info: BITMAPINFO8
+			data: pointer to array of byte
+	begin 
+		v.Externalize^(wr)
+		wr.WriteVersion(maxVersion)
+		wr.WriteInt(v.w)
+		wr.WriteInt(v.h)
+		wr.WriteInt(v.bits)
+		if v.model.file # nil then
+			len_ := v.model.len_
+			wr.WriteInt(len_)
+			r := v.model.file.NewReader(nil)
+			r.SetPos(v.model.pos)
+			while len_ # 0 do 
+				r.ReadByte(b)
+				wr.WriteSChar(short(chr(b)))
+				dec(len_) 
+			end  
+		else 
+			assert(v.model.ref # 0, 100)
+			GetHeader(v, info.header, colors)
+			res := WinApi.GetDIBits(WinApi.GetDC(HostWindows.main), v.model.ref, 0, v.h, 0, 
+				SYSTEM.VAL(WinApi.BITMAPINFO, info), WinApi.DIB_RGB_COLORS)
+			if res = 0 then
+				res := WinApi.GetLastError()
+				halt(100) 
+			end 
+			len_ := info.header.biSizeImage
+			new(data, len_)
+			res := WinApi.GetDIBits(WinApi.GetDC(HostWindows.main), v.model.ref, 0, v.h, 
+				SYSTEM.ADR(data[0]), 
+				SYSTEM.VAL(WinApi.BITMAPINFO, info), WinApi.DIB_RGB_COLORS)
+			if res = 0 then
+				res := WinApi.GetLastError()
+				halt(100) 
+			end 
+			inc(len_, 4 * colors)
+			wr.WriteInt(len_)
+			i := 0
+			while i < colors do 
+				wr.WriteInt(info.colors[i])
+				inc(i) 
+			end 
+			wr.rider.WriteBytes(data^, 0, len(data))
+			v.model.len_ := len_ 
+		end 
+	end Externalize
+	
+	proc (v: StdView) CopyFromSimpleView(source: Views.View)
+	begin 
+		with source: StdView do 
+			v.model := source.model
+			v.w := source.w
+			v.h := source.h
+			v.bits := source.bits 
+		end 
+	end CopyFromSimpleView
+	
+	proc (v: StdView) Restore(f: Views.Frame; l, t, r, b: integer)
+		var 
+			rd: HostPorts.Rider
+			res, w, h: integer
+			dc, pdc, bdc, bdc1: WinApi.HDC
+			memBM: WinApi.HBITMAP
+	begin 
+		assert(v.model # nil, 20)
+		v.context.GetSize(w, h)
+		dc := f.rider(HostPorts.Rider).port.homedc
+		if WinApi.WindowFromDC(dc) = 0 then
+			dc := WinApi.GetDC(HostWindows.main) 
+		end 
+		if v.model.ref = 0 then
+			Evaluate(v, dc) 
+		end 
+		if Views.IsPrinterFrame(f) then // need to make a print copy of the existing bitmap
+			bdc1 := WinApi.CreateCompatibleDC(dc)
+			res := WinApi.SelectObject(bdc1, v.model.ref)
+			pdc := f.rider(HostPorts.Rider).port.dc
+			bdc := WinApi.CreateCompatibleDC(pdc)
+			memBM := WinApi.CreateCompatibleBitmap(pdc, v.w, v.h)
+			res := WinApi.SelectObject(bdc, memBM)
+			res := WinApi.BitBlt(bdc, 0, 0, v.w, v.h, bdc1, 0, 0, 00cc0020h) // copy
+			res := WinApi.DeleteDC(bdc1) 
+		else 
+			bdc := WinApi.CreateCompatibleDC(dc)
+			res := WinApi.SelectObject(bdc, v.model.ref) 
+		end 
+		f.rider(HostPorts.Rider).DrawBitmap(bdc, v.w, v.h, f.gx, f.gy, w, h)
+		res := WinApi.DeleteDC(bdc)
+	end Restore
+	
+	proc (v: StdView) HandlePropMsg(var msg: Properties.Message)
+	begin 
+		with msg: Properties.SizePref do 
+			if (msg.w > Views.undefined) & (msg.h > Views.undefined) then
+				Properties.ProportionalConstraint(v.w, v.h, msg.fixedW, msg.fixedH, msg.w, msg.h) 
+			else 
+				if (v.w > 0) & (v.h > 0) then // default sizes
+					msg.w := v.w * HostWindows.unit
+					msg.h := v.h * HostWindows.unit 
+				end  
+			end  
+		else  
+		end 
+	end HandlePropMsg
+	
+	
+	proc TurnToBitmap*(bits: integer)
+		var 
+			v: Views.View
+			f: Views.Frame
+			rd: HostPorts.Rider
+			dc, bdc: WinApi.HDC
+			bm: WinApi.HBITMAP
+			res, w, h: integer
+			obj: StdView
+	begin 
+		assert((bits = 0) or (bits = 8) or (bits = 24), 20)
+		v := Containers.FocusSingleton()
+		if v # nil then
+			f := Controllers.FocusFrame()
+			f := Views.ThisFrame(f, v)
+			rd := f.rider(HostPorts.Rider)
+			dc := rd.port.homedc
+			bdc := WinApi.CreateCompatibleDC(dc)
+			res := WinApi.SetBkMode(bdc, WinApi.TRANSPARENT)
+			v.context.GetSize(w, h)
+			w := w div f.unit
+			h := h div f.unit
+			bm := WinApi.CreateCompatibleBitmap(dc, w, h)
+			res := WinApi.SelectObject(bdc, bm)
+			Paint(bdc, v, w, h, f.unit)
+			res := WinApi.DeleteDC(bdc)
+			new(obj)
+			obj.w := w
+			obj.h := h
+			obj.bits := bits
+			new(obj.model)
+			obj.model.ref := bm
+			Containers.Focus().ThisView().ThisModel().ReplaceView(v, obj) 
+		end 
+	end TurnToBitmap
+	(* PROCEDURE TurnThisToBitmap* (v: Views.View; owner: Containers.Model; bits: INTEGER);
+	   VAR dc, bdc: WinApi.HDC; bm: WinApi.HBITMAP; res, w, h: INTEGER; obj: StdView;
+	   BEGIN
+	   dc := WinApi.GetDC(HostWindows.main);
+	   bdc := WinApi.CreateCompatibleDC(dc);
+	   res := WinApi.SetBkMode(bdc, WinApi.TRANSPARENT);
+	   v.context.GetSize(w, h);
+	   w := w DIV HostWindows.unit; h := h DIV HostWindows.unit;
+	   bm := WinApi.CreateCompatibleBitmap(dc, w, h);
+	   res := WinApi.SelectObject(bdc, bm);
+	   Paint(bdc, v, w, h, HostWindows.unit);
+	   res := WinApi.DeleteDC(bdc);
+	   NEW(obj); obj.w := w; obj.h := h; obj.bits := bits;
+	   NEW(obj.model); obj.model.ref := bm;
+	   owner.ReplaceView(v, obj)
+	   END TurnThisToBitmap; *)
+	
+	
+	proc ViewToBitmap*(v: Views.View; bits: integer): Views.View
+		var 
+			dc, bdc: WinApi.HDC
+			bm: WinApi.HBITMAP
+			res, w, h: integer
+			obj: StdView
+	begin 
+		assert(v # nil, 20)
+		if v is StdView then
+			return v 
+		else 
+			assert((bits = 0) or (bits = 8) or (bits = 24), 21)
+			dc := WinApi.GetDC(HostWindows.main)
+			bdc := WinApi.CreateCompatibleDC(dc)
+			res := WinApi.SetBkMode(bdc, WinApi.TRANSPARENT)
+			v.context.GetSize(w, h)
+			w := w div HostWindows.unit
+			h := h div HostWindows.unit
+			bm := WinApi.CreateCompatibleBitmap(dc, w, h)
+			res := WinApi.SelectObject(bdc, bm)
+			Paint(bdc, v, w, h, HostWindows.unit)
+			res := WinApi.DeleteDC(bdc)
+			new(obj)
+			obj.w := w
+			obj.h := h
+			obj.bits := bits
+			new(obj.model)
+			obj.model.ref := bm
+			return obj 
+		end 
+	end ViewToBitmap
+	
+	
+	proc ImportBitmap*(f: Files.File; var s: Stores.Store)
+		type 
+			Str = unsafe pointer to carray of char
+		var 
+			name: Str
+			bm: WinApi.HBITMAP
+			obj: StdView
+			res: integer
+			info: WinApi.BITMAP
+	begin 
+		name := SYSTEM.VAL(Str, SYSTEM.VAL(integer, f) + 40) // f(HostFiles.File).name
+		bm := WinApi.LoadImageW(0, name, WinApi.IMAGE_BITMAP, 0, 0, ord(WinApi.LR_LOADFROMFILE))
+		if bm = 0 then
+			res := WinApi.GetLastError()
+			halt(100) 
+		end 
+		res := WinApi.GetObjectW(bm, size(WinApi.BITMAP), SYSTEM.ADR(info))
+		new(obj)
+		obj.w := info.bmWidth
+		obj.h := info.bmHeight
+		if info.bmBitsPixel > 8 then
+			obj.bits := 24 
+		else 
+			obj.bits := 8 
+		end 
+		new(obj.model)
+		obj.model.ref := bm
+		s := obj
+	end ImportBitmap
+	
+	proc ExportBitmap*(v: Stores.Store; f: Files.File)
+		var 
+			w: Stores.Writer
+			info: BITMAPINFO8
+			i, col, res: integer
+			data: pointer to array of byte
+	begin 
+		assert(v # nil, 20)
+		assert(f # nil, 21)
+		with v: StdView do 
+			GetHeader(v, info.header, col)
+			res := WinApi.GetDIBits(WinApi.GetDC(HostWindows.main), v.model.ref, 0, v.h, 0, 
+				SYSTEM.VAL(WinApi.BITMAPINFO, info), WinApi.DIB_RGB_COLORS)
+			if res = 0 then
+				res := WinApi.GetLastError()
+				halt(100) 
+			end 
+			new(data, info.header.biSizeImage)
+			res := WinApi.GetDIBits(WinApi.GetDC(HostWindows.main), v.model.ref, 0, v.h, 
+				SYSTEM.ADR(data[0]), 
+				SYSTEM.VAL(WinApi.BITMAPINFO, info), WinApi.DIB_RGB_COLORS)
+			if res = 0 then
+				res := WinApi.GetLastError()
+				halt(100) 
+			end 
+			w.ConnectTo(f)
+			w.SetPos(0)
+			// file header
+			w.WriteSInt(4d42h) // type
+			w.WriteInt(14 + 40 + 4 * col + len(data)) // size
+			w.WriteInt(0)
+			w.WriteInt(14 + 40 + 4 * col) // offset
+			// bitmap header
+			w.WriteInt(info.header.biSize)
+			w.WriteInt(info.header.biWidth)
+			w.WriteInt(info.header.biHeight)
+			w.WriteSInt(info.header.biPlanes)
+			w.WriteSInt(info.header.biBitCount)
+			w.WriteInt(info.header.biCompression)
+			w.WriteInt(info.header.biSizeImage)
+			w.WriteInt(info.header.biXPelsPerMeter)
+			w.WriteInt(info.header.biYPelsPerMeter)
+			w.WriteInt(info.header.biClrUsed)
+			w.WriteInt(info.header.biClrImportant)
+			// colors
+			i := 0
+			while i < col do 
+				w.WriteInt(info.colors[i])
+				inc(i) 
+			end 
+			// bits
+			w.rider.WriteBytes(data^, 0, len(data)) 
+		else  
+		end 
+	end ExportBitmap
+	
+	
+	proc ImportDPictAsBitmap*(var med: WinOle.STGMEDIUM
+		var v: Views.View; var w, h: integer; var isSingle: boolean
+		)
+		var 
+			hm: WinApi.HMETAFILEPICT
+			mp: WinApi.PtrMETAFILEPICT
+			dc, bdc: WinApi.HDC
+			res, u: integer
+			bm: WinApi.HBITMAP
+			obj: StdView
+			s: set
+	begin 
+		hm := med.u.hMetaFilePict
+		mp := SYSTEM.VAL(WinApi.PtrMETAFILEPICT, WinApi.GlobalLock(hm))
+		case mp.mm of 
+			| 1: 
+				u := HostWindows.unit 
+			| 2: 
+				u := Ports.point div 20 
+			| 3: 
+				u := Ports.mm div 100 
+			| 4: 
+				u := Ports.inch div 100 
+			| 5: 
+				u := Ports.inch div 1000 
+			| 6: 
+				u := Ports.mm div 10 
+			| 7: 
+				u := Ports.mm div 100 
+			| 8: 
+				u := Ports.mm div 100 
+		end 
+		w := mp.xExt * u
+		h := mp.yExt * u
+		new(obj)
+		obj.bits := 24
+		obj.w := w div HostWindows.unit
+		obj.h := h div HostWindows.unit
+		dc := WinApi.GetDC(HostWindows.main)
+		bdc := WinApi.CreateCompatibleDC(dc)
+		res := WinApi.SetBkMode(bdc, WinApi.TRANSPARENT)
+		bm := WinApi.CreateCompatibleBitmap(dc, obj.w, obj.h)
+		res := WinApi.SelectObject(bdc, bm)
+		res := WinApi.SetMapMode(bdc, mp.mm)
+		res := WinApi.SetViewportOrgEx(bdc, 0, 0, nil)
+		res := WinApi.SetViewportExtEx(bdc, obj.w, obj.h, nil)
+		s := WinApi.SetTextAlign(bdc, {})
+		res := WinApi.PlayMetaFile(bdc, mp.hMF)
+		res := WinApi.GlobalUnlock(hm)
+		res := WinApi.DeleteDC(bdc)
+		WinOle.ReleaseStgMedium(med)
+		new(obj.model)
+		obj.model.ref := bm
+		v := obj
+		isSingle := false
+	end ImportDPictAsBitmap
+	
+	proc ImportDBitmap*(var med: WinOle.STGMEDIUM
+		var v: Views.View; var w, h: integer; var isSingle: boolean
+		)
+		var 
+			obj: StdView
+			res: integer
+			bm, bm0: WinApi.HBITMAP
+			info: WinApi.BITMAP
+			dc, bdc, bdc0: WinApi.HDC
+	begin 
+		assert(med.tymed = WinOle.TYMED_GDI, 20)
+		bm0 := med.u.hBitmap
+		assert(bm0 # 0, 20)
+		res := WinApi.GetObjectW(bm0, size(WinApi.BITMAP), SYSTEM.ADR(info))
+		new(obj)
+		obj.w := info.bmWidth
+		obj.h := info.bmHeight
+		if info.bmBitsPixel > 8 then
+			obj.bits := 24 
+		else 
+			obj.bits := 8 
+		end 
+		dc := WinApi.GetDC(HostWindows.main)
+		bdc0 := WinApi.CreateCompatibleDC(dc)
+		res := WinApi.SelectObject(bdc0, bm0)
+		bdc := WinApi.CreateCompatibleDC(dc)
+		bm := WinApi.CreateCompatibleBitmap(dc, obj.w, obj.h)
+		res := WinApi.SelectObject(bdc, bm)
+		res := WinApi.BitBlt(bdc, 0, 0, obj.w, obj.h, bdc0, 0, 0, 00cc0020h) // copy
+		if res = 0 then
+			res := WinApi.GetLastError()
+			halt(100) 
+		end 
+		res := WinApi.DeleteDC(bdc0)
+		res := WinApi.DeleteDC(bdc)
+		WinOle.ReleaseStgMedium(med)
+		new(obj.model)
+		obj.model.ref := bm
+		v := obj
+		w := obj.w * HostWindows.unit
+		h := obj.h * HostWindows.unit
+		isSingle := false
+	end ImportDBitmap
+	
+	proc ExportDBitmap*(v: Views.View; w, h, x, y: integer; isSingle: boolean
+		var med: WinOle.STGMEDIUM
+		)
+	begin 
+		assert(v # nil, 20)
+		with v: StdView do 
+			if v.model.ref = 0 then
+				Evaluate(v, WinApi.GetDC(HostWindows.main)) 
+			end 
+			med.tymed := WinOle.TYMED_GDI
+			med.u.hBitmap := v.model.ref
+			med.pUnkForRelease := nil 
+		else  
+		end 
+	end ExportDBitmap
+
+end HostBitmaps

@@ -1,0 +1,291 @@
+module XhtmlStdFileWriters
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20050811, mf (reported by Helmut Zinn), procedure New text declaration corrected: "<?xml" instead of "<? xml"
+	   - 20050811, mf (reported by Helmut Zinn), procedure Writer.DocType handling of public identifiers corrected
+	   - 20160523, center #113, fixes for XHTML export
+	   - 20161216, center #144, inconsistent docu and usage of Files.Locator error codes
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Files, Strings, XhtmlWriters, XhtmlEntitySets
+	
+	const 
+		tab = 09x
+		line = 0ax
+	
+	type 
+		Writer = pointer to record (XhtmlWriters.Writer) 
+				level: integer // indentation level
+				current: Tag // top of tag stack
+				rider: Files.Writer
+				afterData: boolean  // allows delayed newline after data contents
+			end 
+		
+		Tag = pointer to record 
+				up: Tag
+				inContent: boolean // subtag was entered, or text data written
+				preserve: boolean // write complete element on one line, no prettyprinting white space
+				name: array 256 of char 
+			end 
+	
+	// generic output procedures
+	
+	proc String(wr: Writer; in str: array of char)
+		var 
+			ch: char
+			i, res: integer
+			s1: array 2 of char
+			utf8Str: array 4 of char
+			j: integer
+			u: char
+	begin 
+		i := 0
+		ch := str[0]
+		while ch # 0x do 
+			if ch <= 7fx then
+				wr.rider.WriteByte(short(short(ord(ch)))) 
+			else 
+				s1[0] := ch
+				s1[1] := 0x
+				Strings.StringToUtf8(s1, utf8Str, res)
+				assert(res = 0)
+				j := 0
+				u := utf8Str[0]
+				while u # 0x do 
+					wr.rider.WriteByte(short(ord(u)))
+					inc(j)
+					u := utf8Str[j] 
+				end  
+			end 
+			inc(i)
+			ch := str[i] 
+		end 
+	end String
+	
+	proc HtmlEncodedString(wr: Writer; in str: array of char)
+		var 
+			ch: char
+			i: integer
+			entityStr: array 10 of char
+	begin 
+		i := 0
+		ch := str[0]
+		while ch # 0x do 
+			XhtmlEntitySets.MapCharToEntity(ch, entityStr)
+			String(wr, entityStr)
+			inc(i)
+			ch := str[i] 
+		end 
+	end HtmlEncodedString
+	
+	proc Tabs(wr: Writer)
+		var 
+			i: integer
+	begin 
+		if ~wr.current.preserve then
+			i := 0
+			while i # wr.level do 
+				wr.rider.WriteByte(ord(tab))
+				inc(i) 
+			end  
+		end 
+	end Tabs
+	
+	proc StartElemContent(wr: Writer)
+	begin  // complete start tag
+		String(wr, ">")
+		wr.Ln
+		wr.current.inContent := true
+	end StartElemContent
+	
+	
+	// methods
+	
+	proc (wr: Writer) Error(): XhtmlWriters.Error
+	begin 
+		return nil
+	end Error
+	
+	proc (wr: Writer) Ln
+	begin 
+		if ~wr.current.preserve then
+			wr.rider.WriteByte(ord(line)) 
+		end 
+	end Ln
+	
+	proc (wr: Writer) Instruction(in piTarget, instruction: array of char)
+	begin 
+		Tabs(wr)
+		String(wr, "<?" + piTarget + " " + instruction + "?>")
+	end Instruction
+	
+	proc (wr: Writer) Comment(in comment: array of char)
+	begin 
+		Tabs(wr)
+		String(wr, "<!--" + comment + "-->")
+	end Comment
+	
+	proc (wr: Writer) DocType(in rootName, pubidLiteral, sysidLiteral: array of char)
+	begin 
+		assert(wr.level = 0, 100)
+		assert(rootName # "", 101)
+		assert((pubidLiteral = "") or (sysidLiteral # ""), 102)
+		if pubidLiteral # "" then
+			String(wr, '<!DOCTYPE ' + rootName + ' PUBLIC "' + pubidLiteral + '" "' + sysidLiteral + '">') 
+		elsif sysidLiteral # "" then 
+			String(wr, '<!DOCTYPE ' + rootName + ' SYSTEM "' + sysidLiteral + '">') 
+		else 
+			String(wr, '<!DOCTYPE ' + rootName) 
+		end 
+		wr.Ln
+	end DocType
+	
+	proc (wr: Writer) StartTag(in elem: array of char; preserve: boolean)
+		var 
+			t: Tag
+	begin 
+		if ~wr.current.inContent & (wr.current.up # nil) then
+			StartElemContent(wr) 
+		end 
+		Tabs(wr)
+		String(wr, "<" + elem)
+		wr.afterData := false
+		inc(wr.level)
+		new(t)
+		t.name := elem
+		t.up := wr.current
+		t.preserve := preserve or wr.current.preserve
+		wr.current := t
+	end StartTag
+	
+	proc (wr: Writer) Attr(in name, value: array of char)
+	begin 
+		assert(wr.level >= 1, 100)
+		String(wr, ' ' + name + '="')
+		HtmlEncodedString(wr, value)
+		String(wr, '"')
+	end Attr
+	
+	proc (wr: Writer) Data(in data: array of char)
+	begin 
+		assert(wr.level >= 1, 100)
+		if data # "" then
+			if ~wr.current.inContent then
+				StartElemContent(wr)
+				Tabs(wr) 
+			end 
+			String(wr, data)
+			wr.afterData := true 
+		end 
+	end Data
+	
+	proc (wr: Writer) EndTag
+	begin 
+		assert(wr.level >= 1, 100)
+		if (wr.current.name = "p") & ~wr.current.inContent then
+			wr.Data("&nbsp;")  // fixes empty paragraph issue
+		end 
+		dec(wr.level)
+		if wr.current.inContent then
+			if wr.afterData then
+				wr.Ln 
+			end 
+			Tabs(wr)
+			String(wr, "</" + wr.current.name + ">") 
+		else 
+			// note that StartElemContents is NOT called!
+			String(wr, "/>") 
+		end 
+		wr.current := wr.current.up
+		wr.Ln
+		wr.afterData := false
+		if wr.level = 0 then
+			wr.rider.Base().Flush 
+		end 
+	end EndTag
+	
+	
+	// factory functions
+	
+	proc MakeFileSpec(in path: array of char; var loc: Files.Locator; var file: Files.Name)
+		var 
+			i, j: integer
+			ch: char
+			s: Files.Name
+	begin 
+		loc := Files.dir.This("")
+		if loc.res # 0 then
+			return  
+		end 
+		j := 0
+		i := 0
+		ch := path[0]
+		while ch # 0x do 
+			if ch = "/" then
+				s[j] := 0x // s contains next path element
+				loc := loc.This(s)
+				if loc.res # 0 then
+					return  
+				end 
+				j := 0 
+			else 
+				s[j] := ch
+				inc(j) 
+			end 
+			inc(i)
+			ch := path[i] 
+		end 
+		s[j] := 0x // s contains file name
+		file := s
+	end MakeFileSpec
+	
+	proc New*(f: Files.File): XhtmlWriters.Writer
+		var 
+			wr: Writer
+	begin 
+		assert(f # nil, 20)
+		new(wr)
+		new(wr.current)
+		wr.current.name := ""
+		wr.current.up := nil
+		wr.rider := f.NewWriter(nil)
+		assert(wr # nil, 100)
+		assert(wr.rider # nil, 101)
+		assert(wr.level >= 0, 102)
+		String(wr, '<?xml version="1.0" encoding="utf-8"?>')
+		wr.Ln
+		return wr
+	end New
+	
+	proc NewForPath*(in path: array of char): XhtmlWriters.Writer
+		var 
+			loc: Files.Locator
+			f: Files.File
+			name: Files.Name
+			wr: XhtmlWriters.Writer
+	begin 
+		assert(path # "", 20)
+		MakeFileSpec(path, loc, name)
+		f := Files.dir.New(loc, Files.dontAsk)
+		if f # nil then
+			wr := New(f) 
+		else 
+			wr := nil 
+		end 
+		return wr
+	end NewForPath
+
+end XhtmlStdFileWriters

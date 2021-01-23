@@ -1,0 +1,743 @@
+module HostFonts
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20070130, bh, Unicode support
+	   - 20070827, bh, improved short character handling in Font.*Tab
+	   - 20070827, bh, DevFont.wTab added
+	   - 20141215, center #23, fixing bugs in WinApi plus some refinements and extensions
+	   - 20161112, center #137, enlarge default font size
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import SYSTEM, WinApi, Kernel, Fonts, HostRegistry
+	
+	const 
+		defSize = 10 * Fonts.point // size of default font
+		// grid = 16384;	(* true type design grid *)
+		
+		
+		grid = 4096
+		figureSpace = 8fx
+	
+	type 
+		WTab = array 256 of integer
+		DevFont* = pointer to record 
+				unit-: integer
+				id-: WinApi.HANDLE
+				next-: DevFont
+				noGap-: boolean
+				wtab-: WTab  // rastered width in pixels
+			end 
+		Font* = pointer to record (Fonts.Font) 
+				asc-, dsc-, w-: integer
+				dev-: DevFont // rastered fonts
+				wtab-, ftab-, ttab-: WTab // univeral width in units
+				id-: WinApi.HANDLE // font used for metric
+				alias-: Fonts.Typeface // alias # typeface & typeface # "*" == alien font
+				a, b: integer  // coefficients for metric
+			end 
+		
+		Directory = pointer to record (Fonts.Directory) end 
+		
+		Identifier = record (Kernel.Identifier) 
+				tface: Fonts.Typeface
+				size_: integer
+				style: set
+				weight: integer 
+			end 
+		
+		Counter = record (Kernel.Identifier) 
+				count: integer 
+			end 
+		
+		Traverser = record (Kernel.Identifier) 
+			end 
+		
+		Par = cstruct 
+				first, last: Fonts.TypefaceInfo 
+			end 
+		ParPtr = pointer to Par
+	
+	var 
+		sysFont-, defFont-, dlgFont-, dlgBoldFont-: Font
+		isUnicode-, useTTMetric-: boolean
+		dfName, dgName: Fonts.Typeface
+		dfSize, dgSize, dgWght: integer
+		dgStyle: set
+		dir: Directory
+		defUnit: integer // screen resolution
+		dc: WinApi.HANDLE
+	
+	// width tab setup
+	
+	proc NewDevFont(
+		typeface: array of char; size_, unit: integer; style: set; weight: integer
+		): DevFont
+		var 
+			df: DevFont
+			it, ul, so: integer
+	begin 
+		if size_ = 8 * Fonts.point then
+			inc(size_, Fonts.point div 4) 
+		end 
+		it := 0
+		ul := 0
+		so := 0
+		if Fonts.italic in style then
+			it := 1 
+		end 
+		if Fonts.underline in style then
+			ul := 1 
+		end 
+		if Fonts.strikeout in style then
+			so := 1 
+		end 
+		new(df)
+		df.unit := unit
+		df.next := nil
+		df.id := WinApi.CreateFontW(-((size_ + unit div 2) div unit), 0, 0, 0, weight, it, ul, so, 1, 0, 2, 1, 4, typeface)
+		return df
+	end NewDevFont
+	
+	proc GetRasterWidth(dc: WinApi.HANDLE; var wtab: WTab)
+		var 
+			res, i, x: integer
+			str: array 4 of char
+			s: WinApi.SIZE
+	begin 
+		res := WinApi.GetTextExtentPoint32W(dc, "x", 1, s)
+		i := 0
+		str := " x"
+		x := s.cx
+		while i < 256 do 
+			str[0] := chr(i)
+			res := WinApi.GetTextExtentPoint32W(dc, str, 2, s)
+			wtab[i] := s.cx - x
+			inc(i) 
+		end 
+	end GetRasterWidth
+	
+	proc SetupWTabs(f: Font)
+		var 
+			res, a, b, max_, x, i: integer
+			tm: WinApi.TEXTMETRICW
+			df: DevFont
+			abc: array 256 of WinApi.ABC
+			dc, old: WinApi.HANDLE
+	begin 
+		dc := WinApi.GetDC(0)
+		old := WinApi.SelectObject(dc, f.dev.id)
+		res := WinApi.GetTextMetricsW(dc, tm)
+		if useTTMetric & odd(ord(tm.tmPitchAndFamily) div 4) then // use true type metric
+			df := NewDevFont(f.alias, grid, 1, f.style, f.weight)
+			res := WinApi.SelectObject(dc, df.id)
+			res := WinApi.GetTextMetricsW(dc, tm)
+			a := f.size_ mod grid
+			b := f.size_ div grid
+			f.id := df.id
+			res := WinApi.GetCharABCWidthsW(dc, 0, 255, abc)
+			if res # 0 then
+				i := 0
+				max_ := 0
+				while i < 256 do 
+					x := -abc[i].abcA
+					if x > 0 then
+						f.ftab[i] := x * a div grid + x * b 
+					end 
+					x := -abc[i].abcC
+					if x > 0 then
+						f.ttab[i] := x * a div grid + x * b 
+					end 
+					x := abc[i].abcA + abc[i].abcB + abc[i].abcC
+					x := x * a div grid + x * b
+					if x > max_ then
+						max_ := x 
+					end 
+					f.wtab[i] := x
+					inc(i) 
+				end  
+			else 
+				max_ := f.w 
+			end  
+		else  // use screen metric
+			a := 0
+			b := defUnit
+			f.id := f.dev.id
+			GetRasterWidth(dc, f.wtab)
+			// res := WinApi.GetCharWidth32W(dc, 0, 255, f.wtab);
+			
+			
+			i := 0
+			max_ := 0
+			while i < 256 do 
+				x := f.wtab[i] * b
+				if x > max_ then
+					max_ := x 
+				end 
+				f.wtab[i] := x
+				inc(i) 
+			end  
+		end 
+		f.wtab[ord(figureSpace)] := f.wtab[ord("0")]
+		f.ftab[ord(figureSpace)] := f.ftab[ord("0")]
+		f.ttab[ord(figureSpace)] := f.ttab[ord("0")]
+		x := tm.tmAscent + tm.tmExternalLeading
+		f.asc := x * a div grid + x * b
+		f.dsc := tm.tmDescent * a div grid + tm.tmDescent * b
+		f.w := max_
+		f.a := a
+		f.b := b
+		res := WinApi.SelectObject(dc, old)
+		res := WinApi.ReleaseDC(0, dc)
+	end SetupWTabs
+	
+	proc Cleanup(f: Font)
+		var 
+			res: integer
+			df: DevFont
+	begin 
+		df := f.dev
+		if f.id # df.id then
+			res := WinApi.DeleteObject(f.id) 
+		end 
+		while df # nil do 
+			res := WinApi.DeleteObject(df.id)
+			df := df.next 
+		end 
+		f.id := 0
+		f.dev := nil
+	end Cleanup
+	
+	
+	// width methods for unicode
+	
+	proc (f: Font) wTab*(dc: WinApi.HANDLE; ch: char): integer // new
+		var 
+			res, w: integer
+			abc: array 1 of WinApi.ABC
+			wt: array 1 of integer
+	begin 
+		if ch < 100x then
+			return f.wtab[ord(ch)] 
+		end 
+		res := WinApi.GetCharABCWidthsW(dc, ord(ch), ord(ch), abc)
+		if res # 0 then
+			w := abc[0].abcA + abc[0].abcB + abc[0].abcC
+			w := w * f.a div grid + w * f.b 
+		else 
+			res := WinApi.GetCharWidth32W(dc, ord(ch), ord(ch), wt)
+			if res # 0 then
+				w := wt[0] * f.a div grid + wt[0] * f.b 
+			else 
+				res := WinApi.GetCharWidthW(dc, ord(ch), ord(ch), wt)
+				if res # 0 then
+					w := wt[0] * f.a div grid + wt[0] * f.b 
+				else 
+					w := f.wtab[1] 
+				end  
+			end  
+		end 
+		return w
+	end wTab
+	
+	proc (f: Font) fTab*(dc: WinApi.HANDLE; ch: char): integer // new
+		var 
+			res, w: integer
+			abc: array 1 of WinApi.ABC
+	begin 
+		if ch < 100x then
+			return f.ftab[ord(ch)] 
+		end 
+		res := WinApi.GetCharABCWidthsW(dc, ord(ch), ord(ch), abc)
+		if (res # 0) & (abc[0].abcA < 0) then
+			w := -abc[0].abcA
+			w := w * f.a div grid + w * f.b 
+		else 
+			w := 0 
+		end 
+		return w
+	end fTab
+	
+	proc (f: Font) tTab*(dc: WinApi.HANDLE; ch: char): integer // new
+		var 
+			res, w: integer
+			abc: array 1 of WinApi.ABC
+	begin 
+		if ch < 100x then
+			return f.ttab[ord(ch)] 
+		end 
+		res := WinApi.GetCharABCWidthsW(dc, ord(ch), ord(ch), abc)
+		if (res # 0) & (abc[0].abcC < 0) then
+			w := -abc[0].abcC
+			w := w * f.a div grid + w * f.b 
+		else 
+			w := 0 
+		end 
+		return w
+	end tTab
+	
+	proc (df: DevFont) wTab*(dc: WinApi.HANDLE; ch: char): integer // new
+		var 
+			res, w: integer
+			wt: array 1 of integer
+	begin 
+		if ch < 100x then
+			return df.wtab[ord(ch)] 
+		end 
+		res := WinApi.GetCharWidth32W(dc, ord(ch), ord(ch), wt)
+		if res = 0 then
+			res := WinApi.GetCharWidthW(dc, ord(ch), ord(ch), wt) 
+		end 
+		if res # 0 then
+			w := wt[0] 
+		else 
+			w := df.wtab[1] 
+		end 
+		return w
+	end wTab
+	
+	
+	// Font
+	
+	proc (f: Font) GetBounds*(var asc, dsc, w: integer)
+	begin 
+		asc := f.asc
+		dsc := f.dsc
+		w := f.w
+	end GetBounds
+	
+	proc (f: Font) SStringWidth*(in s: array of char): integer
+		var 
+			i, w: integer
+			ch: char
+	begin 
+		w := 0
+		if s # "" then
+			i := 0
+			ch := s[0]
+			while ch # 0x do 
+				inc(w, f.wtab[ord(ch)])
+				inc(i)
+				ch := s[i] 
+			end 
+			w := w + f.ftab[ord(s[0])] + f.ttab[ord(s[i - 1])] 
+		end 
+		return w
+	end SStringWidth
+	
+	proc (f: Font) StringWidth*(in s: array of char): integer
+		var 
+			res, i, w: integer
+			lc: char
+			dc, old: WinApi.HANDLE
+	begin 
+		dc := WinApi.GetDC(0)
+		old := WinApi.SelectObject(dc, f.id)
+		w := 0
+		if s[0] # 0x then
+			i := 0
+			lc := s[0]
+			while lc # 0x do 
+				inc(w, f.wTab(dc, lc))
+				inc(i)
+				lc := s[i] 
+			end 
+			w := w + f.fTab(dc, s[0]) + f.tTab(dc, s[i - 1]) 
+		end 
+		res := WinApi.SelectObject(dc, old)
+		res := WinApi.ReleaseDC(0, dc)
+		return w
+	end StringWidth
+	
+	proc (f: Font) IsAlien*(): boolean
+	begin 
+		return (f.typeface # Fonts.default) & (f.alias # f.typeface)
+	end IsAlien
+	
+	proc (f: Font) FINALIZE-
+	begin 
+		Cleanup(f)
+	end FINALIZE
+	
+	
+	
+	// Directory
+	
+	
+	proc SetupDevFont(dc: WinApi.HANDLE; df: DevFont)
+		var 
+			res: integer
+			abc: array 1 of WinApi.ABC
+	begin 
+		res := WinApi.GetCharABCWidthsW(dc, ord("H"), ord("H"), abc)
+		if res # 0 then // true type
+			df.noGap := (res # 0) & (abc[0].abcA <= 0)
+			res := WinApi.GetCharWidth32W(dc, 0, 255, df.wtab) 
+		else  // raster
+			df.noGap := false
+			GetRasterWidth(dc, df.wtab) 
+		end 
+		df.wtab[ord(figureSpace)] := df.wtab[ord("0")]
+	end SetupDevFont
+	
+	proc InsertDevFont*(dc: WinApi.HANDLE; font: Font; var df: DevFont; unit: integer)
+		var 
+			res: integer
+	begin 
+		df := NewDevFont(font.alias, font.size_, unit, font.style, font.weight)
+		res := WinApi.SelectObject(dc, df.id)
+		SetupDevFont(dc, df)
+		df.next := font.dev.next // screen font remains at list head
+		font.dev.next := df
+	end InsertDevFont
+	
+	proc Setup(f: Font; typeface: array of char; size_: integer; style: set; weight: integer)
+		var 
+			res: integer
+			tm: WinApi.TEXTMETRICW
+			name: Fonts.Typeface
+			dc, old: WinApi.HANDLE
+	begin 
+		dc := WinApi.GetDC(0)
+		old := WinApi.SelectObject(dc, f.dev.id)
+		res := WinApi.GetTextFaceW(dc, len(name), name)
+		res := WinApi.GetTextMetricsW(dc, tm)
+		f.alias := name
+		if typeface = Fonts.default then
+			name := Fonts.default 
+		elsif (typeface = "") or (typeface = ".") then 
+			size_ := ((tm.tmHeight - tm.tmInternalLeading) * defUnit + (Fonts.point div 2)) div Fonts.point * Fonts.point
+			// IF size = 8 * Fonts.point THEN INC(size, Fonts.point DIV 4) END;
+			weight := tm.tmWeight
+			if typeface = "." then
+				name := Fonts.default 
+			end 
+			if tm.tmItalic # 0x then
+				incl(style, Fonts.italic) 
+			end 
+			if tm.tmUnderlined # 0x then
+				incl(style, Fonts.underline) 
+			end 
+			if tm.tmStruckOut # 0x then
+				incl(style, Fonts.strikeout) 
+			end  
+		elsif name # typeface then 
+			f.dev := NewDevFont(dfName, size_, defUnit, style, weight)
+			res := WinApi.DeleteObject(WinApi.SelectObject(dc, f.dev.id))
+			f.alias := dfName
+			name := typeface 
+		end 
+		if size_ # 0 then
+			SetupDevFont(dc, f.dev)
+			if f.size_ = 0 then
+				f.Init(name, size_, style, weight) 
+			end 
+			res := WinApi.SelectObject(dc, old)
+			res := WinApi.ReleaseDC(0, dc)
+			SetupWTabs(f) 
+		end 
+		assert(f.size_ > 0)
+	end Setup
+	
+	proc (var id: Identifier) Identified(): boolean
+		var 
+			f: Font
+	begin 
+		f := id.obj(Font)
+		return (f.typeface = id.tface) & (f.size_ = id.size_) & (f.style = id.style) & (f.weight = id.weight)
+	end Identified
+	
+	proc (d: Directory) This(typeface: Fonts.Typeface; size_: integer; style: set; weight: integer): Font
+		var 
+			f: Font
+			i: Identifier
+			p: ANYPTR
+	begin 
+		assert(size_ > 0, 20)
+		style := style * {Fonts.italic, Fonts.underline, Fonts.strikeout}
+		size_ := size_ - size_ mod Fonts.point
+		// IF size = 8 * Fonts.point THEN INC(size, Fonts.point DIV 4) END;
+		if typeface = "L Frutiger Light" then
+			typeface := "Frutiger 45 Light" 
+		elsif typeface = "R Frutiger Roman" then 
+			typeface := "Frutiger 55 Roman" 
+		elsif typeface = "B Frutiger Black" then 
+			typeface := "Frutiger 55 Roman"
+			weight := Fonts.bold 
+		end 
+		i.tface := typeface
+		i.size_ := size_
+		i.style := style
+		i.weight := weight
+		i.typ := SYSTEM.TYP(Font)
+		p := Kernel.ThisFinObj(i)
+		if p # nil then
+			f := p(Font) 
+		else  // not found in cache, search Windows fonts
+			if typeface = "" then
+				f := sysFont 
+			else 
+				new(f)
+				if typeface = Fonts.default then
+					f.dev := NewDevFont(dfName, size_, defUnit, style, weight) 
+				else 
+					f.dev := NewDevFont(typeface, size_, defUnit, style, weight) 
+				end 
+				Setup(f, typeface, size_, style, weight) 
+			end  
+		end 
+		return f
+	end This
+	
+	proc (d: Directory) Default(): Fonts.Font
+	begin 
+		return defFont
+	end Default
+	
+	proc CallBack(
+		var elf: WinApi.ENUMLOGFONTW; var ntm: WinApi.NEWTEXTMETRICW; type_, par: integer
+		): integer
+		var 
+			p: ParPtr
+			info: Fonts.TypefaceInfo
+	begin 
+		p := SYSTEM.VAL(ParPtr, par)
+		new(info)
+		info.typeface := elf.elfLogFont.lfFaceName
+		if p.last = nil then
+			p.first := info 
+		else 
+			p.last.next := info 
+		end 
+		p.last := info
+		return 1
+	end CallBack
+	
+	proc (d: Directory) TypefaceList*(): Fonts.TypefaceInfo
+		var 
+			res: integer
+			dc: WinApi.HANDLE
+			par: Par
+	begin 
+		dc := WinApi.GetDC(0)
+		par.first := nil
+		par.last := nil
+		res := WinApi.EnumFontFamiliesW(dc, nil, CallBack, SYSTEM.ADR(par))
+		res := WinApi.ReleaseDC(0, dc)
+		return par.first
+	end TypefaceList
+	
+	
+	
+	
+	
+	// miscellaneous
+	
+	proc (var id: Counter) Identified(): boolean
+	begin 
+		inc(id.count)
+		return false
+	end Identified
+	
+	proc NofFonts*(): integer
+		var 
+			p: ANYPTR
+			cnt: Counter
+	begin 
+		cnt.typ := SYSTEM.TYP(Font)
+		cnt.count := 0
+		p := Kernel.ThisFinObj(cnt)
+		return cnt.count
+	end NofFonts
+	
+	proc InstallDir*
+	begin 
+		Fonts.SetDir(dir)
+	end InstallDir
+	
+	
+	proc (var id: Traverser) Identified(): boolean
+		var 
+			f: Font
+	begin 
+		f := id.obj(Font)
+		if (f.typeface = Fonts.default) & (f.alias # dfName) then
+			Cleanup(f)
+			f.dev := NewDevFont(dfName, f.size_, defUnit, f.style, f.weight)
+			Setup(f, Fonts.default, f.size_, f.style, f.weight) 
+		else 
+			SetupWTabs(f) 
+		end 
+		return false
+	end Identified
+	
+	proc SetTTMetric*(on: boolean)
+		var 
+			t: Traverser
+			p: ANYPTR
+	begin 
+		if useTTMetric # on then
+			useTTMetric := on
+			t.typ := SYSTEM.TYP(Font)
+			p := Kernel.ThisFinObj(t)
+			HostRegistry.WriteBool("FontTTMetric", useTTMetric) 
+		end 
+	end SetTTMetric
+	
+	proc SetDefaultFont*(tf: Fonts.Typeface; size_: integer)
+		var 
+			t: Traverser
+			p: ANYPTR
+	begin 
+		assert(tf # "", 20)
+		assert(size_ > 0, 21)
+		if tf = Fonts.default then
+			tf := dfName 
+		end 
+		if (dfName # tf) or (dfSize # size_) then
+			dfName := tf
+			dfSize := size_
+			t.typ := SYSTEM.TYP(Font)
+			p := Kernel.ThisFinObj(t)
+			defFont := dir.This(Fonts.default, dfSize, {}, Fonts.normal)
+			HostRegistry.WriteString("DefFontName", dfName)
+			HostRegistry.WriteInt("DefFontSize", dfSize) 
+		end 
+	end SetDefaultFont
+	
+	proc SetDialogFont*(tf: Fonts.Typeface; size_: integer; style: set; weight: integer)
+		var 
+			i: integer
+	begin 
+		assert(tf # "", 20)
+		assert(size_ > 0, 21)
+		if (dgName # tf) or (dgSize # size_) or (dgStyle # style) or (dgWght # weight) then
+			dgName := tf
+			dgSize := size_
+			dgStyle := style
+			dgWght := weight
+			dlgFont := dir.This(dgName, dgSize, dgStyle, dgWght)
+			dlgBoldFont := dir.This(dgName, dgSize, dgStyle, Fonts.bold)
+			HostRegistry.WriteString("DlgFontName", dgName)
+			HostRegistry.WriteInt("DlgFontSize", dgSize)
+			i := 0
+			if Fonts.italic in dgStyle then
+				inc(i, 1) 
+			end 
+			if Fonts.underline in dgStyle then
+				inc(i, 2) 
+			end 
+			if Fonts.strikeout in dgStyle then
+				inc(i, 4) 
+			end 
+			if dgWght > Fonts.normal then
+				inc(i, 8) 
+			end 
+			HostRegistry.WriteInt("DlgFontStyle", i) 
+		end 
+	end SetDialogFont
+	
+	
+	proc Init
+		var 
+			res, i: integer
+			dc, old, f: WinApi.HANDLE
+			tm: WinApi.TEXTMETRICW
+	begin 
+		dfName := ""
+		dgName := ""
+		dfSize := 0
+		dgSize := 0
+		dgStyle := {}
+		dgWght := Fonts.normal
+		i := 0
+		HostRegistry.ReadString("DefFontName", dfName, res)
+		HostRegistry.ReadInt("DefFontSize", dfSize, res)
+		HostRegistry.ReadString("DlgFontName", dgName, res)
+		HostRegistry.ReadInt("DlgFontSize", dgSize, res)
+		HostRegistry.ReadInt("DlgFontStyle", i, res)
+		if odd(i) then
+			incl(dgStyle, Fonts.italic) 
+		end 
+		if odd(i div 2) then
+			incl(dgStyle, Fonts.underline) 
+		end 
+		if odd(i div 4) then
+			incl(dgStyle, Fonts.strikeout) 
+		end 
+		if odd(i div 8) then
+			dgWght := Fonts.bold 
+		end 
+		HostRegistry.ReadBool("FontTTMetric", useTTMetric, res)
+		new(dir)
+		Fonts.SetDir(dir)
+		dc := WinApi.GetDC(0)
+		defUnit := 72 * Fonts.point div WinApi.GetDeviceCaps(dc, WinApi.LOGPIXELSY)
+		isUnicode := true
+		res := WinApi.ReleaseDC(0, dc)
+		new(sysFont)
+		new(sysFont.dev)
+		sysFont.dev.unit := defUnit
+		sysFont.dev.next := nil
+		sysFont.dev.id := WinApi.GetStockObject(WinApi.SYSTEM_FONT)
+		Setup(sysFont, "", 0, {}, 0)
+		new(defFont)
+		new(defFont.dev)
+		defFont.dev.unit := defUnit
+		defFont.dev.next := nil
+		if (dfName # "") & (dfSize > 5 * Fonts.point) & (dfSize < 100 * Fonts.point) then
+			defFont := dir.This(Fonts.default, dfSize, {}, Fonts.normal) 
+		else 
+			i := (defSize + defUnit div 2) div defUnit
+			if i < 11 then
+				i := 11 
+			end 
+			defFont.dev.id := WinApi.CreateFontW(-i, 0, 0, 0, Fonts.normal, 0, 0, 0, 0, 7, 2, 1, 38, "")
+			Setup(defFont, ".", 0, {}, 0)
+			dfName := defFont.alias 
+		end 
+		new(dlgFont)
+		new(dlgFont.dev)
+		dlgFont.dev.unit := defUnit
+		dlgFont.dev.next := nil
+		if (dgName # "") & (dgSize > 5 * Fonts.point) & (dgSize < 100 * Fonts.point) then
+			dlgFont := dir.This(dgName, dgSize, dgStyle, dgWght)
+			dlgBoldFont := dir.This(dgName, dgSize, dgStyle, Fonts.bold) 
+		else 
+			dlgFont.dev.id := WinApi.GetStockObject(WinApi.ANSI_VAR_FONT)
+			// ANSI_VAR_FONT is not a Unicode font
+			// try to use the "Tahoma" font of same size
+			dc := WinApi.GetDC(0)
+			old := WinApi.SelectObject(dc, dlgFont.dev.id)
+			res := WinApi.GetTextMetricsW(dc, tm)
+			f := WinApi.CreateFontW(tm.tmHeight, 0, 0, 0, 400, 0, 0, 0, 0, 0, 0, 0, 0, "Tahoma")
+			res := WinApi.SelectObject(dc, old)
+			res := WinApi.ReleaseDC(0, dc)
+			if f # 0 then
+				res := WinApi.DeleteObject(dlgFont.dev.id)
+				dlgFont.dev.id := f 
+			end 
+			Setup(dlgFont, "", 0, {}, 0)
+			dgName := dlgFont.alias
+			dlgBoldFont := dir.This(dlgFont.typeface, dlgFont.size_, dlgFont.style, Fonts.bold)
+			if WinApi.GetVersion() mod 256 < 4 then
+				dlgFont := dlgBoldFont 
+			end  
+		end 
+	end Init
+
+begin
+	Init
+end HostFonts

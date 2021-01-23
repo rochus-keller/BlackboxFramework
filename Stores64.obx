@@ -1,0 +1,764 @@
+module Stores64
+	(* project	= "BlackBox"
+	   organization	= "blackboxframework.org/"
+	   contributors	= "BlackBox Framework Center"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20161022, center #138, Support for files larger than 2GB
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<="
+	   
+	   For interoperability of 32-bit Stores with 64-bit Files. *)
+	
+	
+	
+	import SYSTEM, Files64, Files, Stores, Kernel
+	
+	type 
+		Segment = pointer to record (Files.File) 
+				container: Files64.File
+				org: longint 
+			end 
+		
+		SegmentReader = pointer to record (Files.Reader) 
+				base: Segment
+				rd: Files64.Reader 
+			end 
+		
+		SegmentWriter = pointer to record (Files.Writer) 
+				base: Segment
+				wr: Files64.Writer 
+			end 
+		
+		Reader* = record 
+				rider-: Files64.Reader
+				cancelled-: boolean
+				readAlien-: boolean
+				srd: pointer to Stores.Reader // only for ReadStore
+				srdSeg: Segment 
+			end 
+		
+		Writer* = record 
+				rider-: Files64.Writer
+				writtenStore-: Stores.Store
+				swr: pointer to Stores.Writer // only for WriteStore
+				swrSeg: Segment 
+			end 
+	
+	
+	// Segment
+	
+	proc NewSegment*(container: Files64.File; org: longint): Files.File
+		var 
+			seg: Segment
+	begin 
+		assert(container # nil, 20)
+		assert(~container.Closed(), 21)
+		assert(org >= 0, 22)
+		new(seg)
+		seg.container := container
+		seg.org := org
+		return seg
+	end NewSegment
+	
+	proc (this: Segment) Close
+	begin 
+		this.container := nil
+	end Close
+	
+	proc (this: Segment) Closed(): boolean
+	begin 
+		return (this.container = nil) or this.container.Closed()
+	end Closed
+	
+	proc (this: Segment) Shared(): boolean
+	begin 
+		return this.container.Shared()
+	end Shared
+	
+	proc (this: Segment) Flush
+	begin 
+		this.container.Flush
+	end Flush
+	
+	proc (this: Segment) Length(): integer
+	begin 
+		return short(min(max(integer), this.container.Length() - this.org))
+	end Length
+	
+	proc (this: Segment) NewReader(old: Files.Reader): Files.Reader
+		var 
+			segRd: SegmentReader
+	begin 
+		assert(~this.Closed(), 20)
+		if (old # nil) & (old is SegmentReader) then
+			segRd := old(SegmentReader) 
+		else 
+			new(segRd) 
+		end 
+		if segRd.base # this then
+			segRd.base := this
+			segRd.rd := this.container.NewReader(nil)
+			segRd.rd.SetPos(segRd.base.org) 
+		end 
+		segRd.eof := false
+		return segRd
+	end NewReader
+	
+	proc (this: Segment) NewWriter(old: Files.Writer): Files.Writer
+		var 
+			segWr: SegmentWriter
+	begin 
+		assert(~this.Closed(), 20)
+		assert(~this.Shared(), 21)
+		if (old # nil) & (old is SegmentWriter) then
+			segWr := old(SegmentWriter) 
+		else 
+			new(segWr) 
+		end 
+		if segWr.base # this then
+			segWr.base := this
+			segWr.wr := this.container.NewWriter(nil)
+			segWr.wr.SetPos(segWr.base.org + segWr.base.Length()) 
+		end 
+		return segWr
+	end NewWriter
+	
+	proc (this: Segment) Register(name: Files.Name; type_: Files.Type; ask: boolean
+		var res: integer)
+	begin  // a Segment cannot be registered
+		halt(20)
+	end Register
+	
+	proc (this: SegmentReader) Base(): Files.File
+	begin 
+		return this.base
+	end Base
+	
+	proc (this: SegmentReader) SetPos(pos: integer)
+		var 
+			seg: Segment
+	begin 
+		seg := this.base
+		assert(seg # nil, 20)
+		assert(~seg.Closed(), 25)
+		assert(pos >= 0, 22)
+		assert(pos <= seg.Length(), 21)
+		this.rd.SetPos(seg.org + pos)
+	end SetPos
+	
+	proc (this: SegmentReader) Pos(): integer
+	begin 
+		assert(this.base # nil, 20)
+		return short(this.rd.Pos() - this.base.org)
+	end Pos
+	
+	proc (this: SegmentReader) ReadByte(var x: byte)
+	begin 
+		this.rd.ReadByte(x)
+	end ReadByte
+	
+	proc (this: SegmentReader) ReadBytes(var x: array of byte; beg, len_: integer)
+	begin 
+		this.rd.ReadBytes(x, beg, len_)
+	end ReadBytes
+	
+	proc (this: SegmentWriter) Base(): Files.File
+	begin 
+		return this.base
+	end Base
+	
+	proc (this: SegmentWriter) SetPos(pos: integer)
+		var 
+			seg: Segment
+	begin 
+		seg := this.base
+		assert(seg # nil, 20)
+		assert(~seg.Closed(), 25)
+		assert(pos >= 0, 22)
+		assert(pos <= seg.Length(), 21)
+		this.wr.SetPos(seg.org + pos)
+	end SetPos
+	
+	proc (this: SegmentWriter) Pos(): integer
+	begin 
+		assert(this.base # nil, 20)
+		return short(this.wr.Pos() - this.base.org)
+	end Pos
+	
+	proc (this: SegmentWriter) WriteByte(x: byte)
+	begin 
+		this.wr.WriteByte(x)
+	end WriteByte
+	
+	proc (this: SegmentWriter) WriteBytes(in x: array of byte; beg, len_: integer)
+	begin 
+		this.wr.WriteBytes(x, beg, len_)
+	end WriteBytes
+	
+	
+	// Reader
+	
+	proc (var rd: Reader) ConnectTo*(f: Files64.File) // new
+	begin 
+		if f = nil then
+			rd.rider := nil 
+		else 
+			rd.rider := f.NewReader(rd.rider)
+			rd.rider.SetPos(0) 
+		end 
+		rd.cancelled := false
+		rd.readAlien := false
+		rd.srd := nil
+	end ConnectTo
+	
+	proc (var rd: Reader) SetPos*(pos: longint) // new
+	begin 
+		rd.rider.SetPos(pos)
+	end SetPos
+	
+	proc (var rd: Reader) Pos*(): longint // new
+	begin 
+		return rd.rider.Pos()
+	end Pos
+	
+	proc (var rd: Reader) ReadBool*(var x: boolean) // new
+		var 
+			b: byte
+	begin 
+		rd.rider.ReadByte(b)
+		x := b # 0
+	end ReadBool
+	
+	proc (var rd: Reader) ReadSChar*(var x: char) // new
+	begin 
+		rd.rider.ReadByte(SYSTEM.VAL(byte, x))
+	end ReadSChar
+	
+	proc (var rd: Reader) ReadXChar*(var x: char) // new
+		var 
+			c: char
+	begin 
+		rd.rider.ReadByte(SYSTEM.VAL(byte, c))
+		x := c
+	end ReadXChar
+	
+	proc (var rd: Reader) ReadChar*(var x: char) // new
+		var  // little endian, big endian
+			le: array 2 of byte
+	begin 
+		rd.rider.ReadBytes(le, 0, 2)
+		x := chr(le[0] mod 256 + (le[1] mod 256) * 256)
+	end ReadChar
+	
+	proc (var rd: Reader) ReadByte*(var x: byte) // new
+	begin 
+		rd.rider.ReadByte(x)
+	end ReadByte
+	
+	proc (var rd: Reader) ReadSInt*(var x: shortint) // new
+		var  // little endian, big endian
+			le, be: array 2 of byte
+	begin 
+		rd.rider.ReadBytes(le, 0, 2)
+		if Kernel.littleEndian then
+			x := SYSTEM.VAL(shortint, le) 
+		else 
+			be[0] := le[1]
+			be[1] := le[0]
+			x := SYSTEM.VAL(shortint, be) 
+		end 
+	end ReadSInt
+	
+	proc (var rd: Reader) ReadXInt*(var x: integer) // new
+		var  // little endian, big endian
+			le, be: array 2 of byte
+	begin 
+		rd.rider.ReadBytes(le, 0, 2)
+		if Kernel.littleEndian then
+			x := SYSTEM.VAL(shortint, le) 
+		else 
+			be[0] := le[1]
+			be[1] := le[0]
+			x := SYSTEM.VAL(shortint, be) 
+		end 
+	end ReadXInt
+	
+	proc (var rd: Reader) ReadInt*(var x: integer) // new
+		var  // little endian, big endian
+			le, be: array 4 of byte
+	begin 
+		rd.rider.ReadBytes(le, 0, 4)
+		if Kernel.littleEndian then
+			x := SYSTEM.VAL(integer, le) 
+		else 
+			be[0] := le[3]
+			be[1] := le[2]
+			be[2] := le[1]
+			be[3] := le[0]
+			x := SYSTEM.VAL(integer, be) 
+		end 
+	end ReadInt
+	
+	proc (var rd: Reader) ReadLong*(var x: longint) // new
+		var  // little endian, big endian
+			le, be: array 8 of byte
+	begin 
+		rd.rider.ReadBytes(le, 0, 8)
+		if Kernel.littleEndian then
+			x := SYSTEM.VAL(longint, le) 
+		else 
+			be[0] := le[7]
+			be[1] := le[6]
+			be[2] := le[5]
+			be[3] := le[4]
+			be[4] := le[3]
+			be[5] := le[2]
+			be[6] := le[1]
+			be[7] := le[0]
+			x := SYSTEM.VAL(longint, be) 
+		end 
+	end ReadLong
+	
+	proc (var rd: Reader) ReadSReal*(var x: real) // new
+		var  // little endian, big endian
+			le, be: array 4 of byte
+	begin 
+		rd.rider.ReadBytes(le, 0, 4)
+		if Kernel.littleEndian then
+			x := SYSTEM.VAL(real, le) 
+		else 
+			be[0] := le[3]
+			be[1] := le[2]
+			be[2] := le[1]
+			be[3] := le[0]
+			x := SYSTEM.VAL(real, be) 
+		end 
+	end ReadSReal
+	
+	proc (var rd: Reader) ReadXReal*(var x: real) // new
+		var  // little endian, big endian
+			le, be: array 4 of byte
+	begin 
+		rd.rider.ReadBytes(le, 0, 4)
+		if Kernel.littleEndian then
+			x := SYSTEM.VAL(real, le) 
+		else 
+			be[0] := le[3]
+			be[1] := le[2]
+			be[2] := le[1]
+			be[3] := le[0]
+			x := SYSTEM.VAL(real, be) 
+		end 
+	end ReadXReal
+	
+	proc (var rd: Reader) ReadReal*(var x: real) // new
+		var  // little endian, big endian
+			le, be: array 8 of byte
+	begin 
+		rd.rider.ReadBytes(le, 0, 8)
+		if Kernel.littleEndian then
+			x := SYSTEM.VAL(real, le) 
+		else 
+			be[0] := le[7]
+			be[1] := le[6]
+			be[2] := le[5]
+			be[3] := le[4]
+			be[4] := le[3]
+			be[5] := le[2]
+			be[6] := le[1]
+			be[7] := le[0]
+			x := SYSTEM.VAL(real, be) 
+		end 
+	end ReadReal
+	
+	proc (var rd: Reader) ReadSet*(var x: set) // new
+		var  // little endian, big endian
+			le, be: array 4 of byte
+	begin 
+		rd.rider.ReadBytes(le, 0, 4)
+		if Kernel.littleEndian then
+			x := SYSTEM.VAL(set, le) 
+		else 
+			be[0] := le[3]
+			be[1] := le[2]
+			be[2] := le[1]
+			be[3] := le[0]
+			x := SYSTEM.VAL(set, be) 
+		end 
+	end ReadSet
+	
+	proc (var rd: Reader) ReadSString*(var x: array of char) // new
+		var 
+			i: integer
+			ch: char
+	begin 
+		i := 0
+		repeat 
+			rd.ReadSChar(ch)
+			x[i] := ch
+			inc(i) 
+		until ch = 0x 
+	end ReadSString
+	
+	proc (var rd: Reader) ReadXString*(var x: array of char) // new
+		var 
+			i: integer
+			ch: char
+	begin 
+		i := 0
+		repeat 
+			rd.ReadXChar(ch)
+			x[i] := ch
+			inc(i) 
+		until ch = 0x 
+	end ReadXString
+	
+	proc (var rd: Reader) ReadString*(var x: array of char) // new
+		var 
+			i: integer
+			ch: char
+	begin 
+		i := 0
+		repeat 
+			rd.ReadChar(ch)
+			x[i] := ch
+			inc(i) 
+		until ch = 0x 
+	end ReadString
+	
+	proc (var rd: Reader) ReadStore*(var x: Stores.Store) // new
+		var 
+			pos0, srdPos0: longint
+			srd: pointer to Stores.Reader
+			seg: Segment
+	begin 
+		pos0 := rd.Pos()
+		srd := rd.srd
+		if srd = nil then
+			srdPos0 := 0
+			seg := NewSegment(rd.rider.Base(), pos0)(Segment)
+			new(srd)
+			srd.ConnectTo(seg)
+			rd.srd := srd
+			rd.srdSeg := seg 
+		else 
+			srdPos0 := pos0 - rd.srdSeg.org
+			if srdPos0 < max(integer) then
+				srd.SetPos(short(srdPos0)) 
+			else 
+				halt(20)  // stores need more than MAX(INTEGER) bytes
+			end  
+		end 
+		srd.ReadStore(x)
+		rd.SetPos(pos0 + (srd.Pos() - srdPos0))
+		rd.cancelled := srd.cancelled
+		rd.readAlien := srd.readAlien
+	end ReadStore
+	
+	
+	// Writer
+	
+	proc (var wr: Writer) ConnectTo*(f: Files64.File) // new
+	begin 
+		if f = nil then
+			wr.rider := nil 
+		else 
+			wr.rider := f.NewWriter(wr.rider)
+			wr.rider.SetPos(f.Length()) 
+		end 
+		wr.writtenStore := nil
+		wr.swr := nil
+	end ConnectTo
+	
+	proc (var wr: Writer) SetPos*(pos: longint) // new
+	begin 
+		wr.rider.SetPos(pos)
+	end SetPos
+	
+	proc (var wr: Writer) Pos*(): longint // new
+	begin 
+		return wr.rider.Pos()
+	end Pos
+	
+	proc (var wr: Writer) WriteBool*(x: boolean) // new
+	begin 
+		if x then
+			wr.rider.WriteByte(1) 
+		else 
+			wr.rider.WriteByte(0) 
+		end 
+	end WriteBool
+	
+	proc (var wr: Writer) WriteSChar*(x: char) // new
+	begin 
+		wr.rider.WriteByte(SYSTEM.VAL(byte, x))
+	end WriteSChar
+	
+	proc (var wr: Writer) WriteXChar*(x: char) // new
+		var 
+			c: char
+	begin 
+		c := short(x)
+		wr.rider.WriteByte(SYSTEM.VAL(byte, c))
+	end WriteXChar
+	
+	proc (var wr: Writer) WriteChar*(x: char) // new
+		type 
+			a = array 2 of byte
+		var  // little endian, big endian
+			le, be: a
+	begin 
+		if Kernel.littleEndian then
+			le := SYSTEM.VAL(a, x) 
+		else 
+			be := SYSTEM.VAL(a, x)
+			le[0] := be[1]
+			le[1] := be[0] 
+		end 
+		wr.rider.WriteBytes(le, 0, 2)
+	end WriteChar
+	
+	proc (var wr: Writer) WriteByte*(x: byte) // new
+	begin 
+		wr.rider.WriteByte(x)
+	end WriteByte
+	
+	proc (var wr: Writer) WriteSInt*(x: shortint) // new
+		type 
+			a = array 2 of byte
+		var  // little endian, big endian
+			le, be: a
+	begin 
+		if Kernel.littleEndian then
+			le := SYSTEM.VAL(a, x) 
+		else 
+			be := SYSTEM.VAL(a, x)
+			le[0] := be[1]
+			le[1] := be[0] 
+		end 
+		wr.rider.WriteBytes(le, 0, 2)
+	end WriteSInt
+	
+	proc (var wr: Writer) WriteXInt*(x: integer) // new
+		type 
+			a = array 2 of byte
+		var  // little endian, big endian
+			y: shortint
+			le, be: a
+	begin 
+		y := short(x)
+		if Kernel.littleEndian then
+			le := SYSTEM.VAL(a, y) 
+		else 
+			be := SYSTEM.VAL(a, y)
+			le[0] := be[1]
+			le[1] := be[0] 
+		end 
+		wr.rider.WriteBytes(le, 0, 2)
+	end WriteXInt
+	
+	proc (var wr: Writer) WriteInt*(x: integer) // new
+		type 
+			a = array 4 of byte
+		var  // little endian, big endian
+			le, be: a
+	begin 
+		if Kernel.littleEndian then
+			le := SYSTEM.VAL(a, x) 
+		else 
+			be := SYSTEM.VAL(a, x)
+			le[0] := be[3]
+			le[1] := be[2]
+			le[2] := be[1]
+			le[3] := be[0] 
+		end 
+		wr.rider.WriteBytes(le, 0, 4)
+	end WriteInt
+	
+	proc (var wr: Writer) WriteLong*(x: longint) // new
+		type 
+			a = array 8 of byte
+		var  // little endian, big endian
+			le, be: a
+	begin 
+		if Kernel.littleEndian then
+			le := SYSTEM.VAL(a, x) 
+		else 
+			be := SYSTEM.VAL(a, x)
+			le[0] := be[7]
+			le[1] := be[6]
+			le[2] := be[5]
+			le[3] := be[4]
+			le[4] := be[3]
+			le[5] := be[2]
+			le[6] := be[1]
+			le[7] := be[0] 
+		end 
+		wr.rider.WriteBytes(le, 0, 8)
+	end WriteLong
+	
+	proc (var wr: Writer) WriteSReal*(x: real) // new
+		type 
+			a = array 4 of byte
+		var  // little endian, big endian
+			le, be: a
+	begin 
+		if Kernel.littleEndian then
+			le := SYSTEM.VAL(a, x) 
+		else 
+			be := SYSTEM.VAL(a, x)
+			le[0] := be[3]
+			le[1] := be[2]
+			le[2] := be[1]
+			le[3] := be[0] 
+		end 
+		wr.rider.WriteBytes(le, 0, 4)
+	end WriteSReal
+	
+	proc (var wr: Writer) WriteXReal*(x: real) // new
+		type 
+			a = array 4 of byte
+		var  // little endian, big endian
+			y: real
+			le, be: a
+	begin 
+		y := (x)
+		if Kernel.littleEndian then
+			le := SYSTEM.VAL(a, y) 
+		else 
+			be := SYSTEM.VAL(a, y)
+			le[0] := be[3]
+			le[1] := be[2]
+			le[2] := be[1]
+			le[3] := be[0] 
+		end 
+		wr.rider.WriteBytes(le, 0, 4)
+	end WriteXReal
+	
+	proc (var wr: Writer) WriteReal*(x: real) // new
+		type 
+			a = array 8 of byte
+		var  // little endian, big endian
+			le, be: a
+	begin 
+		if Kernel.littleEndian then
+			le := SYSTEM.VAL(a, x) 
+		else 
+			be := SYSTEM.VAL(a, x)
+			le[0] := be[7]
+			le[1] := be[6]
+			le[2] := be[5]
+			le[3] := be[4]
+			le[4] := be[3]
+			le[5] := be[2]
+			le[6] := be[1]
+			le[7] := be[0] 
+		end 
+		wr.rider.WriteBytes(le, 0, 8)
+	end WriteReal
+	
+	proc (var wr: Writer) WriteSet*(x: set) // new
+		// SIZE(SET) = 4
+		type 
+			a = array 4 of byte
+		var  // little endian, big endian
+			le, be: a
+	begin 
+		if Kernel.littleEndian then
+			le := SYSTEM.VAL(a, x) 
+		else 
+			be := SYSTEM.VAL(a, x)
+			le[0] := be[3]
+			le[1] := be[2]
+			le[2] := be[1]
+			le[3] := be[0] 
+		end 
+		wr.rider.WriteBytes(le, 0, 4)
+	end WriteSet
+	
+	proc (var wr: Writer) WriteSString*(in x: array of char) // new
+		var 
+			i: integer
+			ch: char
+	begin 
+		i := 0
+		ch := x[0]
+		while ch # 0x do 
+			wr.WriteSChar(ch)
+			inc(i)
+			ch := x[i] 
+		end 
+		wr.WriteSChar(0x)
+	end WriteSString
+	
+	proc (var wr: Writer) WriteXString*(in x: array of char) // new
+		var 
+			i: integer
+			ch: char
+	begin 
+		i := 0
+		ch := x[0]
+		while ch # 0x do 
+			wr.WriteXChar(ch)
+			inc(i)
+			ch := x[i] 
+		end 
+		wr.WriteSChar(0x)
+	end WriteXString
+	
+	proc (var wr: Writer) WriteString*(in x: array of char) // new
+		var 
+			i: integer
+			ch: char
+	begin 
+		i := 0
+		ch := x[0]
+		while ch # 0x do 
+			wr.WriteChar(ch)
+			inc(i)
+			ch := x[i] 
+		end 
+		wr.WriteChar(0x)
+	end WriteString
+	
+	proc (var wr: Writer) WriteVersion*(version: integer) // new
+	begin 
+		wr.WriteByte(short(short(version)))
+	end WriteVersion
+	
+	proc (var wr: Writer) WriteStore*(x: Stores.Store) // new
+		var 
+			pos0, swrPos0: longint
+			swr: pointer to Stores.Writer
+			seg: Segment
+	begin 
+		pos0 := wr.Pos()
+		swr := wr.swr
+		if swr = nil then
+			swrPos0 := 0
+			seg := NewSegment(wr.rider.Base(), pos0)(Segment)
+			new(swr)
+			swr.ConnectTo(seg)
+			wr.swr := swr
+			wr.swrSeg := seg 
+		else 
+			swrPos0 := pos0 - wr.swrSeg.org
+			if swrPos0 < max(integer) then
+				swr.SetPos(short(swrPos0)) 
+			else 
+				halt(20)  // stores need more than MAX(INTEGER) bytes
+			end  
+		end 
+		swr.WriteStore(x)
+		wr.SetPos(pos0 + (swr.Pos() - swrPos0))
+		wr.writtenStore := x
+	end WriteStore
+
+end Stores64

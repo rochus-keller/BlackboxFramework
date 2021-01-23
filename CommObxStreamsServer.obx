@@ -1,0 +1,133 @@
+module CommObxStreamsServer
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Services, CommStreams, Views, TextModels, TextViews, StdLog
+	
+	const 
+		protocol = "CommTCP" // driver for TCP/IP communication, over Winsock
+		localAdr = "900" // this is the port on which the server listens
+	
+	type 
+		Server = pointer to record (Services.Action) 
+				listener: CommStreams.Listener  // the server listens using this object and accepts incoming connections
+			end 
+		
+		Processor = pointer to record (Services.Action) 
+				prev, succ: Processor // linked to allow stopping of all active processors with Stop command
+				stream: CommStreams.Stream // for each connection, a receiver communicates through this object
+				writer: TextModels.Writer 
+			end 
+	
+	var 
+		server: Server
+		processors: Processor
+	
+	proc (server: Server) Do
+		var 
+			s: CommStreams.Stream
+			p: Processor
+			t: TextModels.Model
+	begin 
+		server.listener.Accept(s) // poll for a connection
+		if s # nil then // upon accept create and start processor for new connection
+			new(p)
+			p.prev := nil
+			p.succ := processors
+			processors := p
+			if p.succ # nil then
+				p.succ.prev := p 
+			end 
+			p.stream := s
+			t := TextModels.dir.New()
+			p.writer := t.NewWriter(nil)
+			Views.OpenAux(TextViews.dir.New(t), "Message")
+			Services.DoLater(p, Services.now) 
+		end 
+		Services.DoLater(server, Services.now)
+	end Do
+	
+	proc (p: Processor) Do
+		var 
+			buf: array 256 of byte
+			read, i: integer
+	begin 
+		p.stream.ReadBytes(buf, 0, len(buf), read) // poll for incoming data
+		if read > 0 then // write received data into log
+			i := 0
+			while i # read do 
+				p.writer.WriteChar(chr(buf[i]))
+				inc(i) 
+			end 
+			Services.DoLater(p, Services.now) 
+		elsif p.stream.IsConnected() then 
+			Services.DoLater(p, Services.now) 
+		else 
+			if p.prev # nil then
+				p.prev.succ := p.succ 
+			else 
+				processors := p.succ 
+			end 
+			if p.succ # nil then
+				p.succ.prev := p.prev 
+			end  
+		end 
+	end Do
+	
+	
+	proc Start*
+		var 
+			l: CommStreams.Listener
+			res: integer
+	begin 
+		if server = nil then
+			CommStreams.NewListener(protocol, localAdr, l, res)
+			if l # nil then
+				new(server)
+				server.listener := l
+				Services.DoLater(server, Services.now)
+				StdLog.String("server: server started")
+				StdLog.Ln 
+			else 
+				StdLog.String("server: error starting the server (")
+				StdLog.Int(res)
+				StdLog.Char(")")
+				StdLog.Ln 
+			end  
+		end 
+	end Start
+	
+	proc Stop*
+	begin 
+		while processors # nil do 
+			processors.stream.Close
+			Services.RemoveAction(processors)
+			processors := processors.succ 
+		end 
+		if server # nil then
+			Services.RemoveAction(server)
+			server.listener.Close
+			server := nil
+			StdLog.String("server: server stopped")
+			StdLog.Ln 
+		end 
+	end Stop
+
+(* CLOSE
+	Stop *)  // prevent the server from trapping after module unloading
+end CommObxStreamsServer

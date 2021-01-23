@@ -1,0 +1,1311 @@
+module StdCmds
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20141027, center #19, full Unicode support for Component Pascal identifiers added
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		Fonts, Ports, Services, Stores, Sequencers, Models, Views, 
+		Controllers, Containers, Properties, Dialog, Documents, Windows, Strings, 
+		StdDialog, StdApi
+	
+	const 
+		illegalSizeKey = "#System:IllegalFontSize"
+		defaultAllocator = "TextViews.Deposit; StdCmds.Open"
+		
+		// wType, hType
+		fix = 0
+		page = 1
+		window = 2
+	
+	var 
+		size_*: record 
+				size_*: integer 
+			end 
+		layout*: record 
+				wType*, hType*: integer
+				width*, height*: real
+				doc: Documents.Document
+				u: integer 
+			end 
+		allocator*: Dialog.String
+		
+		propEra: integer // (propEra, props) form cache for StdProps()
+		props: Properties.StdProp // valid iff propEra = Props.era
+		
+		prop: Properties.Property // usef for copy/paste properties
+	
+	// auxiliary procedures
+	
+	proc StdProp(): Properties.StdProp
+	begin 
+		if propEra # Properties.era then
+			Properties.CollectStdProp(props)
+			propEra := Properties.era 
+		end 
+		return props
+	end StdProp
+	
+	proc Append(var s: array of char; t: array of char)
+		var 
+			len_, i, j: integer
+			ch: char
+	begin 
+		len_ := len(s)
+		i := 0
+		while s[i] # 0x do 
+			inc(i) 
+		end 
+		j := 0
+		repeat 
+			ch := t[j]
+			s[i] := ch
+			inc(j)
+			inc(i) 
+		until (ch = 0x) or (i = len_) 
+		s[len_ - 1] := 0x
+	end Append
+	
+	// standard commands
+	
+	proc OpenAuxDialog*(file, title: array of char)
+		var 
+			v: Views.View
+	begin 
+		StdApi.OpenAuxDialog(file, title, v)
+	end OpenAuxDialog
+	
+	proc OpenToolDialog*(file, title: array of char)
+		var 
+			v: Views.View
+	begin 
+		StdApi.OpenToolDialog(file, title, v)
+	end OpenToolDialog
+	
+	proc OpenDoc*(file: array of char)
+		var 
+			v: Views.View
+	begin 
+		StdApi.OpenDoc(file, v)
+	end OpenDoc
+	
+	proc OpenCopyOf*(file: array of char)
+		var 
+			v: Views.View
+	begin 
+		StdApi.OpenCopyOf(file, v)
+	end OpenCopyOf
+	
+	proc OpenAux*(file, title: array of char)
+		var 
+			v: Views.View
+	begin 
+		StdApi.OpenAux(file, title, v)
+	end OpenAux
+	
+	proc OpenBrowser*(file, title: array of char)
+		var 
+			v: Views.View
+	begin 
+		StdApi.OpenBrowser(file, title, v)
+	end OpenBrowser
+	
+	proc CloseDialog*
+		var 
+			v: Views.View
+	begin 
+		StdApi.CloseDialog(v)
+	end CloseDialog
+	
+	
+	proc Open*
+		var 
+			i: integer
+			v: Views.View
+	begin 
+		i := Views.Available()
+		if i > 0 then
+			Views.Fetch(v)
+			Views.OpenView(v) 
+		else 
+			Dialog.ShowMsg("#System:DepositExpected") 
+		end 
+	end Open
+	
+	proc PasteView*
+		var 
+			i: integer
+			v: Views.View
+	begin 
+		i := Views.Available()
+		if i > 0 then
+			Views.Fetch(v)
+			Controllers.PasteView(v, Views.undefined, Views.undefined, false) 
+		else 
+			Dialog.ShowMsg("#System:DepositExpected") 
+		end 
+	end PasteView
+	
+	// file menu commands
+	
+	proc New*
+		var 
+			res: integer
+	begin 
+		Dialog.Call(allocator, " ", res)
+	end New
+	
+	
+	// edit menu commands
+	
+	proc Undo*
+		var 
+			w: Windows.Window
+	begin 
+		w := Windows.dir.Focus(Controllers.frontPath)
+		if w # nil then
+			w.seq.Undo 
+		end 
+	end Undo
+	
+	proc Redo*
+		var 
+			w: Windows.Window
+	begin 
+		w := Windows.dir.Focus(Controllers.frontPath)
+		if w # nil then
+			w.seq.Redo 
+		end 
+	end Redo
+	
+	proc CopyProp*
+	begin 
+		Properties.CollectProp(prop)
+	end CopyProp
+	
+	proc PasteProp*
+	begin 
+		Properties.EmitProp(nil, prop)
+	end PasteProp
+	
+	proc Clear*
+		// remove the selection of the current focus
+		var 
+			msg: Controllers.EditMsg
+	begin 
+		msg.op := Controllers.cut
+		msg.view := nil
+		msg.clipboard := false
+		Controllers.Forward(msg)
+	end Clear
+	
+	proc SelectAll*
+		// select whole content of current focus
+		var 
+			msg: Controllers.SelectMsg
+	begin 
+		msg.set_ := true
+		Controllers.Forward(msg)
+	end SelectAll
+	
+	proc DeselectAll*
+		// select whole content of current focus
+		var 
+			msg: Controllers.SelectMsg
+	begin 
+		msg.set_ := false
+		Controllers.Forward(msg)
+	end DeselectAll
+	
+	proc SelectDocument*
+		// select whole document
+		var 
+			w: Windows.Window
+			c: Containers.Controller
+	begin 
+		w := Windows.dir.Focus(Controllers.path)
+		if w # nil then
+			c := w.doc.ThisController()
+			if (c # nil) & ~(Containers.noSelection in c.opts) & (c.Singleton() = nil) then
+				c.SetSingleton(w.doc.ThisView()) 
+			end  
+		end 
+	end SelectDocument
+	
+	proc SelectNextView*
+		var 
+			c: Containers.Controller
+			v: Views.View
+	begin 
+		c := Containers.Focus()
+		if (c # nil) & ~(Containers.noSelection in c.opts) then
+			if c.HasSelection() then
+				v := c.Singleton() 
+			else 
+				v := nil 
+			end 
+			if v = nil then
+				c.GetFirstView(Containers.any, v) 
+			else 
+				c.GetNextView(Containers.any, v)
+				if v = nil then
+					c.GetFirstView(Containers.any, v) 
+				end  
+			end 
+			c.SelectAll(false)
+			if v # nil then
+				c.SetSingleton(v) 
+			end  
+		else 
+			Dialog.ShowMsg("#Dev:NoTargetFocusFound") 
+		end 
+	end SelectNextView
+	
+	
+	// font menu commands
+	
+	proc Font*(typeface: Fonts.Typeface)
+		// set the selection to the given font family
+		var 
+			p: Properties.StdProp
+	begin 
+		new(p)
+		p.valid := {Properties.typeface}
+		p.typeface := typeface
+		Properties.EmitProp(nil, p)
+	end Font
+	
+	proc DefaultFont*
+		// set the selection to the default font family
+		var 
+			p: Properties.StdProp
+	begin 
+		new(p)
+		p.valid := {Properties.typeface}
+		p.typeface := Fonts.default
+		Properties.EmitProp(nil, p)
+	end DefaultFont
+	
+	
+	// attributes menu commands
+	
+	proc Plain*
+		// reset the font attribute "weight" and all font style attributes of the selection
+		var 
+			p: Properties.StdProp
+	begin 
+		new(p)
+		p.valid := {Properties.style, Properties.weight}
+		p.style.val_ := {}
+		p.style.mask := {Fonts.italic, Fonts.underline, Fonts.strikeout}
+		p.weight := Fonts.normal
+		Properties.EmitProp(nil, p)
+	end Plain
+	
+	proc Bold*
+		(* change the font attribute "weight" in the selection;
+		   if the selection has a homogeneously bold weight: toggle to normal, else force to bold *)
+		var 
+			p, p0: Properties.StdProp
+	begin 
+		Properties.CollectStdProp(p0)
+		new(p)
+		p.valid := {Properties.weight}
+		if (Properties.weight in p0.valid) & (p0.weight # Fonts.normal) then
+			p.weight := Fonts.normal 
+		else 
+			p.weight := Fonts.bold 
+		end 
+		Properties.EmitProp(nil, p)
+	end Bold
+	
+	proc Italic*
+		(* change the font style attribute "italic" in the selection;
+		   if the selection is homogeneous wrt this attribute: toggle, else force to italic *)
+		var 
+			p, p0: Properties.StdProp
+	begin 
+		Properties.CollectStdProp(p0)
+		new(p)
+		p.valid := {Properties.style}
+		p.style.mask := {Fonts.italic}
+		if (Properties.style in p0.valid) & (Fonts.italic in p0.style.val_) then
+			p.style.val_ := {} 
+		else 
+			p.style.val_ := {Fonts.italic} 
+		end 
+		Properties.EmitProp(nil, p)
+	end Italic
+	
+	proc Underline*
+		(* change the font style attribute "underline" in the selection;
+		   if the selection is homogeneous wrt this attribute: toggle, else force to underline *)
+		var 
+			p, p0: Properties.StdProp
+	begin 
+		Properties.CollectStdProp(p0)
+		new(p)
+		p.valid := {Properties.style}
+		p.style.mask := {Fonts.underline}
+		if (Properties.style in p0.valid) & (Fonts.underline in p0.style.val_) then
+			p.style.val_ := {} 
+		else 
+			p.style.val_ := {Fonts.underline} 
+		end 
+		Properties.EmitProp(nil, p)
+	end Underline
+	
+	proc Strikeout*
+		(* change the font style attribute "strikeout" in the selection,
+		   without changing other attributes;
+		   if the selection is homogeneous wrt this attribute: toggle,
+		   else force to strikeout *)
+		var 
+			p, p0: Properties.StdProp
+	begin 
+		Properties.CollectStdProp(p0)
+		new(p)
+		p.valid := {Properties.style}
+		p.style.mask := {Fonts.strikeout}
+		if (Properties.style in p0.valid) & (Fonts.strikeout in p0.style.val_) then
+			p.style.val_ := {} 
+		else 
+			p.style.val_ := {Fonts.strikeout} 
+		end 
+		Properties.EmitProp(nil, p)
+	end Strikeout
+	
+	proc Size*(size_: integer)
+		// set the selection to the given font size
+		var 
+			p: Properties.StdProp
+	begin 
+		new(p)
+		p.valid := {Properties.size_}
+		p.size_ := size_ * Ports.point
+		Properties.EmitProp(nil, p)
+	end Size
+	
+	proc SetSize*
+		var 
+			p: Properties.StdProp
+	begin 
+		if (0 <= size_.size_) & (size_.size_ < 32768) then
+			new(p)
+			p.valid := {Properties.size_}
+			p.size_ := size_.size_ * Fonts.point
+			Properties.EmitProp(nil, p) 
+		else 
+			Dialog.ShowMsg(illegalSizeKey) 
+		end 
+	end SetSize
+	
+	proc InitSizeDialog*
+		var 
+			p: Properties.StdProp
+	begin 
+		Properties.CollectStdProp(p)
+		if Properties.size_ in p.valid then
+			size_.size_ := p.size_ div Fonts.point 
+		end 
+	end InitSizeDialog
+	
+	proc Color*(color: Ports.Color)
+		// set the color attributes of the selection
+		var 
+			p: Properties.StdProp
+	begin 
+		new(p)
+		p.valid := {Properties.color}
+		p.color.val_ := color
+		Properties.EmitProp(nil, p)
+	end Color
+	
+	proc UpdateAll* // for HostCmds.Toggle
+		var 
+			w: Windows.Window
+			pw, ph: integer
+			dirty: boolean
+			msg: Models.UpdateMsg
+	begin 
+		w := Windows.dir.First()
+		while w # nil do 
+			if ~w.sub then
+				dirty := w.seq.Dirty()
+				Models.Domaincast(w.doc.Domain(), msg)
+				if ~dirty then // not perfect: "undoable dirt" ...
+					w.seq.SetDirty(false) 
+				end  
+			end 
+			w.port.GetSize(pw, ph)
+			w.Restore(0, 0, pw, ph)
+			w := Windows.dir.Next(w) 
+		end 
+	end UpdateAll
+	
+	proc RestoreAll*
+		var 
+			w: Windows.Window
+			pw, ph: integer
+	begin 
+		w := Windows.dir.First()
+		while w # nil do 
+			w.port.GetSize(pw, ph)
+			w.Restore(0, 0, pw, ph)
+			w := Windows.dir.Next(w) 
+		end 
+	end RestoreAll
+	
+	
+	// document layout dialog
+	
+	proc SetLayout*
+		var 
+			opts: set
+			l, t, r, b, r0, b0: integer
+			c: Containers.Controller
+			script: Stores.Operation
+	begin 
+		c := layout.doc.ThisController()
+		opts := c.opts - {Documents.pageWidth..Documents.winHeight}
+		if layout.wType = page then
+			incl(opts, Documents.pageWidth) 
+		elsif layout.wType = window then 
+			incl(opts, Documents.winWidth) 
+		end 
+		if layout.hType = page then
+			incl(opts, Documents.pageHeight) 
+		elsif layout.hType = window then 
+			incl(opts, Documents.winHeight) 
+		end 
+		layout.doc.PollRect(l, t, r, b)
+		r0 := r
+		b0 := b
+		if layout.wType = fix then
+			r := l + short(entier(layout.width * layout.u)) 
+		end 
+		if layout.hType = fix then
+			b := t + short(entier(layout.height * layout.u)) 
+		end 
+		if (opts # c.opts) or (r # r0) or (b # b0) then
+			Views.BeginScript(layout.doc, "#System:ChangeLayout", script)
+			c.SetOpts(opts)
+			layout.doc.SetRect(l, t, r, b)
+			Views.EndScript(layout.doc, script) 
+		end 
+	end SetLayout
+	
+	proc InitLayoutDialog*
+		// guard: WindowGuard
+		var 
+			w: Windows.Window
+			c: Containers.Controller
+			l, t, r, b: integer
+	begin 
+		w := Windows.dir.First()
+		if w # nil then
+			layout.doc := w.doc
+			c := w.doc.ThisController()
+			if Documents.pageWidth in c.opts then
+				layout.wType := page 
+			elsif Documents.winWidth in c.opts then 
+				layout.wType := window 
+			else 
+				layout.wType := fix 
+			end 
+			if Documents.pageHeight in c.opts then
+				layout.hType := page 
+			elsif Documents.winHeight in c.opts then 
+				layout.hType := window 
+			else 
+				layout.hType := fix 
+			end 
+			if Dialog.metricSystem then
+				layout.u := Ports.mm * 10 
+			else 
+				layout.u := Ports.inch 
+			end 
+			w.doc.PollRect(l, t, r, b)
+			layout.width := (r - l) div (layout.u div 100) / 100
+			layout.height := (b - t) div (layout.u div 100) / 100 
+		end 
+	end InitLayoutDialog
+	
+	proc WidthGuard*(var par: Dialog.Par)
+	begin 
+		if layout.wType # fix then
+			par.readOnly := true 
+		end 
+	end WidthGuard
+	
+	proc HeightGuard*(var par: Dialog.Par)
+	begin 
+		if layout.hType # fix then
+			par.readOnly := true 
+		end 
+	end HeightGuard
+	
+	proc TypeNotifier*(op, from, to_: integer)
+		var 
+			w, h, l, t, r, b: integer
+			d: boolean
+	begin 
+		layout.doc.PollRect(l, t, r, b)
+		if layout.wType = page then
+			layout.doc.PollPage(w, h, l, t, r, b, d) 
+		elsif layout.wType = window then 
+			layout.doc.context.GetSize(w, h)
+			r := w - l 
+		end 
+		layout.width := (r - l) div (layout.u div 100) / 100
+		layout.doc.PollRect(l, t, r, b)
+		if layout.hType = page then
+			layout.doc.PollPage(w, h, l, t, r, b, d) 
+		elsif layout.hType = window then 
+			layout.doc.context.GetSize(w, h)
+			b := h - t 
+		end 
+		layout.height := (b - t) div (layout.u div 100) / 100
+		Dialog.Update(layout)
+	end TypeNotifier
+	
+	
+	// window menu command
+	
+	proc NewWindow*
+		// guard ModelViewGuard
+		var 
+			win: Windows.Window
+			doc: Documents.Document
+			v: Views.View
+			title: Views.Title
+			seq: ANYPTR
+			clean: boolean
+	begin 
+		win := Windows.dir.Focus(Controllers.frontPath)
+		if win # nil then
+			v := win.doc.ThisView()
+			if v.Domain() # nil then
+				seq := v.Domain().GetSequencer() 
+			else 
+				seq := nil 
+			end 
+			clean := (seq # nil) & ~seq(Sequencers.Sequencer).Dirty()
+			doc := win.doc.DocCopyOf(v)
+			// Stores.InitDomain(doc, v.Domain());
+			assert(doc.Domain() = v.Domain(), 100)
+			win.GetTitle(title)
+			Windows.dir.OpenSubWindow(Windows.dir.New(), doc, win.flags, title)
+			if clean then
+				seq(Sequencers.Sequencer).SetDirty(false) 
+			end  
+		end 
+	end NewWindow
+	
+	// properties
+	
+	proc GetCmd(name: array of char; var cmd: array of char)
+		var 
+			i, j: integer
+			ch, lch: char
+			key: array 256 of char
+	begin 
+		i := 0
+		ch := name[0]
+		key[0] := "#"
+		j := 1
+		repeat 
+			key[j] := ch
+			inc(j)
+			lch := ch
+			inc(i)
+			ch := name[i] 
+		until (ch = 0x) or (ch = ".") or Strings.IsUpper(ch) & ~Strings.IsUpper(lch) 
+		if ch = "." then
+			key := "#System:" + name 
+		else 
+			key[j] := ":"
+			inc(j)
+			key[j] := 0x
+			j := 0
+			while ch # 0x do 
+				name[j] := ch
+				inc(i)
+				inc(j)
+				ch := name[i] 
+			end 
+			name[j] := 0x
+			key := key + name 
+		end 
+		Dialog.MapString(key, cmd)
+		if cmd = name then
+			cmd := "" 
+		end 
+	end GetCmd
+	
+	proc SearchCmd(call: boolean; var found: boolean)
+		var 
+			p: Properties.Property
+			std: boolean
+			v: Views.View
+			cmd: array 256 of char
+			pos, res: integer
+	begin 
+		Controllers.SetCurrentPath(Controllers.targetPath)
+		v := Containers.FocusSingleton()
+		found := false
+		if v # nil then
+			Services.GetTypeName(v, cmd)
+			GetCmd(cmd, cmd)
+			if cmd # "" then
+				found := true
+				if call then
+					Dialog.Call(cmd, "", res) 
+				end  
+			end  
+		end 
+		std := false
+		Properties.CollectProp(p)
+		while p # nil do 
+			if p is Properties.StdProp then
+				std := true 
+			else 
+				Services.GetTypeName(p, cmd)
+				GetCmd(cmd, cmd)
+				if cmd # "" then
+					found := true
+					if call then
+						Dialog.Call(cmd, "", res) 
+					end  
+				else 
+					Services.GetTypeName(p, cmd)
+					Strings.Find(cmd, "Desc", len(cmd) - 4, pos)
+					if len(cmd) - 4 = pos then
+						cmd[pos] := 0x
+						GetCmd(cmd, cmd)
+						if cmd # "" then
+							found := true
+							if call then
+								Dialog.Call(cmd, "", res) 
+							end  
+						end  
+					end  
+				end  
+			end 
+			p := p.next 
+		end 
+		if std & ~found then
+			Dialog.MapString("#Host:Properties.StdProp", cmd)
+			if cmd # "Properties.StdProp" then
+				found := true
+				if call then
+					Dialog.Call(cmd, "", res) 
+				end  
+			end  
+		end 
+		if ~found then
+			Dialog.MapString("#System:ShowProp", cmd)
+			if cmd # "ShowProp" then
+				found := true
+				if call then
+					Dialog.Call(cmd, "", res) 
+				end  
+			end  
+		end 
+		Controllers.ResetCurrentPath
+	end SearchCmd
+	
+	proc ShowProp*
+		var 
+			found: boolean
+	begin 
+		SearchCmd(true, found)
+	end ShowProp
+	
+	proc ShowPropGuard*(var par: Dialog.Par)
+		var 
+			found: boolean
+	begin 
+		SearchCmd(false, found)
+		if ~found then
+			par.disabled := true 
+		end 
+	end ShowPropGuard
+	
+	
+	// container commands
+	
+	proc ActFocus(): Containers.Controller
+		var 
+			c: Containers.Controller
+			v: Views.View
+	begin 
+		c := Containers.Focus()
+		if c # nil then
+			v := c.ThisView()
+			if v is Documents.Document then
+				v := v(Documents.Document).ThisView()
+				if v is Containers.View then
+					c := v(Containers.View).ThisController() 
+				else 
+					c := nil 
+				end  
+			end  
+		end 
+		return c
+	end ActFocus
+	
+	proc ToggleNoFocus*
+		var 
+			c: Containers.Controller
+			v: Views.View
+	begin 
+		c := ActFocus()
+		if c # nil then
+			v := c.ThisView()
+			if ~((v is Documents.Document) or (Containers.noSelection in c.opts)) then
+				if Containers.noFocus in c.opts then
+					c.SetOpts(c.opts - {Containers.noFocus}) 
+				else 
+					c.SetOpts(c.opts + {Containers.noFocus}) 
+				end  
+			end  
+		end 
+	end ToggleNoFocus
+	
+	proc OpenAsAuxDialog*
+		// create a new sub-window onto the focus view shown in the top window, mask mode
+		var 
+			win: Windows.Window
+			doc: Documents.Document
+			v, u: Views.View
+			title: Views.Title
+			c: Containers.Controller
+	begin 
+		v := Controllers.FocusView()
+		if (v # nil) & (v is Containers.View) & ~(v is Documents.Document) then
+			win := Windows.dir.Focus(Controllers.frontPath)
+			assert(win # nil, 100)
+			doc := win.doc.DocCopyOf(v)
+			u := doc.ThisView()
+			c := u(Containers.View).ThisController()
+			c.SetOpts(c.opts - {Containers.noFocus} + {Containers.noCaret, Containers.noSelection})
+			if v # win.doc.ThisView() then
+				c := doc.ThisController()
+				c.SetOpts(c.opts - {Documents.pageWidth, Documents.pageHeight} 
+				+ {Documents.winWidth, Documents.winHeight}) 
+			end 
+			// Stores.InitDomain(doc, v.Domain()); already done in DocCopyOf
+			win.GetTitle(title)
+			Windows.dir.OpenSubWindow(Windows.dir.New(), doc, 
+			{Windows.isAux, Windows.neverDirty, Windows.noResize, Windows.noHScroll, Windows.noVScroll}, 
+			title) 
+		else 
+			Dialog.Beep 
+		end 
+	end OpenAsAuxDialog
+	
+	proc OpenAsToolDialog*
+		// create a new sub-window onto the focus view shown in the top window, mask mode
+		var 
+			win: Windows.Window
+			doc: Documents.Document
+			v, u: Views.View
+			title: Views.Title
+			c: Containers.Controller
+	begin 
+		v := Controllers.FocusView()
+		if (v # nil) & (v is Containers.View) & ~(v is Documents.Document) then
+			win := Windows.dir.Focus(Controllers.frontPath)
+			assert(win # nil, 100)
+			doc := win.doc.DocCopyOf(v)
+			u := doc.ThisView()
+			c := u(Containers.View).ThisController()
+			c.SetOpts(c.opts - {Containers.noFocus} + {Containers.noCaret, Containers.noSelection})
+			if v # win.doc.ThisView() then
+				c := doc.ThisController()
+				c.SetOpts(c.opts - {Documents.pageWidth, Documents.pageHeight} 
+				+ {Documents.winWidth, Documents.winHeight}) 
+			end 
+			// Stores.InitDomain(doc, v.Domain()); already done in DocCopyOf
+			win.GetTitle(title)
+			Windows.dir.OpenSubWindow(Windows.dir.New(), doc, 
+			{Windows.isTool, Windows.neverDirty, Windows.noResize, Windows.noHScroll, Windows.noVScroll}, 
+			title) 
+		else 
+			Dialog.Beep 
+		end 
+	end OpenAsToolDialog
+	
+	proc RecalcFocusSize*
+		var 
+			c: Containers.Controller
+			v: Views.View
+			bounds: Properties.BoundsPref
+	begin 
+		c := Containers.Focus()
+		if c # nil then
+			v := c.ThisView()
+			bounds.w := Views.undefined
+			bounds.h := Views.undefined
+			Views.HandlePropMsg(v, bounds)
+			v.context.SetSize(bounds.w, bounds.h) 
+		end 
+	end RecalcFocusSize
+	
+	proc RecalcAllSizes*
+		var 
+			w: Windows.Window
+	begin 
+		w := Windows.dir.First()
+		while w # nil do 
+			StdDialog.RecalcView(w.doc.ThisView())
+			w := Windows.dir.Next(w) 
+		end 
+	end RecalcAllSizes
+	
+	proc SetMode(opts: set)
+		var 
+			c: Containers.Controller
+			v: Views.View
+			gm: Containers.GetOpts
+			sm: Containers.SetOpts
+			w: Windows.Window
+	begin 
+		c := Containers.Focus()
+		gm.valid := {}
+		if (c # nil) & (c.Singleton() # nil) then
+			v := c.Singleton()
+			Views.HandlePropMsg(v, gm) 
+		end 
+		if gm.valid = {} then
+			w := Windows.dir.Focus(Controllers.path)
+			if (w # nil) & (w.doc.ThisView() is Containers.View) then
+				v := w.doc.ThisView() 
+			else 
+				v := nil 
+			end  
+		end 
+		if v # nil then
+			sm.valid := {Containers.noSelection, Containers.noFocus, Containers.noCaret}
+			sm.opts := opts
+			Views.HandlePropMsg(v, sm) 
+		end 
+	end SetMode
+	
+	proc GetMode(var found: boolean; var opts: set)
+		var 
+			c: Containers.Controller
+			gm: Containers.GetOpts
+			w: Windows.Window
+	begin 
+		c := Containers.Focus()
+		gm.valid := {}
+		if (c # nil) & (c.Singleton() # nil) then
+			Views.HandlePropMsg(c.Singleton(), gm) 
+		end 
+		if gm.valid = {} then
+			w := Windows.dir.Focus(Controllers.path)
+			if (w # nil) & (w.doc.ThisView() is Containers.View) then
+				Views.HandlePropMsg(w.doc.ThisView(), gm) 
+			end  
+		end 
+		found := gm.valid # {}
+		opts := gm.opts
+	end GetMode
+	
+	proc SetMaskMode*
+	// Guard: SetMaskGuard
+	begin 
+		SetMode({Containers.noSelection, Containers.noCaret})
+	end SetMaskMode
+	
+	proc SetEditMode*
+	// Guard: SetEditGuard
+	begin 
+		SetMode({})
+	end SetEditMode
+	
+	proc SetLayoutMode*
+	// Guard: SetLayoutGuard
+	begin 
+		SetMode({Containers.noFocus})
+	end SetLayoutMode
+	
+	proc SetBrowserMode*
+	// Guard: SetBrowserGuard
+	begin 
+		SetMode({Containers.noCaret})
+	end SetBrowserMode
+	
+	
+	// standard guards
+	
+	proc ToggleNoFocusGuard*(var par: Dialog.Par)
+		var 
+			c: Containers.Controller
+			v: Views.View
+	begin 
+		c := ActFocus()
+		if c # nil then
+			v := c.ThisView()
+			if ~((v is Documents.Document) or (Containers.noSelection in c.opts)) then
+				if Containers.noFocus in c.opts then
+					par.label := "#System:AllowFocus" 
+				else 
+					par.label := "#System:PreventFocus" 
+				end  
+			else 
+				par.disabled := true 
+			end  
+		else 
+			par.disabled := true 
+		end 
+	end ToggleNoFocusGuard
+	
+	proc ReadOnlyGuard*(var par: Dialog.Par)
+	begin 
+		par.readOnly := true
+	end ReadOnlyGuard
+	
+	proc WindowGuard*(var par: Dialog.Par)
+		var 
+			w: Windows.Window
+	begin 
+		w := Windows.dir.First()
+		if w = nil then
+			par.disabled := true 
+		end 
+	end WindowGuard
+	
+	proc ModelViewGuard*(var par: Dialog.Par)
+		var 
+			w: Windows.Window
+	begin 
+		w := Windows.dir.Focus(Controllers.frontPath)
+		par.disabled := (w = nil) or (w.doc.ThisView().ThisModel() = nil)
+	end ModelViewGuard
+	
+	proc SetMaskModeGuard*(var par: Dialog.Par)
+		const 
+			mode = {Containers.noSelection, Containers.noFocus, Containers.noCaret}
+		var 
+			opts: set
+			found: boolean
+	begin 
+		GetMode(found, opts)
+		if found then
+			par.checked := opts * mode = {Containers.noSelection, Containers.noCaret} 
+		else 
+			par.disabled := true 
+		end 
+	end SetMaskModeGuard
+	
+	proc SetEditModeGuard*(var par: Dialog.Par)
+		const 
+			mode = {Containers.noSelection, Containers.noFocus, Containers.noCaret}
+		var 
+			opts: set
+			found: boolean
+	begin 
+		GetMode(found, opts)
+		if found then
+			par.checked := opts * mode = {} 
+		else 
+			par.disabled := true 
+		end 
+	end SetEditModeGuard
+	
+	proc SetLayoutModeGuard*(var par: Dialog.Par)
+		const 
+			mode = {Containers.noSelection, Containers.noFocus, Containers.noCaret}
+		var 
+			opts: set
+			found: boolean
+	begin 
+		GetMode(found, opts)
+		if found then
+			par.checked := opts * mode = {Containers.noFocus} 
+		else 
+			par.disabled := true 
+		end 
+	end SetLayoutModeGuard
+	
+	proc SetBrowserModeGuard*(var par: Dialog.Par)
+		const 
+			mode = {Containers.noSelection, Containers.noFocus, Containers.noCaret}
+		var 
+			opts: set
+			found: boolean
+	begin 
+		GetMode(found, opts)
+		if found then
+			par.checked := opts * mode = {Containers.noCaret} 
+		else 
+			par.disabled := true 
+		end 
+	end SetBrowserModeGuard
+	
+	proc SelectionGuard*(var par: Dialog.Par)
+		var 
+			ops: Controllers.PollOpsMsg
+	begin 
+		Controllers.PollOps(ops)
+		if ops.valid * {Controllers.cut, Controllers.copy_} = {} then
+			par.disabled := true 
+		end 
+	end SelectionGuard
+	
+	proc SingletonGuard*(var par: Dialog.Par)
+		var 
+			ops: Controllers.PollOpsMsg
+	begin 
+		Controllers.PollOps(ops)
+		if ops.singleton = nil then
+			par.disabled := true 
+		end 
+	end SingletonGuard
+	
+	proc SelectAllGuard*(var par: Dialog.Par)
+		var 
+			ops: Controllers.PollOpsMsg
+	begin 
+		Controllers.PollOps(ops)
+		if ~ops.selectable then
+			par.disabled := true 
+		end 
+	end SelectAllGuard
+	
+	proc CaretGuard*(var par: Dialog.Par)
+		var 
+			ops: Controllers.PollOpsMsg
+	begin 
+		Controllers.PollOps(ops)
+		if ops.valid * {Controllers.pasteChar..Controllers.paste} = {} then
+			par.disabled := true 
+		end 
+	end CaretGuard
+	
+	proc PasteCharGuard*(var par: Dialog.Par)
+		var 
+			ops: Controllers.PollOpsMsg
+	begin 
+		Controllers.PollOps(ops)
+		if ~(Controllers.pasteChar in ops.valid) then
+			par.disabled := true 
+		end 
+	end PasteCharGuard
+	
+	proc PasteLCharGuard*(var par: Dialog.Par)
+		var 
+			ops: Controllers.PollOpsMsg
+	begin 
+		Controllers.PollOps(ops)
+		if ~(Controllers.pasteChar in ops.valid) then
+			par.disabled := true 
+		end 
+	end PasteLCharGuard
+	
+	proc PasteViewGuard*(var par: Dialog.Par)
+		var 
+			ops: Controllers.PollOpsMsg
+	begin 
+		Controllers.PollOps(ops)
+		if ~(Controllers.paste in ops.valid) then
+			par.disabled := true 
+		end 
+	end PasteViewGuard
+	
+	proc ContainerGuard*(var par: Dialog.Par)
+	begin 
+		if Containers.Focus() = nil then
+			par.disabled := true 
+		end 
+	end ContainerGuard
+	
+	proc UndoGuard*(var par: Dialog.Par)
+		var 
+			f: Windows.Window
+			opName: Stores.OpName
+	begin 
+		Dialog.MapString("#System:Undo", par.label)
+		f := Windows.dir.Focus(Controllers.frontPath)
+		if (f # nil) & f.seq.CanUndo() then
+			f.seq.GetUndoName(opName)
+			Dialog.MapString(opName, opName)
+			Append(par.label, " ")
+			Append(par.label, opName) 
+		else 
+			par.disabled := true 
+		end 
+	end UndoGuard
+	
+	proc RedoGuard*(var par: Dialog.Par)
+		var 
+			f: Windows.Window
+			opName: Stores.OpName
+	begin 
+		Dialog.MapString("#System:Redo", par.label)
+		f := Windows.dir.Focus(Controllers.frontPath)
+		if (f # nil) & f.seq.CanRedo() then
+			f.seq.GetRedoName(opName)
+			Dialog.MapString(opName, opName)
+			Append(par.label, " ")
+			Append(par.label, opName) 
+		else 
+			par.disabled := true 
+		end 
+	end RedoGuard
+	
+	proc PlainGuard*(var par: Dialog.Par)
+		var 
+			props: Properties.StdProp
+	begin 
+		props := StdProp()
+		if props.known * {Properties.style, Properties.weight} # {} then
+			par.checked := (Properties.style in props.valid) 
+				& (props.style.val_ = {}) & ({Fonts.italic, Fonts.underline, Fonts.strikeout} - props.style.mask = {}) 
+				& (Properties.weight in props.valid) & (props.weight = Fonts.normal) 
+		else 
+			par.disabled := true 
+		end 
+	end PlainGuard
+	
+	proc BoldGuard*(var par: Dialog.Par)
+		var 
+			props: Properties.StdProp
+	begin 
+		props := StdProp()
+		if Properties.weight in props.known then
+			par.checked := (Properties.weight in props.valid) & (props.weight = Fonts.bold) 
+		else 
+			par.disabled := true 
+		end 
+	end BoldGuard
+	
+	proc ItalicGuard*(var par: Dialog.Par)
+		var 
+			props: Properties.StdProp
+	begin 
+		props := StdProp()
+		if Properties.style in props.known then
+			par.checked := (Properties.style in props.valid) & (Fonts.italic in props.style.val_) 
+		else 
+			par.disabled := true 
+		end 
+	end ItalicGuard
+	
+	proc UnderlineGuard*(var par: Dialog.Par)
+		var 
+			props: Properties.StdProp
+	begin 
+		props := StdProp()
+		if Properties.style in props.known then
+			par.checked := (Properties.style in props.valid) & (Fonts.underline in props.style.val_) 
+		else 
+			par.disabled := true 
+		end 
+	end UnderlineGuard
+	
+	proc StrikeoutGuard*(var par: Dialog.Par)
+		var 
+			props: Properties.StdProp
+	begin 
+		props := StdProp()
+		if Properties.style in props.known then
+			par.checked := (Properties.style in props.valid) & (Fonts.strikeout in props.style.val_) 
+		else 
+			par.disabled := true 
+		end 
+	end StrikeoutGuard
+	
+	proc SizeGuard*(size_: integer; var par: Dialog.Par)
+		var 
+			props: Properties.StdProp
+	begin 
+		props := StdProp()
+		if Properties.size_ in props.known then
+			par.checked := (Properties.size_ in props.valid) & (size_ = props.size_ div Ports.point) 
+		else 
+			par.disabled := true 
+		end 
+	end SizeGuard
+	
+	proc ColorGuard*(color: integer; var par: Dialog.Par)
+		var 
+			props: Properties.StdProp
+	begin 
+		props := StdProp()
+		if Properties.color in props.known then
+			par.checked := (Properties.color in props.valid) & (color = props.color.val_) 
+		else 
+			par.disabled := true 
+		end 
+	end ColorGuard
+	
+	proc DefaultFontGuard*(var par: Dialog.Par)
+		var 
+			props: Properties.StdProp
+	begin 
+		props := StdProp()
+		if Properties.typeface in props.known then
+			par.checked := (Properties.typeface in props.valid) & (props.typeface = Fonts.default) 
+		else 
+			par.disabled := true 
+		end 
+	end DefaultFontGuard
+	
+	proc TypefaceGuard*(var par: Dialog.Par)
+		var 
+			props: Properties.StdProp
+	begin 
+		props := StdProp()
+		if ~(Properties.typeface in props.known) then
+			par.disabled := true 
+		end 
+	end TypefaceGuard
+	
+	
+	// standard notifiers
+	
+	proc DefaultOnDoubleClick*(op, from, to_: integer)
+		var 
+			msg: Controllers.EditMsg
+			c: Containers.Controller
+	begin 
+		if (op = Dialog.pressed) & (from = 1) then
+			Controllers.SetCurrentPath(Controllers.frontPath)
+			c := Containers.Focus()
+			Controllers.ResetCurrentPath
+			if {Containers.noSelection, Containers.noCaret} - c.opts = {} then
+				msg.op := Controllers.pasteChar
+				msg.char_ := 0dx
+				msg.modifiers := {}
+				Controllers.ForwardVia(Controllers.frontPath, msg) 
+			end  
+		end 
+	end DefaultOnDoubleClick
+	
+	
+	proc Init
+	begin 
+		allocator := defaultAllocator
+		propEra := -1
+	end Init
+
+begin
+	Init
+end StdCmds

@@ -1,0 +1,13 @@
+// Generated/synthesized by OberonViewer 0.8.3 on 2021-01-06T13:46:54
+// manually modified
+
+definition COM
+	
+	type
+		GUID = array 16 of byte
+		IUnknown = pointer to record end
+		RESULT = integer
+
+	proc QUERY(_0: IUnknown; _1: GUID; _2: IUnknown): boolean
+
+end COM

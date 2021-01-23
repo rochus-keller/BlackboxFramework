@@ -1,0 +1,73 @@
+module Out
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Views, TextModels, TextMappers, TextViews, StdLog
+	
+	const 
+		digitspace = 08fx
+	
+	var 
+		buf: TextModels.Model
+		out: TextMappers.Formatter
+	
+	proc Open*
+	begin 
+		StdLog.Open
+	end Open
+	
+	proc Char*(ch: char)
+	begin 
+		out.WriteChar(ch)
+		StdLog.text.Append(buf)
+		Views.RestoreDomain(StdLog.text.Domain())
+	end Char
+	
+	proc Ln*
+	begin 
+		out.WriteLn
+		StdLog.text.Append(buf)
+		Views.RestoreDomain(StdLog.text.Domain())
+		TextViews.ShowRange(StdLog.text, StdLog.text.Length(), StdLog.text.Length(), TextViews.any)
+	end Ln
+	
+	proc String*(str: array of char)
+	begin 
+		out.WriteString(str)
+		StdLog.text.Append(buf)
+		Views.RestoreDomain(StdLog.text.Domain())
+	end String
+	
+	proc Int*(i: longint; n: integer)
+	begin 
+		out.WriteIntForm(i, 10, n, digitspace, false)
+		StdLog.text.Append(buf)
+		Views.RestoreDomain(StdLog.text.Domain())
+	end Int
+	
+	proc Real*(x: real; n: integer)
+	begin 
+		out.WriteRealForm(x, 16, n, 0, digitspace)
+		StdLog.text.Append(buf)
+		Views.RestoreDomain(StdLog.text.Domain())
+	end Real
+
+begin
+	buf := TextModels.CloneOf(StdLog.buf)
+	out.ConnectTo(buf)
+end Out

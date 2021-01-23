@@ -1,0 +1,1987 @@
+module HostMenus
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems, Alexander Iljin, Josef Templ"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20060315, jt, hookApplWinHandler introduced
+	   - 20061225, ai, Added UpdateType to fix bug in PopupMenu
+	   - 20070201, bh, Unicode support
+	   - 20070205, bh, Win32s handling removed
+	   - 20140930 center #17, off-by-one error fixed in IncludingFileCommandLine
+	   - 20141104, center #19, 16-bit Unicode support for Component Pascal identifiers added
+	   - 20150922, center #70, fix for resetting a menu item label to its original value in a guard
+	   - 20160111, center #94, using BlackBox without the Windows registry
+	   - 20160122, center #98, improvements of GUI controls
+	   - 20160307, center #105, serverMode added
+	   - 20161013, center #135, adding hierarchical menus
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import SYSTEM, WinApi, Kernel, Log, Services, 
+		Fonts, Files, Strings, Ports, Stores, Properties, Printers, Dialog, 
+		Models, Views, Controllers, Containers, Converters, 
+		Documents, Windows, Controls, 
+		StdDialog, StdInterpreter, StdCmds, HostFonts, HostPorts, 
+		HostFiles, HostWindows, HostDialog, HostClipboard, HostCmds, HostCFrames
+	
+	const 
+		debug = false
+		
+		idlePeriod = 50 // ms
+		idlePeriodServer = 10 // ms
+		gcCycle = 100
+		
+		// hints
+		impAll = 0 // can import all file types
+		
+		HYPHEN = 90x
+		NBHYPHEN = 91x
+		SOFTHYPHEN = 0adx
+		NBSPACE = 0a0x
+		NUMSPACE = 8fx
+		
+		iClose = 100 // known in HostWindows
+		iUndo = 112
+		iCut = 114
+		iCopy = 115
+		iPaste = 116
+		iObject = 120
+		iPopup = 160
+		iProperties = 163
+		iObjEdit = 161
+		iObjOpen = 162
+		iVerb0 = 200
+		iOpen = 102
+		iUpdateMenus = 111
+		iExit = 110
+		
+		// unicode non-characters, known in HostMenus, HostCFrames, Controls
+		apps = 0fdd0x // 'menu key',  WinApi.VK_APPS, bypasses BB's popup mechanism for edit controls
+		ctrlZ = 0fdd1x // bypasses BB's undo mechanism for edit controls
+		ctrlA = 0fdd2x // send ctrl-A (select all) to edit controls
+		
+		// custom menus
+		firstId = 300
+		
+		// apllication states
+		running = 0
+		hidden = 1
+		embedded = 2
+		noAppWin = 3
+		
+		// File for specifying command line options
+		cmdLinePath = "System/Rsrc"
+		cmdLineFile = "CommandLine.txt"
+		
+		// first character of a submenu name
+		submenuPrefix = "$"
+	
+	
+	type 
+		Item* = pointer to record (StdDialog.Item) 
+				id-, code-: integer
+				shift-, ctrl-, del: boolean 
+			end 
+		
+		Menu* = pointer to record 
+				next-: Menu
+				menu-, type_-: Dialog.String
+				firstItem-, lastItem: Item
+				menuH-: WinApi.HANDLE
+				isWinMenu-: boolean
+				isPopup-: boolean
+				class-: integer
+				hot, maxId: integer 
+			end 
+		
+		TypeMsg* = (* extensible *) record (Properties.Message) 
+				type_*: array 64 of char  // OUT, preset to ""
+			end 
+	
+	
+	var 
+		// active menu bar state
+		menus-: Menu
+		menuBar-: WinApi.HANDLE
+		lastId-: integer // last custom menu id
+		
+		disablePipe*: boolean
+		
+		hookApplWinHandler*: proc (message, wPar, lPar: integer; var res: integer): boolean
+		// hook for handling application specific messages; returns TRUE iff handled
+		winMenu, popMenu: WinApi.HANDLE
+		type_: Stores.TypeName
+		
+		// new menu bar state
+		newMenuBar, newWinMenu, newPopMenu: WinApi.HANDLE
+		nextId: integer // id of next menu item
+		firstMenu, lastMenu, curMenu: Menu
+		
+		gc: integer // how many events must be executed before next GC
+		defMenu: WinApi.HANDLE // default menu
+		objMenu: WinApi.HANDLE // object menu (verbs)
+		shiftStr, ctrlStr, spaceStr: Dialog.String
+		minusCode: integer // key code for "-"
+		num: integer
+		msgId: integer
+		
+		locks-: integer
+		state: integer
+		
+		openUsed: boolean
+		openParam: array 256 of char
+		
+		isCont*, isObj*: boolean
+		
+		UpdateOleMenus*: proc 
+		TranslateOleKeys1*: proc (var msg: WinApi.MSG; var done: boolean)
+		TranslateOleKeys2*: proc (var msg: WinApi.MSG; var done: boolean)
+	
+	
+	proc FINIT end // [code] 0DBH 0E3H
+	proc FCLEX end // [code] 0DBH 0E2H
+	proc FLDCW end // [code] 0D9H 06DH 0FCH // -4, FP
+	proc FSTCW end // [code] 0D9H 07DH 0FCH // -4, FP
+	proc FSTSW end // [code] 0DDH 07DH 0FCH // -4, FP
+	
+	proc CheckFpu
+		var 
+			cw: set
+	begin 
+		FSTCW
+		if cw * {0..5, 8..11} # {1, 2, 3, 4, 5, 8, 9} then
+			cw := cw - {0..5, 8..11} + {1, 2, 3, 4, 5, 8, 9}
+			FCLEX
+			FLDCW 
+		end 
+	end CheckFpu
+	
+	
+	proc Collect*
+	begin 
+		gc := 0
+	end Collect
+	
+	
+	// hidden application support
+	
+	proc Lock*
+	begin 
+		inc(locks)
+		if state = embedded then
+			state := hidden 
+		end 
+	end Lock
+	
+	proc Unlock*
+		var 
+			res: integer
+	begin 
+		dec(locks)
+		if (state = hidden) & (locks = 0) then
+			HostClipboard.Flush
+			res := WinApi.DestroyWindow(HostWindows.main) 
+		end 
+	end Unlock
+	
+	
+	// shortcut support
+	
+	proc Append(var a: array of char; b: array of char) // a := a + b
+		var 
+			i, j: integer
+	begin 
+		i := 0
+		j := 0
+		while a[i] # 0x do 
+			inc(i) 
+		end 
+		while b[j] # 0x do 
+			a[i] := b[j]
+			inc(i)
+			inc(j) 
+		end 
+		a[i] := 0x
+	end Append
+	
+	proc SetShortcut(var i: Item; var name: Dialog.String)
+		var 
+			j, n: integer
+			ch, nch: char
+			a: array 4 of char
+	begin 
+		i.shift := false
+		i.ctrl := false
+		i.code := 0
+		j := 0
+		ch := i.shortcut[0]
+		while (ch # 0x) & (i.code = 0) do 
+			inc(j)
+			if (ch >= "a") & (ch <= "z") then
+				ch := cap(ch) 
+			end 
+			nch := i.shortcut[j]
+			if ch = "*" then
+				i.shift := true 
+			elsif ch = "^" then 
+				i.ctrl := true 
+			elsif (ch >= "A") & (ch <= "Z") or (ch >= "0") & (ch <= "9") or (ch = " ") then 
+				if (nch >= "a") & (nch <= "z") then
+					nch := cap(nch) 
+				end 
+				if nch = 0x then
+					i.code := ord(ch)
+					i.ctrl := true 
+				elsif ch = "F" then 
+					n := 0
+					while (nch >= "0") & (nch <= "9") do 
+						n := 10 * n + ord(nch) - ord("0")
+						inc(j)
+						nch := i.shortcut[j] 
+					end 
+					if (n >= 1) & (n <= 16) then
+						i.code := 70h - 1 + n 
+					end  
+				end  
+			end 
+			ch := nch 
+		end 
+		if i.code # 0 then
+			Append(name, "	") // tab
+			if i.shift then
+				Append(name, shiftStr) 
+			end 
+			if i.ctrl then
+				Append(name, ctrlStr) 
+			end 
+			if i.code >= 70h then
+				a[0] := "F"
+				n := i.code - 70h + 1
+				j := 1
+				if n > 9 then
+					a[1] := "1"
+					dec(n, 10)
+					inc(j) 
+				end 
+				a[j] := chr(n + ord("0"))
+				a[j + 1] := 0x
+				Append(name, a) 
+			elsif i.code = ord(" ") then 
+				Append(name, spaceStr) 
+			else 
+				a[0] := chr(i.code)
+				a[1] := 0x
+				Append(name, a) 
+			end  
+		end 
+	end SetShortcut
+	
+	// hotkey support
+	
+	proc NextWord(var name: Dialog.String; i: integer): integer
+	begin 
+		while (name[i] # 0x) & (name[i] # " ") do 
+			inc(i) 
+		end 
+		while name[i] = " " do 
+			inc(i) 
+		end 
+		if (cap(name[i]) < "A") or (cap(name[i]) > "Z") then
+			i := -1 
+		end 
+		return i
+	end NextWord
+	
+	proc SetHotkey(var name: Dialog.String; i: integer)
+		var 
+			j: integer
+	begin 
+		if name[i] # "&" then
+			j := i
+			while name[j] # 0x do 
+				inc(j) 
+			end 
+			while j >= i do 
+				name[j + 1] := name[j]
+				dec(j) 
+			end 
+			name[i] := "&" 
+		end 
+	end SetHotkey
+	
+	proc GetHotkey(var name: Dialog.String; var pos: integer; var used: set)
+		var 
+			i: integer
+			ch: char
+	begin 
+		i := 0
+		ch := name[0]
+		while ch # 0x do 
+			if ch = "&" then
+				ch := name[i + 1]
+				if ch = "&" then
+					inc(i) 
+				else 
+					pos := i
+					ch := cap(ch)
+					if (ch >= "A") & (ch <= "Z") then
+						incl(used, ord(ch) - ord("A")) 
+					end 
+					return  
+				end  
+			end 
+			inc(i)
+			ch := name[i] 
+		end 
+		pos := -1
+	end GetHotkey
+	
+	proc FirstFree(var name: Dialog.String; var used: set): integer
+		var 
+			i: integer
+			ch: char
+	begin 
+		i := 0
+		ch := cap(name[0])
+		while (name[i] # 0x) & ((ch < "A") or (ch > "Z") or (ord(ch) - ord("A") in used)) do 
+			inc(i)
+			ch := cap(name[i]) 
+		end 
+		if ch # 0x then
+			incl(used, ord(ch) - ord("A")) 
+		else 
+			i := -1 
+		end 
+		return i
+	end FirstFree
+	
+	proc SetHotkeys(var tab: array of Dialog.String; n: integer)
+		var 
+			i, j: integer
+			ch: char
+			pos: pointer to array of integer
+			used: set
+	begin 
+		new(pos, len(tab))
+		used := {}
+		i := 0
+		while i < n do 
+			GetHotkey(tab[i], pos[i], used)
+			inc(i) 
+		end 
+		i := 0
+		while i < n do 
+			if pos[i] = -1 then
+				ch := cap(tab[i, 0])
+				if (ch >= "A") & (ch <= "Z") & ~(ord(ch) - ord("A") in used) then
+					incl(used, ord(ch) - ord("A"))
+					pos[i] := 0 
+				end  
+			end 
+			inc(i) 
+		end 
+		i := 0
+		while i < n do 
+			if pos[i] = -1 then
+				j := NextWord(tab[i], 0)
+				while j >= 0 do 
+					ch := cap(tab[i, j])
+					if ~(ord(ch) - ord("A") in used) then
+						incl(used, ord(ch) - ord("A"))
+						pos[i] := j
+						j := -1 
+					else 
+						j := NextWord(tab[i], j) 
+					end  
+				end  
+			end 
+			inc(i) 
+		end 
+		i := 0
+		while i < n do 
+			if pos[i] = -1 then
+				pos[i] := FirstFree(tab[i], used) 
+			end 
+			if pos[i] >= 0 then
+				SetHotkey(tab[i], pos[i]) 
+			end 
+			inc(i) 
+		end 
+	end SetHotkeys
+	
+	proc UpdateHotkey(var old, new_: Dialog.String)
+		var 
+			i, j: integer
+			used: set
+			ch: char
+	begin 
+		GetHotkey(new_, i, used)
+		if i = -1 then
+			used := {}
+			GetHotkey(old, i, used)
+			if used # {} then
+				used := -used
+				i := -1
+				j := 0
+				while j >= 0 do 
+					ch := cap(new_[j])
+					if ~(ord(ch) - ord("A") in used) then
+						i := j
+						j := -1 
+					else 
+						j := NextWord(new_, j) 
+					end  
+				end 
+				if i = -1 then
+					i := FirstFree(new_, used) 
+				end 
+				if i >= 0 then
+					SetHotkey(new_, i) 
+				end  
+			end  
+		end 
+	end UpdateHotkey
+	
+	
+	// custom menus
+	
+	proc AppendMenu(menu: WinApi.HANDLE; id: integer; name: Dialog.String)
+		var 
+			res: integer
+	begin 
+		Dialog.MapString(name, name)
+		res := WinApi.AppendMenuW(menu, {}, id, name)
+	end AppendMenu
+	
+	proc FirstMenu*(): Menu
+	begin 
+		return menus
+	end FirstMenu
+	
+	proc DeleteAll*
+	begin 
+		while WinApi.RemoveMenu(menuBar, 0, WinApi.MF_BYPOSITION) # 0 do  
+		end 
+		firstMenu := nil
+		lastMenu := nil
+		curMenu := nil
+		newWinMenu := 0
+		newPopMenu := 0
+		nextId := firstId
+	end DeleteAll
+	
+	proc Open*(menu, type_: array of char)
+	begin 
+		assert(curMenu = nil, 20)
+		assert(menu # "", 21)
+		new(curMenu)
+		curMenu.next := nil
+		curMenu.menuH := WinApi.CreatePopupMenu()
+		// curMenu.menu := menu$;
+		Dialog.MapString(menu, curMenu.menu)
+		curMenu.type_ := type_
+		curMenu.firstItem := nil
+	end Open
+	
+	proc AddItem*(item, string, shortcut, filter: Dialog.String)
+		var 
+			i: Item
+			id: integer
+	begin 
+		assert(curMenu # nil, 20)
+		assert(item # "", 21)
+		assert(string # "", 22)
+		if string = "HostMenus.WindowList" then
+			curMenu.isWinMenu := true 
+		else 
+			new(i)
+			i.next := nil
+			if curMenu.lastItem = nil then
+				curMenu.firstItem := i 
+			else 
+				curMenu.lastItem.next := i 
+			end 
+			curMenu.lastItem := i
+			StdDialog.AddItem(i, item, string, filter, shortcut)
+			if string = "HostMenus.ObjectMenu" then
+				id := iObject 
+			else 
+				id := nextId
+				inc(nextId) 
+			end 
+			i.id := id
+			if id > curMenu.maxId then
+				curMenu.maxId := id 
+			end  
+		end 
+	end AddItem
+	
+	proc ChangeItem(m: Menu; i: Item; var name: Dialog.String)
+		var 
+			res: integer
+			old: Dialog.String
+	begin 
+		res := WinApi.GetMenuStringW(m.menuH, i.id, old, len(old), {})
+		UpdateHotkey(old, name)
+		SetShortcut(i, name)
+	end ChangeItem
+	
+	proc AddSeparator*
+		var 
+			i: Item
+	begin 
+		assert(curMenu # nil, 20)
+		new(i)
+		i.next := nil
+		if curMenu.lastItem = nil then
+			curMenu.firstItem := i 
+		else 
+			curMenu.lastItem.next := i 
+		end 
+		curMenu.lastItem := i
+		StdDialog.AddItem(i, "", "", "", "")
+		i.id := 0
+	end AddSeparator
+	
+	proc Close*
+		var 
+			res, j, n: integer
+			i: StdDialog.Item
+			tab: pointer to array of Dialog.String
+	begin 
+		assert(curMenu # nil, 20)
+		i := curMenu.firstItem
+		n := 0
+		while i # nil do 
+			i := i.next
+			inc(n) 
+		end 
+		new(tab, n)
+		i := curMenu.firstItem
+		j := 0
+		while i # nil do  // tab[j] := i.item^$;
+			Dialog.MapString(i.item, tab[j])
+			i := i.next
+			inc(j) 
+		end 
+		SetHotkeys(tab, j)
+		i := curMenu.firstItem
+		j := 0
+		while i # nil do 
+			with i: Item do 
+				if i.item^ # "" then
+					SetShortcut(i, tab[j])
+					if i.id = iObject then
+						res := WinApi.AppendMenuW(curMenu.menuH, WinApi.MF_POPUP, objMenu, tab[j]) 
+					else 
+						res := WinApi.AppendMenuW(curMenu.menuH, {}, i.id, tab[j]) 
+					end  
+				elsif i.next # nil then 
+					res := WinApi.AppendMenuW(curMenu.menuH, WinApi.MF_SEPARATOR, 0, nil) 
+				end  
+			end 
+			i := i.next
+			inc(j) 
+		end 
+		if curMenu.menu = "*" then
+			curMenu.isPopup := true 
+		end 
+		if curMenu.type_ = "WindowMenu" then
+			curMenu.isWinMenu := true
+			curMenu.type_ := "" 
+		end 
+		if curMenu.isWinMenu then
+			newWinMenu := curMenu.menuH 
+		elsif curMenu.type_ = "PopupMenu" then 
+			newPopMenu := curMenu.menuH 
+		end 
+		if lastMenu = nil then
+			firstMenu := curMenu 
+		else 
+			lastMenu.next := curMenu 
+		end 
+		lastMenu := curMenu
+		curMenu := nil
+	end Close
+	
+	proc IsSubmenu(m: Menu): boolean
+	begin 
+		return m.menu[0] = submenuPrefix
+	end IsSubmenu
+	
+	proc FindSubmenu(item: StdDialog.Item): Menu
+		var 
+			m: Menu
+	begin 
+		if item.string[0] = submenuPrefix then
+			m := firstMenu
+			while (m # nil) & (m.menu # item.string) do 
+				m := m.next 
+			end 
+			return m 
+		else 
+			return nil 
+		end 
+	end FindSubmenu
+	
+	proc InitSubmenus
+		var 
+			menu, submenu: Menu
+			item: StdDialog.Item
+			res: integer
+			label: Dialog.String
+	begin 
+		menu := firstMenu
+		while menu # nil do 
+			item := menu.firstItem
+			while item # nil do 
+				submenu := FindSubmenu(item)
+				if submenu # nil then
+					label := "?"
+					res := WinApi.GetMenuStringW(menu.menuH, item(Item).id, label, len(label), {})
+					res := WinApi.ModifyMenuW(menu.menuH, item(Item).id, 
+						WinApi.MF_BYCOMMAND + WinApi.MF_POPUP + WinApi.MF_STRING, 
+						submenu.menuH, label) 
+				end 
+				item := item.next 
+			end 
+			menu := menu.next 
+		end 
+	end InitSubmenus
+	
+	proc InitMenus*
+		var 
+			m, n, old: Menu
+			res, i: integer
+			used, u: set
+			tp: Stores.TypeName
+			oldBar: WinApi.HANDLE
+	begin 
+		assert(curMenu = nil, 20)
+		if firstMenu # nil then
+			used := {}
+			m := firstMenu
+			while m # nil do  // set explicit menu hotkeys
+				GetHotkey(m.menu, m.hot, used)
+				m := m.next 
+			end 
+			m := firstMenu
+			i := 0
+			while m # nil do 
+				// set implicit hotkeys of unconditional menus
+				if (m.hot = -1) & (m.type_ = "") & ~IsSubmenu(m) then
+					m.hot := FirstFree(m.menu, used) 
+				end 
+				if m.isWinMenu then
+					m.class := 4
+					i := 100 
+				elsif m.isPopup then 
+					m.class := 10 
+				elsif i = 0 then 
+					m.class := 0 
+				elsif i < 3 then 
+					m.class := 1 
+				elsif i < 100 then 
+					m.class := 3 
+				else 
+					m.class := 5 
+				end 
+				m := m.next
+				inc(i) 
+			end 
+			m := firstMenu
+			while m # nil do 
+				// set implicit hotkeys of conditional menus, grouped by type
+				if (m.hot = -1) & ~IsSubmenu(m) then
+					tp := m.type_
+					u := used
+					n := m
+					while n # nil do 
+						if (n.hot = -1) & (n.type_ = tp) & ~IsSubmenu(n) then
+							n.hot := FirstFree(n.menu, u) 
+						end 
+						n := n.next 
+					end  
+				end 
+				if (m.hot >= 0) & ~IsSubmenu(m) then
+					SetHotkey(m.menu, m.hot) 
+				end 
+				m := m.next 
+			end 
+			newMenuBar := WinApi.CreateMenu()
+			m := firstMenu
+			while m # nil do 
+				if ((m.type_ = "") or (m.type_ = type_)) & ~m.isPopup & ~IsSubmenu(m) then
+					res := WinApi.AppendMenuW(newMenuBar, WinApi.MF_POPUP, m.menuH, m.menu) 
+				end 
+				m := m.next 
+			end 
+			oldBar := menuBar
+			menuBar := newMenuBar
+			winMenu := newWinMenu
+			popMenu := newPopMenu
+			old := menus
+			menus := firstMenu
+			lastId := nextId
+			if UpdateOleMenus # nil then
+				UpdateOleMenus() 
+			end 
+			res := WinApi.SendMessageW(HostWindows.client, WinApi.WM_MDISETMENU, menuBar, winMenu)
+			if res # 0 then
+				res := WinApi.DrawMenuBar(HostWindows.main)
+				m := old
+				while m # nil do  // prevent submenus from being deleted
+					while WinApi.RemoveMenu(m.menuH, 0, WinApi.MF_BYPOSITION) # 0 do  
+					end 
+					res := WinApi.DestroyMenu(m.menuH)
+					m := m.next 
+				end 
+				res := WinApi.DestroyMenu(oldBar) 
+			end 
+			InitSubmenus 
+		end 
+	end InitMenus
+	
+	
+	// Menu Dispatching
+	
+	proc Cascade*
+		var 
+			res: integer
+	begin 
+		res := WinApi.SendMessageW(HostWindows.client, WinApi.WM_MDICASCADE, 2, 0)
+	end Cascade
+	
+	proc TileHorizontal*
+		var 
+			res: integer
+	begin 
+		res := WinApi.SendMessageW(HostWindows.client, WinApi.WM_MDITILE, 3, 0)
+	end TileHorizontal
+	
+	proc TileVertical*
+		var 
+			res: integer
+	begin 
+		res := WinApi.SendMessageW(HostWindows.client, WinApi.WM_MDITILE, 2, 0)
+	end TileVertical
+	
+	proc ArrangeIcons*
+		var 
+			res: integer
+	begin 
+		res := WinApi.SendMessageW(HostWindows.client, WinApi.WM_MDIICONARRANGE, 0, 0)
+	end ArrangeIcons
+	
+	
+	proc Exit*
+		var 
+			res: integer
+	begin 
+		res := WinApi.SendMessageW(HostWindows.main, WinApi.WM_CLOSE, 0, 0)
+	end Exit
+	
+	
+	proc SetFocus
+		var 
+			c: Containers.Controller
+			f: Views.Frame
+			v, s: Views.View
+	begin 
+		f := Controllers.FocusFrame()
+		v := f.view
+		with v: Containers.View do 
+			c := v.ThisController()
+			s := c.Singleton()
+			if s # nil then
+				c.SetFocus(s) 
+			end  
+		else  
+		end 
+	end SetFocus
+	
+	proc OpenWindow
+		var 
+			c: Containers.Controller
+			f: Views.Frame
+			v, s: Views.View
+			doc: Documents.Document
+			win: Windows.Window
+			title: Views.Title
+	begin 
+		f := Controllers.FocusFrame()
+		v := f.view
+		with v: Containers.View do 
+			c := v.ThisController()
+			s := c.Singleton()
+			if (s # nil) & (s.ThisModel() # nil) then
+				win := Windows.dir.Focus(Controllers.frontPath)
+				assert(win # nil, 100)
+				doc := win.doc.DocCopyOf(s)
+				c := doc.ThisController()
+				c.SetOpts(c.opts - {Documents.pageWidth, Documents.pageHeight} 
+				+ {Documents.winWidth, Documents.winHeight})
+				// Stores.InitDomain(doc, v.domain); done by DocCopyOf
+				win.GetTitle(title)
+				Windows.dir.OpenSubWindow(Windows.dir.New(), doc, {Windows.isAux}, title) 
+			end  
+		else  
+		end 
+	end OpenWindow
+	
+	proc HandleVerb(n: integer)
+		var 
+			v: Views.View
+			dvm: Properties.DoVerbMsg
+	begin 
+		v := Containers.FocusSingleton()
+		if v # nil then
+			dvm.frame := Views.ThisFrame(Controllers.FocusFrame(), v)
+			dvm.verb := n
+			Views.HandlePropMsg(v, dvm) 
+		end 
+	end HandleVerb
+	
+	proc CheckVerb(v: Views.View; n: integer; var pvm: Properties.PollVerbMsg)
+	begin 
+		pvm.verb := n
+		pvm.label := ""
+		pvm.disabled := false
+		pvm.checked := false
+		Views.HandlePropMsg(v, pvm)
+	end CheckVerb
+	
+	proc PrimaryVerb*
+		var 
+			v: Views.View
+			pvm: Properties.PollVerbMsg
+	begin 
+		v := Containers.FocusSingleton()
+		if v # nil then
+			CheckVerb(v, 0, pvm)
+			if pvm.label # "" then
+				HandleVerb(0) 
+			else 
+				SetFocus 
+			end  
+		end 
+	end PrimaryVerb
+	(* PROCEDURE ObjProperties*;
+	   VAR res: INTEGER; p, q: Properties.Property; s: Views.View;
+	   BEGIN
+	   Properties.CollectProp(p);
+	   s := Containers.FocusSingleton();
+	   IF s # NIL THEN
+	   q := p;
+	   WHILE (q # NIL) & ~(q IS Controls.Prop) DO q := q.next END;
+	   IF q # NIL THEN
+	   Dialog.Call(
+	   "DevInspector.InitDialog; StdCmds.OpenToolDialog('DevInspector.inspect', '#Host:ControlInspector')"
+	   , "", res);
+	   IF res = 0 THEN RETURN END
+	   END
+	   END;
+	   q := p;
+	   WHILE (q # NIL) & ~(q IS Properties.StdProp) DO q := q.next END;
+	   IF (q # NIL) & (Properties.typeface IN p.known) THEN
+	   HostDialog.FontDialog
+	   END
+	   END ObjProperties; *)
+	
+	
+	proc ObjectMenu*
+	begin 
+		halt(127)
+	end ObjectMenu
+	
+	proc WindowList*
+	begin 
+		halt(127)
+	end WindowList
+	(* PROCEDURE PropertiesGuard* (VAR par: Dialog.Par);
+	   VAR res: INTEGER; p, q: Properties.Property; s: Views.View;
+	   BEGIN
+	   Properties.CollectProp(p);
+	   s := Containers.FocusSingleton();
+	   IF s # NIL THEN
+	   q := p;
+	   WHILE (q # NIL) & ~(q IS Controls.Prop) DO q := q.next END;
+	   IF q # NIL THEN RETURN END
+	   END;
+	   q := p;
+	   WHILE (q # NIL) & ~(q IS Properties.StdProp) DO q := q.next END;
+	   IF (q # NIL) & (Properties.typeface IN p.known) THEN RETURN END;
+	   par.disabled := TRUE
+	   END PropertiesGuard; *)
+	
+	
+	proc ObjectMenuGuard*(var par: Dialog.Par)
+		var 
+			v: Views.View
+			pvm: Properties.PollVerbMsg
+			i, id, res: integer
+			msg: TypeMsg
+			str: Dialog.String
+	begin 
+		v := Containers.FocusSingleton()
+		if v # nil then
+			// remove old object menu entries
+			while WinApi.RemoveMenu(objMenu, 0, WinApi.MF_BYPOSITION) # 0 do  
+			end 
+			// insert verbs
+			i := 0
+			id := iVerb0
+			CheckVerb(v, 0, pvm)
+			if pvm.label = "" then
+				AppendMenu(objMenu, iObjEdit, "#Host:Edit")
+				AppendMenu(objMenu, iObjOpen, "#Host:Open")
+				if v.ThisModel() = nil then
+					res := WinApi.EnableMenuItem(objMenu, iObjOpen, WinApi.MF_GRAYED) 
+				end 
+				inc(i)
+				inc(id)
+				CheckVerb(v, i, pvm) 
+			end 
+			while (id < firstId) & (pvm.label # "") do 
+				str := pvm.label
+				AppendMenu(objMenu, id, str)
+				if pvm.disabled then
+					res := WinApi.EnableMenuItem(objMenu, id, WinApi.MF_GRAYED) 
+				end 
+				if pvm.checked then
+					res := WinApi.CheckMenuItem(objMenu, id, WinApi.MF_CHECKED) 
+				end 
+				inc(i)
+				inc(id)
+				CheckVerb(v, i, pvm) 
+			end 
+			msg.type_ := ""
+			Views.HandlePropMsg(v, msg)
+			if msg.type_ # "" then
+				Dialog.MapString("#Host:Object", str)
+				par.label := msg.type_ + " " + str 
+			else 
+				Dialog.MapString("#Host:Object", par.label) 
+			end  
+		else 
+			par.disabled := true
+			Dialog.MapString("#Host:Object", par.label) 
+		end 
+	end ObjectMenuGuard
+	
+	proc PopupMenu*
+		var 
+			f: Views.Frame
+			res, x, y: integer
+			d: boolean
+			pt: WinApi.POINT
+			m: set
+			menu: Menu
+			menuH: WinApi.HANDLE
+	begin 
+		f := Controllers.FocusFrame()
+		if (f # nil) & f.front then
+			UpdateType()
+			menu := menus
+			while (menu # nil) & (~menu.isPopup or (menu.type_ # "") & (menu.type_ # type_)) do 
+				menu := menu.next 
+			end 
+			if menu # nil then
+				menuH := menu.menuH 
+			else 
+				menuH := popMenu 
+			end 
+			if WinApi.GetCapture() # 0 then
+				f.Input(x, y, m, d) 
+			else 
+				x := (f.l + f.r) div 2
+				y := (f.t + f.b) div 2 
+			end 
+			pt.x := (x + f.gx) div f.unit
+			pt.y := (y + f.gy) div f.unit
+			res := WinApi.ClientToScreen(f.rider(HostPorts.Rider).port.wnd, pt)
+			res := WinApi.TrackPopupMenu(menuH, {1}, pt.x, pt.y + 2, 0, HostWindows.main, nil) 
+		end 
+	end PopupMenu
+	
+	
+	// menu dispatching
+	
+	proc PrepareMenu(wnd, menu: WinApi.HANDLE; lParam: integer)
+		(* this procedure is called after the user has clicked into the menu bar, but before
+		   showing the menu; to prepare item enabling/disabling, check marks, etc. *)
+		var 
+			res, n: integer
+			failed, ok: boolean
+			par: Dialog.Par
+			m: Menu
+			i: StdDialog.Item
+			str: Dialog.String
+	begin 
+		m := menus
+		while (m # nil) & (m.menuH # menu) do 
+			m := m.next 
+		end 
+		if m # nil then
+			i := m.firstItem
+			n := 0
+			while i # nil do 
+				with i: Item do 
+					if i.filter^ # "" then // custom menu item with custom guard
+						StdDialog.CheckFilter(i, failed, ok, par)
+						if ~failed then
+							if par.label = "-" then
+								if ~i.del then
+									res := WinApi.RemoveMenu(m.menuH, n, WinApi.MF_BYPOSITION)
+									i.del := true 
+								end 
+								dec(n) 
+							else 
+								if i.del then
+									res := WinApi.InsertMenuW(m.menuH, n, WinApi.MF_BYPOSITION, i.id, "+")
+									i.del := false 
+								end 
+								Dialog.MapString(par.label, str)
+								ChangeItem(m, i, str)
+								if i.id = iObject then
+									res := WinApi.ModifyMenuW(
+										m.menuH, n, WinApi.MF_BYPOSITION + WinApi.MF_POPUP, objMenu, str) 
+								else 
+									res := WinApi.ModifyMenuW(m.menuH, n, WinApi.MF_BYPOSITION, i.id, str) 
+								end 
+								if par.disabled then
+									res := WinApi.EnableMenuItem(
+										m.menuH, n, WinApi.MF_BYPOSITION + WinApi.MF_GRAYED) 
+								else 
+									res := WinApi.EnableMenuItem(m.menuH, n, WinApi.MF_BYPOSITION) 
+								end 
+								if par.checked & ~odd(WinApi.GetMenuState(m.menuH, n, WinApi.MF_BYPOSITION)) 
+								then
+									res := WinApi.CheckMenuItem(
+										m.menuH, n, WinApi.MF_BYPOSITION + WinApi.MF_CHECKED) 
+								else 
+									res := WinApi.CheckMenuItem(m.menuH, n, WinApi.MF_BYPOSITION) 
+								end 
+								if ~ok then
+									// mark with "?" !!!
+									res := WinApi.EnableMenuItem(
+										m.menuH, n, WinApi.MF_BYPOSITION + WinApi.MF_GRAYED) 
+								end  
+							end  
+						end  
+					end  
+				end 
+				i := i.next
+				inc(n) 
+			end  
+		end 
+	end PrepareMenu
+	
+	proc HandleCustomMenu(id: integer)
+		var 
+			m: Menu
+			i: StdDialog.Item
+	begin 
+		m := menus
+		while (m # nil) & (m.maxId < id) do 
+			m := m.next 
+		end 
+		if m # nil then
+			i := m.firstItem
+			while (i # nil) & (i(Item).id # id) do 
+				i := i.next 
+			end 
+			if i # nil then
+				StdDialog.HandleItem(i) 
+			end  
+		end 
+	end HandleCustomMenu
+	
+	proc MenuCommand(wnd: WinApi.HANDLE; wParam, lParam: integer)
+		var 
+			res, id: integer
+			old: WinApi.HANDLE
+	begin 
+		
+		old := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
+		Dialog.ShowStatus("")
+		
+		dec(gc)
+		id := wParam mod 65536
+		case id of 
+			| iClose: 
+				HostCmds.Close 
+			| iUndo: 
+				StdCmds.Undo 
+			| iCut: 
+				HostCmds.Cut 
+			| iCopy: 
+				HostCmds.Copy 
+			| iPaste: 
+				HostCmds.Paste 
+			| iOpen: 
+				HostCmds.Open 
+			| iExit: 
+				Exit 
+			| iUpdateMenus: 
+				Dialog.Call("StdMenuTool.UpdateAllMenus", "", res) 
+			| iPopup: 
+				PopupMenu 
+			| iObjEdit: 
+				SetFocus 
+			| iObjOpen: 
+				OpenWindow 
+			| iProperties: 
+				StdCmds.ShowProp 
+		else 
+			if id < firstId then
+				HandleVerb(id - iVerb0) 
+			else 
+				res := 0 // prevent from parasitic anchors on stack
+				HandleCustomMenu(id) 
+			end  
+		end 
+		Properties.IncEra
+		
+		old := WinApi.SetCursor(old)
+	
+	end MenuCommand
+	
+	
+	proc FindAccelerator(menu: Menu; code: integer; ctrl, shift: boolean): Item
+		var 
+			item: StdDialog.Item
+			submenu: Menu
+			res: Item
+	begin 
+		item := menu.firstItem
+		while item # nil do 
+			with item: Item do 
+				if (item.code = code) & (item.ctrl = ctrl) & (item.shift = shift) then
+					return item 
+				end 
+				submenu := FindSubmenu(item)
+				if submenu # nil then
+					res := FindAccelerator(submenu, code, ctrl, shift)
+					if res # nil then
+						return res 
+					end  
+				end  
+			end 
+			item := item.next 
+		end 
+		return nil
+	end FindAccelerator
+	
+	proc TranslateAccelerators(var msg: WinApi.MSG; filter: set; var done: boolean)
+		var 
+			m: Menu
+			i: StdDialog.Item
+			id, code: integer
+			ctrl, shift, alt: boolean
+			ch: char
+			failed, ok, control: boolean
+			par: Dialog.Par
+			focus: Views.View
+	begin 
+		if (msg.message = WinApi.WM_SYSKEYDOWN) or (msg.message = WinApi.WM_KEYDOWN) then
+			code := msg.wParam
+			id := 0
+			ch := 0x
+			shift := WinApi.GetKeyState(10h) < 0
+			ctrl := WinApi.GetKeyState(11h) < 0
+			alt := odd(msg.lParam div 20000000h)
+			focus := Controllers.FocusView()
+			control := (focus # nil) & (focus is Controls.Control)
+			if 1 in filter then
+				if shift & (code = 79h) then // shift F10
+					if control then
+						ch := apps 
+					else 
+						id := iPopup 
+					end  
+				elsif alt then 
+					if code = 08h then // alt bs
+						if control then
+							ch := ctrlZ 
+						else 
+							id := iUndo 
+						end  
+					elsif (code = 0dh) & ~control then  // alt enter
+						id := iProperties 
+					elsif (code = 5dh) & ~control then  // alt application
+						id := iProperties 
+					elsif (code = minusCode) & shift then 
+						ch := NBHYPHEN 
+					elsif (code = ord(" ")) & shift then 
+						ch := NBSPACE 
+					end  
+				elsif ctrl then 
+					if code = ord(" ") then
+						if shift then
+							ch := NUMSPACE 
+						end  
+					elsif code = 2dh then 
+						id := iCopy  // ctrl insert
+					elsif code = minusCode then 
+						if shift then
+							ch := SOFTHYPHEN 
+						else 
+							ch := HYPHEN 
+						end  
+					end  
+				elsif shift then 
+					if code = 2eh then // shift delete
+						id := iCut 
+					elsif code = 2dh then  // shift insert
+						id := iPaste 
+					end  
+				elsif code = 5dh then  // application
+					if control then
+						ch := apps 
+					else 
+						id := iPopup 
+					end  
+				elsif code = 1bh then  // esc
+					done := true 
+				end  
+			end 
+			if (id = 0) & ~alt & (ctrl or (code >= 70h) & (code <= 7fh)) (* function key *)then
+				m := menus
+				while (m # nil) & (id = 0) do 
+					if ((m.type_ = "") or (m.type_ = type_)) & ~m.isPopup & (m.class in filter) & ~IsSubmenu(m) then
+						i := FindAccelerator(m, code, ctrl, shift)
+						if i # nil then
+							if i.filter^ # "" then
+								StdDialog.CheckFilter(i, failed, ok, par) 
+							end 
+							if (i.filter^ = "") or ~failed & ~par.disabled then
+								id := i(Item).id 
+							end  
+						end  
+					end 
+					m := m.next 
+				end 
+				if control then
+					if (code = ord('Z')) then
+						id := 0
+						ch := ctrlZ 
+					elsif (code = ord('A')) then 
+						id := 0
+						ch := ctrlA 
+					end  
+				end  
+			end 
+			if id # 0 then
+				msg.message := WinApi.WM_COMMAND
+				msg.wParam := id + 65536
+				msg.hwnd := HostWindows.main
+				msg.lParam := 0
+				done := true 
+			elsif ch # 0x then 
+				msg.message := WinApi.WM_CHAR
+				msg.wParam := ord(ch)
+				done := true 
+			end  
+		end 
+	end TranslateAccelerators
+	
+	
+	proc OpenFile(var name: array of char; l, t, r, b: integer; var ok: boolean)
+		var 
+			res: integer
+			loc: Files.Locator
+			np: WinApi.PtrWSTR
+			path: HostFiles.FullName
+			file: Files.Name
+			v: Views.View
+			conv: Converters.Converter
+			f: Files.File
+	begin 
+		ok := false
+		res := WinApi.GetFullPathNameW(name, len(path), path, np)
+		if np # nil then
+			file := np^
+			if file # "" then
+				dec(SYSTEM.VAL(integer, np), 2)
+				np^[0] := 0x
+				loc := HostFiles.NewLocator(path)
+				f := Files.dir.Old(loc, file, Files.shared)
+				if f # nil then
+					conv := Converters.list
+					while (conv # nil) & (conv.fileType # f.type_) do 
+						conv := conv.next 
+					end 
+					if conv = nil then
+						conv := Converters.list
+						while (conv # nil) & ~(impAll in conv.opts) do 
+							conv := conv.next 
+						end  
+					end 
+					if f.type_ = "" then
+						file := file + "." 
+					end 
+					v := Views.Old(Views.dontAsk, loc, file, conv)
+					if v # nil then
+						HostWindows.dir.l := l
+						HostWindows.dir.t := t
+						HostWindows.dir.r := r
+						HostWindows.dir.b := b
+						Views.Open(v, loc, file, conv)
+						ok := true
+						HostWindows.dir.l := 0
+						HostWindows.dir.t := 0
+						HostWindows.dir.r := 0
+						HostWindows.dir.b := 0 
+					end  
+				end  
+			end  
+		end 
+	end OpenFile
+	
+	type StrPtr = pointer to array of char
+	
+	proc IncludingFileCommandLine(
+		in line: carray of char
+		): StrPtr
+		var 
+			f: Files.File
+			r: Files.Reader
+			i, len_: integer
+			header: array 12 of byte
+			keyword: array 12 of char
+			b: pointer to array of byte
+			l2: StrPtr
+	begin 
+		len_ := len(line)
+		f := Files.dir.Old(Files.dir.This(cmdLinePath), cmdLineFile, Files.shared)
+		if (f # nil) & (f.Length() > len(header)) then
+			r := f.NewReader(nil)
+			r.ReadBytes(header, 0, len(header))
+			for i:= 0 to len(header) - 1 do 
+				keyword[i] := chr(header[i]) 
+			end 
+			keyword[len(keyword) - 1] := 0x
+			if keyword = 'COMMANDLINE' then
+				new(b, f.Length() - len(header))
+				new(l2, len(b) + len_ + 1)
+				r.ReadBytes(b, 0, len(b))
+				for i:= 0 to len_ - 1 do 
+					l2[i] := line[i] 
+				end 
+				l2[i] := " "
+				for i:= 0 to len(b) - 1 do 
+					l2[i + len_ + 1] := chr(b[i] mod 256) 
+				end 
+				return l2 
+			end  
+		end 
+		new(l2, len_ + 1)
+		l2^ := line
+		return l2
+	end IncludingFileCommandLine
+	
+	proc ReadCommandLine(in line: carray of char; open: boolean)
+		var 
+			name, opt: array 260 of char
+			i, l, t, r, b, res: integer
+			ok: boolean
+		
+		proc CopyName
+			var 
+				ch, tch: char
+				j: integer
+		begin 
+			j := 0
+			ch := line[i]
+			tch := " "
+			while ch = " " do 
+				inc(i)
+				ch := line[i] 
+			end 
+			if (ch = "'") or (ch = '"') then
+				tch := ch
+				inc(i)
+				ch := line[i] 
+			end 
+			while (ch >= " ") & (ch # tch) do 
+				name[j] := ch
+				if Strings.IsLower(ch) then
+					ch := Strings.Upper(ch) 
+				elsif ch = "-" then 
+					ch := "/" 
+				end 
+				opt[j] := ch
+				inc(j)
+				inc(i)
+				ch := line[i] 
+			end 
+			if ch > " " then
+				inc(i)
+				ch := line[i] 
+			end 
+			while (ch # 0x) & (ch <= " ") do 
+				inc(i)
+				ch := line[i] 
+			end 
+			name[j] := 0x
+			opt[j] := 0x
+		end CopyName
+	
+	begin 
+		l := 0
+		t := 0
+		r := 0
+		b := 0
+		i := 0
+		CopyName // skip program name
+		while line[i] > " " do 
+			CopyName
+			if opt = "/LOAD" then // load module
+				CopyName
+				if open then
+					Kernel.LoadMod(name) 
+				end  
+			elsif opt = "/USE" then  // use directory
+				CopyName  // working directory: handled in HostFiles
+			elsif opt = "/P" then  // print file // to be completed !!!
+				CopyName
+				if open then
+					OpenFile(name, 0, 0, 0, 0, ok)
+					if ok then
+						HostCmds.Print 
+					end  
+				end  
+			elsif opt = "/PT" then  // print file to printer
+				CopyName // to be completed !!!
+				CopyName
+				CopyName
+				CopyName 
+			elsif opt = "/EMBEDDING" then  // start as server
+				if ~open then
+					state := embedded 
+				end  
+			elsif opt = "/NOAPPWIN" then  // start without application window
+				if ~open then
+					state := noAppWin
+					HostWindows.noAppWin := true 
+				end  
+			elsif opt = "/NOSCROLL" then  // no scroll bars in  application window
+				HostWindows.noClientScroll := true 
+			elsif opt = "/FULLSIZE" then 
+				HostWindows.fullSize := true 
+			elsif opt = "/LTRB" then  // window position
+				CopyName
+				Strings.StringToInt(name, l, res)
+				CopyName
+				Strings.StringToInt(name, t, res)
+				CopyName
+				Strings.StringToInt(name, r, res)
+				CopyName
+				Strings.StringToInt(name, b, res) 
+			elsif opt = "/LANG" then 
+				CopyName
+				if len(name) = 2 then
+					Strings.ToLower(name, name)
+					Dialog.SetLanguage(name, Dialog.nonPersistent) 
+				end  
+			elsif opt = "/O" then  // open file
+				CopyName
+				openUsed := true
+				if open then
+					OpenFile(name, l, t, r, b, ok) 
+				end 
+				openParam := '/O "' + name + '"'
+				l := 0
+				t := 0
+				r := 0
+				b := 0 
+			elsif opt = "/PAR" then 
+				CopyName
+				Dialog.commandLinePars := name 
+			elsif opt = "/INIFILE" then  // use an INI-file instead of the Windows registry
+				CopyName  // path of INI-file: handled in HostRegistry because needed earlier
+			elsif opt = "/PORTABLE" then   // use a default INI-file instead of the Windows registry
+			else  // open file
+				if open then
+					OpenFile(name, l, t, r, b, ok) 
+				end 
+				l := 0
+				t := 0
+				r := 0
+				b := 0 
+			end  
+		end 
+	end ReadCommandLine
+	
+	proc DropFiles(wnd: WinApi.HANDLE; wParam, lParam: integer)
+		var 
+			i, n, res: integer
+			name: array 260 of char
+			ok: boolean
+	begin 
+		if state = noAppWin then
+			return  
+		end 
+		n := WinApi.DragQueryFileW(wParam, -1, name, len(name))
+		i := 0
+		while i < n do 
+			res := WinApi.DragQueryFileW(wParam, i, name, len(name))
+			OpenFile(name, 0, 0, 0, 0, ok)
+			if ok then
+				res := WinApi.SetForegroundWindow(HostWindows.main) 
+			end 
+			inc(i) 
+		end 
+		WinApi.DragFinish(wParam)
+	end DropFiles
+	
+	
+	// main window handler
+	
+	proc Quit(wnd: WinApi.HANDLE; wParam, lParam: integer)
+	begin 
+		HostCmds.Quit
+	end Quit
+	
+	proc UpdateMenus
+		var 
+			res: integer
+			m: Menu
+			old: WinApi.HANDLE
+	begin 
+		old := menuBar
+		menuBar := WinApi.CreateMenu()
+		m := menus
+		while m # nil do 
+			if ((m.type_ = "") or (m.type_ = type_)) & ~m.isPopup & ~IsSubmenu(m) then
+				res := WinApi.AppendMenuW(menuBar, WinApi.MF_POPUP, m.menuH, m.menu) 
+			end 
+			m := m.next 
+		end 
+		res := WinApi.SendMessageW(HostWindows.client, WinApi.WM_MDISETMENU, menuBar, winMenu)
+		res := WinApi.DrawMenuBar(HostWindows.main)
+		while WinApi.RemoveMenu(old, 0, WinApi.MF_BYPOSITION) # 0 do  
+		end 
+		res := WinApi.DestroyMenu(old)
+	end UpdateMenus
+	
+	proc UpdateType
+		var 
+			ops: Controllers.PollOpsMsg
+	begin 
+		Controllers.SetCurrentPath(Controllers.targetPath)
+		Controllers.PollOps(ops)
+		if (ops.type_ # type_) & (menus # nil) & (WinApi.GetMenu(HostWindows.main) = menuBar) then
+			type_ := ops.type_
+			UpdateMenus 
+		end 
+		Controllers.ResetCurrentPath()
+	end UpdateType
+	
+	proc TimerTick(wnd: WinApi.HANDLE; wParam, lParam: integer)
+		var 
+			ops: Controllers.PollOpsMsg
+	begin 
+		if ~Log.synch then
+			Log.FlushBuf 
+		end 
+		if ~HostCFrames.inHandleMouse then
+			HostWindows.Idle 
+		end 
+		UpdateType()
+	end TimerTick
+	
+	proc Flush(wnd: WinApi.HANDLE; wParam, lParam: integer)
+	begin 
+		HostClipboard.Flush
+	end Flush
+	
+	
+	proc ApplWinHandler(wnd: WinApi.HANDLE; message, wParam, lParam: integer): integer
+		type 
+			PPS = pointer to WinApi.PAINTSTRUCT
+			PR = pointer to WinApi.RECT
+		var 
+			res: integer
+			w: WinApi.HANDLE
+			r: WinApi.RECT
+			hit: boolean
+			Proc: proc 
+			s: array 256 of char
+	begin 
+		Controllers.SetCurrentPath(Controllers.targetPath)
+		if (hookApplWinHandler # nil) & hookApplWinHandler(message, wParam, lParam, res) then
+			Controllers.ResetCurrentPath()
+			return res 
+		end 
+		case message of 
+			| WinApi.WM_CLOSE, WinApi.WM_QUERYENDSESSION: 
+				Kernel.Try(Quit, wnd, wParam, lParam)
+				if HostCmds.quit then
+					HostWindows.SaveWindowState
+					if locks = 0 then
+						Kernel.Try(Flush, wnd, 0, 0) 
+					else 
+						state := hidden
+						res := WinApi.ShowWindow(HostWindows.main, WinApi.SW_HIDE)
+						Controllers.ResetCurrentPath()
+						return 0 
+					end  
+				else 
+					gc := 0
+					Controllers.ResetCurrentPath()
+					return 0 
+				end  
+			| WinApi.WM_DESTROY: 
+				WinApi.PostQuitMessage(0)
+				Controllers.ResetCurrentPath()
+				return 0 
+			| WinApi.WM_ACTIVATE: 
+				if debug then
+					Log.String("activate hack")
+					Log.Ln 
+				end 
+				if wParam mod 65536 # 0 then
+					HostWindows.ActivateMain(true) 
+				end  
+			| WinApi.WM_NCACTIVATE: 
+				if wParam mod 65536 = 0 then
+					HostWindows.ActivateMain(false) 
+				end  
+			| WinApi.WM_COMMAND: 
+				Controllers.SetCurrentPath(Controllers.frontPath)
+				// prevent from parasitic anchors on stack
+				res := 0
+				w := 0
+				r.left := 0
+				r.top := 0
+				r.right := 0
+				r.bottom := 0
+				hit := false
+				Kernel.Try(MenuCommand, wnd, wParam, lParam)
+				Controllers.ResetCurrentPath() 
+			| WinApi.WM_INITMENUPOPUP: 
+				Controllers.SetCurrentPath(Controllers.frontPath)
+				Kernel.Try(PrepareMenu, wnd, wParam, lParam)
+				Controllers.ResetCurrentPath() 
+			(* | WinApi.WMRenderFormat:
+			   Kernel.Try(Export, wnd, wParam, 0)
+			   | WinApi.WMRenderAllFormats:
+			   Kernel.Try(Export, wnd, 0, 0)
+			   | WinApi.WMPaintClipboard:
+			   pps := SYSTEM.VAL(PPS, WinApi.GlobalLock(lParam));
+			   HostWindows.PaintClipboard(wParam, pps^);
+			   res := WinApi.GlobalUnlock(lParam);
+			   Controllers.ResetCurrentPath();
+			   RETURN 0
+			   | WinApi.WMSizeClipboard:
+			   pr := SYSTEM.VAL(PR, WinApi.GlobalLock(lParam));
+			   HostWindows.SizeClipboard(wParam, pr.right, pr.bottom);
+			   res := WinApi.GlobalUnlock(lParam);
+			   Controllers.ResetCurrentPath();
+			   RETURN 0
+			   | WinApi.WMHScrollClipboard:
+			   HostWindows.ScrollClipboard(wParam, lParam MOD 65536, lParam DIV 65536 MOD 65536, FALSE);
+			   Controllers.ResetCurrentPath();
+			   RETURN 0
+			   | WinApi.WMVScrollClipboard:
+			   HostWindows.ScrollClipboard(wParam, lParam MOD 65536, lParam DIV 65536 MOD 65536, TRUE);
+			   Controllers.ResetCurrentPath();
+			   RETURN 0
+			   | WinApi.WMAskCBFormatName:
+			   SYSTEM.MOVE(SYSTEM.ADR("BlackBox"), lParam, 9);
+			   Controllers.ResetCurrentPath();
+			   RETURN 0
+			   | WinApi.WMDestroyClipboard:
+			   HostClipboard.Destroy;
+			   Controllers.ResetCurrentPath();
+			   RETURN 0 *)
+			
+			
+			| WinApi.WM_SYSCOLORCHANGE: 
+				if HostWindows.ctl3d # 0 then
+					SYSTEM.PUT(
+					SYSTEM.ADR(Proc), WinApi.GetProcAddress(HostWindows.ctl3d, "Ctl3dColorChange"))
+					if Proc # nil then
+						Proc() 
+					end  
+				end 
+				HostPorts.ResetColors
+				res := WinApi.DeleteObject(HostPorts.dialogBrush)
+				HostPorts.dialogBrush := WinApi.CreateSolidBrush(Ports.dialogBackground) 
+			| WinApi.WM_DROPFILES: 
+				Kernel.Try(DropFiles, wnd, wParam, lParam)
+				Controllers.ResetCurrentPath()
+				return 0 
+			| WinApi.WM_TIMER: 
+				Kernel.Try(TimerTick, wnd, wParam, lParam)
+				Controllers.ResetCurrentPath()
+				return 0 
+			| WinApi.WM_SIZE: 
+				HostWindows.ResizeMainWindow(wParam, lParam mod 65536, lParam div 65536)
+				Controllers.ResetCurrentPath()
+				if HostWindows.mainHook # nil then
+					HostWindows.mainHook.Resize(lParam mod 65536, lParam div 65536) 
+				end 
+				return 0 
+			| WinApi.WM_SETFOCUS: 
+				if HostWindows.mainHook # nil then
+					HostWindows.mainHook.Focus(true) 
+				end  
+			| WinApi.WM_KILLFOCUS: 
+				if HostWindows.mainHook # nil then
+					HostWindows.mainHook.Focus(false) 
+				end  
+			| WinApi.WM_ACTIVATEAPP: 
+				if HostWindows.mainHook # nil then
+					HostWindows.mainHook.Activate(wParam # 0) 
+				end  
+			| WinApi.WM_CTLCOLORSTATIC:  // status bar colors
+				res := WinApi.SetTextColor(wParam, HostPorts.dialogTextCol)
+				res := WinApi.SetBkColor(wParam, Ports.dialogBackground)
+				Controllers.ResetCurrentPath()
+				return HostPorts.dialogBrush 
+		else 
+			if (message = msgId) & ~disablePipe then
+				if (wParam >= 0ffffc000h) & (wParam < 0) then
+					HostWindows.ShowMain
+					state := running
+					if WinApi.IsIconic(HostWindows.main) # 0 then
+						res := WinApi.ShowWindow(HostWindows.main, WinApi.SW_RESTORE) 
+					end 
+					res := WinApi.GlobalGetAtomNameW(short(wParam), s, len(s))
+					ReadCommandLine(s, true)
+					res := WinApi.GlobalAddAtomW("<file_opened>")
+					res := WinApi.GlobalDeleteAtom(short(wParam)) 
+				end 
+				Controllers.ResetCurrentPath()
+				return 0 
+			end  
+		end 
+		Controllers.ResetCurrentPath()
+		return WinApi.DefFrameProcW(wnd, HostWindows.client, message, wParam, lParam)
+	end ApplWinHandler
+	
+	
+	// Initialization
+	
+	proc CreateDefaultMenu
+		var 
+			res: integer
+	begin 
+		defMenu := WinApi.CreatePopupMenu()
+		res := WinApi.AppendMenuW(defMenu, {}, iOpen, "&Open")
+		res := WinApi.AppendMenuW(defMenu, {}, iUpdateMenus, "&Menu")
+		res := WinApi.AppendMenuW(defMenu, WinApi.MF_SEPARATOR, 0, nil)
+		res := WinApi.AppendMenuW(defMenu, {}, iExit, "E&xit")
+		menuBar := WinApi.CreateMenu()
+		winMenu := 0
+		popMenu := 0
+		res := WinApi.AppendMenuW(menuBar, WinApi.MF_POPUP, defMenu, "&File")
+	end CreateDefaultMenu
+	
+	proc DestroyMenus // module terminator
+		var 
+			res: integer
+			m: Menu
+			Proc: proc (i: WinApi.HANDLE)
+	begin 
+		m := menus
+		while m # nil do 
+			res := WinApi.DestroyMenu(m.menuH)
+			m := m.next 
+		end 
+		if HostWindows.ctl3d # 0 then
+			SYSTEM.PUT(SYSTEM.ADR(Proc), WinApi.GetProcAddress(HostWindows.ctl3d, "Ctl3dUnregister"))
+			if Proc # nil then
+				Proc(WinApi.GetModuleHandleW(nil)) 
+			end  
+		end 
+	end DestroyMenus
+	
+	
+	// main event loop
+	
+	proc Loop
+		var 
+			res, n: integer
+			msg: WinApi.MSG
+			done: boolean
+			f: set
+			w: HostWindows.Window
+	begin 
+		HostWindows.dir.invisible := false
+		if state = hidden then
+			HostWindows.ShowMain
+			state := running 
+		end 
+		gc := 0
+		n := 0
+		while WinApi.GetMessageW(msg, 0, 0, 0) # 0 do 
+			CheckFpu
+			if WinApi.IsWindowVisible(HostWindows.main) # 0 then
+				state := running 
+			end 
+			done := false
+			if isCont & (TranslateOleKeys1 # nil) then
+				TranslateOleKeys1(SYSTEM.VAL(WinApi.MSG, msg), done) 
+			end 
+			if ~done & ~isObj then
+				done := WinApi.TranslateMDISysAccel(HostWindows.client, msg) # 0 
+			end 
+			if ~done then
+				if isObj then
+					f := {1, 3, 5} 
+				elsif isCont then 
+					f := {0, 2, 4} 
+				else 
+					f := {0..5} 
+				end 
+				TranslateAccelerators(msg, f, done)
+				if ~done & isObj & (TranslateOleKeys2 # nil) then
+					TranslateOleKeys2(SYSTEM.VAL(WinApi.MSG, msg), done) 
+				else 
+					done := false 
+				end 
+				if ~done then
+					res := WinApi.TranslateMessage(msg)
+					res := WinApi.DispatchMessageW(msg) 
+				end 
+				Services.actionHook.Loop 
+			end 
+			inc(n)
+			if (n > num) or (WinApi.PeekMessageW(msg, 0, 0, 0, 0) = 0) then
+				Windows.dir.Update(nil)
+				n := 0 
+			end 
+			if state = hidden then
+				dec(gc) 
+			end 
+			if ((gc <= 0) or Kernel.WouldFinalize()) & ~HostCmds.quit then
+				msg.message := 0
+				msg.hwnd := 0
+				msg.wParam := 0
+				msg.lParam := 0
+				msg.time := 0
+				msg.pt.x := 0
+				msg.pt.y := 0
+				res := 0
+				Kernel.Collect
+				gc := gcCycle 
+			end 
+			if state = noAppWin then
+				w := HostWindows.dir.First()
+				while (w # nil) & ~(Windows.isTool in w.flags) do 
+					w := HostWindows.dir.Next(w) 
+				end 
+				if w = nil then
+					Exit 
+				else 
+					w := nil 
+				end  
+			end  
+		end 
+		Kernel.Quit(msg.wParam)
+	// never returns
+	end Loop
+	
+	proc OpenApp*
+		var 
+			res, ip: integer
+			Proc: proc (i: WinApi.HANDLE)
+			atom: shortint
+	begin 
+		if HostWindows.ctl3d # 0 then
+			SYSTEM.PUT(
+			SYSTEM.ADR(Proc), WinApi.GetProcAddress(HostWindows.ctl3d, "Ctl3dAutoSubclass"))
+			if Proc # nil then
+				Proc(WinApi.GetModuleHandleW(nil)) 
+			end  
+		end 
+		ReadCommandLine(IncludingFileCommandLine(WinApi.GetCommandLineW()), false)
+		if openUsed then
+			atom := WinApi.GlobalAddAtomW(openParam)
+			if atom # 0 then
+				res := WinApi.SendMessageW(-1, msgId, atom, 0)
+				WinApi.Sleep(100)
+				res := WinApi.GlobalDeleteAtom(atom)
+				atom := WinApi.GlobalFindAtomW("<file_opened>")
+				if atom # 0 then
+					res := WinApi.GlobalDeleteAtom(atom) 
+				end 
+				if (atom # 0) or (res # 0) then
+					Kernel.Quit(1) 
+				end  
+			end  
+		end 
+		HostWindows.CreateMainWindows(menuBar, winMenu, ApplWinHandler)
+		if state = running then
+			HostWindows.ShowMain 
+		end 
+		if Dialog.serverMode then
+			ip := idlePeriodServer 
+		else 
+			ip := idlePeriod 
+		end 
+		res := WinApi.SetTimer(HostWindows.main, 1, ip, nil)
+		WinApi.DragAcceptFiles(HostWindows.main, 1)
+		HostWindows.dir.invisible := true
+	end OpenApp
+	
+	proc Run*
+	begin 
+		ReadCommandLine(IncludingFileCommandLine(WinApi.GetCommandLineW()), true)
+		Kernel.Start(Loop)
+	end Run
+	
+	
+	proc SetNum*(n: integer)
+	begin 
+		num := n
+	end SetNum
+	
+	
+	proc Init
+		var 
+			res: integer
+			s: array 256 of char
+	begin 
+		state := running
+		HostCmds.quit := false
+		CreateDefaultMenu
+		objMenu := WinApi.CreatePopupMenu()
+		lastId := firstId
+		menus := nil
+		type_ := "undef"
+		HostPorts.dialogBrush := WinApi.CreateSolidBrush(Ports.dialogBackground)
+		minusCode := WinApi.VkKeyScanW("-")
+		if minusCode # -1 then
+			minusCode := minusCode mod 256 
+		end 
+		Dialog.MapString("#Host:Shift", shiftStr)
+		Dialog.MapString("#Host:Ctrl", ctrlStr)
+		Dialog.MapString("#Host:Space", spaceStr)
+		gc := 0
+		num := 10
+		res := WinApi.GetModuleFileNameW(0, s, len(s))
+		msgId := WinApi.RegisterWindowMessageW(s)
+	end Init
+
+begin
+	Kernel.InstallCleaner(Collect)
+	Init
+(* CLOSE
+	Kernel.RemoveCleaner(Collect)
+	DestroyMenus *) 
+end HostMenus

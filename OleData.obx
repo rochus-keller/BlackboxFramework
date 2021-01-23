@@ -1,0 +1,21 @@
+// Generated/synthesized by OberonViewer 0.8.3 on 2021-01-15T17:28:40
+// manually modified
+
+definition OleData
+
+	import WinOle, Stores, Views, Dialog
+	
+	const 
+		info = 0 // TODO
+		storage = 0 // TODO
+	
+	proc Register(imp, exp, format: Dialog.String; type_: Stores.TypeName; opts: set)
+	proc GetDataType(_0: WinOle.IDataObject; _1: Stores.TypeName; _2: integer; _3: integer; _4: integer; _5: integer; _6: boolean)
+	proc GetTextDataView(_0: WinOle.IDataObject; _1: Views.View; _2: integer; _3: integer; _4: boolean)
+	proc GetDataView(_0: WinOle.IDataObject; _1: Stores.TypeName; _2: Views.View; _3: integer; _4: integer; _5: boolean)
+	proc ViewDropData(_0: Views.View; _1: integer; _2: integer; _3: integer; _4: integer; _5: boolean; _6: boolean): WinOle.IDataObject
+	proc ViewData(_0: Views.View; _1: integer; _2: integer; _3: boolean): WinOle.IDataObject
+	proc DataConvTo(_0: WinOle.IDataObject; _1: Stores.TypeName)
+	proc DumpData(_0: WinOle.IDataObject)
+
+end OleData

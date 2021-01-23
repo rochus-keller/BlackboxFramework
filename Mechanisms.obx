@@ -1,0 +1,151 @@
+module Mechanisms
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Kernel, Views
+	
+	const 
+		// FocusBorderCursor/SelBorderCursor result
+		inside* = -1 // plus defined Ports cursors
+		outside* = -2
+		
+		// TrackToResize op
+		cancelResize* = 0
+		resize* = 1
+		
+		// TrackToDrop op
+		cancelDrop* = 0
+		copy_* = 1
+		move* = 2
+		link* = 3
+		
+		// TrackToPick op
+		cancelPick* = 0
+		pick* = 1
+		pickForeign* = 2
+	
+	type 
+		Hook* = pointer to (* abstract *) record (Kernel.Hook) end 
+	
+	var 
+		hook: Hook
+	
+	proc SetHook*(h: Hook)
+	begin 
+		hook := h
+	end SetHook
+	
+	proc (hook: Hook) MarkFocusBorder*(host: Views.Frame
+		focus: Views.View; l, t, r, b: integer
+		show: boolean) end // new abstract
+	proc (hook: Hook) MarkSingletonBorder*(host: Views.Frame
+		view: Views.View; l, t, r, b: integer
+		show: boolean) end // new abstract
+	
+	proc (hook: Hook) FocusBorderCursor*(host: Views.Frame
+		view: Views.View; l, t, r, b: integer
+		x, y: integer): integer end // new abstract
+	proc (hook: Hook) SelBorderCursor*(host: Views.Frame
+		view: Views.View; l, t, r, b: integer
+		x, y: integer): integer end // new abstract
+	
+	proc (hook: Hook) TrackToResize*(host: Views.Frame; view: Views.View
+		minW, maxW, minH, maxH: integer
+		var l, t, r, b: integer; var op: integer
+		var x, y: integer; var buttons: set) end // new abstract
+	proc (hook: Hook) TrackToDrop*(source: Views.Frame; view: Views.View
+		isSingle: boolean; w, h, rx, ry: integer
+		var dest: Views.Frame; var destX, destY: integer
+		var op: integer
+		var x, y: integer; var buttons: set) end // new abstract
+	proc (hook: Hook) TrackToPick*(source: Views.Frame
+		var dest: Views.Frame; var destX, destY: integer
+		var op: integer
+		var x, y: integer; var buttons: set) end // new abstract
+	
+	proc (hook: Hook) PopUpAndSelect*(f: Views.Frame
+		n, this: integer
+		s: array of array of char
+		enabled, checked: array of boolean
+		var i: integer
+		var x, y: integer; var buttons: set) end // new abstract
+	
+	proc MarkFocusBorder*(host: Views.Frame
+		focus: Views.View; l, t, r, b: integer
+		show: boolean)
+	begin 
+		hook.MarkFocusBorder(host, focus, l, t, r, b, show)
+	end MarkFocusBorder
+	
+	proc MarkSingletonBorder*(host: Views.Frame
+		view: Views.View; l, t, r, b: integer
+		show: boolean)
+	begin 
+		hook.MarkSingletonBorder(host, view, l, t, r, b, show)
+	end MarkSingletonBorder
+	
+	proc FocusBorderCursor*(host: Views.Frame
+		view: Views.View; l, t, r, b: integer
+		x, y: integer): integer
+	begin 
+		return hook.FocusBorderCursor(host, view, l, t, r, b, x, y)
+	end FocusBorderCursor
+	
+	proc SelBorderCursor*(host: Views.Frame
+		view: Views.View; l, t, r, b: integer
+		x, y: integer): integer
+	begin 
+		return hook.SelBorderCursor(host, view, l, t, r, b, x, y)
+	end SelBorderCursor
+	
+	proc TrackToResize*(host: Views.Frame; view: Views.View
+		minW, maxW, minH, maxH: integer
+		var l, t, r, b: integer; var op: integer
+		var x, y: integer; var buttons: set)
+	begin 
+		hook.TrackToResize(host, view, minW, maxW, minH, maxH, l, t, r, b, op, x, y, buttons)
+	end TrackToResize
+	
+	proc TrackToDrop*(source: Views.Frame; view: Views.View
+		isSingle: boolean; w, h, rx, ry: integer
+		var dest: Views.Frame; var destX, destY: integer
+		var op: integer
+		var x, y: integer; var buttons: set)
+	begin 
+		hook.TrackToDrop(source, view, isSingle, w, h, rx, ry, dest, destX, destY, op, x, y, buttons)
+	end TrackToDrop
+	
+	proc TrackToPick*(source: Views.Frame
+		var dest: Views.Frame; var destX, destY: integer
+		var op: integer
+		var x, y: integer; var buttons: set)
+	begin 
+		hook.TrackToPick(source, dest, destX, destY, op, x, y, buttons)
+	end TrackToPick
+	
+	proc PopUpAndSelect*(f: Views.Frame
+		n, this: integer
+		s: array of array of char
+		enabled, checked: array of boolean
+		var i: integer
+		var x, y: integer; var buttons: set)
+	begin 
+		hook.PopUpAndSelect(f, n, this, s, enabled, checked, i, x, y, buttons)
+	end PopUpAndSelect
+
+end Mechanisms

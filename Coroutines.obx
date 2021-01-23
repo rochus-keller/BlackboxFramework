@@ -1,0 +1,247 @@
+module Coroutines
+	(* project	= "BlackBox"
+	   organization	= "blackboxframework.org/"
+	   contributors	= "Josef Templ, Dmitry V.Dagaev"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20170321, center #156, adding Coroutines to BlackBox
+	   ##<="
+	   issues	= "##=>
+	   
+	   ##<=" *)
+	
+	
+	
+	
+	import Kernel, Services
+	
+	const 
+		// Coroutine state
+		uninitialized* = 0
+		suspended* = 1
+		running* = 2
+		returned* = 3
+		trapped* = 4
+		sleep0base = 48
+	
+	type 
+		Coroutine* = pointer to (* abstract *) record 
+				state-: integer // Coroutine state
+				parent-, source-: Coroutine
+				impl: Kernel.Coroutine 
+			end 
+		
+		Iterator* = pointer to (* abstract *) record (Coroutine) 
+			end 
+		
+		Action = pointer to record (Services.Action) 
+				target: Coroutine 
+			end 
+		
+		Task* = pointer to (* abstract *) record (Coroutine) 
+				action: Action
+				time: longint 
+			end 
+		
+		MainCoroutine = pointer to record (Coroutine) end 
+	
+	var 
+		main-, current-: Coroutine
+		stackMin-, stackMax-: integer
+		nofTasks, sleep0: integer
+	
+	proc (this: Coroutine) Run-() end // new abstract
+	
+	proc (this: MainCoroutine) Run()
+	begin  // must never be called
+		halt(20)
+	end Run
+	
+	proc TryHandler(a, b, c: integer)
+		var 
+			this: Coroutine
+	begin 
+		this := current
+		Kernel.SetCoroutineBase(this.impl)
+		with this: Task do 
+			this.time := Services.Ticks()
+			inc(nofTasks)
+			sleep0 := sleep0base div nofTasks 
+		else  
+		end 
+		this.parent := this.source
+		this.Run()
+		// coroutine returned; transfer to parent
+		this.state := returned
+		if this is Task then
+			dec(nofTasks)
+			sleep0 := sleep0base div max(nofTasks, 1) 
+		end 
+		assert(this.parent.state = suspended, 80) // parent not alive
+		current := this.parent
+		current.state := running
+		current.source := this
+		Kernel.RemoveCoroutine(this.impl)
+		Kernel.TransferCoroutine(current.impl)
+	end TryHandler
+	
+	proc Start(par: integer)
+		var 
+			this: Coroutine
+	begin 
+		this := current
+		Kernel.Try(TryHandler, 0, 0, 0)
+		// coroutine trapped; transfer to main
+		this.state := trapped
+		if this is Task then
+			dec(nofTasks)
+			sleep0 := sleep0base div max(nofTasks, 1) 
+		end 
+		main.state := running
+		main.source := this
+		current := main
+		Kernel.RemoveCoroutine(this.impl)
+		Kernel.TransferCoroutine(main.impl)
+	end Start
+	
+	proc SetStackSize*(min_, max_: integer)
+	begin 
+		stackMin := min_
+		stackMax := max_
+	end SetStackSize
+	
+	proc Cleanup*
+	begin 
+		main.source := nil
+	end Cleanup
+	
+	proc InitMain
+		var 
+			m: MainCoroutine
+	begin 
+		new(m)
+		new(m.impl)
+		Kernel.BeginCoroutines(m.impl)
+		assert(m.impl # nil) // no coroutine support
+		m.state := running
+		main := m
+		current := m
+	end InitMain
+	
+	proc Init*(this: Coroutine)
+		var 
+			done: boolean
+	begin 
+		assert(this # nil, 20)
+		assert(this.state = uninitialized, 21)
+		if main = nil then
+			InitMain 
+		end 
+		new(this.impl)
+		Kernel.AddCoroutine(this.impl, Start, 0, stackMin, stackMax, done)
+		if ~done then // out of stack space; Kernel.Collect may free some stacks
+			Kernel.Collect()
+			Kernel.AddCoroutine(this.impl, Start, 0, stackMin, stackMax, done)
+			if ~done then
+				(* if the stack space is still exhausted the trap window may fail to open.
+				   Therefore we clean up and collect again before trapping. *)
+				Cleanup
+				Kernel.Collect() 
+			end  
+		end 
+		if done then
+			this.state := suspended 
+		else  // stack space exhausted
+			assert(done, 80) 
+		end 
+	end Init
+	
+	proc Transfer*(target: Coroutine)
+	begin 
+		assert(target.state = suspended, 20) // => target # current
+		current.state := suspended
+		target.source := current
+		target.state := running
+		current := target
+		Kernel.TransferCoroutine(target.impl)
+	end Transfer
+	
+	proc (this: Iterator) Next* // new
+	begin 
+		if this.state = uninitialized then
+			Init(this) 
+		end 
+		Transfer(this)
+		assert(current.source = this, 80)
+		assert(this.state # trapped, 81)
+	end Next
+	
+	proc (this: Iterator) Yield* // new
+	begin 
+		Transfer(this.parent)
+		assert(this.source = this.parent, 80)
+	end Yield
+	
+	proc (this: Action) Do
+	begin 
+		Transfer(this.target)
+	end Do
+	
+	proc (this: Task) Start* // new
+	begin 
+		assert(this.parent = nil, 20)
+		assert(current = main, 21)
+		if this.state = uninitialized then
+			Init(this) 
+		end 
+		Transfer(this)
+		assert(this.source = main, 80)
+	end Start
+	
+	proc (this: Task) Sleep*(msecs: longint) // new
+	begin 
+		assert(this.state = running, 20)
+		if this.action = nil then
+			new(this.action)
+			this.action.target := this 
+		end 
+		if msecs = 0 then // continue this task until timeout
+			if Services.Ticks() < this.time + sleep0 then // this.source is unchanged
+				return  
+			else 
+				Services.DoLater(this.action, Services.now) 
+			end  
+		elsif msecs > 0 then 
+			Services.DoLater(this.action, Services.Ticks() + msecs) 
+		else 
+			assert(msecs >= 0, 21) 
+		end 
+		Transfer(main)
+		this.time := Services.Ticks()
+		assert(this.source = main, 80)
+	end Sleep
+	
+	proc (this: Coroutine) FINALIZE-
+	begin 
+		// main is finalized in FiniMain
+		if this.impl # nil then
+			Kernel.RemoveCoroutine(this.impl) 
+		end 
+	end FINALIZE
+	
+	proc FiniMain
+	begin 
+		if main # nil then
+			assert(current = main, 20)
+			main.state := uninitialized
+			main.impl := nil
+			Kernel.EndCoroutines 
+		end 
+	end FiniMain
+
+(* CLOSE
+	FiniMain *) 
+end Coroutines

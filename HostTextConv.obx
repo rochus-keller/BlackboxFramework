@@ -1,0 +1,2267 @@
+module HostTextConv
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems, Alexander Iljin"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20060905, ai, fixed trap upon copying an empty text view to the clipboard
+	   - 20070201, bh, Unicode support
+	   - 20070213, bh, improved paragraph handling in ParseRichText
+	   - 20151008, center #74, adding small and capital letter z with caron in ThisWndChar & WriteWndChar
+	   - 20151008, center #86, improvements in RTF import
+	   - 20170620, center #163, adding decimal tabs to TextRulers
+	   - 20171122, center #182, fixing code page conversion in RTF import
+	   - 20180314, center #184, HYPERLINK ignored in RTF import
+	   - 20190815, center #201, Importer and Exporter for UTF-8 texts added
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<="
+	   
+	   For the RTF specification see RTF spec. *)
+	
+	
+	
+	import 
+		SYSTEM, WinApi, WinOle, COM, 
+		Files, Fonts, Ports, Stores, Views, Properties, 
+		HostFonts, HostClipboard, StdLinks, TextModels, 
+		TextRulers, TextViews, TextMappers
+	
+	const 
+		CR = 0dx
+		LF = 0ax
+		FF = 0ex
+		TAB = 09x
+		halfpoint = Ports.point div 2
+		twips = Ports.point div 20
+		linkcmd = "Dialog.OpenExternal"
+	
+	type 
+		MemReader = pointer to record (Files.Reader) 
+				adr, pos: integer 
+			end 
+	
+	var 
+		debug*: boolean
+	
+	
+	// MemReader
+	
+	proc (r: MemReader) Base(): Files.File
+	begin 
+		return nil
+	end Base
+	
+	proc (r: MemReader) Pos(): integer
+	begin 
+		return r.pos
+	end Pos
+	
+	proc (r: MemReader) SetPos(pos: integer)
+	begin 
+		r.pos := pos
+	end SetPos
+	
+	proc (r: MemReader) ReadByte(var x: byte)
+	begin 
+		SYSTEM.GET(r.adr + r.pos, x)
+		inc(r.pos)
+	end ReadByte
+	
+	proc (r: MemReader) ReadBytes(var x: array of byte; beg, len_: integer)
+	begin 
+		halt(126)
+	end ReadBytes
+	
+	
+	proc GenGlobalMedium(hg: WinApi.HGLOBAL; unk: COM.IUnknown; var sm: WinOle.STGMEDIUM)
+	begin 
+		sm.tymed := WinOle.TYMED_HGLOBAL
+		sm.u.hGlobal := hg
+		sm.pUnkForRelease := unk
+	end GenGlobalMedium
+	
+	proc MediumGlobal(var sm: WinOle.STGMEDIUM): WinApi.HGLOBAL
+	begin 
+		assert(sm.tymed = WinOle.TYMED_HGLOBAL, 20)
+		return sm.u.hGlobal
+	end MediumGlobal
+	
+	
+	proc WriteWndChar(wr: TextModels.Writer; ch: char)
+	begin 
+		case ch of 
+			| CR, TAB, " " .. 7ex, 0a0x .. 0ffx: 
+				wr.WriteChar(ch) 
+			| LF:  
+			| 80x:  // euro
+				wr.WriteChar(20acx) 
+			| 82x: 
+				wr.WriteChar(201ax) 
+			| 83x: 
+				wr.WriteChar(0192x) 
+			| 84x: 
+				wr.WriteChar(201ex) 
+			| 85x: 
+				wr.WriteChar(2026x) 
+			| 86x: 
+				wr.WriteChar(2020x) 
+			| 87x: 
+				wr.WriteChar(2021x) 
+			| 88x: 
+				wr.WriteChar(02c6x) 
+			| 89x: 
+				wr.WriteChar(2030x) 
+			| 8ax: 
+				wr.WriteChar(0160x) 
+			| 8bx: 
+				wr.WriteChar(2039x) 
+			| 8cx: 
+				wr.WriteChar(0152x) 
+			| 8ex: 
+				wr.WriteChar(017dx) 
+			| 91x: 
+				wr.WriteChar(2018x) 
+			| 92x: 
+				wr.WriteChar(2019x) 
+			| 93x: 
+				wr.WriteChar(201cx) 
+			| 94x: 
+				wr.WriteChar(201dx) 
+			| 95x: 
+				wr.WriteChar(2022x) 
+			| 96x: 
+				wr.WriteChar(2013x) 
+			| 97x: 
+				wr.WriteChar(2014x) 
+			| 98x: 
+				wr.WriteChar(02dcx) 
+			| 99x: 
+				wr.WriteChar(2122x) 
+			| 9ax: 
+				wr.WriteChar(0161x) 
+			| 9bx: 
+				wr.WriteChar(203ax) 
+			| 9cx: 
+				wr.WriteChar(0153x) 
+			| 9ex: 
+				wr.WriteChar(017ex) 
+			| 9fx: 
+				wr.WriteChar(0178x) 
+			| 0x .. 8x, 0bx, 0cx, 0ex .. 1fx, 7fx, 81x, 8dx, 8fx .. 90x, 9dx: 
+				wr.WriteChar(chr(0ef00h + ord(ch))) 
+		end 
+	end WriteWndChar
+	
+	proc ThisWndChar(ch: char): char
+	begin 
+		if ch >= 100x then
+			if (ch >= 0ef00x) & (ch <= 0efffx) then
+				ch := chr(ord(ch) - 0ef00h) 
+			elsif ch = 20acx then  // euro
+				ch := 80x 
+			elsif ch = 201ax then 
+				ch := 82x 
+			elsif ch = 0192x then 
+				ch := 83x 
+			elsif ch = 201ex then 
+				ch := 84x 
+			elsif ch = 2026x then 
+				ch := 85x 
+			elsif ch = 2020x then 
+				ch := 86x 
+			elsif ch = 2021x then 
+				ch := 87x 
+			elsif ch = 02c6x then 
+				ch := 88x 
+			elsif ch = 2030x then 
+				ch := 89x 
+			elsif ch = 0160x then 
+				ch := 8ax 
+			elsif ch = 2039x then 
+				ch := 8bx 
+			elsif ch = 0152x then 
+				ch := 8cx 
+			elsif ch = 017dx then 
+				ch := 8ex 
+			elsif ch = 2018x then 
+				ch := 91x 
+			elsif ch = 2019x then 
+				ch := 92x 
+			elsif ch = 201cx then 
+				ch := 93x 
+			elsif ch = 201dx then 
+				ch := 94x 
+			elsif ch = 2022x then 
+				ch := 95x 
+			elsif ch = 2013x then 
+				ch := 96x 
+			elsif ch = 2014x then 
+				ch := 97x 
+			elsif ch = 02dcx then 
+				ch := 98x 
+			elsif ch = 2122x then 
+				ch := 99x 
+			elsif ch = 0161x then 
+				ch := 9ax 
+			elsif ch = 203ax then 
+				ch := 9bx 
+			elsif ch = 0153x then 
+				ch := 9cx 
+			elsif ch = 017ex then 
+				ch := 9ex 
+			elsif ch = 0178x then 
+				ch := 9fx 
+			else 
+				ch := "?" 
+			end  
+		elsif ch = 08fx then  // digit space
+			ch := " " 
+		end 
+		return ch
+	end ThisWndChar
+	
+	proc ParseRichText(rd: Files.Reader; wr: TextModels.Writer; var defRuler: TextRulers.Ruler)
+		type 
+			FontInfo = pointer to record id, codePage: integer; f: Fonts.Typeface; next: FontInfo end 
+			ColorInfo = pointer to record id: integer; c: Ports.Color; next: ColorInfo end 
+			Context = pointer to record next: Context
+					dest, uniCnt: integer; font: FontInfo; attr: TextModels.Attributes; pattr: TextRulers.Attributes 
+				end 
+		const 
+			text = 0
+			fonttab = 1
+			colortab = 2
+			skip = 3
+			fieldinstr = 4
+			noFontId = min(integer) // font not defined in \fonttbl
+		var 
+			ch: char
+			tabStyle: set
+			fact, val_, defFont, dest, idx, fnum, cnum, paraPos, i: integer
+			fonts, font: FontInfo
+			colors: ColorInfo
+			hasNum, skipDest: boolean
+			comm: array 32 of char
+			c, con: Context
+			p0: Properties.Property
+			p: TextRulers.Prop
+			ruler: TextRulers.Ruler
+			pattr: TextRulers.Attributes
+			skipCnt, uniCnt: integer
+			hyperlinkCtx: Context
+			idx2: integer
+			fieldStr: array 1024 of char
+			v: Views.View
+			tableCtx: Context
+			trgaph, ansiCodePage: integer
+			superOrSubCtx: Context
+			// buffer for code-page to Unicode conversion; by buffering we get multi-byte decoding for free
+			cpSrc: pointer to array of char
+			cpDst: pointer to array of char
+			cpLen, cpPos: integer
+		
+		proc Color(i: integer): ColorInfo
+			var 
+				c: ColorInfo
+		begin 
+			assert(colors # nil, 20)
+			c := colors
+			while (c # nil) & (c.id # i) do 
+				c := c.next 
+			end 
+			assert(c # nil, 100)
+			return c
+		end Color
+		
+		proc SetColor(i: integer; c: Ports.Color)
+			var 
+				ci: ColorInfo
+		begin 
+			new(ci)
+			ci.id := i
+			ci.c := c
+			ci.next := colors
+			colors := ci
+		end SetColor
+		
+		proc Font(i: integer): FontInfo
+			var 
+				f: FontInfo
+		begin 
+			assert(fonts # nil, 20)
+			f := fonts
+			while (f # nil) & (f.id # i) do 
+				f := f.next 
+			end 
+			if (f = nil) & (i # noFontId) then
+				f := Font(noFontId) 
+			end 
+			assert(f # nil, 100)
+			return f
+		end Font
+		
+		proc Next(var ch: char)
+			var 
+				b: byte
+		begin 
+			rd.ReadByte(b)
+			ch := short(chr(b))
+		end Next
+		
+		proc WriteDest(ch: char)
+		begin 
+			if skipCnt > 0 then
+				dec(skipCnt) 
+			elsif dest = text then 
+				if ch < 100x then
+					WriteWndChar(wr, ch) 
+				else 
+					wr.WriteChar(ch) 
+				end  
+			elsif dest = fonttab then 
+				assert(font # nil, 20)
+				font.f[idx] := ch
+				inc(idx)
+				font.f[idx] := 0x 
+			elsif dest = fieldinstr then 
+				fieldStr[idx2] := ch
+				inc(idx2)
+				fieldStr[idx2] := 0x 
+			end 
+		end WriteDest
+		
+		proc WriteCP(ch: char)
+			var 
+				s: pointer to array of char
+		begin 
+			if cpPos = cpLen then
+				new(s, cpLen * 2)
+				SYSTEM.MOVE(SYSTEM.ADR(cpSrc[0]), SYSTEM.ADR(s[0]), cpLen)
+				cpSrc := s
+				cpLen := len(s)
+				new(cpDst, cpLen) 
+			end 
+			cpSrc[cpPos] := ch
+			inc(cpPos)
+		end WriteCP
+		
+		proc FlushCP()
+			var 
+				i, res, cp: integer
+		begin 
+			if cpPos > 0 then
+				if (font # nil) & (dest = text) then
+					cp := font.codePage 
+				else 
+					cp := ansiCodePage 
+				end 
+				if cp = 1252 then
+					for i:= 0 to cpPos - 1 do 
+						WriteDest(cpSrc[i]) 
+					end  
+				else 
+					res := WinApi.MultiByteToWideChar(cp, {}, cpSrc^, cpPos, cpDst^, cpLen)
+					if res > 0 then
+						for i:= 0 to res - 1 do 
+							WriteDest(cpDst[i]) 
+						end  
+					else 
+						WriteDest("?")
+						WriteDest("?") 
+					end  
+				end 
+				cpPos := 0 
+			end 
+		end FlushCP
+		
+		proc Write(ch: char)
+		begin 
+			FlushCP
+			WriteDest(ch)
+		end Write
+		
+		proc Paragraph
+			var 
+				v: Views.View
+		begin 
+			if ~pattr.Equals(ruler.style.attr) then // new ruler needed
+				wr.SetPos(paraPos)
+				v := Views.CopyOf(ruler, Views.deep)
+				ruler := v(TextRulers.Ruler)
+				ruler.style.SetAttr(pattr)
+				wr.WriteView(ruler, Views.undefined, Views.undefined)
+				wr.SetPos(wr.Base().Length()) 
+			elsif (pattr.first # pattr.left) 
+				or (pattr.lead > 0) 
+				or (TextRulers.pageBreak in pattr.opts) then  // paragraph marker needed
+				wr.SetPos(paraPos)
+				wr.WriteChar(FF)
+				wr.SetPos(wr.Base().Length()) 
+			end 
+			wr.WriteChar(CR)
+			paraPos := wr.Pos()
+		end Paragraph
+		
+		proc Trim(var str: array of char)
+			var 
+				i, j: integer
+				ch: char
+		begin 
+			i := 0
+			ch := str[0]
+			while (ch # 0x) & (ch <= " ") do 
+				inc(i)
+				ch := str[i] 
+			end 
+			if i > 0 then
+				j := 0
+				while ch # 0x do 
+					str[j] := ch
+					inc(i)
+					inc(j)
+					ch := str[i] 
+				end  
+			else 
+				j := len(str) 
+			end 
+			while (j > 0) & (str[j - 1] <= " ") do 
+				dec(j) 
+			end 
+			str[j] := 0x
+		end Trim
+	
+	begin 
+		new(fonts)
+		fonts.id := noFontId
+		fonts.codePage := 1252
+		fonts.f := Fonts.dir.Default().typeface
+		defFont := noFontId
+		fnum := noFontId
+		skipCnt := 0
+		uniCnt := 1
+		cnum := 1
+		new(colors)
+		SetColor(0, Ports.defaultColor)
+		dest := text
+		con := nil
+		paraPos := 0
+		skipDest := false
+		defRuler := TextRulers.dir.New(nil)
+		ruler := defRuler
+		pattr := defRuler.style.attr
+		tabStyle := {}
+		hyperlinkCtx := nil
+		tableCtx := nil
+		superOrSubCtx := nil
+		ansiCodePage := 1252
+		cpLen := 256
+		new(cpSrc, cpLen)
+		new(cpDst, cpLen)
+		cpPos := 0
+		if WinApi.GetKeyState(WinApi.VK_MENU) < 0 then // Alt key, no conversion
+			Next(ch)
+			while ch # 0x do 
+				if (ch = '\') or (ch = '{') or (ch = '}') then
+					wr.WriteChar(CR) 
+				end 
+				wr.WriteChar(ch)
+				Next(ch) 
+			// note: MemReader may deliver undefined characters at the end
+			end 
+			return  
+		end 
+		Next(ch)
+		while ch # 0x do 
+			if ch = "{" then
+				skipCnt := 0
+				FlushCP
+				new(c)
+				c.dest := dest
+				c.attr := wr.attr
+				c.pattr := pattr
+				c.uniCnt := uniCnt
+				c.font := font
+				c.next := con
+				con := c
+				Next(ch) 
+			elsif ch = "}" then 
+				skipCnt := 0
+				FlushCP
+				if con # nil then
+					if con = hyperlinkCtx then
+						wr.SetPos(wr.Base().Length())
+						hyperlinkCtx := nil 
+					elsif con = superOrSubCtx then 
+						superOrSubCtx := nil 
+					end 
+					dest := con.dest
+					uniCnt := con.uniCnt
+					font := con.font
+					wr.SetAttr(con.attr)
+					pattr := con.pattr
+					con := con.next 
+				end 
+				if con # nil then
+					Next(ch) 
+				else 
+					ch := 0x 
+				end  
+			elsif ch = "\" then 
+				Next(ch)
+				i := 0
+				val_ := 0
+				if ch # "'" then
+					FlushCP() 
+				end 
+				if (ch >= "a") & (ch <= "z") or (ch >= "A") & (ch <= "Z") then
+					while (ch >= "a") & (ch <= "z") or (ch >= "A") & (ch <= "Z") do 
+						comm[i] := ch
+						inc(i)
+						Next(ch) 
+					end 
+					comm[i] := 0x
+					fact := 1
+					hasNum := false
+					if ch = "-" then
+						fact := -1
+						Next(ch) 
+					end 
+					while (ch >= "0") & (ch <= "9") do 
+						val_ := 10 * val_ + ord(ch) - ord("0")
+						Next(ch)
+						hasNum := true 
+					end 
+					val_ := val_ * fact
+					if ch = " " then
+						Next(ch) 
+					end 
+					// special characters
+					if skipCnt > 0 then // command skipped as single character
+						dec(skipCnt) 
+					elsif comm = "tab" then 
+						Write(TAB) 
+					elsif comm = "line" then 
+						Write(CR) 
+					elsif comm = "par" then 
+						Paragraph 
+					elsif comm = "sect" then 
+						Paragraph 
+					elsif comm = "ldblquote" then  // unicode: left double quote
+						Write(201cx) 
+					elsif comm = "rdblquote" then  // unicode: right double quote
+						Write(201dx) 
+					elsif comm = "lquote" then  // unicode: left single quote
+						Write(2018x) 
+					elsif comm = "rquote" then  // unicode: right single quote
+						Write(2019x) 
+					elsif comm = "enspace" then  // unicode: en space
+						Write(2002x) 
+					elsif comm = "emspace" then  // unicode: em space
+						Write(2003x) 
+					elsif comm = "endash" then  // unicode: en dash
+						Write(2013x) 
+					elsif comm = "emdash" then  // unicode: em dash
+						Write(2014x) 
+					elsif comm = "page" then 
+						Paragraph
+						new(p)
+						p.valid := {TextRulers.opts}
+						p.opts.val_ := {TextRulers.pageBreak}
+						p.opts.mask := p.opts.val_
+						pattr := TextRulers.ModifiedAttr(pattr, p) 
+					// character attributes
+					elsif comm = "plain" then 
+						font := Font(defFont)
+						wr.SetAttr(TextModels.NewWeight(wr.attr, Fonts.normal))
+						wr.SetAttr(TextModels.NewStyle(wr.attr, {}))
+						wr.SetAttr(TextModels.NewTypeface(wr.attr, font.f))
+						wr.SetAttr(TextModels.NewSize(wr.attr, 24 * halfpoint))
+						wr.SetAttr(TextModels.NewColor(wr.attr, Ports.defaultColor))
+						wr.SetAttr(TextModels.NewOffset(wr.attr, 0)) 
+					elsif comm = "b" then 
+						if hasNum & (val_ = 0) then
+							wr.SetAttr(TextModels.NewWeight(wr.attr, Fonts.normal)) 
+						else 
+							wr.SetAttr(TextModels.NewWeight(wr.attr, Fonts.bold)) 
+						end  
+					elsif comm = "i" then 
+						if hasNum & (val_ = 0) then
+							wr.SetAttr(TextModels.NewStyle(wr.attr, wr.attr.font.style - {Fonts.italic})) 
+						else 
+							wr.SetAttr(TextModels.NewStyle(wr.attr, wr.attr.font.style + {Fonts.italic})) 
+						end  
+					elsif comm = "ul" then 
+						if hasNum & (val_ = 0) then
+							wr.SetAttr(TextModels.NewStyle(wr.attr, wr.attr.font.style - {Fonts.underline})) 
+						else 
+							wr.SetAttr(TextModels.NewStyle(wr.attr, wr.attr.font.style + {Fonts.underline})) 
+						end  
+					elsif comm = "ulnone" then  // stops all underlining
+						wr.SetAttr(TextModels.NewStyle(wr.attr, wr.attr.font.style - {Fonts.underline})) 
+					elsif comm = "strike" then 
+						if hasNum & (val_ = 0) then
+							wr.SetAttr(TextModels.NewStyle(wr.attr, wr.attr.font.style - {Fonts.strikeout})) 
+						else 
+							wr.SetAttr(TextModels.NewStyle(wr.attr, wr.attr.font.style + {Fonts.strikeout})) 
+						end  
+					elsif comm = "super" then 
+						superOrSubCtx := con
+						wr.SetAttr(TextModels.NewOffset(wr.attr, (wr.attr.font.size_ * 4 + 5) div 10))
+						wr.SetAttr(TextModels.NewSize(wr.attr, (wr.attr.font.size_ * 8 + 5) div 10)) 
+					elsif comm = "sub" then 
+						superOrSubCtx := con
+						wr.SetAttr(TextModels.NewOffset(wr.attr, -(wr.attr.font.size_ * 4 + 5) div 10))
+						wr.SetAttr(TextModels.NewSize(wr.attr, (wr.attr.font.size_ * 8 + 5) div 10)) 
+					// fonts
+					elsif comm = "f" then 
+						if ~hasNum then
+							val_ := defFont 
+						end 
+						if dest = fonttab then
+							fnum := val_
+							idx := 0
+							new(font)
+							font.id := val_
+							font.codePage := ansiCodePage
+							font.next := fonts
+							fonts := font 
+						else 
+							font := Font(val_)
+							wr.SetAttr(TextModels.NewTypeface(wr.attr, Font(val_).f)) 
+						end  
+					elsif comm = 'fcharset' then 
+						if hasNum & (dest = fonttab) then
+							case val_ of 
+								| 0:  // Latin-1 subset of Unicode
+									font.codePage := 1252 
+								| 1:  // Windows default code page
+									font.codePage := WinApi.CP_ACP 
+								| 2:  // Symbol
+									font.codePage := 42 
+								| 77:  // Mac -> Western European
+									font.codePage := 1252 
+								| 78:  // Mac Shift Jis
+									font.codePage := 10001 
+								| 79:  // Mac Hangul
+									font.codePage := 10003 
+								| 80:  // Mac GB2312
+									font.codePage := 10008 
+								| 81:  // Mac Big5
+									font.codePage := 10002 
+								// | 82:	Mac Johab (old)
+								| 83:  // Mac Hebrew
+									font.codePage := 10005 
+								| 84:  // Mac Arabic
+									font.codePage := 10004 
+								| 85:  // Mac Greek
+									font.codePage := 10006 
+								| 86:  // Mac Turkish
+									font.codePage := 10081 
+								| 87:  // Mac Thai
+									font.codePage := 10021 
+								| 88:  // Mac East Europe
+									font.codePage := 10029 
+								| 89:  // Mac Russian
+									font.codePage := 10007 
+								| 128:  // Shift Jis -> Japanese
+									font.codePage := 932 
+								| 129:  // Hangul -> Korean
+									font.codePage := 949 
+								| 130:  // Johab -> Johab
+									font.codePage := 1361 
+								| 134:  // GB2312 -> Simplified Chinese
+									font.codePage := 936 
+								| 136:  // Big5 -> Traditional Chinese
+									font.codePage := 950 
+								| 161:  // Greek -> Greek
+									font.codePage := 1253 
+								| 162:  // Turkish -> Turkish
+									font.codePage := 1254 
+								| 163:  // Vietnamese -> Vietnamese
+									font.codePage := 1258 
+								| 177:  // Hebrew -> Hebrew
+									font.codePage := 1255 
+								| 178:  // Arabic - Arabic
+									font.codePage := 1256 
+								| 179:  // Arabic Traditional - Arabic
+									font.codePage := 1256 
+								| 180:  // Arabic user - Arabic
+									font.codePage := 1256 
+								| 181:  // Hebrew user -> Hebrew
+									font.codePage := 1255 
+								| 186:  // Baltic -> Baltic
+									font.codePage := 1257 
+								| 204:  // Russian -> Windows 3.1 (Cyrillic)
+									font.codePage := 1251 
+								| 222:  // Thai -> Thai
+									font.codePage := 874 
+								| 238:  // Eastern European -> Windows 3.1 (Eastern European)
+									font.codePage := 1250 
+								| 254:  // PC 437 ->  437  United States IBM
+									font.codePage := 437 
+							end  
+						end  
+					elsif comm = 'cpg' then 
+						if hasNum & (dest = fonttab) then
+							font.codePage := val_ 
+						end  
+					elsif comm = "fs" then 
+						if ~hasNum then
+							val_ := 24 
+						end 
+						if superOrSubCtx # nil then // scale down
+							wr.SetAttr(TextModels.NewSize(wr.attr, (val_ * halfpoint * 8 + 5) div 10)) 
+						else 
+							wr.SetAttr(TextModels.NewSize(wr.attr, val_ * halfpoint)) 
+						end  
+					elsif comm = "cf" then 
+						wr.SetAttr(TextModels.NewColor(wr.attr, Color(val_).c)) 
+					elsif comm = "dn" then 
+						if ~hasNum then
+							val_ := 6 
+						end 
+						wr.SetAttr(TextModels.NewOffset(wr.attr, -(val_ * halfpoint))) 
+					elsif comm = "up" then 
+						if ~hasNum then
+							val_ := 6 
+						end 
+						wr.SetAttr(TextModels.NewOffset(wr.attr, val_ * halfpoint)) 
+					// hyperlinks
+					elsif comm = "fldinst" then  // field instruction
+						dest := fieldinstr
+						idx2 := 0
+						fieldStr[idx2] := 0x 
+					elsif comm = "fldrslt" then  // field result
+						dest := text
+						Trim(fieldStr)
+						fieldStr[9] := 0x
+						if fieldStr = "HYPERLINK" then
+							// link target is assumed to be enclosed in quotes
+							for idx2:= 11 to len(fieldStr) - 1 do 
+								fieldStr[idx2 - 11] := fieldStr[idx2] 
+							end 
+							fieldStr[len(fieldStr) - 1] := 0x
+							fieldStr := linkcmd + "('" + fieldStr + "')"
+							v := StdLinks.dir.NewLink(fieldStr)
+							wr.WriteView(v, Views.undefined, Views.undefined)
+							v := StdLinks.dir.NewLink('')
+							wr.WriteView(v, Views.undefined, Views.undefined)
+							wr.SetPos(wr.Base().Length() - 1)
+							hyperlinkCtx := con 
+						end  
+					// paragraph attributes
+					elsif comm = "pard" then 
+						if tableCtx = nil then
+							pattr := defRuler.style.attr
+							tabStyle := {} 
+						end  
+					elsif comm = "fi" then 
+						new(p)
+						p.valid := {TextRulers.first}
+						p.first := pattr.left + val_ * twips
+						if p.first < 0 then // change left indent to make the value legal
+							p.valid := {TextRulers.left, TextRulers.first}
+							p.left := pattr.left - p.first
+							p.first := 0 
+						end 
+						pattr := TextRulers.ModifiedAttr(pattr, p) 
+					elsif comm = "li" then 
+						new(p)
+						p.valid := {TextRulers.left, TextRulers.first}
+						p.left := val_ * twips
+						p.first := p.left + pattr.first - pattr.left
+						pattr := TextRulers.ModifiedAttr(pattr, p) 
+					elsif comm = "ql" then 
+						new(p)
+						p.valid := {TextRulers.opts}
+						p.opts.val_ := {TextRulers.leftAdjust}
+						p.opts.mask := {TextRulers.leftAdjust, TextRulers.rightAdjust}
+						pattr := TextRulers.ModifiedAttr(pattr, p) 
+					elsif comm = "qr" then 
+						new(p)
+						p.valid := {TextRulers.opts}
+						p.opts.val_ := {TextRulers.rightAdjust}
+						p.opts.mask := {TextRulers.leftAdjust, TextRulers.rightAdjust}
+						pattr := TextRulers.ModifiedAttr(pattr, p) 
+					elsif comm = "qc" then 
+						new(p)
+						p.valid := {TextRulers.opts}
+						p.opts.val_ := {}
+						p.opts.mask := {TextRulers.leftAdjust, TextRulers.rightAdjust}
+						pattr := TextRulers.ModifiedAttr(pattr, p) 
+					elsif comm = "qj" then 
+						new(p)
+						p.valid := {TextRulers.opts}
+						p.opts.val_ := {TextRulers.leftAdjust, TextRulers.rightAdjust}
+						p.opts.mask := {TextRulers.leftAdjust, TextRulers.rightAdjust}
+						pattr := TextRulers.ModifiedAttr(pattr, p) 
+					elsif comm = "sb" then 
+						new(p)
+						p.valid := {TextRulers.lead}
+						p.lead := val_ * twips
+						pattr := TextRulers.ModifiedAttr(pattr, p) 
+					elsif comm = "sl" then 
+						new(p)
+						p.valid := {TextRulers.grid}
+						p.grid := val_ * twips
+						pattr := TextRulers.ModifiedAttr(pattr, p) 
+					elsif comm = "tqc" then 
+						tabStyle := {TextRulers.centerTab} 
+					elsif comm = "tqr" then 
+						tabStyle := {TextRulers.rightTab} 
+					elsif comm = "tqdec" then 
+						tabStyle := {TextRulers.centerTab, TextRulers.rightTab} 
+					elsif comm = "tb" then 
+						p0 := pattr.Prop()
+						p := p0(TextRulers.Prop)
+						p.valid := {TextRulers.tabs}
+						p.tabs.tab[p.tabs.len_].stop := val_ * twips
+						p.tabs.tab[p.tabs.len_].type_ := {TextRulers.barTab}
+						tabStyle := {}
+						inc(p.tabs.len_)
+						pattr := TextRulers.ModifiedAttr(pattr, p) 
+					elsif comm = "tx" then 
+						p0 := pattr.Prop()
+						p := p0(TextRulers.Prop)
+						p.valid := {TextRulers.tabs}
+						p.tabs.tab[p.tabs.len_].stop := val_ * twips
+						p.tabs.tab[p.tabs.len_].type_ := tabStyle
+						tabStyle := {}
+						inc(p.tabs.len_)
+						pattr := TextRulers.ModifiedAttr(pattr, p) 
+					elsif comm = "pagebb" then 
+						new(p)
+						p.valid := {TextRulers.opts}
+						p.opts.val_ := {TextRulers.pageBreak}
+						p.opts.mask := p.opts.val_
+						pattr := TextRulers.ModifiedAttr(pattr, p) 
+					// table attributes
+					elsif comm = "trowd" then  // start of table row
+						pattr := defRuler.style.attr
+						tabStyle := {}
+						tableCtx := con
+						trgaph := 0
+						new(p)
+						p.valid := {TextRulers.first, TextRulers.left, TextRulers.opts, TextRulers.tabs}
+						p.opts.mask := {TextRulers.leftAdjust, TextRulers.rightAdjust, TextRulers.pageBreak}
+						p.first := 0
+						p.left := 0
+						p.opts.val_ := {TextRulers.leftAdjust}
+						p.tabs.len_ := 0
+						pattr := TextRulers.ModifiedAttr(pattr, p) 
+					elsif comm = "trgaph" then  // half the space between the cells of a table row in twips.
+						trgaph := val_ 
+					elsif comm = "trleft" then  // left offset of the table row
+						new(p)
+						p.valid := {TextRulers.left, TextRulers.first}
+						p.left := (val_ + trgaph) * twips
+						p.first := p.left
+						pattr := TextRulers.ModifiedAttr(pattr, p) 
+					elsif comm = "cellx" then  (* right boundary of a table cell in twips, including its half of
+						   the space between cells; used to add a Tab to the paragraph ruler *)
+						
+						p0 := pattr.Prop()
+						p := p0(TextRulers.Prop)
+						p.valid := {TextRulers.tabs}
+						p.tabs.tab[p.tabs.len_].stop := (val_ + trgaph) * twips
+						p.tabs.tab[p.tabs.len_].type_ := {}
+						inc(p.tabs.len_)
+						pattr := TextRulers.ModifiedAttr(pattr, p) 
+					elsif comm = "intbl" then   // paragraph is part of a table
+					elsif comm = "cell" then  // end of cell
+						wr.WriteChar(TAB) 
+					elsif comm = "row" then  // end of row
+						Paragraph()
+						pattr := defRuler.style.attr
+						tabStyle := {}
+						tableCtx := nil 
+					// header
+					elsif comm = "deff" then 
+						if hasNum then
+							defFont := val_ 
+						end  
+					elsif comm = "fonttbl" then 
+						if dest # skip then
+							dest := fonttab 
+						end  
+					elsif comm = "colortbl" then 
+						if dest # skip then
+							dest := colortab
+							cnum := 0
+							SetColor(0, 0) 
+						end  
+					elsif comm = "red" then 
+						if dest = colortab then
+							SetColor(cnum, Color(cnum).c + val_ mod 256) 
+						end  
+					elsif comm = "green" then 
+						if dest = colortab then
+							SetColor(cnum, Color(cnum).c + val_ mod 256 * 256) 
+						end  
+					elsif comm = "blue" then 
+						if dest = colortab then
+							SetColor(cnum, Color(cnum).c + val_ mod 256 * 65536) 
+						end  
+					elsif comm = "rtf" then  
+					elsif comm = "ansi" then  
+					elsif comm = "lang" then  
+					elsif comm = "langfe" then  
+					elsif comm = "loch" then  
+					elsif comm = "ltrch" then  
+					elsif comm = "rtlch" then  
+					elsif comm = "ansicpg" then 
+						ansiCodePage := val_ 
+					elsif comm = "hich" then  
+					elsif comm = "dbch" then  
+					// misc
+					elsif comm = "bin" then 
+						rd.SetPos(rd.Pos() + val_ - 1)
+						Next(ch) 
+					// unicode
+					elsif comm = "u" then 
+						Write(chr(val_))
+						skipCnt := uniCnt 
+					elsif comm = "uc" then 
+						if hasNum then
+							uniCnt := val_ 
+						end  
+					elsif comm = "upr" then  // skip ANSI part
+						dest := skip 
+					elsif comm = "ud" then  // use Unicode part
+						dest := text 
+					elsif (comm = "fbimajor") or (comm = "fbiminor") or (comm = "fdbmajor") 
+						or (comm = "fdbminor") or (comm = "fhimajor") or (comm = "fhiminor") 
+						or (comm = "flomajor") or (comm = "flominor") then 
+						dest := fonttab 
+					// unhandled destinations
+					elsif comm = "author" then 
+						dest := skip 
+					elsif comm = "buptim" then 
+						dest := skip 
+					elsif comm = "comment" then 
+						dest := skip 
+					elsif comm = "creatim" then 
+						dest := skip 
+					elsif comm = "doccomm" then 
+						dest := skip 
+					elsif comm = "footer" then 
+						dest := skip 
+					elsif comm = "footerl" then 
+						dest := skip 
+					elsif comm = "footerr" then 
+						dest := skip 
+					elsif comm = "footerf" then 
+						dest := skip 
+					elsif comm = "footnote" then 
+						dest := skip 
+					elsif comm = "ftnsep" then 
+						dest := skip 
+					elsif comm = "ftnsepc" then 
+						dest := skip 
+					elsif comm = "ftncn" then 
+						dest := skip 
+					elsif comm = "header" then 
+						dest := skip 
+					elsif comm = "headerl" then 
+						dest := skip 
+					elsif comm = "headerr" then 
+						dest := skip 
+					elsif comm = "headerf" then 
+						dest := skip 
+					elsif comm = "info" then 
+						dest := skip 
+					elsif comm = "keywords" then 
+						dest := skip 
+					elsif comm = "object" then 
+						dest := skip 
+					elsif comm = "operator" then 
+						dest := skip 
+					elsif comm = "pict" then 
+						dest := skip 
+					elsif comm = "printim" then 
+						dest := skip 
+					elsif comm = "private1" then 
+						dest := skip 
+					elsif comm = "revtim" then 
+						dest := skip 
+					elsif comm = "rxe" then 
+						dest := skip 
+					elsif comm = "stylesheet" then 
+						dest := skip 
+					elsif comm = "subject" then 
+						dest := skip 
+					elsif comm = "tc" then 
+						dest := skip 
+					elsif comm = "title" then 
+						dest := skip 
+					elsif comm = "txe" then 
+						dest := skip 
+					elsif comm = "xe" then 
+						dest := skip 
+					else  // unknown
+						if skipDest & (con # nil) & (con.next # nil) then
+							dest := skip 
+						end  
+					end 
+					skipDest := false 
+				elsif ch = "'" then 
+					Next(ch)
+					if ch <= "9" then
+						val_ := ord(ch) - ord("0") 
+					else 
+						val_ := ord(cap(ch)) - ord("A") + 10 
+					end 
+					Next(ch)
+					if ch <= "9" then
+						val_ := 16 * val_ + ord(ch) - ord("0") 
+					else 
+						val_ := 16 * val_ + ord(cap(ch)) - ord("A") + 10 
+					end 
+					WriteCP(short(chr(val_)))
+					Next(ch) 
+				else 
+					if ch = "~" then // nonbreaking space
+						Write(0a0x) 
+					elsif ch = "-" then  // soft hyphen
+						Write(0adx) 
+					elsif ch = "_" then  // nonbreaking hyphen
+						Write(2011x) 
+					elsif ch = "*" then 
+						skipDest := true 
+					elsif (ch = LF) or (ch = CR) then 
+						Paragraph 
+					elsif (ch = "{") or (ch = "}") or (ch = "\") then 
+						Write(ch) 
+					end 
+					Next(ch) 
+				end  
+			elsif ch = ";" then 
+				FlushCP
+				if dest = fonttab then
+					font := Font(fnum)
+					assert(font.id # noFontId, 100)
+					font.f[idx] := 0x
+					inc(idx) 
+				elsif dest = colortab then 
+					inc(cnum)
+					SetColor(cnum, 0) 
+				elsif dest = text then 
+					Write(";") 
+				end 
+				Next(ch) 
+			elsif (ch >= " ") or (ch = TAB) then 
+				Write(ch)
+				Next(ch) 
+			else 
+				Next(ch) 
+			end  
+		end 
+	end ParseRichText
+	
+	proc ConvertToRichText(in_: TextViews.View; beg, end_: integer; var out: TextModels.Model)
+		var 
+			r: TextModels.Reader
+			w: TextMappers.Formatter
+			ch: char
+			f: Fonts.Font
+			attr, attr0: TextModels.Attributes
+			col: Ports.Color
+			tf, atf: Fonts.Typeface
+			p, size_, asize, offs: integer
+			style, astyle: set
+			weight, aweight: integer
+			rattr, rattr0: TextRulers.Attributes
+			ruler: TextRulers.Ruler
+			text: TextModels.Model
+			firstLine, firstLine0: boolean
+			fonts: array 256 of Fonts.Typeface
+			colors: array 256 of Ports.Color
+			fnum, cnum, i: integer
+	begin 
+		out := TextModels.dir.New()
+		w.ConnectTo(out)
+		f := Fonts.dir.Default()
+		tf := f.typeface
+		fnum := 1
+		fonts[0] := tf
+		cnum := 1
+		colors[0] := Ports.defaultColor
+		col := Ports.defaultColor
+		size_ := 12 * Ports.point
+		offs := 0
+		style := {}
+		weight := Fonts.normal
+		attr0 := nil
+		rattr0 := nil
+		firstLine := true
+		firstLine0 := false
+		text := in_.ThisModel()
+		r := text.NewReader(nil)
+		ruler := TextViews.ThisRuler(in_, beg)
+		rattr := ruler.style.attr
+		r.SetPos(beg)
+		r.ReadChar(ch)
+		while ~r.eot & (r.Pos() <= end_) do 
+			attr := r.attr
+			if (r.view # nil) & (r.view is TextRulers.Ruler) then
+				ruler := r.view(TextRulers.Ruler)
+				rattr := ruler.style.attr
+				firstLine := true 
+			elsif ch = FF then 
+				firstLine := true 
+			end 
+			if (rattr # rattr0) or (firstLine # firstLine0) then
+				if (rattr # rattr0) or (rattr.first # rattr.left) or (rattr.lead # 0) or (TextRulers.pageBreak in rattr.opts) 
+				then
+					w.WriteSString("\pard")
+					if rattr.left # 0 then
+						w.WriteSString("\li")
+						w.WriteInt(rattr.left div twips) 
+					end 
+					if firstLine & (rattr.first # rattr.left) then
+						w.WriteSString("\fi")
+						w.WriteInt((rattr.first - rattr.left) div twips) 
+					end 
+					if firstLine & (rattr.lead # 0) then
+						w.WriteSString("\sb")
+						w.WriteInt(rattr.lead div twips) 
+					end 
+					if rattr.grid > Ports.point then
+						w.WriteSString("\sl")
+						w.WriteInt(rattr.grid div twips)
+						w.WriteSString("\slmult1") 
+					end 
+					if {TextRulers.leftAdjust, TextRulers.rightAdjust} - rattr.opts = {} then
+						w.WriteSString("\qj") 
+					elsif TextRulers.rightAdjust in rattr.opts then 
+						w.WriteSString("\qr") 
+					elsif ~(TextRulers.leftAdjust in rattr.opts) then 
+						w.WriteSString("\qc") 
+					end 
+					if firstLine & (TextRulers.pageBreak in rattr.opts) then
+						w.WriteSString("\pagebb") 
+					end 
+					i := 0
+					while i < rattr.tabs.len_ do 
+						if TextRulers.centerTab in rattr.tabs.tab[i].type_ then
+							if TextRulers.rightTab in rattr.tabs.tab[i].type_ then
+								w.WriteSString("\tqdec") 
+							else 
+								w.WriteSString("\tqc") 
+							end  
+						elsif TextRulers.rightTab in rattr.tabs.tab[i].type_ then 
+							w.WriteSString("\tqr") 
+						end 
+						if TextRulers.barTab in rattr.tabs.tab[i].type_ then
+							w.WriteSString("\tb") 
+						end 
+						w.WriteSString("\tx")
+						w.WriteInt(rattr.tabs.tab[i].stop div twips)
+						inc(i) 
+					end 
+					w.WriteChar(" ") 
+				end 
+				rattr0 := rattr
+				firstLine0 := firstLine 
+			end 
+			if attr # attr0 then
+				p := w.Pos()
+				if attr.color # col then
+					i := 0
+					while (i < cnum) & (colors[i] # attr.color) do 
+						inc(i) 
+					end 
+					if i = cnum then
+						colors[i] := attr.color
+						inc(cnum) 
+					end 
+					w.WriteSString("\cf")
+					w.WriteInt(i)
+					col := attr.color 
+				end 
+				atf := attr.font.typeface
+				asize := attr.font.size_
+				astyle := attr.font.style
+				aweight := attr.font.weight
+				if atf # tf then
+					i := 0
+					while (i < fnum) & (fonts[i] # atf) do 
+						inc(i) 
+					end 
+					if i = fnum then
+						fonts[i] := atf
+						inc(fnum) 
+					end 
+					w.WriteSString("\f")
+					w.WriteInt(i)
+					tf := atf 
+				end 
+				if asize # size_ then
+					w.WriteSString("\fs")
+					w.WriteInt(asize div halfpoint)
+					size_ := asize 
+				end 
+				if astyle # style then
+					if (Fonts.italic in astyle) & ~(Fonts.italic in style) then
+						w.WriteSString("\i") 
+					elsif ~(Fonts.italic in astyle) & (Fonts.italic in style) then 
+						w.WriteSString("\i0") 
+					end 
+					if (Fonts.underline in astyle) & ~(Fonts.underline in style) then
+						w.WriteSString("\ul") 
+					elsif ~(Fonts.underline in astyle) & (Fonts.underline in style) then 
+						w.WriteSString("\ul0") 
+					end 
+					if (Fonts.strikeout in astyle) & ~(Fonts.strikeout in style) then
+						w.WriteSString("\strike") 
+					elsif ~(Fonts.strikeout in astyle) & (Fonts.strikeout in style) then 
+						w.WriteSString("\strike0") 
+					end 
+					style := astyle 
+				end 
+				if aweight # weight then
+					if (aweight > Fonts.normal) & (weight = Fonts.normal) then
+						w.WriteSString("\b") 
+					elsif (aweight = Fonts.normal) & (weight > Fonts.normal) then 
+						w.WriteSString("\b0") 
+					end 
+					weight := aweight 
+				end 
+				if attr.offset # offs then
+					if attr.offset > 0 then
+						w.WriteSString("\up")
+						w.WriteInt(attr.offset div halfpoint) 
+					elsif attr.offset < 0 then 
+						w.WriteSString("\dn")
+						w.WriteInt(-(attr.offset div halfpoint)) 
+					elsif offs > 0 then 
+						w.WriteSString("\up0") 
+					else 
+						w.WriteSString("\dn0") 
+					end 
+					offs := attr.offset 
+				end 
+				if w.Pos() # p then
+					w.WriteChar(" ") 
+				end 
+				attr0 := attr 
+			end 
+			if ch >= 100x then
+				if ch = 2002x then
+					w.WriteSString("\enspace ") 
+				elsif ch = 2003x then 
+					w.WriteSString("\emspace ") 
+				elsif ch = 2013x then 
+					w.WriteSString("\endash ") 
+				elsif ch = 2014x then 
+					w.WriteSString("\emdash ") 
+				elsif ch = 2010x then 
+					w.WriteChar("-") 
+				elsif ch = 2011x then 
+					w.WriteSString("\_") 
+				elsif ch = 201cx then  // unicode: left double quote
+					w.WriteSString("\ldblquote ") 
+				elsif ch = 201dx then  // unicode: right double quote
+					w.WriteSString("\rdblquote ") 
+				elsif ch = 2018x then  // unicode: left single quote
+					w.WriteSString("\lquote ") 
+				elsif ch = 2019x then  // unicode: right single quote
+					w.WriteSString("\rquote ") 
+				else 
+					w.WriteSString("\u")
+					w.WriteInt(ord(ch))
+					ch := ThisWndChar(ch)
+					if ch >= 80x then
+						w.WriteSString("\'")
+						w.WriteIntForm(ord(ch), TextMappers.hexadecimal, 2, "0", false) 
+					else 
+						w.WriteChar(ch) 
+					end  
+				end  
+			else 
+				case ch of 
+					| TAB: 
+						w.WriteSString("\tab ") 
+					| CR: 
+						w.WriteSString("\par ")
+						w.WriteLn
+						firstLine := false 
+					| " " .. "[", "]" .. "z", "|", "~": 
+						w.WriteChar(ch) 
+					| "\": 
+						w.WriteSString("\\") 
+					| "{": 
+						w.WriteSString("\{") 
+					| "}": 
+						w.WriteSString("\}") 
+					| 8fx:  // digit space
+						w.WriteChar(" ") 
+					| 90x:  // hyphen
+						w.WriteChar("-") 
+					| 91x:  // non-breaking hyphen
+						w.WriteSString("\_") 
+					| 0a0x:  // non-breaking space
+						w.WriteSString("\~") 
+					| 0adx:  // soft hyphen
+						w.WriteSString("\-") 
+					| 0a1x .. 0acx, 0aex .. 0ffx: 
+						w.WriteSString("\'")
+						w.WriteIntForm(ord(ch), TextMappers.hexadecimal, 2, "0", false) 
+				else  
+				end  
+			end 
+			r.ReadChar(ch) 
+		end 
+		w.WriteChar("}")
+		// header
+		w.SetPos(0)
+		w.WriteSString("{\rtf1\ansi\ansicpg1252\deff0")
+		w.WriteSString("{\fonttbl")
+		i := 0
+		while i < fnum do 
+			if fonts[i] = Fonts.default then
+				fonts[i] := HostFonts.defFont.alias 
+			end 
+			w.WriteSString("{\f")
+			w.WriteInt(i)
+			w.WriteSString("\fnil ")
+			w.WriteString(fonts[i])
+			w.WriteSString(";}")
+			inc(i) 
+		end 
+		w.WriteChar("}")
+		w.WriteLn
+		w.WriteSString("{\colortbl;")
+		i := 1
+		while i < cnum do 
+			w.WriteSString("\red")
+			w.WriteInt(colors[i] mod 256)
+			w.WriteSString("\green")
+			w.WriteInt(colors[i] div 256 mod 256)
+			w.WriteSString("\blue")
+			w.WriteInt(colors[i] div 65536 mod 256)
+			w.WriteChar(";")
+			inc(i) 
+		end 
+		w.WriteChar("}")
+		w.WriteLn
+		w.WriteSString("\deftab216 ")
+		w.WriteSString("\plain")
+	end ConvertToRichText
+	
+	
+	proc ImportDText*(var med: WinOle.STGMEDIUM; var v: Views.View
+		var w, h: integer; var isSingle: boolean)
+		var 
+			t: TextModels.Model
+			res, adr: integer
+			wr: TextModels.Writer
+			ch: char
+			hnd: WinApi.HANDLE
+			attr: TextModels.Attributes
+			p: Properties.StdProp
+			pref: Properties.BoundsPref
+	begin 
+		hnd := MediumGlobal(med)
+		assert(hnd # 0, 20)
+		adr := WinApi.GlobalLock(hnd)
+		t := TextModels.dir.New()
+		wr := t.NewWriter(nil)
+		if HostClipboard.cloneAttributes then
+			Properties.CollectStdProp(p)
+			new(attr)
+			attr.InitFromProp(p)
+			wr.SetAttr(attr) 
+		end 
+		SYSTEM.GET(adr, ch)
+		while ch # 0x do 
+			WriteWndChar(wr, ch)
+			inc(adr)
+			SYSTEM.GET(adr, ch) 
+		end 
+		res := WinApi.GlobalUnlock(hnd)
+		v := TextViews.dir.New(t)
+		pref.w := Views.undefined
+		pref.h := Views.undefined
+		Views.HandlePropMsg(v, pref)
+		w := pref.w
+		h := pref.h
+		isSingle := false
+	end ImportDText
+	
+	proc ImportDRichText*(var med: WinOle.STGMEDIUM; var v: Views.View
+		var w, h: integer; var isSingle: boolean)
+		var 
+			t: TextModels.Model
+			res, adr: integer
+			wr: TextModels.Writer
+			rd: MemReader
+			hnd: WinApi.HANDLE
+			ruler: TextRulers.Ruler
+			pref: Properties.BoundsPref
+	begin 
+		if debug then
+			ImportDText(med, v, w, h, isSingle)
+			return  
+		end 
+		hnd := MediumGlobal(med)
+		assert(hnd # 0, 20)
+		adr := WinApi.GlobalLock(hnd)
+		new(rd)
+		rd.adr := adr
+		rd.pos := 0
+		t := TextModels.dir.New()
+		wr := t.NewWriter(nil)
+		ParseRichText(rd, wr, ruler)
+		res := WinApi.GlobalUnlock(hnd)
+		v := TextViews.dir.New(t)
+		v(TextViews.View).SetDefaults(ruler, TextModels.dir.attr)
+		pref.w := Views.undefined
+		pref.h := Views.undefined
+		Views.HandlePropMsg(v, pref)
+		w := pref.w
+		h := pref.h
+		isSingle := false
+	end ImportDRichText
+	
+	proc ImportDUnicode*(var med: WinOle.STGMEDIUM; var v: Views.View
+		var w, h: integer; var isSingle: boolean)
+		var 
+			t: TextModels.Model
+			res, adr: integer
+			wr: TextModels.Writer
+			uc: char
+			hnd: WinApi.HANDLE
+			attr: TextModels.Attributes
+			p: Properties.StdProp
+			pref: Properties.BoundsPref
+	begin 
+		hnd := MediumGlobal(med)
+		assert(hnd # 0, 20)
+		adr := WinApi.GlobalLock(hnd)
+		t := TextModels.dir.New()
+		wr := t.NewWriter(nil)
+		if HostClipboard.cloneAttributes then
+			Properties.CollectStdProp(p)
+			new(attr)
+			attr.InitFromProp(p)
+			wr.SetAttr(attr) 
+		end 
+		SYSTEM.GET(adr, uc)
+		while uc # 0x do 
+			assert(uc # 0fffex, 100)
+			if uc < 100x then
+				WriteWndChar(wr, uc) 
+			elsif uc # 0feffx then 
+				wr.WriteChar(uc) 
+			end 
+			inc(adr, 2)
+			SYSTEM.GET(adr, uc) 
+		end 
+		res := WinApi.GlobalUnlock(hnd)
+		v := TextViews.dir.New(t)
+		pref.w := Views.undefined
+		pref.h := Views.undefined
+		Views.HandlePropMsg(v, pref)
+		w := pref.w
+		h := pref.h
+		isSingle := false
+	end ImportDUnicode
+	
+	proc ExportDText*(
+		v: Views.View; w, h, x, y: integer; isSingle: boolean; var med: WinOle.STGMEDIUM
+		)
+		var 
+			t: TextModels.Model
+			r: TextModels.Reader
+			ch: char
+			res, len_, adr: integer
+			hnd: WinApi.HANDLE
+	begin 
+		assert(v # nil, 20)
+		with v: TextViews.View do 
+			t := v.ThisModel()
+			hnd := WinApi.GlobalAlloc({1, 13}, 2 * t.Length() + 1) // movable, sharable
+			if hnd # 0 then
+				adr := WinApi.GlobalLock(hnd)
+				len_ := 0
+				r := t.NewReader(nil)
+				r.ReadChar(ch)
+				while ~r.eot do 
+					if (ch # TextModels.viewcode) & (ch # TextModels.para) then
+						ch := ThisWndChar(ch)
+						SYSTEM.PUT(adr, short(ch))
+						inc(adr)
+						inc(len_)
+						if ch = CR then
+							SYSTEM.PUT(adr, LF)
+							inc(adr)
+							inc(len_) 
+						end  
+					end 
+					r.ReadChar(ch) 
+				end 
+				SYSTEM.PUT(adr, 0x)
+				inc(len_)
+				res := WinApi.GlobalUnlock(hnd)
+				hnd := WinApi.GlobalReAlloc(hnd, len_, {})
+				GenGlobalMedium(hnd, nil, med) 
+			end  
+		else  
+		end 
+	end ExportDText
+	
+	proc ExportDRichText*(
+		v: Views.View; w, h, x, y: integer; isSingle: boolean; var med: WinOle.STGMEDIUM
+		)
+		var 
+			t: TextModels.Model
+			r: TextModels.Reader
+			ch: char
+			res, adr: integer
+			hnd: WinApi.HANDLE
+	begin 
+		assert(v # nil, 20)
+		with v: TextViews.View do 
+			ConvertToRichText(v, 0, max(integer), t)
+			hnd := WinApi.GlobalAlloc({1, 13}, t.Length() + 1) // movable, sharable
+			if hnd # 0 then
+				adr := WinApi.GlobalLock(hnd)
+				r := t.NewReader(nil)
+				r.ReadChar(ch)
+				while ~r.eot do 
+					SYSTEM.PUT(adr, short(ch))
+					inc(adr)
+					r.ReadChar(ch) 
+				end 
+				SYSTEM.PUT(adr, 0x)
+				res := WinApi.GlobalUnlock(hnd)
+				GenGlobalMedium(hnd, nil, med) 
+			end  
+		else  
+		end 
+	end ExportDRichText
+	
+	proc ExportDUnicode*(
+		v: Views.View; w, h, x, y: integer; isSingle: boolean; var med: WinOle.STGMEDIUM
+		)
+		var 
+			t: TextModels.Model
+			r: TextModels.Reader
+			ch: char
+			res, len_, adr: integer
+			hnd: WinApi.HANDLE
+	begin 
+		assert(v # nil, 20)
+		with v: TextViews.View do 
+			t := v.ThisModel()
+			hnd := WinApi.GlobalAlloc({1, 13}, 4 * t.Length() + 2) // movable, sharable
+			if hnd # 0 then
+				adr := WinApi.GlobalLock(hnd)
+				len_ := 0
+				r := t.NewReader(nil)
+				r.ReadChar(ch)
+				while ~r.eot do 
+					if ch = CR then
+						SYSTEM.PUT(adr, long(CR))
+						inc(adr, 2)
+						inc(len_, 2)
+						SYSTEM.PUT(adr, long(LF))
+						inc(adr, 2)
+						inc(len_, 2) 
+					elsif (ch >= " ") or (ch = TAB) then 
+						if (ch >= 0ef00x) & (ch <= 0efffx) then
+							ch := chr(ord(ch) - 0ef00h) 
+						end 
+						SYSTEM.PUT(adr, ch)
+						inc(adr, 2)
+						inc(len_, 2) 
+					end 
+					r.ReadChar(ch) 
+				end 
+				SYSTEM.PUT(adr, long(0x))
+				inc(len_, 2)
+				res := WinApi.GlobalUnlock(hnd)
+				hnd := WinApi.GlobalReAlloc(hnd, len_, {})
+				GenGlobalMedium(hnd, nil, med) 
+			end  
+		else  
+		end 
+	end ExportDUnicode
+	
+	proc ImportText*(f: Files.File; var s: Stores.Store)
+		var 
+			r: Stores.Reader
+			t: TextModels.Model
+			wr: TextModels.Writer
+			ch, nch: char
+	begin 
+		assert(f # nil, 20)
+		r.ConnectTo(f)
+		r.SetPos(0)
+		t := TextModels.dir.New()
+		wr := t.NewWriter(nil)
+		r.ReadSChar(ch)
+		while ~r.rider.eof do 
+			r.ReadSChar(nch)
+			if (ch = CR) & (nch = LF) then
+				r.ReadSChar(nch) 
+			elsif ch = LF then 
+				ch := CR 
+			end 
+			WriteWndChar(wr, ch)
+			ch := nch 
+		end 
+		s := TextViews.dir.New(t)
+	end ImportText
+	
+	proc ImportTabText*(f: Files.File; var s: Stores.Store)
+		var 
+			r: Stores.Reader
+			t: TextModels.Model
+			wr: TextModels.Writer
+			ch, nch: char
+	begin 
+		assert(f # nil, 20)
+		r.ConnectTo(f)
+		r.SetPos(0)
+		t := TextModels.dir.New()
+		wr := t.NewWriter(nil)
+		r.ReadSChar(ch)
+		while ~r.rider.eof do 
+			r.ReadSChar(nch)
+			if (ch = CR) & (nch = LF) then
+				r.ReadSChar(nch) 
+			elsif ch = LF then 
+				ch := CR 
+			elsif (ch = " ") & (nch = " ") then 
+				ch := TAB
+				r.ReadSChar(nch) 
+			end 
+			WriteWndChar(wr, ch)
+			ch := nch 
+		end 
+		s := TextViews.dir.New(t)
+	end ImportTabText
+	
+	proc ImportRichText*(f: Files.File; var s: Stores.Store)
+		var 
+			t: TextModels.Model
+			wr: TextModels.Writer
+			rd: Files.Reader
+			ruler: TextRulers.Ruler
+	begin 
+		rd := f.NewReader(nil)
+		rd.SetPos(0)
+		t := TextModels.dir.New()
+		wr := t.NewWriter(nil)
+		ParseRichText(rd, wr, ruler)
+		s := TextViews.dir.New(t)
+		s(TextViews.View).SetDefaults(ruler, TextModels.dir.attr)
+	end ImportRichText
+	
+	proc ImportUnicode*(f: Files.File; var s: Stores.Store)
+		var 
+			r: Stores.Reader
+			t: TextModels.Model
+			v: TextViews.View
+			w: TextModels.Writer
+			ch0, ch1: char
+			len_: integer
+			uc: char
+			rev: boolean
+	begin 
+		assert(f # nil, 20)
+		r.ConnectTo(f)
+		r.SetPos(0)
+		len_ := f.Length()
+		rev := false
+		t := TextModels.dir.New()
+		w := t.NewWriter(nil)
+		w.SetPos(0)
+		while len_ > 0 do 
+			r.ReadSChar(ch0)
+			r.ReadSChar(ch1)
+			if rev then
+				uc := chr(ord(ch1) + 256 * ord(ch0)) 
+			else 
+				uc := chr(ord(ch0) + 256 * ord(ch1)) 
+			end 
+			dec(len_, 2)
+			if uc = 0fffex then
+				rev := ~rev 
+			elsif uc < 100x then 
+				WriteWndChar(w, uc) 
+			elsif uc # 0feffx then 
+				w.WriteChar(uc) 
+			end  
+		end 
+		v := TextViews.dir.New(t)
+		s := v
+	end ImportUnicode
+	
+	proc ImportDosText*(f: Files.File; var s: Stores.Store)
+		var 
+			r: Stores.Reader
+			t: TextModels.Model
+			wr: TextModels.Writer
+			ch, nch: char
+		
+		proc ConvertChar(wr: TextModels.Writer; ch: char)
+		// PC Code Page Mappings M4 (Latin) to Unicode Encoding
+		// Reference: The Unicode Standard, Version 1.0, Vol 1, Addison Wesley, p. 536
+		begin 
+			case ch of 
+				| CR, TAB, " " .. 7ex: 
+					wr.WriteChar(ch) 
+				| LF:  
+				| 080x: 
+					wr.WriteChar(0c7x) 
+				| 081x: 
+					wr.WriteChar(0fcx) 
+				| 082x: 
+					wr.WriteChar(0e9x) 
+				| 083x: 
+					wr.WriteChar(0e2x) 
+				| 084x: 
+					wr.WriteChar(0e4x) 
+				| 085x: 
+					wr.WriteChar(0e0x) 
+				| 086x: 
+					wr.WriteChar(0e5x) 
+				| 087x: 
+					wr.WriteChar(0e7x) 
+				| 088x: 
+					wr.WriteChar(0eax) 
+				| 089x: 
+					wr.WriteChar(0ebx) 
+				| 08ax: 
+					wr.WriteChar(0e8x) 
+				| 08bx: 
+					wr.WriteChar(0efx) 
+				| 08cx: 
+					wr.WriteChar(0eex) 
+				| 08dx: 
+					wr.WriteChar(0ecx) 
+				| 08ex: 
+					wr.WriteChar(0c4x) 
+				| 08fx: 
+					wr.WriteChar(0c5x) 
+				| 090x: 
+					wr.WriteChar(0c9x) 
+				| 091x: 
+					wr.WriteChar(0e6x) 
+				| 092x: 
+					wr.WriteChar(0c6x) 
+				| 093x: 
+					wr.WriteChar(0f4x) 
+				| 094x: 
+					wr.WriteChar(0f6x) 
+				| 095x: 
+					wr.WriteChar(0f2x) 
+				| 096x: 
+					wr.WriteChar(0fbx) 
+				| 097x: 
+					wr.WriteChar(0f9x) 
+				| 098x: 
+					wr.WriteChar(0ffx) 
+				| 099x: 
+					wr.WriteChar(0d6x) 
+				| 09ax: 
+					wr.WriteChar(0dcx) 
+				| 09bx: 
+					wr.WriteChar(0f8x) 
+				| 09cx: 
+					wr.WriteChar(0a3x) 
+				| 09dx: 
+					wr.WriteChar(0d8x) 
+				| 09ex: 
+					wr.WriteChar(0d7x) 
+				| 09fx: 
+					wr.WriteChar(0192x) 
+				| 0a0x: 
+					wr.WriteChar(0e1x) 
+				| 0a1x: 
+					wr.WriteChar(0edx) 
+				| 0a2x: 
+					wr.WriteChar(0f3x) 
+				| 0a3x: 
+					wr.WriteChar(0fax) 
+				| 0a4x: 
+					wr.WriteChar(0f1x) 
+				| 0a5x: 
+					wr.WriteChar(0d1x) 
+				| 0a6x: 
+					wr.WriteChar(0aax) 
+				| 0a7x: 
+					wr.WriteChar(0bax) 
+				| 0a8x: 
+					wr.WriteChar(0bfx) 
+				| 0a9x: 
+					wr.WriteChar(0aex) 
+				| 0aax: 
+					wr.WriteChar(0acx) 
+				| 0abx: 
+					wr.WriteChar(0bdx) 
+				| 0acx: 
+					wr.WriteChar(0bcx) 
+				| 0adx: 
+					wr.WriteChar(0a1x) 
+				| 0aex: 
+					wr.WriteChar(0abx) 
+				| 0afx: 
+					wr.WriteChar(0bbx) 
+				| 0b5x: 
+					wr.WriteChar(0c1x) 
+				| 0b6x: 
+					wr.WriteChar(0c2x) 
+				| 0b7x: 
+					wr.WriteChar(0c0x) 
+				| 0b8x: 
+					wr.WriteChar(0a9x) 
+				| 0bdx: 
+					wr.WriteChar(0a2x) 
+				| 0bex: 
+					wr.WriteChar(0a5x) 
+				| 0c6x: 
+					wr.WriteChar(0e3x) 
+				| 0c7x: 
+					wr.WriteChar(0c3x) 
+				| 0cfx: 
+					wr.WriteChar(0a4x) 
+				| 0d0x: 
+					wr.WriteChar(0f0x) 
+				| 0d1x: 
+					wr.WriteChar(0d0x) 
+				| 0d2x: 
+					wr.WriteChar(0cax) 
+				| 0d3x: 
+					wr.WriteChar(0cbx) 
+				| 0d4x: 
+					wr.WriteChar(0c8x) 
+				| 0d5x: 
+					wr.WriteChar(0131x) 
+				| 0d6x: 
+					wr.WriteChar(0cdx) 
+				| 0d7x: 
+					wr.WriteChar(0cex) 
+				| 0d8x: 
+					wr.WriteChar(0cfx) 
+				| 0ddx: 
+					wr.WriteChar(0a6x) 
+				| 0dex: 
+					wr.WriteChar(0ccx) 
+				| 0e0x: 
+					wr.WriteChar(0d3x) 
+				| 0e1x: 
+					wr.WriteChar(0dfx) 
+				| 0e2x: 
+					wr.WriteChar(0d4x) 
+				| 0e3x: 
+					wr.WriteChar(0d2x) 
+				| 0e4x: 
+					wr.WriteChar(0f5x) 
+				| 0e5x: 
+					wr.WriteChar(0d5x) 
+				| 0e6x: 
+					wr.WriteChar(0b5x) 
+				| 0e7x: 
+					wr.WriteChar(0fex) 
+				| 0e8x: 
+					wr.WriteChar(0dex) 
+				| 0e9x: 
+					wr.WriteChar(0dax) 
+				| 0eax: 
+					wr.WriteChar(0dbx) 
+				| 0ebx: 
+					wr.WriteChar(0d9x) 
+				| 0ecx: 
+					wr.WriteChar(0fdx) 
+				| 0edx: 
+					wr.WriteChar(0ddx) 
+				| 0eex: 
+					wr.WriteChar(0afx) 
+				| 0efx: 
+					wr.WriteChar(0b4x) 
+				| 0f0x: 
+					wr.WriteChar(0adx) 
+				| 0f1x: 
+					wr.WriteChar(0b1x) 
+				| 0f2x: 
+					wr.WriteChar(02017x) 
+				| 0f3x: 
+					wr.WriteChar(0bex) 
+				| 0f4x: 
+					wr.WriteChar(0b6x) 
+				| 0f5x: 
+					wr.WriteChar(0a7x) 
+				| 0f6x: 
+					wr.WriteChar(0f7x) 
+				| 0f7x: 
+					wr.WriteChar(0b8x) 
+				| 0f8x: 
+					wr.WriteChar(0b0x) 
+				| 0f9x: 
+					wr.WriteChar(0a8x) 
+				| 0fax: 
+					wr.WriteChar(0b7x) 
+				| 0fbx: 
+					wr.WriteChar(0b9x) 
+				| 0fcx: 
+					wr.WriteChar(0b3x) 
+				| 0fdx: 
+					wr.WriteChar(0b2x) 
+				| 0x .. 8x, 0bx, 0cx, 0ex .. 1fx, 7fx, 
+				0b0x .. 0b4x, 0b9x .. 0bcx, 0bfx .. 0c5x, 0c8x .. 0cex, 0d9x .. 0dcx, 0dfx, 0fex, 0ffx: 
+					wr.WriteChar(chr(0ef00h + ord(ch))) 
+			end 
+		end ConvertChar
+	
+	begin 
+		assert(f # nil, 20)
+		r.ConnectTo(f)
+		r.SetPos(0)
+		t := TextModels.dir.New()
+		wr := t.NewWriter(nil)
+		r.ReadSChar(ch)
+		while ~r.rider.eof do 
+			r.ReadSChar(nch)
+			if (ch = CR) & (nch = LF) then
+				r.ReadSChar(nch) 
+			elsif ch = LF then 
+				ch := CR 
+			end 
+			ConvertChar(wr, ch)
+			ch := nch 
+		end 
+		s := TextViews.dir.New(t)
+	end ImportDosText
+	
+	proc TextView(s: Stores.Store): Stores.Store
+	begin 
+		if s is Views.View then
+			return Properties.ThisType(s(Views.View), "TextViews.View") 
+		else 
+			return nil 
+		end 
+	end TextView
+	
+	proc ExportText*(s: Stores.Store; f: Files.File)
+		var 
+			w: Stores.Writer
+			t: TextModels.Model
+			r: TextModels.Reader
+			ch: char
+	begin 
+		assert(s # nil, 20)
+		assert(f # nil, 21)
+		s := TextView(s)
+		if s # nil then
+			w.ConnectTo(f)
+			w.SetPos(0)
+			t := s(TextViews.View).ThisModel()
+			if t # nil then
+				r := t.NewReader(nil)
+				r.ReadChar(ch)
+				while ~r.eot do 
+					if (ch # TextModels.viewcode) & (ch # TextModels.para) then
+						ch := ThisWndChar(ch)
+						w.WriteSChar(short(ch))
+						if ch = CR then
+							w.WriteSChar(LF) 
+						end  
+					end 
+					r.ReadChar(ch) 
+				end  
+			end  
+		end 
+	end ExportText
+	
+	proc ExportTabText*(s: Stores.Store; f: Files.File)
+		var 
+			w: Stores.Writer
+			t: TextModels.Model
+			r: TextModels.Reader
+			ch: char
+	begin 
+		assert(s # nil, 20)
+		assert(f # nil, 21)
+		s := TextView(s)
+		if s # nil then
+			w.ConnectTo(f)
+			w.SetPos(0)
+			t := s(TextViews.View).ThisModel()
+			if t # nil then
+				r := t.NewReader(nil)
+				r.ReadChar(ch)
+				while ~r.eot do 
+					if (ch # TextModels.viewcode) & (ch # TextModels.para) then
+						ch := ThisWndChar(ch)
+						if ch = CR then
+							w.WriteSChar(CR)
+							w.WriteSChar(LF) 
+						elsif ch = TAB then 
+							w.WriteSChar(" ")
+							w.WriteSChar(" ") 
+						else 
+							w.WriteSChar(short(ch)) 
+						end  
+					end 
+					r.ReadChar(ch) 
+				end  
+			end  
+		end 
+	end ExportTabText
+	
+	proc ExportRichText*(s: Stores.Store; f: Files.File)
+		var 
+			t: TextModels.Model
+			r: TextModels.Reader
+			ch: char
+			w: Stores.Writer
+	begin 
+		assert(s # nil, 20)
+		assert(f # nil, 21)
+		with s: TextViews.View do 
+			ConvertToRichText(s, 0, max(integer), t)
+			w.ConnectTo(f)
+			w.SetPos(0)
+			r := t.NewReader(nil)
+			r.ReadChar(ch)
+			while ~r.eot do 
+				w.WriteSChar(short(ch))
+				r.ReadChar(ch) 
+			end  
+		// w.WriteSChar(0X)
+		
+		
+		else  
+		end 
+	end ExportRichText
+	
+	proc ExportUnicode*(s: Stores.Store; f: Files.File)
+		var 
+			w: Stores.Writer
+			t: TextModels.Model
+			r: TextModels.Reader
+			ch: char
+	begin 
+		assert(s # nil, 20)
+		assert(f # nil, 21)
+		s := TextView(s)
+		if s # nil then
+			w.ConnectTo(f)
+			w.SetPos(0)
+			w.WriteChar(0feffx) // little endian
+			t := s(TextViews.View).ThisModel()
+			if t # nil then
+				r := t.NewReader(nil)
+				r.ReadChar(ch)
+				while ~r.eot do 
+					if ch = CR then
+						w.WriteChar(CR)
+						w.WriteChar(LF) 
+					elsif (ch >= " ") or (ch = TAB) then 
+						if (ch >= 0ef00x) & (ch <= 0efffx) then
+							ch := chr(ord(ch) - 0ef00h) 
+						end 
+						w.WriteChar(ch) 
+					end 
+					r.ReadChar(ch) 
+				end  
+			end  
+		end 
+	end ExportUnicode
+	
+	proc ImportHex*(f: Files.File; var s: Stores.Store)
+		var 
+			r: Stores.Reader
+			t: TextModels.Model
+			w: TextMappers.Formatter
+			ch: char
+			a: integer
+			i: integer
+			str: array 17 of char
+	begin 
+		assert(f # nil, 20)
+		r.ConnectTo(f)
+		r.SetPos(0)
+		t := TextModels.dir.New()
+		w.ConnectTo(t)
+		w.SetPos(0)
+		r.ReadSChar(ch)
+		a := 0
+		while ~r.rider.eof do 
+			if a mod 16 = 0 then
+				w.WriteChar("[")
+				w.WriteIntForm(a, TextMappers.hexadecimal, 8, "0", false)
+				w.WriteSString("]") 
+			end 
+			w.WriteIntForm(ord(ch), TextMappers.hexadecimal, 2, "0", false)
+			if ch > 20x then
+				str[a mod 16] := ch 
+			else 
+				str[a mod 16] := "" 
+			end 
+			inc(a)
+			if a mod 16 = 0 then
+				str[16] := 0x
+				w.WriteString("")
+				w.WriteString(str)
+				w.WriteLn 
+			elsif a mod 4 = 0 then 
+				w.WriteString("") 
+			else 
+				w.WriteChar("") 
+			end 
+			r.ReadSChar(ch) 
+		end 
+		if a mod 16 # 0 then
+			str[a mod 16] := 0x
+			i := (16 - a mod 16) * 3 + (3 - a mod 16 div 4) + 3
+			while i # 0 do 
+				w.WriteChar("")
+				dec(i) 
+			end 
+			w.WriteString(str) 
+		end 
+		s := TextViews.dir.New(t)
+	end ImportHex
+	
+	(* imports a UTF-8 encoded file:
+	   1. if the optional byte order mark (BOM) is found at the beginning of the file, it is skipped
+	   2. three forms of line separators are supported: CR, LF, and CR LF
+	   3. characters larger than 16 bit are reported as '?'
+	   4. in case of finding an illegal  encoding it falls back to importing a windows text *)
+	
+	
+	proc ImportUtf8*(f: Files.File; var s: Stores.Store)
+		var 
+			r: Files.Reader
+			t: TextModels.Model
+			wr: TextModels.Writer
+			ch, nch: char
+			formatError: boolean
+		
+		proc ReadUtf8Char(var rd: Files.Reader; var ch: char)
+			var 
+				c1, c2, c3: byte
+			
+			proc FormatError
+			begin 
+				rd.SetPos(rd.Base().Length())
+				rd.eof := true
+				ch := 0x
+				formatError := true
+			end FormatError
+		
+		begin 
+			rd.ReadByte(c1)
+			if c1 >= 0 then // 0xxx xxxx
+				ch := chr(c1) 
+			elsif bits(c1) * {7, 6, 5} = {7, 6} then  // 110x xxxx, 10xx xxxx
+				rd.ReadByte(c2)
+				if bits(c2) * {7, 6} = {7} then
+					ch := chr(64 * (c1 mod 32) + (c2 mod 64)) 
+				else 
+					FormatError 
+				end  
+			elsif bits(c1) * {7, 6, 5, 4} = {7, 6, 5} then  // 1110 xxxx, 10xx xxxx, 10xx xxxx
+				rd.ReadByte(c2)
+				rd.ReadByte(c3)
+				if (bits(c2) * {7, 6} = {7}) & (bits(c3) * {7, 6} = {7}) then
+					ch := chr(4096 * (c1 mod 16) + 64 * (c2 mod 64) + (c3 mod 64)) 
+				else 
+					FormatError 
+				end  
+			elsif bits(c1) * {7, 6, 5, 4, 3} = {7, 6, 5, 4} then  // 1111 0xxx, 10xx xxxx, 10xx xxxx, 10xx xxxx
+				rd.ReadByte(c2)
+				rd.ReadByte(c3)
+				rd.ReadByte(c3)
+				ch := '?' 
+			else 
+				FormatError 
+			end 
+		end ReadUtf8Char
+	
+	begin 
+		assert(f # nil, 20)
+		r := f.NewReader(nil)
+		t := TextModels.dir.New()
+		wr := t.NewWriter(nil)
+		formatError := false
+		ReadUtf8Char(r, ch)
+		if ch = 0feffx then // skip BOM
+			ReadUtf8Char(r, ch) 
+		end 
+		while ~r.eof do 
+			ReadUtf8Char(r, nch)
+			if (ch = CR) & (nch = LF) then
+				ReadUtf8Char(r, nch) 
+			elsif ch = LF then 
+				ch := CR 
+			end 
+			wr.WriteChar(ch)
+			ch := nch 
+		end 
+		if ~formatError then
+			s := TextViews.dir.New(t) 
+		else  // fallback to Windows text importer
+			ImportText(f, s) 
+		end 
+	end ImportUtf8
+	
+	// exports a UTF-8 encoded file without inserting a byte order mark (BOM) and with LF as line separator
+	proc ExportUtf8*(s: Stores.Store; f: Files.File)
+		var 
+			w: Stores.Writer
+			t: TextModels.Model
+			r: TextModels.Reader
+			ch: char
+		
+		proc WriteUtf8Char(var wr: Stores.Writer; ch: char)
+		begin 
+			if ch <= 7fx then
+				wr.WriteByte(short(short(ord(ch)))) 
+			elsif ch <= 7ffx then 
+				wr.WriteByte(short(short(-64 + ord(ch) div 64)))
+				wr.WriteByte(short(short(-128 + ord(ch) mod 64))) 
+			else 
+				wr.WriteByte(short(short(-32 + ord(ch) div 4096)))
+				wr.WriteByte(short(short(-128 + ord(ch) div 64 mod 64)))
+				wr.WriteByte(short(short(-128 + ord(ch) mod 64))) 
+			end 
+		end WriteUtf8Char
+	
+	begin 
+		assert(s # nil, 20)
+		assert(f # nil, 21)
+		s := TextView(s)
+		if s # nil then
+			w.ConnectTo(f)
+			w.SetPos(0)
+			t := s(TextViews.View).ThisModel()
+			if t # nil then
+				r := t.NewReader(nil)
+				r.ReadChar(ch)
+				while ~r.eot do 
+					if (ch # TextModels.viewcode) & (ch # TextModels.para) then
+						if ch = CR then
+							WriteUtf8Char(w, LF) 
+						else 
+							WriteUtf8Char(w, ch) 
+						end  
+					end 
+					r.ReadChar(ch) 
+				end  
+			end  
+		end 
+	end ExportUtf8
+
+end HostTextConv

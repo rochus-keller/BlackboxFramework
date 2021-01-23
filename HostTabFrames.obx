@@ -1,0 +1,697 @@
+module HostTabFrames
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20070201, bh, Unicode support
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		SYSTEM, Kernel, WinApi, WinCtl, Fonts, Ports, Views, 
+		Controllers, Dialog, HostFonts, HostPorts, StdTabViews
+	
+	const 
+		DEL = 07x
+		dlgWindowExtra = 30
+	
+	type 
+		Info = record 
+				wnd, ctrl: WinApi.HANDLE
+				x1, y1, w1, h1, x2, y2, w2, h2: integer
+				hasFocus: boolean 
+			end 
+		
+		Tab = pointer to record (StdTabViews.Frame) 
+				i: Info
+				dispLeft, dispTop, dispWidth, dispHeight: integer 
+			end 
+		
+		Directory = pointer to record (StdTabViews.FrameDirectory) end 
+	
+	var 
+		instance: WinApi.HANDLE
+		SubclassCtl: proc (wnd: WinApi.HANDLE)
+	
+	// auxiliary procedures
+	
+	proc GetSize(f: StdTabViews.Frame; var x, y, w, h: integer)
+		var 
+			u, x0, y0: integer
+	begin 
+		u := f.unit
+		f.view.context.GetSize(w, h)
+		x0 := f.gx
+		y0 := f.gy
+		x := x0 div u
+		y := y0 div u
+		w := (x0 + w) div u - x
+		h := (y0 + h) div u - y
+	end GetSize
+	
+	proc Adapt(f: StdTabViews.Frame; var i: Info)
+		var 
+			res, x, y, w, h, cx, cy, cw, ch: integer
+			r: HostPorts.Rider
+	begin 
+		if i.wnd # 0 then
+			r := f.rider(HostPorts.Rider)
+			if r.port.wnd # 0 then // port is a window
+				GetSize(f, x, y, w, h)
+				cx := r.l
+				cy := r.t
+				cw := r.r - r.l
+				ch := r.b - r.t
+				if (cx # i.x1) or (cy # i.y1) or (cw # i.w1) or (ch # i.h1) then
+					i.x1 := cx
+					i.y1 := cy
+					i.w1 := cw
+					i.h1 := ch
+					res := WinApi.MoveWindow(i.wnd, cx, cy, cw, ch, 0) 
+				end 
+				dec(x, cx)
+				dec(y, cy)
+				if (x # i.x2) or (y # i.y2) or (w # i.w2) or (h # i.h2) then
+					i.x2 := x
+					i.y2 := y
+					i.w2 := w
+					i.h2 := h
+					res := WinApi.MoveWindow(i.ctrl, x, y, w, h, 0) 
+				end  
+			end  
+		end 
+	end Adapt
+	
+	proc Open(f: StdTabViews.Frame; class, name: WinApi.PtrWSTR; style, ex: set; var i: Info)
+		var 
+			res, x, y, w, h, cx, cy, cw, ch: integer
+			p: HostPorts.Port
+			s: set
+			r: Ports.Rider
+	begin 
+		f.noRedraw := true
+		r := f.rider
+		GetSize(f, x, y, w, h)
+		r.GetRect(cx, cy, cw, ch)
+		cw := cw - cx
+		ch := ch - cy
+		p := f.rider(HostPorts.Rider).port
+		if p.wnd # 0 then // port is a window
+			s := {27, 30} // disabled, child
+			i.wnd := WinApi.CreateWindowExW({}, "Oberon Tab", "", s, cx, cy, cw, ch, p.wnd, 0, instance, 0)
+			if i.wnd # 0 then
+				dec(x, cx)
+				dec(y, cy)
+				res := WinApi.SetWindowLongW(i.wnd, dlgWindowExtra, SYSTEM.VAL(integer, f))
+				i.ctrl := WinApi.CreateWindowExW(ex, class, name, style, x, y, w, h, i.wnd, 0, instance, 0)
+				if i.ctrl # 0 then
+					if (SubclassCtl # nil) then
+						SubclassCtl(i.ctrl) 
+					end 
+					if f.font # nil then
+						res := WinApi.SendMessageW(i.ctrl, WinApi.WM_SETFONT, f.font(HostFonts.Font).dev.id, 0) 
+					end 
+					Adapt(f, i)
+					res := WinApi.ShowWindow(i.wnd, 1)
+					res := WinApi.ShowWindow(i.ctrl, 1) 
+				else 
+					res := WinApi.DestroyWindow(i.wnd)
+					i.wnd := 0 
+				end  
+			else 
+				i.ctrl := 0 
+			end  
+		else  // port is a printer -> define temp windows
+			i.wnd := 0
+			i.ctrl := 0 
+		end 
+	end Open
+	
+	proc (f: Tab) Print(l, r, t, b: integer) // new
+		var 
+			w, h, sw, asc, dsc, fw, len_, sel, i, dm, x, y, top: integer
+			font: Fonts.Font
+			tv: StdTabViews.View
+			s: Dialog.String
+			v: Views.View
+	begin 
+		if f.font # nil then
+			font := f.font 
+		else 
+			font := HostFonts.dlgFont 
+		end 
+		font.GetBounds(asc, dsc, fw) // y DIV 10;
+		y := asc + dsc
+		x := 0
+		dm := 0
+		top := 0
+		f.view.context.GetSize(w, h)
+		f.DrawRect(0, 0, w, h, 1, Ports.black)
+		tv := f.view(StdTabViews.View)
+		sel := tv.Index()
+		len_ := tv.NofTabs()
+		if len_ > 0 then
+			i := 0
+			tv.GetItem(i, s, v)
+			Dialog.MapString(s, s)
+			while (i < len_) & (s # "") & (v # nil) do 
+				tv.GetItem(i, s, v)
+				Dialog.MapString(s, s)
+				sw := short(entier(font.StringWidth(s) * 1.20)) + 2 * dsc
+				if (x + sw + 2 * dm) > w then
+					f.DrawLine(0, y + 2 * dm, w, y + 2 * dm, 1, Ports.black)
+					x := 0
+					top := y + 2 * dm
+					y := y + 2 * dm + asc + dsc 
+				end 
+				if i = sel then
+					f.DrawRect(x, top, x + sw + 2 * dm, y + 2 * dm, Ports.fill, Ports.black)
+					f.DrawString(x + dm + dsc, y - dsc + dm, Ports.white, s, font) 
+				else 
+					f.DrawRect(x, top, x + sw + 2 * dm, y + 2 * dm, 1, Ports.black)
+					f.DrawString(x + dm + dsc, y - dsc + dm, Ports.black, s, font) 
+				end 
+				x := x + sw + 2 * dm
+				inc(i) 
+			end 
+			f.DrawLine(0, y + 2 * dm, w, y + 2 * dm, 1, Ports.black)
+			f.dispLeft := f.unit
+			f.dispTop := y + 2 * dm + f.unit
+			f.dispWidth := w - 2 * f.unit
+			f.dispHeight := h - (y + 2 * dm + f.unit) 
+		end 
+	
+	(* IF f.font # NIL THEN font := f.font ELSE font := HostFonts.dlgFont END;
+	   font.GetBounds(asc, dsc, fw); y := asc + dsc; x := 0; dm := y DIV 10; top := 0;
+	   f.view.context.GetSize(w, h); f.DrawRect(0, 0, w, h, 1, Ports.black);
+	   tv := f.view(StdTabViews.View); sel := tv.Index();
+	   len := tv.NofTabs();
+	   IF len > 0 THEN
+	   tv.GetItem(sel, lbl, v); Dialog.MapString(lbl, lbl);
+	   s := " *" + lbl$ + "*"; sv := v;
+	   i := 0;
+	   WHILE (i < len) & (lbl # "") & (v # NIL) DO
+	   IF i # sel THEN tv.GetItem(i, lbl, v); Dialog.MapString(lbl, lbl); s := s + " | " +  lbl END;
+	   INC(i);
+	   END;
+	   f.DrawString(dm, y + dm, Ports.black, s, font);
+	   f.DrawLine(0, y + 2*dm, w, y + 2*dm, 1, Ports.black);
+	   f.dispLeft := f.unit; f.dispTop := y + 2*dm + f.unit;
+	   f.dispWidth := w - 2*f.unit; f.dispHeight := h - (y + 2*dm + f.unit);
+	   END; *)
+	
+	
+	end Print
+	
+	proc SendKey(ch: char; wnd: WinApi.HANDLE)
+		var 
+			res, code: integer
+	begin 
+		case ch of 
+			| 10x: 
+				code := 21h 
+			| 11x: 
+				code := 22h 
+			| 12x: 
+				code := 21h 
+			| 13x: 
+				code := 22h 
+			| 14x: 
+				code := 24h 
+			| 15x: 
+				code := 23h 
+			| 16x: 
+				code := 24h 
+			| 17x: 
+				code := 23h 
+			| 1cx: 
+				code := 25h 
+			| 1dx: 
+				code := 27h 
+			| 1ex: 
+				code := 26h 
+			| 1fx: 
+				code := 28h 
+			| DEL: 
+				code := 2eh 
+		else 
+			code := 0 
+		end 
+		if code # 0 then
+			res := WinApi.SendMessageW(wnd, WinApi.WM_KEYDOWN, code, 0)
+			res := WinApi.SendMessageW(wnd, WinApi.WM_KEYUP, code, 0) 
+		else 
+			res := WinApi.SendMessageW(wnd, WinApi.WM_CHAR, ord(ch), 0) 
+		end 
+	end SendKey
+	
+	proc HandleMouse(wnd: WinApi.HANDLE; x, y: integer; buttons: set)
+		var 
+			res, b, hc, m: integer
+			pt: WinApi.POINT
+			w: WinApi.HANDLE
+			msg: WinApi.MSG
+	begin 
+		res := WinApi.ReleaseCapture()
+		b := 0
+		if HostPorts.left in buttons then
+			inc(b) 
+		end 
+		if HostPorts.right in buttons then
+			inc(b, 2) 
+		end 
+		if Controllers.extend in buttons then
+			inc(b, 4) 
+		end 
+		if Controllers.modify in buttons then
+			inc(b, 8) 
+		end 
+		pt.x := x
+		pt.y := y
+		repeat 
+			w := wnd
+			wnd := WinApi.ChildWindowFromPoint(wnd, pt)
+			res := WinApi.ClientToScreen(w, pt)
+			hc := WinApi.SendMessageW(wnd, WinApi.WM_NCHITTEST, 0, pt.x + pt.y * 65536)
+			res := WinApi.ScreenToClient(wnd, pt) 
+		until (hc # 1) or (w = wnd) 
+		if hc > 1 then
+			res := WinApi.ClientToScreen(wnd, pt)
+			if odd(b) then
+				m := WinApi.WM_NCLBUTTONDOWN 
+			else 
+				m := WinApi.WM_NCRBUTTONDOWN 
+			end 
+			res := WinApi.SendMessageW(wnd, m, hc, pt.x + pt.y * 65536) 
+		else 
+			res := WinApi.GetClassLongW(wnd, -26) // classStyle
+			if (Controllers.doubleClick in buttons) & odd(res div 8) then // DblClks IN classStyle
+				if odd(b) then
+					m := WinApi.WM_LBUTTONDBLCLK 
+				else 
+					m := WinApi.WM_RBUTTONDBLCLK 
+				end  
+			else 
+				if odd(b) then
+					m := WinApi.WM_LBUTTONDOWN 
+				else 
+					m := WinApi.WM_RBUTTONDOWN 
+				end  
+			end 
+			res := WinApi.SendMessageW(wnd, m, b, pt.x + pt.y * 65536) 
+		end 
+		repeat 
+			res := WinApi.GetMessageW(msg, 0, 0, 0)
+			if (msg.message >= WinApi.WM_MOUSEMOVE) & (msg.message <= WinApi.WM_MBUTTONDBLCLK) 
+			then
+				b := msg.wParam 
+			end 
+			res := WinApi.TranslateMessage(msg)
+			res := WinApi.DispatchMessageW(msg) 
+		until b mod 4 = 0 
+	end HandleMouse
+	
+	proc Mark(on, focus: boolean; var i: Info)
+		var 
+			res: integer
+	begin 
+		if focus then
+			if on then
+				if ~i.hasFocus then
+					res := WinApi.SendMessageW(i.ctrl, WinApi.WM_SETFOCUS, 0, 0)
+					i.hasFocus := true 
+				end  
+			else 
+				if i.hasFocus then
+					res := WinApi.SendMessageW(i.ctrl, WinApi.WM_KILLFOCUS, 0, 0)
+					i.hasFocus := false 
+				end  
+			end  
+		end 
+	end Mark
+	
+	// Tab
+	
+	proc (f: Tab) SetOffset(x, y: integer)
+	begin 
+		f.SetOffset^(x, y)
+		Adapt(f, f.i)
+	end SetOffset
+	
+	proc (f: Tab) Close
+		var 
+			res: integer
+	begin 
+		if f.i.wnd # 0 then // deallocate
+			assert(f.rider # nil, 100)
+			assert(f.rider.Base() # nil, 101)
+			res := WinApi.DestroyWindow(f.i.wnd)
+			f.i.wnd := 0
+			f.i.ctrl := 0 
+		end 
+	// f.Close^
+	end Close
+	
+	proc (f: Tab) Update
+		var 
+			res: integer
+	begin 
+		if ~f.disabled then
+			if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 1) 
+			end  
+		else 
+			if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 0) 
+			end  
+		end 
+		res := WinApi.UpdateWindow(f.i.ctrl)
+	end Update
+	
+	proc (f: Tab) UpdateList
+		var 
+			res, i, sel, len_: integer
+			ti: WinCtl.TCITEMW
+			s: Dialog.String
+			rect: WinApi.RECT
+			v: Views.View
+			tv: StdTabViews.View
+			hrgn, hrgn1: WinApi.HRGN
+	begin 
+		tv := f.view(StdTabViews.View)
+		sel := tv.Index()
+		res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TCM_DELETEALLITEMS, 0, 0)
+		len_ := tv.NofTabs()
+		// Add the tabs to the tabcontrol
+		if len_ > 0 then
+			i := 0
+			tv.GetItem(i, s, v)
+			Dialog.MapString(s, s)
+			while (i < len_) & (s # "") & (v # nil) do 
+				ti.mask := WinCtl.TCIF_TEXT + WinCtl.TCIF_IMAGE
+				ti.pszText := s
+				ti.iImage := -1
+				res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TCM_INSERTITEMW, i, SYSTEM.ADR(ti))
+				inc(i)
+				if i < len_ then
+					tv.GetItem(i, s, v)
+					Dialog.MapString(s, s) 
+				end  
+			end  
+		end 
+		// Get the display area
+		rect.left := 0
+		rect.top := 0
+		rect.right := f.i.w2
+		rect.bottom := f.i.h2
+		res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TCM_ADJUSTRECT, WinApi.FALSE_, SYSTEM.ADR(rect))
+		// set the area which the control should redraw
+		hrgn := WinApi.CreateRectRgn(0, 0, f.i.w2, f.i.h2)
+		hrgn1 := WinApi.CreateRectRgn(rect.left, rect.top, rect.right, rect.bottom)
+		res := WinApi.CombineRgn(hrgn, hrgn, hrgn1, WinApi.RGN_DIFF)
+		res := WinApi.SetWindowRgn(f.i.ctrl, hrgn, WinApi.FALSE_)
+		if res = 0 then
+			res := WinApi.DeleteObject(hrgn) 
+		end 
+		res := WinApi.DeleteObject(hrgn1)
+		// set the area which the contained views should draw
+		f.dispLeft := rect.left * f.unit
+		f.dispTop := rect.top * f.unit
+		f.dispWidth := (rect.right - rect.left) * f.unit
+		f.dispHeight := (rect.bottom - rect.top) * f.unit
+		// Set the size and the domain of the views
+		if len_ > 0 then
+			i := 0
+			tv.GetItem(i, s, v)
+			while (i < len_) & (s # "") & (v # nil) do 
+				v.context.SetSize(f.dispWidth, f.dispHeight)
+				inc(i)
+				if i < len_ then
+					tv.GetItem(i, s, v) 
+				end  
+			end  
+		end 
+		// Reset selection
+		res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TCM_SETCURSEL, sel, 0)
+		f.Update
+	end UpdateList
+	
+	proc (f: Tab) Paint(il, it, ir, ib: integer) // new
+		var 
+			res, l, t, r, b, w, h: integer
+			ri: HostPorts.Rider
+			rect: WinApi.RECT
+	begin 
+		res := WinApi.GetWindowRect(f.i.wnd, rect)
+		w := rect.right - rect.left
+		h := rect.bottom - rect.top
+		ri := f.rider(HostPorts.Rider)
+		ri.port.CloseBuffer
+		if it < f.dispTop then // Paint the top part
+			l := (il div f.unit) - 1
+			if l < 0 then
+				l := 0 
+			end 
+			r := (ir div f.unit) + 1
+			if r > w then
+				r := w 
+			end 
+			rect.left := l
+			rect.top := 0
+			rect.right := r
+			rect.bottom := f.dispTop div f.unit
+			res := WinApi.InvalidateRect(f.i.wnd, rect, 0)
+			res := WinApi.InvalidateRect(f.i.ctrl, rect, 0)
+			res := WinApi.UpdateWindow(f.i.wnd)
+			res := WinApi.UpdateWindow(f.i.ctrl) 
+		end 
+		if il < f.dispLeft then // Paint the left part
+			t := (it div f.unit) - 1
+			if t < 0 then
+				t := 0 
+			end 
+			b := (ib div f.unit) + 1
+			if b > h then
+				b := h 
+			end 
+			rect.left := 0
+			rect.top := t
+			rect.right := f.dispLeft div f.unit
+			rect.bottom := b
+			res := WinApi.InvalidateRect(f.i.wnd, rect, 0)
+			res := WinApi.InvalidateRect(f.i.ctrl, rect, 0)
+			res := WinApi.UpdateWindow(f.i.wnd)
+			res := WinApi.UpdateWindow(f.i.ctrl) 
+		end 
+		if ib > f.dispTop + f.dispHeight then // Paint the bottom part
+			l := (il div f.unit) - 1
+			if l < 0 then
+				l := 0 
+			end 
+			r := (ir div f.unit) + 1
+			if r > w then
+				r := w 
+			end 
+			rect.left := l
+			rect.top := (f.dispTop + f.dispHeight) div f.unit
+			rect.right := r
+			rect.bottom := h
+			res := WinApi.InvalidateRect(f.i.wnd, rect, 0)
+			res := WinApi.InvalidateRect(f.i.ctrl, rect, 0)
+			res := WinApi.UpdateWindow(f.i.wnd)
+			res := WinApi.UpdateWindow(f.i.ctrl) 
+		end 
+		if ir > f.dispLeft + f.dispWidth then // Paint the right part
+			t := (it div f.unit) - 1
+			if t < 0 then
+				t := 0 
+			end 
+			b := (ib div f.unit) + 1
+			if b > h then
+				b := h 
+			end 
+			rect.left := (f.dispLeft + f.dispWidth) div f.unit
+			rect.top := t
+			rect.right := w
+			rect.bottom := b
+			res := WinApi.InvalidateRect(f.i.wnd, rect, 0)
+			res := WinApi.InvalidateRect(f.i.ctrl, rect, 0)
+			res := WinApi.UpdateWindow(f.i.wnd)
+			res := WinApi.UpdateWindow(f.i.ctrl) 
+		end 
+	end Paint
+	
+	proc (f: Tab) Restore(l, t, r, b: integer)
+		var 
+			icex: WinCtl.INITCOMMONCONTROLSEX
+			ok: WinApi.BOOL
+	begin 
+		if f.i.ctrl = 0 then // lazy allocation
+			icex.dwSize := size(WinCtl.INITCOMMONCONTROLSEX)
+			icex.dwICC := WinCtl.ICC_TAB_CLASSES
+			ok := WinCtl.InitCommonControlsEx(icex)
+			Open(f, WinCtl.WC_TABCONTROLW, "", 
+			WinApi.WS_CLIPSIBLINGS + WinApi.WS_CHILD + WinApi.WS_VISIBLE + WinCtl.TCS_MULTILINE, 
+			{}, f.i)
+			f.UpdateList 
+		end 
+		f.Update
+		if f.i.wnd # 0 then
+			f.Paint(l, t, r, b) 
+		else 
+			f.Print(l, t, r, b) 
+		end 
+	end Restore
+	
+	proc (f: Tab) KeyDown(ch: char)
+		var 
+			res: integer
+	begin 
+		assert(~f.disabled, 100)
+		if ch = " " then
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, ord(ch), 0)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYUP, ord(ch), 0) 
+		else 
+			SendKey(ch, f.i.ctrl) 
+		end 
+	end KeyDown
+	
+	proc (f: Tab) MouseDown(x, y: integer; buttons: set)
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			HandleMouse(f.i.wnd, x div f.unit, y div f.unit, buttons) 
+		end 
+	end MouseDown
+	
+	proc (f: Tab) Mark(on, focus: boolean)
+	begin 
+		Mark(on, f.front, f.i)
+	end Mark
+	
+	proc (f: Tab) InDispArea(x, y: integer): boolean
+	begin 
+		if ((x >= f.dispLeft) & (x <= f.dispLeft + f.dispWidth) & 
+			(y >= f.dispTop) & (y <= f.dispTop + f.dispHeight)) then
+			return true 
+		else 
+			return false 
+		end 
+	end InDispArea
+	
+	proc (f: Tab) GetDispSize(var x, y, w, h: integer)
+		var 
+			res: integer
+			rect: WinApi.RECT
+	begin 
+		if ~Views.IsPrinterFrame(f) then
+			rect.left := 0
+			rect.top := 0
+			rect.right := f.i.w2
+			rect.bottom := f.i.h2
+			res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TCM_ADJUSTRECT, WinApi.FALSE_, SYSTEM.ADR(rect))
+			f.dispLeft := rect.left * f.unit
+			f.dispTop := rect.top * f.unit
+			f.dispWidth := (rect.right - rect.left) * f.unit
+			f.dispHeight := (rect.bottom - rect.top) * f.unit 
+		end 
+		x := f.dispLeft
+		y := f.dispTop
+		w := f.dispWidth
+		h := f.dispHeight
+	end GetDispSize
+	
+	
+	// Directory
+	
+	proc (d: Directory) GetTabSize(var w, h: integer)
+	begin 
+		if w = Views.undefined then
+			w := 150 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 100 * Ports.point 
+		end 
+	end GetTabSize
+	
+	proc (d: Directory) New(): StdTabViews.Frame
+		var 
+			f: Tab
+	begin 
+		new(f)
+		return f
+	end New
+	
+	// control window class
+	
+	// Used for common controls, not standard controls
+	proc HandleNotifyMsg(wnd: WinApi.HANDLE; wParam, lParam: integer)
+		var 
+			c: StdTabViews.Frame
+			pnmhdr: WinApi.PtrNMHDR
+	begin 
+		c := SYSTEM.VAL(StdTabViews.Frame, WinApi.GetWindowLongW(wnd, dlgWindowExtra))
+		pnmhdr := SYSTEM.VAL(WinApi.PtrNMHDR, lParam)
+		with c: Tab do 
+			if c.i.ctrl # 0 then
+				if pnmhdr.code = WinCtl.TCN_SELCHANGE then
+					c.SetIndex(WinApi.SendMessageW(c.i.ctrl, WinCtl.TCM_GETCURSEL, 0, 0)) 
+				end  
+			end  
+		end 
+	end HandleNotifyMsg
+	
+	proc CtrlHandler(wnd: WinApi.HANDLE; message, wParam, lParam: integer): integer
+	begin 
+		if message = WinApi.WM_NOTIFY then
+			Kernel.Try(HandleNotifyMsg, wnd, wParam, lParam)
+			return 0 
+		end 
+		return WinApi.DefWindowProcW(wnd, message, wParam, lParam)
+	end CtrlHandler
+	
+	proc Install
+		var 
+			dir: Directory
+	begin 
+		new(dir)
+		StdTabViews.SetFrameDir(dir)
+	end Install
+	
+	proc InitClass
+		var 
+			class: WinApi.WNDCLASSW
+			res: integer
+	begin 
+		class.hCursor := WinApi.NULL
+		class.hIcon := WinApi.NULL
+		class.lpszMenuName := nil
+		class.lpszClassName := "Oberon Tab"
+		class.hbrBackground := 0 // no background
+		class.style := {}
+		class.hInstance := instance
+		class.lpfnWndProc := CtrlHandler
+		class.cbClsExtra := 0
+		class.cbWndExtra := dlgWindowExtra + 4
+		res := WinApi.RegisterClassW(class)
+	end InitClass
+	
+	proc Init*
+	begin 
+		StdTabViews.setFocus := true
+		instance := WinApi.GetModuleHandleW(nil)
+		InitClass
+		Install
+	end Init
+
+end HostTabFrames

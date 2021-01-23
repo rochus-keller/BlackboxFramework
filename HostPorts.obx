@@ -1,0 +1,1525 @@
+module HostPorts
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems, Marco Ciot, Alexander Iljin"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20060325, mc, Rider.Input changed for the benefit of background task response.
+	   - 20060903, ai, call to ValidateRect from Port.CloseBuffer to fix painting bug deleted
+	   - 20060915, ai, call to UpdateWindow in Rider.Input to fix ScrollWhileTracking painting bug added
+	   - 20070130, bh, Unicode support
+	   - 20070205, bh, Win32s handling removed
+	   - 20070827, bh, improved width and figureSpace handling in long string ops
+	   - 20141215, center #23, fixing bugs in WinApi plus some refinements and extensions
+	   - 20150610, center #60, DrawSpace added for underlined white space
+	   - 20151108, center #82, improving Bitmap zooming quality
+	   - 20160219, center #105, background task processing while mouse tracking if serverMode
+	   - 20170905, center #173, adding new modifiers to Controllers
+	   - 20171002, center #176, avoiding window 'ghosting' in mouse tracking loops
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		SYSTEM, WinApi, Kernel, Fonts, Ports, Dialog, Services, HostFonts
+	
+	const 
+		resizeHCursor* = 16
+		resizeVCursor* = 17
+		resizeLCursor* = 18
+		resizeRCursor* = 19
+		resizeCursor* = 20
+		busyCursor* = 21
+		stopCursor* = 22
+		moveCursor* = 23
+		copyCursor* = 24
+		linkCursor* = 25
+		pickCursor* = 26
+		focusPat* = 5
+		
+		extend = 1 // same as Controllers.extend, .modify, .popup, and .pick !
+		modify = 2
+		popup = 3
+		pick = 4
+		
+		// buttons
+		left* = 16
+		middle* = 17
+		right* = 18
+		shift* = 24
+		ctrl* = 25
+		opt* = 26
+		cmd* = 27
+		alt* = 28
+		
+		copy_ = 00cc0020h // raster code for source copy
+		xor = 00a50065h // raster code for xor function
+		figureSpace = 8fx
+	
+	type 
+		Port* = pointer to record (Ports.Port) 
+				w-, h-: integer
+				dc-: WinApi.HANDLE // actual dc
+				wnd-: WinApi.HANDLE // used for invalidation, may be null
+				homedc-: WinApi.HANDLE // unbuffered dc
+				map: WinApi.HANDLE // buffer bitmap
+				bl, bt, br, bb: integer // buffer rectangle
+				bx, by_: integer  // bitmap pattern offset
+			end 
+		
+		Rider* = pointer to (* extensible *) record (Ports.Rider) 
+				l-, t-, r-, b-: integer
+				port-: Port
+				dx, dy: integer // scroll offset
+				map: WinApi.HANDLE // save bitmap
+				dc: WinApi.HANDLE // save dc
+				sl, st, sr, sb: integer  // save rect
+			end 
+	
+	
+	var 
+		// system colors
+		textCol-, selBackground-, selTextCol-, 
+		dialogTextCol-, dialogShadowCol-, dialogLightCol-: Ports.Color
+		
+		dialogBrush*, dim50Brush-: WinApi.HANDLE
+		
+		debug*, noBuffer*, flag*: boolean
+		
+		cursors-: array 32 of WinApi.HANDLE
+		
+		nullBrush, nullPen: WinApi.HANDLE
+		invertBrush, dim25Brush, dim75Brush, focusBrush: WinApi.HANDLE
+		grgn: WinApi.HANDLE
+		mx, my: integer // actual mouse coordinates
+		mb: set // actual mouse buttons & modifiers
+	
+	
+	proc Wait
+		var 
+			t: longint
+	begin 
+		t := Kernel.Time() + Kernel.timeResolution
+		repeat  
+		until Kernel.Time() > t 
+	end Wait
+	
+	
+	// Port
+	
+	proc (p: Port) SetSize*(w, h: integer)
+	begin 
+		assert(w >= 0, 20)
+		assert(h >= 0, 21)
+		p.w := w
+		p.h := h
+	end SetSize
+	
+	proc (p: Port) GetSize*(var w, h: integer)
+	begin 
+		w := p.w
+		h := p.h
+	end GetSize
+	
+	proc (p: Port) NewRider*(): Rider
+		var 
+			h: Rider
+	begin 
+		new(h)
+		h.port := p
+		return h
+	end NewRider
+	
+	proc (p: Port) SetDC*(dc, wnd: WinApi.HANDLE) // new
+		var 
+			res: integer
+	begin 
+		assert(p.unit # 0, 20)
+		assert(dc # 0, 21)
+		p.dc := dc
+		p.homedc := dc
+		res := WinApi.SetBkMode(dc, WinApi.TRANSPARENT)
+		res := ord(WinApi.SetTextAlign(dc, bits(24)))
+		res := WinApi.SetPolyFillMode(dc, 2)
+		res := WinApi.SelectObject(dc, nullPen)
+		res := WinApi.SelectObject(dc, nullBrush)
+		p.wnd := wnd
+	end SetDC
+	
+	proc (p: Port) OpenBuffer*(l, t, r, b: integer)
+		var 
+			res: integer
+			dc: WinApi.HANDLE
+			pt: WinApi.POINT
+	begin 
+		assert(p.dc # 0, 20)
+		if l < 0 then
+			l := 0 
+		end 
+		if t < 0 then
+			t := 0 
+		end 
+		if r > p.w then
+			r := p.w 
+		end 
+		if b > p.h then
+			b := p.h 
+		end 
+		if (l < r) & (t < b) then
+			p.bl := l
+			p.bt := t
+			p.br := r
+			p.bb := b
+			if ~noBuffer then
+				dc := WinApi.CreateCompatibleDC(p.homedc)
+				if dc # 0 then
+					if p.wnd # 0 then // byte align bitmap to screen
+						pt.x := l
+						pt.y := 0
+						res := WinApi.ClientToScreen(p.wnd, pt)
+						pt.x := pt.x div 8 * 8
+						res := WinApi.ScreenToClient(p.wnd, pt)
+						l := pt.x 
+					end 
+					p.map := WinApi.CreateCompatibleBitmap(p.homedc, r - l, b - t)
+					if p.map # 0 then
+						res := WinApi.SelectObject(dc, p.map)
+						res := WinApi.SetBkMode(dc, WinApi.TRANSPARENT)
+						res := ord(WinApi.SetTextAlign(dc, bits(24)))
+						res := WinApi.SetPolyFillMode(dc, 2)
+						res := WinApi.SetWindowOrgEx(dc, l, t, nil)
+						res := WinApi.SelectObject(dc, nullPen)
+						res := WinApi.SelectObject(dc, nullBrush)
+						p.dc := dc
+						p.bx := l
+						p.by_ := t 
+					else 
+						res := WinApi.DeleteDC(dc) 
+					end  
+				end  
+			end  
+		end 
+	end OpenBuffer
+	
+	proc (p: Port) CloseBuffer*
+		var 
+			res: integer
+			rect: WinApi.RECT
+	begin 
+		if p.map # 0 then
+			res := WinApi.SelectClipRgn(p.homedc, 0)
+			res := WinApi.BitBlt(p.homedc, p.bl, p.bt, p.br - p.bl, p.bb - p.bt, p.dc, p.bl, p.bt, copy_)
+			res := WinApi.DeleteDC(p.dc)
+			res := WinApi.DeleteObject(p.map) 
+		end 
+		(* IF p.wnd # 0 THEN
+		   rect.left := p.bl; rect.top := p.bt; rect.right := p.br; rect.bottom := p.bb;
+		   res := WinApi.ValidateRect(p.wnd, rect)
+		   END; *)
+		
+		
+		p.dc := p.homedc
+		p.map := 0
+		p.bx := 0
+		p.by_ := 0
+	end CloseBuffer
+	
+	
+	// Rider
+	
+	proc (rd: Rider) Base*(): Ports.Port // extensible
+	begin 
+		assert(rd.port # nil, 20)
+		assert(rd.port.dc # 0, 21)
+		return rd.port
+	end Base
+	
+	proc (rd: Rider) SetRect*(l, t, r, b: integer)
+	begin 
+		assert((l <= r) & (t <= b), 20)
+		assert(rd.port # nil, 21)
+		rd.l := l
+		rd.t := t
+		rd.r := r
+		rd.b := b
+	end SetRect
+	
+	proc (rd: Rider) GetRect*(var l, t, r, b: integer)
+	begin 
+		l := rd.l
+		t := rd.t
+		r := rd.r
+		b := rd.b
+	end GetRect
+	
+	proc SetClipRegion(rd: Rider; dc: WinApi.HANDLE)
+		var 
+			res, res1: integer
+	begin 
+		if rd.port.wnd = 0 then
+			res := WinApi.SaveDC(dc) 
+		else 
+			res := WinApi.SelectClipRgn(dc, 0) 
+		end 
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b)
+	end SetClipRegion
+	
+	proc (rd: Rider) InitPort*(port: Port) // new
+	begin 
+		assert(rd.port = nil, 20)
+		assert(port # nil, 21)
+		assert(port.dc # 0, 22)
+		rd.port := port
+		rd.dx := 0
+		rd.dy := 0
+	end InitPort
+	
+	proc (rd: Rider) Move*(dx, dy: integer)
+	begin 
+		inc(rd.dx, dx)
+		inc(rd.dy, dy)
+	end Move
+	
+	proc (rd: Rider) DrawRect*(l, t, r, b, s: integer; col: Ports.Color)
+		var 
+			res, h: integer
+			p: Port
+			dc, oldb, oldp: WinApi.HANDLE
+			pt: WinApi.POINT
+	begin 
+		assert(rd.port # nil, 100)
+		p := rd.port
+		dc := p.dc
+		if p.wnd = 0 then
+			res := WinApi.SaveDC(dc) 
+		else 
+			res := WinApi.SelectClipRgn(dc, 0) 
+		end 
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b)
+		if col = Ports.defaultColor then
+			col := textCol 
+		end 
+		if s = 0 then
+			s := 1 
+		end 
+		if (s < 0) or (r - l < 2 * s) or (b - t < 2 * s) then
+			inc(r)
+			inc(b)
+			if (col # textCol) & (col # Ports.background) then
+				res := WinApi.SetBrushOrgEx(dc, (rd.dx - p.bx) mod 8, (rd.dy - p.by_) mod 8, nil) 
+			end 
+			oldb := WinApi.SelectObject(dc, WinApi.CreateSolidBrush(col))
+			oldp := WinApi.SelectObject(dc, nullPen)
+			res := WinApi.Rectangle(dc, l, t, r, b)
+			res := WinApi.DeleteObject(WinApi.SelectObject(dc, oldb))
+			res := WinApi.SelectObject(dc, oldp) 
+		else 
+			h := s div 2
+			inc(l, h)
+			inc(t, h)
+			h := (s - 1) div 2
+			dec(r, h)
+			dec(b, h)
+			oldb := WinApi.SelectObject(dc, nullBrush)
+			oldp := WinApi.SelectObject(dc, WinApi.CreatePen(WinApi.PS_SOLID, s, col))
+			res := WinApi.Rectangle(dc, l, t, r, b)
+			res := WinApi.SelectObject(dc, oldb)
+			res := WinApi.DeleteObject(WinApi.SelectObject(dc, oldp)) 
+		end 
+		if p.wnd = 0 then
+			res := WinApi.RestoreDC(dc, -1) 
+		end 
+		if debug then
+			Wait 
+		end 
+	end DrawRect
+	
+	proc (rd: Rider) DrawOval*(l, t, r, b, s: integer; col: Ports.Color)
+		var 
+			res, h: integer
+			p: Port
+			dc, oldb, oldp: WinApi.HANDLE
+			pt: WinApi.POINT
+			rect: WinApi.RECT
+	begin 
+		assert(rd.port # nil, 100)
+		p := rd.port
+		dc := p.dc
+		if p.wnd = 0 then
+			res := WinApi.SaveDC(dc) 
+		else 
+			res := WinApi.SelectClipRgn(dc, 0) 
+		end 
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b)
+		if col = Ports.defaultColor then
+			col := textCol 
+		end 
+		if s < 0 then
+			inc(r)
+			inc(b)
+			if (col # textCol) & (col # Ports.background) then
+				res := WinApi.SetBrushOrgEx(dc, (rd.dx - p.bx) mod 8, (rd.dy - p.by_) mod 8, nil) 
+			end 
+			oldb := WinApi.SelectObject(dc, WinApi.CreateSolidBrush(col))
+			oldp := WinApi.SelectObject(dc, nullPen)
+			res := WinApi.Ellipse(dc, l, t, r, b)
+			res := WinApi.DeleteObject(WinApi.SelectObject(dc, oldb))
+			res := WinApi.SelectObject(dc, oldp) 
+		else 
+			if s = 0 then
+				s := 1 
+			end 
+			h := s div 2
+			inc(l, h)
+			inc(t, h)
+			h := (s - 1) div 2
+			dec(r, h)
+			dec(b, h)
+			oldb := WinApi.SelectObject(dc, nullBrush)
+			oldp := WinApi.SelectObject(dc, WinApi.CreatePen(WinApi.PS_SOLID, s, col))
+			res := WinApi.Ellipse(dc, l, t, r, b)
+			res := WinApi.SelectObject(dc, oldb)
+			res := WinApi.DeleteObject(WinApi.SelectObject(dc, oldp)) 
+		end 
+		if p.wnd = 0 then
+			res := WinApi.RestoreDC(dc, -1) 
+		end 
+		if debug then
+			Wait 
+		end 
+	end DrawOval
+	
+	proc (rd: Rider) DrawLine*(x0, y0, x1, y1, s: integer; col: Ports.Color)
+		var 
+			res: integer
+			pt: WinApi.POINT
+			p: Port
+			dc, oldb, oldp: WinApi.HANDLE
+	begin 
+		assert(s >= 0, 20)
+		assert(rd.port # nil, 100)
+		p := rd.port
+		dc := p.dc
+		if p.wnd = 0 then
+			res := WinApi.SaveDC(dc) 
+		else 
+			res := WinApi.SelectClipRgn(dc, 0) 
+		end 
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b)
+		if col = Ports.defaultColor then
+			col := textCol 
+		end 
+		if s <= 0 then
+			s := 1 
+		end 
+		oldp := WinApi.SelectObject(dc, WinApi.CreatePen(WinApi.PS_SOLID, s, col))
+		res := WinApi.MoveToEx(dc, x0, y0, pt)
+		res := WinApi.LineTo(dc, x1, y1)
+		res := WinApi.DeleteObject(WinApi.SelectObject(dc, oldp))
+		if p.wnd = 0 then
+			res := WinApi.RestoreDC(dc, -1) 
+		end 
+		if debug then
+			Wait 
+		end 
+	end DrawLine
+	
+	proc (rd: Rider) DrawPath*(
+		in pts: array of Ports.Point; n, s: integer; col: Ports.Color; path: integer
+		)
+		
+		type 
+			PAP = unsafe pointer to carray of WinApi.POINT
+		
+		var 
+			res, i, j, k: integer
+			p: Port
+			dc, oldp, oldb: WinApi.HANDLE
+			pap: PAP
+			pt: WinApi.POINT
+			poly: array 256 of WinApi.POINT
+			polyPtr: pointer to array of Ports.Point
+			polyLen: integer
+		
+		proc Bezier(x0, y0, xd0, yd0, x1, y1, xd1, yd1: integer)
+			var 
+				x, y, xd, yd, i: integer
+		begin 
+			if abs(x0 + xd0 - x1) + abs(x0 + xd1 - x1) + abs(y0 + yd0 - y1) + abs(y0 + yd1 - y1) < 8 then
+				if k > polyLen - 2 then
+					new(polyPtr, polyLen * 2)
+					i := 0
+					while i < polyLen do 
+						polyPtr[i] := SYSTEM.VAL(Ports.Point, pap[i])
+						inc(i) 
+					end 
+					polyLen := polyLen * 2
+					pap := SYSTEM.VAL(PAP, SYSTEM.ADR(polyPtr^)) 
+				end 
+				pap[k].x := x0
+				pap[k].y := y0
+				inc(k) 
+			else 
+				x := ((xd0 - xd1) div 4 + x0 + x1 + 1) div 2
+				y := ((yd0 - yd1) div 4 + y0 + y1 + 1) div 2
+				xd := ((x1 - x0) * 3 - (xd0 + xd1) div 2 + 2) div 4
+				yd := ((y1 - y0) * 3 - (yd0 + yd1) div 2 + 2) div 4
+				Bezier(x0, y0, xd0 div 2, yd0 div 2, x, y, xd, yd)
+				Bezier(x, y, xd, yd, x1, y1, xd1 div 2, yd1 div 2) 
+			end 
+		end Bezier
+	
+	begin 
+		assert(rd.port # nil, 100)
+		p := rd.port
+		dc := p.dc
+		if p.wnd = 0 then
+			res := WinApi.SaveDC(dc) 
+		else 
+			res := WinApi.SelectClipRgn(dc, 0) 
+		end 
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b)
+		if col = Ports.defaultColor then
+			col := textCol 
+		end 
+		pap := SYSTEM.VAL(PAP, SYSTEM.ADR(pts))
+		
+		assert(n >= 0, 20)
+		assert(n <= len(pts), 21)
+		assert(s >= Ports.fill, 23)
+		if s < 0 then
+			res := WinApi.SetBrushOrgEx(dc, (rd.dx - p.bx) mod 8, (rd.dy - p.by_) mod 8, nil)
+			oldb := WinApi.SelectObject(dc, WinApi.CreateSolidBrush(col))
+			oldp := WinApi.SelectObject(dc, nullPen)
+			if path = Ports.closedPoly then
+				assert(n >= 2, 20)
+				res := WinApi.Polygon(dc, pap, n) 
+			else 
+				assert(n >= 3, 20)
+				assert(path = Ports.closedBezier, 22)
+				assert(n mod 3 = 0, 24)
+				pap := SYSTEM.VAL(PAP, SYSTEM.ADR(poly))
+				polyLen := len(poly)
+				i := 0
+				k := 0
+				while i < n do 
+					j := i + 3
+					if j = n then
+						j := 0 
+					end 
+					Bezier(pts[i].x, pts[i].y, (pts[i + 1].x - pts[i].x) * 3, (pts[i + 1].y - pts[i].y) * 3, 
+					pts[j].x, pts[j].y, (pts[j].x - pts[i + 2].x) * 3, (pts[j].y - pts[i + 2].y) * 3)
+					inc(i, 3) 
+				end 
+				res := WinApi.Polygon(dc, pap, k) 
+			end 
+			res := WinApi.DeleteObject(WinApi.SelectObject(dc, oldb))
+			res := WinApi.SelectObject(dc, oldp) 
+		else 
+			if s = 0 then
+				s := 1 
+			end 
+			oldb := WinApi.SelectObject(dc, nullBrush)
+			oldp := WinApi.SelectObject(dc, WinApi.CreatePen(WinApi.PS_SOLID, s, col))
+			if path = Ports.closedPoly then
+				assert(n >= 2, 20)
+				res := WinApi.Polygon(dc, pap, n) 
+			elsif path = Ports.openPoly then 
+				assert(n >= 2, 20)
+				res := WinApi.Polyline(dc, pap, n) 
+			else 
+				if path = Ports.closedBezier then
+					assert(n >= 3, 20)
+					assert(n mod 3 = 0, 24) 
+				else 
+					assert(n >= 4, 20)
+					assert(path = Ports.openBezier, 25)
+					assert(n mod 3 = 1, 24) 
+				end 
+				pap := SYSTEM.VAL(PAP, SYSTEM.ADR(poly))
+				polyLen := len(poly)
+				i := 0
+				while i < n - 2 do 
+					k := 0
+					j := i + 3
+					if j = n then
+						j := 0 
+					end 
+					Bezier(pts[i].x, pts[i].y, (pts[i + 1].x - pts[i].x) * 3, (pts[i + 1].y - pts[i].y) * 3, 
+					pts[j].x, pts[j].y, (pts[j].x - pts[i + 2].x) * 3, (pts[j].y - pts[i + 2].y) * 3)
+					pap[k].x := pts[j].x
+					pap[k].y := pts[j].y
+					inc(k)
+					res := WinApi.Polyline(dc, pap, k)
+					inc(i, 3) 
+				end  
+			end 
+			res := WinApi.SelectObject(dc, oldb)
+			res := WinApi.DeleteObject(WinApi.SelectObject(dc, oldp)) 
+		end 
+		if p.wnd = 0 then
+			res := WinApi.RestoreDC(dc, -1) 
+		end 
+		if debug then
+			Wait 
+		end 
+	end DrawPath
+	
+	proc (rd: Rider) MarkRect*(l, t, r, b, s, mode: integer; show: boolean)
+		var 
+			res: integer
+			p: Port
+			dc, old: WinApi.HANDLE
+			pt: WinApi.POINT
+	begin 
+		assert(rd.port # nil, 100)
+		p := rd.port
+		dc := p.dc
+		if p.wnd = 0 then
+			res := WinApi.SaveDC(dc) 
+		else 
+			res := WinApi.SelectClipRgn(dc, 0) 
+		end 
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b)
+		res := WinApi.SetBrushOrgEx(dc, (rd.dx - p.bx) mod 8, (rd.dy - p.by_) mod 8, nil)
+		if (mode = Ports.invert) or (mode = Ports.hilite) then
+			old := WinApi.SelectObject(dc, invertBrush) 
+		elsif mode = Ports.dim25 then 
+			res := WinApi.UnrealizeObject(dim25Brush)
+			old := WinApi.SelectObject(dc, dim25Brush) 
+		elsif mode = Ports.dim50 then 
+			res := WinApi.UnrealizeObject(dim50Brush)
+			old := WinApi.SelectObject(dc, dim50Brush) 
+		elsif mode = Ports.dim75 then 
+			res := WinApi.UnrealizeObject(dim75Brush)
+			old := WinApi.SelectObject(dc, dim75Brush) 
+		else  // mode = focusPat
+			res := WinApi.UnrealizeObject(focusBrush)
+			old := WinApi.SelectObject(dc, focusBrush) 
+		end 
+		res := WinApi.SetTextColor(dc, Ports.black)
+		
+		if l < -32768 then // ???
+			l := -32768 
+		end 
+		if t < -32768 then
+			t := -32768 
+		end 
+		if r > 32767 then
+			r := 32767 
+		end 
+		if b > 32767 then
+			b := 32767 
+		end 
+		
+		if s = 0 then
+			s := 1 
+		end 
+		if (s < 0) or (r - l < 2 * s) or (b - t < 2 * s) then
+			res := WinApi.PatBlt(dc, l, t, r - l, b - t, xor) 
+		else 
+			res := WinApi.PatBlt(dc, l, t, s, b - t, xor)
+			dec(r, s)
+			res := WinApi.PatBlt(dc, r, t, s, b - t, xor)
+			inc(l, s)
+			res := WinApi.PatBlt(dc, l, t, r - l, s, xor)
+			dec(b, s)
+			res := WinApi.PatBlt(dc, l, b, r - l, s, xor) 
+		end 
+		old := WinApi.SelectObject(dc, old)
+		if p.wnd = 0 then
+			res := WinApi.RestoreDC(dc, -1) 
+		end 
+		if debug then
+			Wait 
+		end 
+	end MarkRect
+	
+	
+	proc (rd: Rider) Scroll*(dx, dy: integer)
+		var 
+			res: integer
+			p: Port
+			dc, par: WinApi.HANDLE
+			rect, rt: WinApi.RECT
+			pt: WinApi.POINT
+	begin 
+		assert(rd.port # nil, 100)
+		p := rd.port
+		dc := p.dc
+		// IF p.wnd # 0 THEN res := WinApi.UpdateWindow(p.wnd) END;
+		
+		
+		if p.wnd = 0 then
+			res := WinApi.SaveDC(dc) 
+		else 
+			res := WinApi.SelectClipRgn(dc, 0) 
+		end 
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b)
+		rect.left := rd.l
+		rect.top := rd.t
+		rect.right := rd.r
+		rect.bottom := rd.b
+		res := WinApi.ScrollDC(dc, dx, dy, rect, rect, grgn, rt)
+		if p.wnd # 0 then
+			res := WinApi.InvalidateRgn(p.wnd, grgn, 1)
+			par := WinApi.GetParent(p.wnd)
+			if (par # 0) & (WinApi.GetTopWindow(par) # p.wnd) then
+				res := WinApi.UpdateWindow(p.wnd) 
+			end  
+		end 
+		// pattern origin correction
+		inc(rd.dx, dx)
+		inc(rd.dy, dy)
+		if p.wnd = 0 then
+			res := WinApi.RestoreDC(dc, -1) 
+		end 
+		if debug then
+			Wait 
+		end 
+	end Scroll
+	
+	
+	proc (rd: Rider) SetCursor*(cursor: integer)
+		var 
+			old: WinApi.HANDLE
+	begin 
+		old := WinApi.SetCursor(cursors[cursor])
+	end SetCursor
+	
+	proc SetMouseState*(x, y: integer; but: set; isDown: boolean)
+	begin 
+		mx := x
+		my := y
+		mb := but
+	end SetMouseState
+	
+	proc (rd: Rider) Input*(var x, y: integer; var modifiers: set; var isDown: boolean)
+		var 
+			msg: WinApi.MSG
+			wnd, mw: WinApi.HANDLE
+			pt: WinApi.POINT
+			res: integer
+			set_: set
+	begin 
+		wnd := rd.port.wnd
+		mw := WinApi.GetCapture()
+		res := WinApi.UpdateWindow(wnd)
+		res := WinApi.PeekMessageW(msg, 0, 0, 0, 1) // avoid window 'ghosting' by removing all messages
+		if (res # 0) & (msg.hwnd = mw) & (msg.message >= WinApi.WM_MOUSEMOVE) 
+			& (msg.message <= WinApi.WM_MBUTTONDBLCLK) then // process mouse messages directed to mw
+			mx := (msg.lParam + 32768) mod 65536 - 32768
+			my := msg.lParam div 65536
+			if (mw # 0) & (wnd # mw) then
+				pt.x := mx
+				pt.y := my
+				res := WinApi.ClientToScreen(mw, pt)
+				res := WinApi.ScreenToClient(wnd, pt)
+				mx := pt.x
+				my := pt.y 
+			end 
+			mb := {}
+			set_ := SYSTEM.VAL(set, msg.wParam)
+			if WinApi.MK_LBUTTON * set_ # {} then
+				incl(mb, left) 
+			end 
+			if WinApi.MK_MBUTTON * set_ # {} then
+				incl(mb, middle) 
+			end 
+			if WinApi.MK_RBUTTON * set_ # {} then
+				incl(mb, right) 
+			end 
+			if WinApi.MK_CONTROL * set_ # {} then
+				incl(mb, ctrl) 
+			end 
+			if WinApi.MK_SHIFT * set_ # {} then
+				incl(mb, shift) 
+			end 
+			if WinApi.GetAsyncKeyState(12h) < 0 then
+				incl(mb, alt) 
+			end  
+		end 
+		if WinApi.GetSystemMetrics(WinApi.SM_SWAPBUTTON) # 0 then
+			if WinApi.GetAsyncKeyState(1) >= 0 then
+				excl(mb, right) 
+			end 
+			if WinApi.GetAsyncKeyState(2) >= 0 then
+				excl(mb, left) 
+			end  
+		else 
+			if WinApi.GetAsyncKeyState(1) >= 0 then
+				excl(mb, left) 
+			end 
+			if WinApi.GetAsyncKeyState(2) >= 0 then
+				excl(mb, right) 
+			end  
+		end 
+		if WinApi.GetAsyncKeyState(4) >= 0 then
+			excl(mb, middle) 
+		end 
+		if WinApi.GetAsyncKeyState(WinApi.VK_SHIFT) < 0 then
+			mb := mb + {shift, extend} 
+		else 
+			mb := mb - {shift, extend} 
+		end 
+		if WinApi.GetAsyncKeyState(WinApi.VK_CONTROL) < 0 then
+			mb := mb + {ctrl, modify} 
+		else 
+			mb := mb - {ctrl, modify} 
+		end 
+		if WinApi.GetAsyncKeyState(WinApi.VK_MENU) < 0 then
+			incl(mb, alt) 
+		else 
+			excl(mb, alt) 
+		end 
+		if right in mb then
+			incl(mb, popup) 
+		else 
+			excl(mb, popup) 
+		end 
+		if {middle, alt} * mb # {} then
+			incl(mb, pick) 
+		else 
+			excl(mb, pick) 
+		end 
+		x := mx
+		y := my
+		modifiers := mb
+		isDown := mb * {left, middle, right} # {}
+		if Dialog.serverMode then
+			Services.actionHook.Step 
+		end 
+		WinApi.Sleep(1)
+	end Input
+	
+	proc (rd: Rider) DrawSString*(
+		x, y: integer; col: Ports.Color; in s: array of char; font: Fonts.Font
+		)
+		var 
+			res, i, a, b, c, w, u, n: integer
+			p: Port
+			dc, old: WinApi.HANDLE
+			ch: char
+			df: HostFonts.DevFont
+			dx: array 1024 of integer
+			s1: array 1024 of char
+			fsp: boolean
+	begin 
+		assert(rd.port # nil, 100)
+		with font: HostFonts.Font do 
+			p := rd.port
+			dc := p.dc
+			u := p.unit
+			if p.wnd = 0 then
+				res := WinApi.SaveDC(dc) 
+			else 
+				res := WinApi.SelectClipRgn(dc, 0) 
+			end 
+			res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b)
+			df := font.dev
+			while (df # nil) & (df.unit # u) do 
+				df := df.next 
+			end 
+			if df = nil then
+				HostFonts.InsertDevFont(dc, font, df, u) 
+			else 
+				old := WinApi.SelectObject(dc, df.id) 
+			end 
+			if col = Ports.defaultColor then
+				col := textCol 
+			end 
+			res := WinApi.SetTextColor(dc, col)
+			if df.noGap then // caret pos optimization
+				inc(x) 
+			end 
+			inc(x, font.ftab[ord(s[0])] div u)
+			a := len(s) - 1
+			n := 0
+			ch := s[0]
+			fsp := false
+			while (n < a) & (ch # 0x) do 
+				if ch = figureSpace then
+					fsp := true 
+				end 
+				inc(n)
+				ch := s[n] 
+			end 
+			if (df.id = font.id) & ~fsp then // native metric
+				res := WinApi.TextOutA(dc, x, y, s, n) 
+			else  // adapt to meta metric
+				a := 0
+				b := 0
+				i := 0
+				ch := s[0]
+				while i < n do 
+					c := df.wtab[ord(ch)]
+					inc(a, c)
+					dx[i] := c
+					inc(b, font.wtab[ord(ch)])
+					s1[i] := s[i]
+					if ch = figureSpace then
+						s1[i] := " " 
+					end 
+					inc(i)
+					ch := s[i] 
+				end 
+				n := i
+				c := b div u - a
+				i := 0
+				w := 0
+				a := 0
+				while i < n do 
+					inc(w, c)
+					b := w div n
+					inc(dx[i], b - a)
+					a := b
+					inc(i) 
+				end 
+				res := WinApi.ExtTextOutA(dc, x, y, 0, nil, s1, n, dx) 
+			end  
+		end 
+		if p.wnd = 0 then
+			res := WinApi.RestoreDC(dc, -1) 
+		end 
+	end DrawSString
+	
+	proc (rd: Rider) SCharIndex*(
+		x, pos: integer; in s: array of char; font: Fonts.Font
+		): integer
+		var 
+			d, u, i, n, a, b, c, w: integer
+			df: HostFonts.DevFont
+			ch: char
+			dc: WinApi.HANDLE
+	begin 
+		assert(rd.port # nil, 100)
+		with font: HostFonts.Font do 
+			u := rd.port.unit
+			df := font.dev
+			while (df # nil) & (df.unit # u) do 
+				df := df.next 
+			end 
+			if df = nil then
+				HostFonts.InsertDevFont(rd.port.dc, font, df, u) 
+			end 
+			a := 0
+			b := 0
+			n := len(s) - 1
+			i := 0
+			ch := s[0]
+			while (i < n) & (ch # 0x) do 
+				inc(a, df.wtab[ord(ch)])
+				inc(b, font.wtab[ord(ch)])
+				inc(i)
+				ch := s[i] 
+			end 
+			n := i
+			c := b div u - a
+			i := 0
+			w := 0
+			a := 0
+			inc(x, font.ftab[ord(s[0])] div u)
+			d := df.wtab[ord(s[0])]
+			while (i < n) & (pos > x + d div 2) do 
+				inc(w, c)
+				b := w div n
+				inc(d, b - a)
+				a := b
+				inc(i)
+				inc(x, d)
+				d := df.wtab[ord(s[i])] 
+			end  
+		end 
+		return i
+	end SCharIndex
+	
+	proc (rd: Rider) SCharPos*(
+		x, index: integer; in s: array of char; font: Fonts.Font
+		): integer
+		var 
+			i, u, n, a, b, c, w: integer
+			df: HostFonts.DevFont
+			ch: char
+	begin 
+		assert(rd.port # nil, 100)
+		assert(index <= len(s), 101)
+		with font: HostFonts.Font do 
+			u := rd.port.unit
+			df := font.dev
+			while (df # nil) & (df.unit # u) do 
+				df := df.next 
+			end 
+			if df = nil then
+				HostFonts.InsertDevFont(rd.port.dc, font, df, u) 
+			end 
+			a := 0
+			b := 0
+			n := len(s) - 1
+			i := 0
+			ch := s[0]
+			while (i < n) & (ch # 0x) do 
+				inc(a, df.wtab[ord(ch)])
+				inc(b, font.wtab[ord(ch)])
+				inc(i)
+				ch := s[i] 
+			end 
+			n := i
+			c := b div u - a
+			i := 0
+			w := 0
+			a := 0
+			inc(x, font.ftab[ord(s[0])] div u)
+			while (i < n) & (i < index) do 
+				inc(w, c)
+				b := w div n
+				inc(x, b - a)
+				a := b
+				inc(x, df.wtab[ord(s[i])])
+				inc(i) 
+			end  
+		end 
+		return x
+	end SCharPos
+	
+	proc (rd: Rider) DrawString*(
+		x, y: integer; col: Ports.Color; in s: array of char; font: Fonts.Font
+		)
+		var 
+			res, i, a, b, c, n, w, u: integer
+			p: Port
+			dc, old: WinApi.HANDLE
+			df: HostFonts.DevFont
+			dx: array 1024 of integer
+			s1: array 1024 of char
+			fsp: boolean
+	begin 
+		assert(rd.port # nil, 100)
+		with font: HostFonts.Font do 
+			p := rd.port
+			dc := p.dc
+			u := p.unit
+			if p.wnd = 0 then
+				res := WinApi.SaveDC(dc) 
+			else 
+				res := WinApi.SelectClipRgn(dc, 0) 
+			end 
+			res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b)
+			if col = Ports.defaultColor then
+				col := textCol 
+			end 
+			df := font.dev
+			while (df # nil) & (df.unit # u) do 
+				df := df.next 
+			end 
+			n := len(s) - 1
+			i := 0
+			fsp := false
+			while (i < n) & (s[i] # 0x) do 
+				if s[i] = figureSpace then
+					fsp := true 
+				end 
+				inc(i) 
+			end 
+			if (df # nil) & (df.id = font.id) & ~fsp then // native metric
+				i := 0
+				while (i < n) & (s[i] # 0x) do 
+					inc(i) 
+				end 
+				res := WinApi.SelectObject(dc, df.id)
+				if df.noGap then // caret pos optimization
+					inc(x) 
+				end 
+				res := WinApi.SetTextColor(dc, col)
+				res := WinApi.TextOutW(dc, x, y, s, i) 
+			else  // adapt to meta metric
+				old := WinApi.SelectObject(dc, font.id)
+				a := 0
+				b := 0
+				i := 0
+				while (i < n) & (s[i] # 0x) do 
+					inc(b, font.wTab(dc, s[i]))
+					inc(i) 
+				end 
+				inc(x, font.fTab(dc, s[0]) div u)
+				if df = nil then
+					HostFonts.InsertDevFont(dc, font, df, u) 
+				else 
+					res := WinApi.SelectObject(dc, df.id) 
+				end 
+				n := i
+				i := 0
+				while i < n do 
+					c := df.wTab(dc, s[i])
+					if s[i] = figureSpace then
+						s1[i] := " " 
+					else 
+						s1[i] := s[i] 
+					end 
+					inc(a, c)
+					dx[i] := c
+					inc(i) 
+				end 
+				c := b div u - a
+				i := 0
+				w := 0
+				a := 0
+				while i < n do 
+					inc(w, c)
+					b := w div n
+					inc(dx[i], b - a)
+					a := b
+					inc(i) 
+				end 
+				res := WinApi.SetTextColor(dc, col)
+				if df.noGap then // caret pos optimization
+					inc(x) 
+				end 
+				res := WinApi.ExtTextOutW(dc, x, y, 0, nil, s1, n, dx) 
+			end  
+		end 
+		if p.wnd = 0 then
+			res := WinApi.RestoreDC(dc, -1) 
+		end 
+	end DrawString
+	
+	proc (rd: Rider) DrawSpace*(x, y, w: integer; col: Ports.Color; font: Fonts.Font)
+		var 
+			right, res, u: integer
+			dx: array 1 of integer
+			p: Port
+			dc, old: WinApi.HANDLE
+			df: HostFonts.DevFont
+	begin 
+		p := rd.port
+		dc := p.dc
+		u := p.unit
+		if p.wnd = 0 then
+			res := WinApi.SaveDC(dc) 
+		else 
+			res := WinApi.SelectClipRgn(dc, 0) 
+		end 
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b)
+		with font: HostFonts.Font do 
+			df := font.dev
+			while (df # nil) & (df.unit # u) do 
+				df := df.next 
+			end 
+			if df = nil then
+				HostFonts.InsertDevFont(dc, font, df, u) 
+			else 
+				old := WinApi.SelectObject(dc, df.id) 
+			end 
+			if col = Ports.defaultColor then
+				col := textCol 
+			end 
+			res := WinApi.SetTextColor(dc, col)
+			dx[0] := w
+			res := WinApi.ExtTextOutA(dc, x, y, 0, nil, " ", 1, dx) 
+		end 
+		if p.wnd = 0 then
+			res := WinApi.RestoreDC(dc, -1) 
+		end 
+	end DrawSpace
+	
+	proc (rd: Rider) CharIndex*(x, pos: integer; in s: array of char; font: Fonts.Font): integer
+		var 
+			res, d, u, i, a, b, c, w, n: integer
+			df: HostFonts.DevFont
+			dc: WinApi.HANDLE
+	begin 
+		assert(rd.port # nil, 100)
+		dc := rd.port.dc
+		with font: HostFonts.Font do 
+			res := WinApi.SelectObject(dc, font.id)
+			u := rd.port.unit
+			df := font.dev
+			while (df # nil) & (df.unit # u) do 
+				df := df.next 
+			end 
+			a := 0
+			b := 0
+			n := len(s) - 1
+			i := 0
+			while (i < n) & (s[i] # 0x) do 
+				inc(b, font.wTab(dc, s[i]))
+				inc(i) 
+			end 
+			inc(x, font.fTab(dc, s[0]) div u)
+			if df = nil then
+				HostFonts.InsertDevFont(dc, font, df, u) 
+			else 
+				res := WinApi.SelectObject(dc, df.id) 
+			end 
+			n := i
+			i := 0
+			while i < n do 
+				c := df.wTab(dc, s[i])
+				inc(a, c)
+				inc(i) 
+			end 
+			c := b div u - a
+			i := 0
+			w := 0
+			a := 0
+			d := df.wTab(dc, s[0])
+			while (i < n) & (pos > x + d div 2) do 
+				inc(w, c)
+				b := w div n
+				inc(d, b - a)
+				a := b
+				inc(i)
+				inc(x, d)
+				d := df.wTab(dc, s[i]) 
+			end  
+		end 
+		return i
+	end CharIndex
+	
+	proc (rd: Rider) CharPos*(x, index: integer; in s: array of char; font: Fonts.Font): integer
+		var 
+			res, i, u, a, b, c, w, d, n: integer
+			df: HostFonts.DevFont
+			dc: WinApi.HANDLE
+	begin 
+		assert(rd.port # nil, 100)
+		assert(index <= len(s), 101)
+		dc := rd.port.dc
+		with font: HostFonts.Font do 
+			res := WinApi.SelectObject(dc, font.id)
+			u := rd.port.unit
+			df := font.dev
+			while (df # nil) & (df.unit # u) do 
+				df := df.next 
+			end 
+			a := 0
+			b := 0
+			n := len(s) - 1
+			i := 0
+			while (i < n) & (s[i] # 0x) do 
+				inc(b, font.wTab(dc, s[i]))
+				inc(i) 
+			end 
+			inc(x, font.fTab(dc, s[0]) div u)
+			if df = nil then
+				HostFonts.InsertDevFont(dc, font, df, u) 
+			else 
+				res := WinApi.SelectObject(dc, df.id) 
+			end 
+			n := i
+			i := 0
+			while i < n do 
+				c := df.wTab(dc, s[i])
+				inc(a, c)
+				inc(i) 
+			end 
+			c := b div u - a
+			i := 0
+			w := 0
+			a := 0
+			while (i < n) & (i < index) do 
+				inc(w, c)
+				b := w div n
+				inc(x, b - a)
+				a := b
+				d := df.wTab(dc, s[i])
+				inc(x, d)
+				inc(i) 
+			end  
+		end 
+		return x
+	end CharPos
+	
+	proc (rd: Rider) SaveRect*(l, t, r, b: integer; var res: integer)
+		var 
+			rs: integer
+			p: Port
+	begin 
+		res := 1
+		p := rd.port
+		assert(p.dc # 0, 20)
+		if l < 0 then
+			l := 0 
+		end 
+		if t < 0 then
+			t := 0 
+		end 
+		if r > p.w then
+			r := p.w 
+		end 
+		if b > p.h then
+			b := p.h 
+		end 
+		if (l < r) & (t < b) then
+			rd.sl := l
+			rd.st := t
+			rd.sr := r
+			rd.sb := b
+			rd.dc := WinApi.CreateCompatibleDC(p.dc)
+			if rd.dc # 0 then
+				rd.map := WinApi.CreateCompatibleBitmap(p.dc, r - l, b - t)
+				if rd.map # 0 then
+					rs := WinApi.SelectObject(rd.dc, rd.map)
+					rs := WinApi.BitBlt(rd.dc, 0, 0, r - l, b - t, p.dc, l, t, copy_)
+					res := 0 
+				else 
+					rs := WinApi.DeleteDC(rd.dc)
+					rd.dc := 0 
+				end  
+			end  
+		end 
+	end SaveRect
+	
+	proc (rd: Rider) RestoreRect*(l, t, r, b: integer; dispose: boolean)
+		var 
+			res: integer
+			p: Port
+			dc: WinApi.HANDLE
+	begin 
+		if rd.dc # 0 then
+			p := rd.port
+			dc := p.dc
+			if p.wnd = 0 then
+				res := WinApi.SaveDC(dc) 
+			else 
+				res := WinApi.SelectClipRgn(dc, 0) 
+			end 
+			res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b)
+			if l < rd.sl then
+				l := rd.sl 
+			end 
+			if t < rd.st then
+				t := rd.st 
+			end 
+			if r > rd.sr then
+				r := rd.sr 
+			end 
+			if b > rd.sb then
+				b := rd.sb 
+			end 
+			res := WinApi.BitBlt(dc, l, t, r - l, b - t, rd.dc, l - rd.sl, t - rd.st, copy_)
+			if dispose then
+				res := WinApi.DeleteDC(rd.dc)
+				res := WinApi.DeleteObject(rd.map)
+				rd.dc := 0
+				rd.map := 0 
+			end 
+			if p.wnd = 0 then
+				res := WinApi.RestoreDC(dc, -1) 
+			end  
+		end 
+	end RestoreRect
+	
+	proc (rd: Rider) CopyFrom*(sdc: WinApi.HANDLE; x, y: integer) // new
+		var 
+			res: integer
+			p: Port
+			dc: WinApi.HANDLE
+	begin 
+		assert(rd.port # nil, 100)
+		p := rd.port
+		dc := p.dc
+		if p.wnd = 0 then
+			res := WinApi.SaveDC(dc) 
+		else 
+			res := WinApi.SelectClipRgn(dc, 0) 
+		end 
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b)
+		res := WinApi.BitBlt(dc, rd.l, rd.t, rd.r - rd.l, rd.b - rd.t, sdc, x, y, copy_)
+		if p.wnd = 0 then
+			res := WinApi.RestoreDC(dc, -1) 
+		end 
+	end CopyFrom
+	
+	proc (rd: Rider) DrawBitmap*(bmdc: WinApi.HANDLE; bw, bh, x, y, w, h: integer) // new
+		var 
+			res, u: integer
+			p: Port
+			dc: WinApi.HANDLE
+	begin 
+		assert(rd.port # nil, 100)
+		p := rd.port
+		dc := p.dc
+		u := p.unit
+		res := WinApi.SaveDC(dc)
+		if p.wnd # 0 then
+			res := WinApi.SelectClipRgn(dc, 0) 
+		end 
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b)
+		if (bw * u = w) & (bh * u = h) then
+			res := WinApi.BitBlt(dc, x div u, y div u, bw, bh, bmdc, 0, 0, copy_) 
+		else 
+			res := WinApi.SetStretchBltMode(dc, WinApi.HALFTONE)
+			res := WinApi.SetBrushOrgEx(dc, 0, 0, nil)
+			res := WinApi.StretchBlt(dc, x div u, y div u, w div u, h div u, bmdc, 0, 0, bw, bh, copy_) 
+		end 
+		res := WinApi.RestoreDC(dc, -1)
+	end DrawBitmap
+	
+	proc (rd: Rider) DrawMetafile*(mf: WinApi.HANDLE; mode, x, y, w, h: integer) // new
+		var 
+			res, oldMode, u: integer
+			p: Port
+			dc: WinApi.HANDLE
+	begin 
+		assert(rd.port # nil, 100)
+		p := rd.port
+		p.CloseBuffer
+		dc := p.dc
+		u := p.unit
+		res := WinApi.SaveDC(dc)
+		if p.wnd # 0 then
+			res := WinApi.SelectClipRgn(dc, 0) 
+		end 
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b)
+		oldMode := WinApi.SetMapMode(dc, mode)
+		res := WinApi.SetViewportOrgEx(dc, x div u, y div u, nil)
+		res := WinApi.SetViewportExtEx(dc, w div u, h div u, nil)
+		res := ord(WinApi.SetTextAlign(dc, {}))
+		res := WinApi.PlayMetaFile(dc, mf)
+		res := WinApi.SetViewportOrgEx(dc, 0, 0, nil)
+		res := WinApi.SetMapMode(dc, oldMode)
+		res := WinApi.RestoreDC(dc, -1)
+	end DrawMetafile
+	
+	proc (rd: Rider) FixOrigin* // new
+		var 
+			p: Port
+			res: integer
+	begin 
+		p := rd.port
+		res := WinApi.SetBrushOrgEx(p.dc, (rd.dx - p.bx) mod 8, (rd.dy - p.by_) mod 8, nil)
+	end FixOrigin
+	
+	
+	// miscellaneous
+	
+	proc ResetColors*
+	begin 
+		Ports.background := WinApi.GetSysColor(5)
+		textCol := WinApi.GetSysColor(8)
+		selBackground := WinApi.GetSysColor(13)
+		selTextCol := WinApi.GetSysColor(14)
+		Ports.dialogBackground := WinApi.GetSysColor(15)
+		dialogTextCol := WinApi.GetSysColor(18)
+		dialogShadowCol := WinApi.GetSysColor(16)
+		dialogLightCol := WinApi.GetSysColor(20)
+	end ResetColors
+	
+	proc SetPrinterColors*
+	begin 
+		Ports.background := Ports.white
+		textCol := Ports.black
+		selBackground := Ports.white
+		selTextCol := Ports.black
+		Ports.dialogBackground := Ports.white
+	end SetPrinterColors
+	
+	proc ToggleDebug*
+	begin 
+		debug := ~debug
+		noBuffer := debug
+	end ToggleDebug
+	
+	proc ToggleBuffer*
+	begin 
+		noBuffer := ~noBuffer
+	end ToggleBuffer
+	
+	proc Init
+		var 
+			i: integer
+			instance, bm: WinApi.HANDLE
+			pat: array 12 of shortint
+	begin 
+		instance := WinApi.GetModuleHandleW(nil)
+		ResetColors
+		grgn := WinApi.CreateRectRgn(0, 0, 0, 0)
+		nullBrush := WinApi.GetStockObject(WinApi.NULL_BRUSH)
+		nullPen := WinApi.GetStockObject(WinApi.NULL_PEN)
+		cursors[Ports.arrowCursor] := 
+			WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_ARROW))
+		cursors[Ports.textCursor] := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_IBEAM))
+		cursors[Ports.graphicsCursor] := 
+			WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_CROSS))
+		cursors[Ports.bitmapCursor] := 
+			WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_CROSS))
+		cursors[Ports.tableCursor] := WinApi.LoadCursorW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 7))
+		if cursors[Ports.tableCursor] = 0 then
+			cursors[Ports.tableCursor] := cursors[Ports.graphicsCursor] 
+		end 
+		cursors[Ports.refCursor] := WinApi.LoadCursorW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 6))
+		cursors[resizeHCursor] := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_SIZEWE))
+		cursors[resizeVCursor] := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_SIZENS))
+		cursors[resizeLCursor] := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_SIZENWSE))
+		cursors[resizeRCursor] := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_SIZENESW))
+		cursors[resizeCursor] := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_SIZE))
+		cursors[busyCursor] := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_WAIT))
+		cursors[stopCursor] := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_NO))
+		cursors[moveCursor] := WinApi.LoadCursorW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 1))
+		cursors[copyCursor] := WinApi.LoadCursorW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 2))
+		cursors[linkCursor] := WinApi.LoadCursorW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 3))
+		cursors[pickCursor] := WinApi.LoadCursorW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 4))
+		if cursors[stopCursor] = 0 then
+			cursors[stopCursor] := WinApi.LoadCursorW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 5)) 
+		end 
+		i := 0
+		while i < len(cursors) do 
+			if cursors[i] = 0 then
+				cursors[i] := cursors[Ports.arrowCursor] 
+			end 
+			inc(i) 
+		end 
+		pat[0] := 0eeh
+		pat[1] := 0ddh
+		pat[2] := 0bbh
+		pat[3] := 077h
+		pat[4] := 0eeh
+		pat[5] := 0ddh
+		pat[6] := 0bbh
+		pat[7] := 077h
+		bm := WinApi.CreateBitmap(8, 8, 1, 1, SYSTEM.ADR(pat))
+		focusBrush := WinApi.CreatePatternBrush(bm)
+		pat[0] := 0eeh
+		pat[1] := 0bbh
+		pat[2] := 0ddh
+		pat[3] := 077h
+		pat[4] := 0eeh
+		pat[5] := 0bbh
+		pat[6] := 0ddh
+		pat[7] := 077h
+		bm := WinApi.CreateBitmap(8, 8, 1, 1, SYSTEM.ADR(pat))
+		dim25Brush := WinApi.CreatePatternBrush(bm)
+		pat[0] := 0aah
+		pat[1] := 055h
+		pat[2] := 0aah
+		pat[3] := 055h
+		pat[4] := 0aah
+		pat[5] := 055h
+		pat[6] := 0aah
+		pat[7] := 055h
+		bm := WinApi.CreateBitmap(8, 8, 1, 1, SYSTEM.ADR(pat))
+		dim50Brush := WinApi.CreatePatternBrush(bm)
+		pat[0] := 011h
+		pat[1] := 044h
+		pat[2] := 022h
+		pat[3] := 088h
+		pat[4] := 011h
+		pat[5] := 044h
+		pat[6] := 022h
+		pat[7] := 088h
+		bm := WinApi.CreateBitmap(8, 8, 1, 1, SYSTEM.ADR(pat))
+		dim75Brush := WinApi.CreatePatternBrush(bm)
+		invertBrush := WinApi.GetStockObject(WinApi.BLACK_BRUSH)
+	end Init
+
+begin
+	Init
+end HostPorts

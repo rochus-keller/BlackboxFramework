@@ -1,0 +1,2201 @@
+module TextViews
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20070820, bh, TextSetters.Reader.sString, cache.short, cache.sbuf, & CacheSString eliminated
+	   - 20150610, center #60, underlining white space
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	// could use +, $ in DrawLine cache implementation
+	
+	import 
+		Services, Fonts, Ports, Stores, 
+		Models, Views, Controllers, Properties, Dialog, Printing, Containers, 
+		TextModels, TextRulers, TextSetters
+	
+	const 
+		// * v.DisplayMarks hide
+		show* = false
+		hide* = true
+		
+		// v.ShowRange focusOnly
+		any* = false
+		focusOnly* = true
+		
+		parasign = 0b6x // paragraph sign, to mark non-ruler paragraph breaks
+		
+		mm = Ports.mm
+		inch16 = Ports.inch div 16
+		point = Ports.point
+		maxScrollHeight = 16 * point
+		maxScrollSteps = 100
+		fuseScrollHeight = maxScrollHeight div 2
+		maxHeight = maxScrollHeight * maxScrollSteps
+		adjustMask = {TextRulers.leftAdjust, TextRulers.rightAdjust}
+		
+		// SetOp.mode
+		setMarks = 0
+		setSetter = 1
+		setDefs = 2
+		
+		scrollingKey = "#System:Scrolling"
+		viewSettingKey = "#System:ViewSetting"
+		
+		minVersion = 0
+		maxVersion = 0
+		maxStdVersion = 0
+	
+	
+	type 
+		View* = pointer to (* abstract *) record (Containers.View) end 
+		
+		Directory* = pointer to (* abstract *) record 
+				defAttr-: TextModels.Attributes 
+			end 
+		
+		
+		Location* = record 
+				// start of line and position of location
+				start*, pos*: integer
+				// coordinates of location
+				x*, y*: integer
+				// line dimensions at location
+				asc*, dsc*: integer
+				// if view at location:
+				view*: Views.View
+				l*, t*, r*, b*: integer 
+			end 
+		
+		
+		PositionMsg* = record (Models.Message) 
+				focusOnly*: boolean
+				beg*, end_*: integer 
+			end 
+		
+		
+		PageMsg* = record (Properties.Message) 
+				current*: integer 
+			end 
+		
+		
+		Line = pointer to record 
+				next: Line
+				start, asc, h: integer
+				attr: TextRulers.Attributes // attr = box.ruler.style.attr
+				box: TextSetters.LineBox  // caching of box.rpos not consistent
+			end 
+		
+		StdView = pointer to record (View) 
+				// model
+				text: TextModels.Model
+				org: integer
+				dy: integer // 0 <= dy < Height(first line)
+				defRuler: TextRulers.Ruler
+				defAttr: TextModels.Attributes
+				hideMarks: boolean
+				// general state
+				cachedRd: TextSetters.Reader
+				// line grid cache
+				trailer: Line // trailer # NIL => trailer.eot, trailer.next # trailer
+				bot: integer // max(f : f seen by Restore : f.b)
+				// setter
+				setter, setter0: TextSetters.Setter  // setter # setter0 lazily detects setter change
+			end 
+		
+		StdDirectory = pointer to record (Directory) end 
+		
+		ScrollOp = pointer to record (Stores.Operation) 
+				v: StdView
+				org, dy: integer
+				bunchOrg, bunchDy: integer
+				bunch: boolean // bunch => bunchOrg, bunchDy valid
+				silent: boolean  // original caller of Do(op) already handled situation
+			end 
+		
+		SetOp = pointer to record (Stores.Operation) 
+				mode: integer
+				view: StdView
+				hideMarks: boolean
+				setter: TextSetters.Setter
+				defRuler: TextRulers.Ruler
+				defAttr: TextModels.Attributes 
+			end 
+		
+		FindAnyFrameMsg = record (Views.Message) 
+				// find frame with smallest height (frame.b - frame.t) that displays view; NIL if none found
+				frame: Views.Frame  // OUT, initially NIL
+			end 
+		
+		FindFocusFrameMsg = record (Controllers.Message) 
+				// find outermost focus frame displaying view; NIL if none found
+				view: Views.View // IN
+				frame: Views.Frame  // OUT, initially NIL
+			end 
+	
+	
+	var 
+		ctrlDir-: Containers.Directory
+		dir-, stdDir-: Directory
+	
+	
+	// forward used in GetStart, UpdateView, ShowRangeIn
+	
+	
+	// View
+	
+	proc (v: View) Internalize2-(var rd: Stores.Reader) // extensible
+		// pre: ~v.init
+		// post: v.init
+		var 
+			thisVersion: integer
+	begin 
+		// v.Internalize^(rd);
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minVersion, maxVersion, thisVersion)
+	end Internalize2
+	
+	proc (v: View) Externalize2-(var wr: Stores.Writer) // extensible
+	// pre: v.init
+	begin 
+		// v.Externalize^(wr);
+		wr.WriteVersion(maxVersion)
+	end Externalize2
+	
+	proc (v: View) ThisModel*(): TextModels.Model // extensible
+		var 
+			m: Containers.Model
+	begin 
+		m := v.ThisModel^()
+		if m # nil then
+			return m(TextModels.Model) 
+		else 
+			return nil 
+		end 
+	end ThisModel
+	
+	proc (v: View) DisplayMarks*(hide: boolean) end // new abstract
+	proc (v: View) HidesMarks*(): boolean end // new abstract
+	proc (v: View) SetSetter*(setter: TextSetters.Setter) end // new abstract
+	proc (v: View) ThisSetter*(): TextSetters.Setter end // new abstract
+	proc (v: View) SetOrigin*(org, dy: integer) end // new abstract
+	// post: org = ThisLine(org) => v.org = org, v.dy = dy; else v.org = ThisLine(org), v.dy = 0
+	
+	proc (v: View) PollOrigin*(var org, dy: integer) end // new abstract
+	proc (v: View) SetDefaults*(r: TextRulers.Ruler; a: TextModels.Attributes) end // new abstract
+	
+	// pre: r.init, a.init
+	
+	proc (v: View) PollDefaults*(var r: TextRulers.Ruler; var a: TextModels.Attributes) end // new abstract
+	
+	proc (v: View) GetThisLocation*(f: Views.Frame; pos: integer; var loc: Location) end // new abstract
+	
+	
+	proc (v: View) GetRect*(f: Views.Frame; view: Views.View; var l, t, r, b: integer)
+		var 
+			con: Models.Context
+			loc: Location
+			pos: integer
+	begin 
+		con := view.context
+		assert(con # nil, 20)
+		assert(con.ThisModel() = v.ThisModel(), 21)
+		pos := con(TextModels.Context).Pos()
+		v.GetThisLocation(f, pos, loc)
+		if loc.view = view then
+			l := loc.l
+			t := loc.t
+			r := loc.r
+			b := loc.b 
+		else 
+			l := max(integer)
+			t := max(integer)
+			r := l
+			b := t 
+		end 
+	end GetRect
+	
+	proc (v: View) GetRange*(f: Views.Frame; var beg, end_: integer) end // new abstract
+	// post: beg = beg of first visible line, end = end of last visible line
+	
+	proc (v: View) ThisPos*(f: Views.Frame; x, y: integer): integer end // new abstract
+	proc (v: View) ShowRangeIn*(f: Views.Frame; beg, end_: integer) end // new abstract
+	proc (v: View) ShowRange*(beg, end_: integer; focusOnly: boolean) end // new abstract
+	(* post: in all frames (resp. in front or otherwise target frame if focusOnly):
+	   if possible, first visible pos <= k <= last visible pos,
+	   with k = beg if beg = end and beg <= k < end otherwise *)
+	
+	
+	// Directory
+	
+	proc (d: Directory) Set*(defAttr: TextModels.Attributes) // new extensible
+	begin 
+		assert(defAttr # nil, 20)
+		assert(defAttr.init, 21)
+		d.defAttr := defAttr
+	end Set
+	
+	proc (d: Directory) New*(text: TextModels.Model): View end // new abstract
+	
+	
+	// miscellaneous
+	
+	proc SetCtrlDir*(d: Containers.Directory)
+	begin 
+		assert(d # nil, 20)
+		ctrlDir := d
+	end SetCtrlDir
+	
+	proc SetDir*(d: Directory)
+	begin 
+		assert(d # nil, 20)
+		dir := d
+	end SetDir
+	
+	
+	proc Focus*(): View
+		var 
+			v: Views.View
+	begin 
+		v := Controllers.FocusView()
+		if (v # nil) & (v is View) then
+			return v(View) 
+		else 
+			return nil 
+		end 
+	end Focus
+	
+	proc FocusText*(): TextModels.Model
+		var 
+			v: View
+	begin 
+		v := Focus()
+		if v # nil then
+			return v.ThisModel() 
+		else 
+			return nil 
+		end 
+	end FocusText
+	
+	proc Deposit*
+	begin 
+		Views.Deposit(dir.New(nil))
+	end Deposit
+	
+	
+	proc ShowRange*(text: TextModels.Model; beg, end_: integer; focusOnly: boolean)
+		(* post: in all front or target frames displaying a view displaying t:
+		   if possible, first visible pos <= k <= last visible pos,
+		   with k = beg if beg = end and beg <= k < end otherwise *)
+		var 
+			pm: PositionMsg
+	begin 
+		assert(text # nil, 20)
+		pm.beg := beg
+		pm.end_ := end_
+		pm.focusOnly := focusOnly
+		Models.Broadcast(text, pm)
+	end ShowRange
+	
+	
+	proc ThisRuler*(v: View; pos: integer): TextRulers.Ruler
+		var 
+			r: TextRulers.Ruler
+			a: TextModels.Attributes
+			rpos: integer
+	begin 
+		v.PollDefaults(r, a)
+		rpos := -1
+		TextRulers.GetValidRuler(v.ThisModel(), pos, -1, r, rpos)
+		return r
+	end ThisRuler
+	
+	
+	// auxiliary procedures
+	
+	proc GetReader(v: StdView; start: integer; in box: TextSetters.LineBox
+		): TextSetters.Reader
+		var 
+			st: TextSetters.Setter
+			rd: TextSetters.Reader
+	begin 
+		assert(box.ruler # nil, 100)
+		st := v.ThisSetter()
+		rd := v.cachedRd // reader recycling
+		v.cachedRd := nil
+		rd := st.NewReader(rd)
+		rd.Set(rd.r, v.text, box.left, start, box.ruler, box.rpos, st.vw, st.hideMarks)
+		return rd
+	end GetReader
+	
+	proc CacheReader(v: StdView; rd: TextSetters.Reader)
+	begin 
+		assert(v.cachedRd = nil, 20)
+		v.cachedRd := rd
+	end CacheReader
+	
+	
+	// line descriptors
+	
+	proc SetLineAsc(st: TextSetters.Setter; t: Line; dsc: integer)
+	// pre: dsc: descender of previous line (-1 if first line)
+	begin 
+		t.asc := t.box.asc + st.GridOffset(dsc, t.box)
+		t.h := t.asc + t.box.dsc
+	end SetLineAsc
+	
+	proc NewLine(st: TextSetters.Setter; start, dsc: integer): Line
+		// pre: start: start of line to measure; dsc: descender of previous line (-1 if first line)
+		var 
+			t: Line
+	begin 
+		new(t)
+		st.GetLine(start, t.box)
+		t.start := start
+		SetLineAsc(st, t, dsc)
+		t.attr := t.box.ruler.style.attr
+		return t
+	end NewLine
+	
+	proc AddLine(st: TextSetters.Setter; var t: Line; var start, y: integer)
+	begin 
+		t.next := NewLine(st, start, t.box.dsc)
+		t := t.next
+		inc(start, t.box.len_)
+		inc(y, t.h)
+	end AddLine
+	
+	proc InitLines(v: StdView)
+		var 
+			asc, dsc, w: integer
+			t0, t: Line
+			start, y: integer
+	begin 
+		v.defAttr.font.GetBounds(asc, dsc, w)
+		new(t0)
+		start := v.org
+		y := v.dy
+		t0.box.dsc := -1 // dsc = -1: trailer.next is first line
+		t := t0 // at least one valid line desc
+		AddLine(v.ThisSetter(), t, start, y)
+		t.next := t0
+		t0.start := start // trailer.(asc, h) for caret display following last line
+		t0.asc := asc
+		t0.h := asc + dsc
+		t0.attr := nil
+		t0.box.eot := true
+		t0.box.len_ := 0
+		t0.box.ruler := nil
+		t0.box.left := -1 // make trailer async to every other line
+		v.trailer := t0
+		v.bot := 0
+	end InitLines
+	
+	proc ExtendLines(v: StdView; bot: integer)
+		var 
+			st: TextSetters.Setter
+			t0, t: Line
+			start, y: integer
+	begin 
+		if bot >= v.bot then
+			t0 := v.trailer
+			start := t0.start
+			y := v.dy
+			t := t0
+			while t.next # t0 do 
+				t := t.next
+				inc(y, t.h) 
+			end 
+			if (y < bot) & ~t.box.eot then
+				st := v.ThisSetter()
+				repeat 
+					AddLine(st, t, start, y) 
+				until (y >= bot) or t.box.eot 
+				t.next := t0
+				t0.start := start 
+			end 
+			v.bot := bot 
+		end 
+	end ExtendLines
+	
+	proc ReduceLines(v: StdView; bot: integer)
+		var 
+			t0, t: Line
+			y: integer
+	begin 
+		if bot <= v.bot then
+			t0 := v.trailer
+			y := v.dy
+			t := t0
+			while (t.next # t0) & (y < bot) do 
+				t := t.next
+				inc(y, t.h) 
+			end 
+			t0.start := t.next.start
+			t.next := t0
+			v.bot := bot 
+		end 
+	end ReduceLines
+	
+	proc ValidateLines(v: StdView; bot: integer)
+		var 
+			st: TextSetters.Setter
+			w, h, len_: integer
+	begin 
+		if v.setter # nil then
+			v.context.GetSize(w, h) // possibly adapt to changed width
+			if v.setter.vw # w then
+				v.setter0 := nil
+				v.trailer := nil 
+			end  
+		end 
+		len_ := v.text.Length()
+		if (v.org > len_) or (v.trailer # nil) & (v.trailer.start > len_) then
+			v.trailer := nil 
+		end 
+		if v.trailer = nil then
+			if v.org > len_ then
+				v.org := len_ 
+			end 
+			st := v.ThisSetter()
+			v.org := st.ThisLine(v.org)
+			InitLines(v) 
+		end 
+		ExtendLines(v, bot)
+	end ValidateLines
+	
+	proc PrependLines(v: StdView)
+		var 
+			st: TextSetters.Setter
+			t0, t1, t: Line
+			start, y: integer
+	begin 
+		t0 := v.trailer
+		start := v.org
+		y := v.dy
+		if t0.start # start then
+			st := v.ThisSetter()
+			t := t0
+			t1 := t0.next
+			while (t1.start # start) & (y < v.bot) do 
+				AddLine(st, t, start, y) 
+			end 
+			if y >= v.bot then
+				t.next := t0
+				t0.start := start 
+			else 
+				t.next := t1
+				if t1 # v.trailer then
+					SetLineAsc(st, t1, t.box.dsc) 
+				end  
+			end  
+		end 
+	end PrependLines
+	
+	
+	// update frame after insert/delete/replace
+	
+	proc ThisViewLine(v: StdView; y: integer): Line
+		// pre: 0 <= y < v.bot
+		var 
+			t: Line
+			py: integer
+	begin 
+		t := v.trailer.next
+		py := v.dy
+		while ~t.box.eot & (py + t.h < y) do 
+			inc(py, t.h)
+			t := t.next 
+		end 
+		return t
+	end ThisViewLine
+	
+	proc LocateThisLine(v: StdView; start: integer; var t: Line; var y: integer)
+		var 
+			t1: Line
+	begin 
+		t := v.trailer.next
+		y := v.dy
+		t1 := v.trailer.next
+		while t.start # start do 
+			inc(y, t.h)
+			t := t.next
+			assert(t # t1, 100) 
+		end 
+	end LocateThisLine
+	
+	proc GetStart(st: TextSetters.Setter; v: StdView; beg: integer; var start: integer)
+		// find start of line containing beg after text change; tuned using valid line descs
+		var 
+			s, t: Line
+	begin 
+		s := v.trailer
+		t := s.next
+		while (t # v.trailer) & (t.start + t.box.len_ < beg) do 
+			s := t
+			t := s.next 
+		end 
+		if s # v.trailer then // at least first line desc possibly still valid
+			start := st.NextLine(s.start) // NextLine can be much cheaper than ThisLine
+			if start # t.start then
+				GetStart(st, v, s.start, start) 
+			elsif ~t.box.eot & (start + t.box.len_ = beg) & (st.NextLine(start) = beg) then 
+				start := beg 
+			end  
+		else 
+			if v.org <= v.text.Length() then
+				start := st.ThisLine(v.org) 
+			else 
+				start := st.ThisLine(v.text.Length()) 
+			end 
+			if start < v.org then
+				DoSetOrigin(v, start, 0, true) 
+			elsif start > v.org then 
+				start := v.org 
+			end  
+		end 
+	end GetStart
+	
+	proc GetStringStart(v: StdView; t: Line; pos: integer; var p1, x: integer)
+		var 
+			rd: TextSetters.Reader
+	begin 
+		p1 := t.start
+		x := t.box.left
+		if t.box.views then
+			rd := GetReader(v, p1, t.box)
+			rd.Read
+			while ~rd.eot & (rd.pos <= pos) do 
+				rd.AdjustWidth(t.start, p1, t.box, rd.w)
+				inc(rd.x, rd.w)
+				if rd.view # nil then
+					p1 := rd.pos
+					x := rd.x 
+				end 
+				rd.Read 
+			end 
+			CacheReader(v, rd) 
+		end 
+	end GetStringStart
+	
+	proc InSynch(t0, t1: Line): boolean
+	begin 
+		return (t0.start = t1.start) & (t0.asc = t1.asc) & (t0.attr = t1.attr) 
+			& (t0.box.left = t1.box.left) & (t0.box.asc = t1.box.asc) & (t0.box.dsc = t1.box.dsc) 
+			& (t0.box.rbox = t1.box.rbox) & (t0.box.bop = t1.box.bop)
+	end InSynch
+	
+	proc RebuildView(v: StdView)
+	begin 
+		v.setter0 := nil
+		if v.trailer # nil then
+			v.trailer := nil
+			v.bot := 0
+			Views.Update(v, Views.rebuildFrames) 
+		end 
+	end RebuildView
+	
+	proc UpdateIn(v: StdView; l, t, b: integer)
+	begin 
+		Views.UpdateIn(v, l, t, max(integer), b, Views.rebuildFrames)
+	end UpdateIn
+	
+	proc UpdateFrames(v: StdView; t0, t1, u: Line; beg, y0, yu: integer)
+		var 
+			t, te: Line
+			b, x, b0, b1, top, bot: integer
+	begin 
+		if ((beg < t0.next.start) or t0.box.eot) & ~t0.box.adj 
+			& ((beg < t1.next.start) or t1.box.eot) & ~t1.box.adj 
+			& InSynch(t0, t1) then
+			GetStringStart(v, t1, beg, beg, x) 
+		else 
+			beg := t1.start 
+		end 
+		b := y0
+		t := t0
+		while t # u do 
+			inc(b, t.h)
+			t := t.next 
+		end 
+		if b = yu then
+			te := u 
+		else  // t = u
+			te := v.trailer
+			b0 := b
+			while t # v.trailer do 
+				inc(b0, t.h)
+				t := t.next 
+			end 
+			if yu < b then
+				ExtendLines(v, v.bot) 
+			else 
+				ReduceLines(v, v.bot) 
+			end 
+			b1 := y0
+			t := t1
+			while t # v.trailer do 
+				inc(b1, t.h)
+				t := t.next 
+			end 
+			if b1 < b0 then // erase trailer
+				UpdateIn(v, 0, b1, b0) 
+			end  
+		end 
+		if t1.start < beg then // conserve head of t1
+			UpdateIn(v, x, y0, y0 + t1.h) // redraw tail of t1
+			top := y0 + t1.h 
+		else 
+			top := y0 
+		end 
+		bot := y0
+		repeat 
+			inc(bot, t1.h)
+			t1 := t1.next 
+		until t1 = te 
+		if top < bot then // redraw affected lines
+			UpdateIn(v, 0, top, bot) 
+		end 
+	end UpdateFrames
+	
+	proc UpdateView(v: StdView; beg, end_, delta: integer)
+		var 
+			st: TextSetters.Setter
+			r: TextRulers.Ruler
+			rpos: integer
+			s0, t0, t, tn, u: Line
+			start, y, y0: integer
+	begin 
+		if v.trailer # nil then
+			v.setter0 := nil
+			st := v.ThisSetter()
+			if (beg <= v.trailer.start) & ((end_ >= v.org) or (end_ - delta >= v.org)) then
+				GetStart(st, v, beg, start)
+				y0 := v.dy
+				s0 := v.trailer
+				while s0.next.start < start do 
+					s0 := s0.next
+					inc(y0, s0.h) 
+				end 
+				
+				t := s0.next
+				while (t # v.trailer) & (t.start < end_) do 
+					t := t.next 
+				end 
+				if (t = v.trailer.next) & (t.start >= end_) then
+					repeat 
+						inc(t.start, delta)
+						if t.box.rpos >= end_ then
+							inc(t.box.rpos, delta) 
+						end 
+						t := t.next 
+					until t = v.trailer.next  
+				else 
+					while (t # v.trailer.next) & (t.start >= end_) do 
+						inc(t.start, delta)
+						if t.box.rpos >= end_ then
+							inc(t.box.rpos, delta) 
+						end 
+						t := t.next 
+					end  
+				end 
+				tn := s0
+				y := y0
+				t0 := s0.next
+				u := t0
+				repeat 
+					t := tn // start = end(tn), y = bot(tn)
+					AddLine(st, tn, start, y)
+					while (u # v.trailer) & (u.start < tn.start) do 
+						u := u.next 
+					end  
+				until tn.box.eot or (y > v.bot) 
+					or (tn.start >= end_) & (u.start = tn.start) & (u.box.len_ = tn.box.len_) 
+					& (u.asc = tn.asc) & (u.attr = tn.attr) & (u.box.dsc = tn.box.dsc) 
+					& (u.box.rpos = tn.box.rpos)  // can be expensive ...
+				if tn.box.eot or (y > v.bot) then
+					t := tn
+					u := v.trailer
+					v.trailer.start := start 
+				else 
+					dec(y, tn.h) 
+				end 
+				t.next := u
+				if (s0 # v.trailer) & (s0.next # v.trailer) then
+					s0.box.eot := false 
+				end 
+				assert(v.trailer.start <= v.text.Length(), 100)
+				UpdateFrames(v, t0, s0.next, u, beg, y0, y) 
+			elsif end_ <= v.org then 
+				inc(v.org, delta)
+				(* IF end < v.org - delta - 500 THEN start := v.org ELSE start := st.ThisLine(v.org) END;
+				   (* this is not safe; even a change 500 characters away could force the view's origin to a
+				   new position in order to maintain the invariant that the origin always falls on a line start;
+				   however, ThisLine can be quite expensive -- can we rely on TextSetters cache ? *) *)
+				
+				
+				start := st.ThisLine(v.org)
+				r := v.defRuler
+				rpos := -1
+				TextRulers.GetValidRuler(v.text, start, -1, r, rpos)
+				if (v.org = start) & (v.trailer.next.attr = r.style.attr) then
+					t := v.trailer
+					repeat 
+						t := t.next
+						inc(t.start, delta)
+						if t.box.rpos < start then
+							t.box.rpos := rpos 
+						else 
+							inc(t.box.rpos, delta) 
+						end  
+					until t = v.trailer  
+				else 
+					DoSetOrigin(v, start, 0, true)
+					RebuildView(v) 
+				end  
+			end  
+		end 
+	end UpdateView
+	
+	proc StyleUpdate(v: StdView; oldAttr: TextRulers.Attributes)
+		var 
+			t: Line
+			beg: integer
+			first: boolean
+	begin 
+		if v.trailer # nil then
+			t := v.trailer.next
+			first := true
+			while t # v.trailer do 
+				while (t # v.trailer) & (t.attr # oldAttr) do 
+					t := t.next 
+				end 
+				if t # v.trailer then
+					if first then
+						v.Neutralize
+						first := false 
+					end 
+					beg := t.start
+					t := t.next
+					while (t # v.trailer) & (t.attr = oldAttr) do 
+						t := t.next 
+					end 
+					UpdateView(v, beg, t.start, 0) 
+				end  
+			end  
+		end 
+	end StyleUpdate
+	
+	
+	// line drawing
+	
+	proc DrawLine(v: StdView
+		start: integer; in box: TextSetters.LineBox
+		f: Views.Frame; l, r, y, t: integer; pageF: boolean
+		)
+		// pre: area cleared
+		// [l,r) for high-level clipping to tune update after small change
+		const 
+			cacheLen = 128
+		var 
+			rd: TextSetters.Reader
+			ra: TextRulers.Attributes
+			v1: Views.View
+			c: Containers.Controller
+			py, end_, skip: integer
+			cache: record  // initially: long = TRUE, len = 0
+					x, y: integer; color: Ports.Color; font: Fonts.Font
+					len_: integer
+					buf: array cacheLen of char 
+				end 
+		
+		proc FlushCaches
+		begin 
+			if cache.len_ > 0 then
+				cache.buf[cache.len_] := 0x
+				f.DrawString(cache.x, cache.y, cache.color, cache.buf, cache.font) 
+			end 
+			cache.len_ := 0
+		end FlushCaches
+		
+		proc CacheString(x, y: integer; c: integer; in s: array of char
+			f: Fonts.Font
+			)
+			var 
+				i, j, len_: integer
+		begin 
+			len_ := 0
+			while s[len_] # 0x do 
+				inc(len_) 
+			end 
+			if (cache.len_ + len_ >= cacheLen) or (cache.y # y) or (cache.color # c) or (cache.font # f) then
+				FlushCaches 
+			end 
+			assert(cache.len_ + len_ < cacheLen, 100)
+			if cache.len_ = 0 then
+				cache.x := x
+				cache.y := y
+				cache.color := c
+				cache.font := f 
+			end 
+			i := 0
+			j := cache.len_
+			while i < len_ do 
+				cache.buf[j] := s[i]
+				inc(i)
+				inc(j) 
+			end 
+			cache.len_ := j
+		end CacheString
+	
+	(* PROCEDURE CacheString (x, y: INTEGER; c: INTEGER; IN s: ARRAY OF CHAR;
+	   f: Fonts.Font
+	   );
+	   VAR i, j, len: INTEGER;
+	   BEGIN
+	   (* flush first, then promote *)
+	   len := 0; WHILE s[len] # 0X DO INC(len) END;
+	   IF (cache.len + len >= cacheLen) OR (cache.y # y) OR (cache.color # c) OR (cache.font # f) THEN
+	   FlushCaches
+	   END;
+	   IF (cache.len > 0) & cache.short THEN	(* promote short chars to chars *)
+	   i := 0; WHILE i < cache.len DO cache.buf[i] := cache.sbuf[i]; INC(i) END
+	   END;
+	   cache.short := FALSE;
+	   ASSERT(cache.len + len < cacheLen, 100);
+	   IF cache.len = 0 THEN cache.x := x; cache.y := y; cache.color := c; cache.font := f END;
+	   i := 0; j := cache.len;
+	   WHILE i < len DO cache.buf[j] := s[i]; INC(i); INC(j) END;
+	   cache.len := j
+	   END CacheString; *)
+	
+	
+	
+	begin 
+		if box.len_ > 0 then
+			cache.len_ := 0
+			end_ := start + box.len_
+			skip := start + box.skipOff
+			rd := GetReader(v, start, box)
+			rd.Read
+			while ~rd.eot & (rd.pos <= end_) & (rd.x < r) do 
+				if rd.pos > skip then
+					rd.w := rd.endW 
+				end 
+				rd.AdjustWidth(start, rd.pos, box, rd.w)
+				if rd.x + rd.w > l then
+					v1 := rd.view
+					if v1 # nil then
+						FlushCaches
+						if ~((TextModels.hideable in rd.textOpts) & v.hideMarks) then
+							c := v.ThisController()
+							Views.InstallFrame(f, v1, 
+							rd.x, y - rd.attr.offset + rd.dsc - rd.h, 0, 
+							(c # nil) & (v1 = c.ThisFocus())) 
+						end  
+					elsif (rd.h > 0) & (rd.w > 0) then 
+						if box.rbox & ~v.hideMarks then // ¶ sign
+							rd.string[0] := parasign 
+						end 
+						py := y - rd.attr.offset
+						if rd.string[0] > " " then
+							CacheString(rd.x, py, rd.attr.color, rd.string, rd.attr.font)
+							if ~v.hideMarks & (TextModels.hideable in rd.textOpts) then
+								f.DrawRect(rd.x, py - box.asc + f.dot, 
+								min(rd.x + rd.w, f.r), py + box.dsc - f.dot, 0, Ports.grey25) 
+							end  
+						elsif rd.string[0] # 0x then 
+							FlushCaches
+							if ~v.hideMarks & (TextModels.hideable in rd.textOpts) then
+								f.DrawRect(rd.x, py - box.asc + f.dot, rd.x + rd.w, py + box.dsc - f.dot, 0, Ports.grey25) 
+							elsif ((rd.string[0] = ' ') or (rd.string[0] = TextModels.tab)) 
+								& ({Fonts.underline, Fonts.strikeout} * rd.attr.font.style # {}) 
+							then 
+								f.DrawSpace(rd.x, py, rd.w, rd.attr.color, rd.attr.font) 
+							end  
+						elsif rd.string[0] # 0x then 
+							CacheString(rd.x, py, rd.attr.color, rd.string, rd.attr.font) 
+						else 
+							FlushCaches 
+						end  
+					end  
+				end 
+				inc(rd.x, rd.w)
+				rd.Read 
+			end 
+			FlushCaches
+			CacheReader(v, rd) 
+		end 
+		if v.hideMarks & ~pageF then
+			ra := box.ruler.style.attr
+			if TextRulers.pageBreak in ra.opts then
+				if (box.rpos = start) & (ra.lead >= f.dot) then
+					f.DrawLine(l, t, r - f.dot, t, 0, Ports.grey50) 
+				elsif (box.rpos = start - 1) & (ra.lead < f.dot) then 
+					f.DrawLine(l, t, r - f.dot, t, 0, Ports.grey50) 
+				end  
+			end  
+		end 
+	end DrawLine
+	
+	proc DrawDecorations(v: StdView; u: Line; f: Views.Frame; l, t, r, b: integer)
+		var 
+			a: TextRulers.Attributes
+			i, x: integer
+			col: Ports.Color
+			st: TextSetters.Setter
+			srd: TextSetters.Reader
+			rd: TextModels.Reader
+	begin 
+		if t < b then
+			i := 0
+			a := u.attr
+			srd := nil
+			while i < a.tabs.len_ do 
+				if TextRulers.barTab in a.tabs.tab[i].type_ then
+					x := a.tabs.tab[i].stop
+					if (l <= x) & (x < r) then
+						if u.box.rpos = -1 then
+							col := v.defAttr.color 
+						elsif srd = nil then 
+							st := v.ThisSetter()
+							srd := v.cachedRd
+							v.cachedRd := nil
+							srd := st.NewReader(srd)
+							srd.Set(srd.r, v.text, 0, 0, v.defRuler, 0, st.vw, st.hideMarks)
+							rd := srd.r
+							rd.SetPos(u.box.rpos)
+							rd.Read
+							col := rd.attr.color 
+						end 
+						f.DrawLine(x, t, x, b - f.dot, 0, col) 
+					end  
+				end 
+				inc(i) 
+			end 
+			if srd # nil then
+				CacheReader(v, srd) 
+			end  
+		end 
+	end DrawDecorations
+	
+	
+	// focus-message handling
+	
+	proc PollSection(v: StdView; f: Views.Frame; var msg: Controllers.PollSectionMsg)
+		const 
+			ms = maxScrollSteps
+			mh = maxScrollHeight
+		var 
+			t: Line
+			steps, step: integer
+	begin 
+		if msg.vertical then
+			ValidateLines(v, f.b)
+			t := v.trailer.next
+			if t.h > 0 then
+				steps := -((-t.h) div mh)
+				step := -(v.dy div mh) 
+			else 
+				steps := 1
+				step := 0 
+			end 
+			msg.wholeSize := v.text.Length() * ms
+			msg.partPos := v.org * ms + t.box.len_ * ms * step div steps
+			msg.partSize := 0
+			msg.valid := (v.org > 0) or (t.h > mh) or (t.next # v.trailer)
+			msg.done := true 
+		end 
+	end PollSection
+	
+	proc Scroll(v: StdView; f: Views.Frame; var msg: Controllers.ScrollMsg)
+		var 
+			st: TextSetters.Setter
+			box, box0: TextSetters.LineBox
+			t, t1, trailer: Line
+			org, len_, dy, h, h1, sh, steps, step: integer
+			poll: Controllers.PollSectionMsg
+	begin 
+		if msg.vertical then
+			poll.vertical := true
+			PollSection(v, f, poll) 
+		end 
+		if msg.vertical & poll.valid then
+			org := v.org
+			dy := v.dy
+			st := v.ThisSetter()
+			trailer := v.trailer
+			case msg.op of 
+				Controllers.decLine: 
+					if dy <= -(maxScrollHeight + fuseScrollHeight) then
+						inc(dy, maxScrollHeight) 
+					elsif dy < 0 then 
+						dy := 0 
+					elsif org > 0 then 
+						org := st.PreviousLine(org)
+						st.GetLine(org, box)
+						h1 := box.asc + box.dsc + st.GridOffset(-1, box)
+						if h1 > maxScrollHeight + fuseScrollHeight then
+							sh := h1 - h1 mod maxScrollHeight
+							if h1 - sh < fuseScrollHeight then
+								dec(sh, maxScrollHeight) 
+							end 
+							dy := -sh 
+						else 
+							dy := 0 
+						end  
+					end  
+				| Controllers.incLine: 
+					t := trailer.next
+					if t.h + dy > maxScrollHeight + fuseScrollHeight then
+						dec(dy, maxScrollHeight) 
+					elsif ~t.box.eot then 
+						org := t.next.start
+						dy := 0 
+					end  
+				| Controllers.decPage: 
+					sh := f.b
+					dec(sh, maxScrollHeight + sh mod maxScrollHeight)
+					if dy <= -(sh + fuseScrollHeight) then
+						inc(dy, sh) 
+					else 
+						t := trailer.next
+						h := maxScrollHeight - dy
+						if t.h < h then
+							h := t.h 
+						end 
+						box0 := t.box
+						h1 := h - st.GridOffset(-1, box0)
+						while (org > 0) & (h + fuseScrollHeight < f.b) do 
+							org := st.PreviousLine(org)
+							st.GetLine(org, box)
+							h1 := box.asc + box.dsc
+							inc(h, h1 + st.GridOffset(box.dsc, box0))
+							box0 := box 
+						end 
+						h1 := h1 + st.GridOffset(-1, box0)
+						sh := h1 - (h - f.b)
+						dec(sh, sh mod maxScrollHeight)
+						if h1 - sh >= fuseScrollHeight then
+							dy := -sh 
+						else 
+							dy := 0 
+						end  
+					end 
+					if (org > v.org) or (org = v.org) & (dy <= v.dy) then // guarantee progress
+						org := st.PreviousLine(org)
+						st.GetLine(org, box)
+						h1 := box.asc + box.dsc + st.GridOffset(-1, box)
+						if h1 > maxScrollHeight + fuseScrollHeight then
+							dy := -(h1 div maxScrollHeight * maxScrollHeight) 
+						else 
+							dy := 0 
+						end  
+					end  
+				| Controllers.incPage: 
+					t := trailer.next
+					sh := f.b
+					dec(sh, maxScrollHeight + sh mod maxScrollHeight)
+					if t.h + dy > sh + fuseScrollHeight then
+						dec(dy, sh) 
+					else 
+						t := ThisViewLine(v, f.b)
+						LocateThisLine(v, t.start, t1, h)
+						if (h + t.h >= f.b) & (t.h <= maxScrollHeight) then
+							org := st.PreviousLine(t.start) 
+						else 
+							org := t.start 
+						end 
+						if h + t.h - f.b > maxScrollHeight then
+							sh := f.b - h
+							dec(sh, maxScrollHeight + sh mod maxScrollHeight)
+							if sh >= fuseScrollHeight then
+								dy := -sh 
+							else 
+								dy := 0 
+							end  
+						else 
+							dy := 0 
+						end  
+					end 
+					if (org < v.org) or (org = v.org) & (dy >= v.dy) then // guarantee progress
+						if t.h + dy > maxScrollHeight + fuseScrollHeight then
+							dec(dy, maxScrollHeight) 
+						else 
+							org := t.next.start
+							dy := 0 
+						end  
+					end  
+				| Controllers.gotoPos: 
+					org := st.ThisLine(msg.pos div maxScrollSteps)
+					st.GetLine(org, box)
+					sh := box.asc + box.dsc + st.GridOffset(-1, box)
+					steps := -((-sh) div maxScrollHeight)
+					if (steps > 0) & (box.len_ > 0) then
+						step := steps * (msg.pos - org * maxScrollSteps) div (maxScrollSteps * box.len_)
+						// step := steps * (msg.pos MOD maxScrollSteps) DIV maxScrollSteps;
+						
+						
+						dy := -(step * maxScrollHeight) 
+					else 
+						dy := 0 
+					end  
+			else  
+			end 
+			len_ := v.text.Length()
+			if org > len_ then
+				org := len_
+				dy := 0 
+			end 
+			v.SetOrigin(org, dy)
+			msg.done := true 
+		end 
+	end Scroll
+	
+	proc NotifyViewsOnPage(v: StdView; beg, end_, pageNo: integer)
+		var 
+			st: TextSetters.Setter
+			rd: TextSetters.Reader
+			r: TextModels.Reader
+			view: Views.View
+			current: integer
+			page: PageMsg
+	begin 
+		if pageNo >= 0 then
+			current := pageNo 
+		elsif Printing.par # nil then  // Printing.par.page.current
+			current := Printing.Current() + 1 
+		else 
+			current := -1 
+		end 
+		if current >= 0 then
+			st := v.ThisSetter()
+			rd := v.cachedRd // reader recycling
+			v.cachedRd := nil
+			rd := st.NewReader(rd)
+			rd.Set(rd.r, v.text, 0, 0, v.defRuler, 0, st.vw, st.hideMarks)
+			r := rd.r
+			r.SetPos(beg)
+			r.ReadView(view)
+			while (r.Pos() <= end_) & ~r.eot do 
+				page.current := current
+				Views.HandlePropMsg(view, page)
+				r.ReadView(view) 
+			end 
+			CacheReader(v, rd) 
+		end 
+	end NotifyViewsOnPage
+	
+	proc Page(v: StdView; pageH: integer; op, pageY: integer; var done, eoy: boolean)
+		var 
+			st: TextSetters.Setter
+			org, prev, page: integer
+	begin 
+		if ~v.hideMarks & ((v.context = nil) or v.context.Normalize()) then
+			v.DisplayMarks(hide) 
+		end 
+		st := v.ThisSetter()
+		if op = Controllers.nextPageY then
+			done := true
+			org := st.NextPage(pageH, v.org)
+			eoy := (org = v.text.Length())
+			if ~eoy then
+				NotifyViewsOnPage(v, org, st.NextPage(pageH, org), -1) 
+			end  
+		elsif op = Controllers.gotoPageY then 
+			assert(pageY >= 0, 20)
+			done := true
+			org := 0
+			eoy := false
+			page := 0
+			while (page < pageY) & ~eoy do 
+				prev := org
+				org := st.NextPage(pageH, org)
+				eoy := org = prev
+				if ~eoy then
+					NotifyViewsOnPage(v, prev, org, page) 
+				end 
+				inc(page) 
+			end 
+			if ~eoy then
+				NotifyViewsOnPage(v, org, st.NextPage(pageH, org), page) 
+			end  
+		else 
+			done := false 
+		end 
+		if done & ~eoy then
+			v.org := org
+			v.dy := 0
+			v.trailer := nil
+			v.bot := 0 
+		end 
+	end Page
+	
+	
+	proc ShowAdjusted(v: StdView; shift: integer; rebuild: boolean)
+	begin 
+		if shift # 0 then
+			Views.Scroll(v, 0, shift) 
+		elsif rebuild then 
+			UpdateIn(v, 0, 0, max(integer)) 
+		end 
+		Views.RestoreDomain(v.Domain())
+	end ShowAdjusted
+	
+	proc AdjustLines(v: StdView; org, dy: integer
+		var shift: integer; var rebuild: boolean
+		)
+		// post: shift = 0  OR  ~rebuild
+		var 
+			d: Stores.Domain
+			c: Containers.Controller
+			t, t0, t1: Line
+			org0, dy0, y: integer
+	begin 
+		d := v.Domain()
+		t0 := v.trailer
+		org0 := v.org
+		rebuild := false
+		shift := 0
+		if (d # nil) & ((org # org0) or (dy # v.dy)) then
+			Views.RestoreDomain(d) // make sure that pixels are up-to-date before scrolling
+			c := v.ThisController()
+			if c # nil then
+				Containers.FadeMarks(c, Containers.hide)  // fade marks with overhang
+			end  
+		end 
+		if (t0 # nil) & (org = org0) & (dy # v.dy) then // sub-line shift
+			shift := dy - v.dy 
+		elsif (t0 # nil) & (org > org0) & (org < t0.start) then  // shift up
+			LocateThisLine(v, org, t, y)
+			t0.next := t
+			shift := dy - y 
+		elsif (t0 # nil) & (org < org0) then  // shift down
+			t1 := t0.next
+			dy0 := v.dy + t1.asc
+			v.org := org
+			v.dy := dy
+			if t1.start = org0 then // new lines need to be prepended
+				PrependLines(v)  // may change t1.asc
+			end 
+			assert(t0.next.start = org, 100)
+			if org0 < t0.start then // former top still visible -> shift down
+				LocateThisLine(v, org0, t, y)
+				shift := y - (dy0 - t1.asc) 
+			else  // rebuild all
+				rebuild := true 
+			end  
+		elsif (t0 = nil) or (org # org0) or (dy # v.dy) then  // rebuild all
+			rebuild := true 
+		end 
+		v.org := org
+		v.dy := dy
+		if rebuild then // rebuild all
+			v.trailer := nil
+			ValidateLines(v, v.bot) 
+		elsif shift < 0 then  // shift up
+			inc(v.bot, shift)
+			ExtendLines(v, v.bot - shift) 
+		elsif shift > 0 then  // shift down
+			inc(v.bot, shift)
+			ReduceLines(v, v.bot - shift) 
+		end 
+	end AdjustLines
+	
+	proc Limit(v: StdView; bot: integer; allLines: boolean): integer
+		const 
+			minH = 12 * point
+		var 
+			s, t: Line
+			pos, y: integer
+	begin 
+		s := v.trailer.next
+		t := s
+		y := v.dy
+		while ~t.box.eot & (y + t.h <= bot) do 
+			inc(y, t.h)
+			s := t
+			t := t.next 
+		end 
+		if ~allLines & (bot - y < t.h) & (bot - y < minH) then
+			t := s 
+		end 
+		pos := t.start + t.box.len_
+		// IF t.box.eot THEN INC(pos) END;
+		
+		
+		return pos
+	end Limit
+	
+	
+	// ScrollOp
+	
+	proc (op: ScrollOp) Do
+		var 
+			org0, dy0, org, dy, shift: integer
+			rebuild: boolean
+	begin 
+		if op.bunch then
+			org := op.bunchOrg
+			dy := op.bunchDy 
+		else 
+			org := op.org
+			dy := op.dy 
+		end 
+		org0 := op.v.org
+		dy0 := op.v.dy
+		if op.silent then
+			op.v.org := org
+			op.v.dy := dy
+			op.silent := false 
+		else 
+			AdjustLines(op.v, org, dy, shift, rebuild)
+			ShowAdjusted(op.v, shift, rebuild) 
+		end 
+		if op.bunch then
+			op.bunch := false 
+		else 
+			op.org := org0
+			op.dy := dy0 
+		end 
+	end Do
+	
+	proc DoSetOrigin(v: StdView; org, dy: integer; silent: boolean)
+		// pre: org = v.ThisSetter().ThisLine(org)
+		var 
+			con: Models.Context
+			last: Stores.Operation
+			op: ScrollOp
+			shift: integer
+			rebuild: boolean
+	begin 
+		if (org # v.org) or (dy # v.dy) then
+			con := v.context
+			if con # nil then
+				if (v.Domain() = nil) or con.Normalize() then
+					if silent then
+						v.org := org
+						v.dy := dy 
+					else 
+						AdjustLines(v, org, dy, shift, rebuild)
+						ShowAdjusted(v, shift, rebuild) 
+					end  
+				else 
+					last := Views.LastOp(v)
+					if (last # nil) & (last is ScrollOp) then
+						op := last(ScrollOp)
+						op.bunch := true
+						op.bunchOrg := org
+						op.bunchDy := dy
+						op.silent := silent
+						Views.Bunch(v) 
+					else 
+						new(op)
+						op.v := v
+						op.org := org
+						op.dy := dy
+						op.bunch := false
+						op.silent := silent
+						Views.Do(v, scrollingKey, op) 
+					end  
+				end  
+			else 
+				v.org := org
+				v.dy := dy 
+			end  
+		end 
+	end DoSetOrigin
+	
+	
+	// SetOp
+	
+	proc (op: SetOp) Do
+		var 
+			v: StdView
+			m: boolean
+			a: TextModels.Attributes
+			r: TextRulers.Ruler
+			s: TextSetters.Setter
+	begin 
+		v := op.view
+		case op.mode of 
+			setMarks: 
+				m := v.hideMarks
+				v.hideMarks := op.hideMarks
+				op.hideMarks := m 
+			| setSetter: 
+				s := v.setter
+				if s # nil then
+					s.ConnectTo(nil, nil, 0, false) 
+				end 
+				v.setter := op.setter
+				op.setter := s 
+			| setDefs: 
+				r := v.defRuler
+				a := v.defAttr
+				v.defRuler := op.defRuler
+				v.defAttr := op.defAttr
+				op.defRuler := r
+				op.defAttr := a
+				(* IF (v.defAttr.Domain() # NIL) & (v.defAttr.Domain() # v.Domain()) THEN
+				   v.defAttr := Stores.CopyOf(v.defAttr)(TextModels.Attributes)
+				   END;
+				   Stores.Join(v, v.defAttr); *)
+				
+				
+				if v.defAttr # nil then // could be for undo operations
+					if ~Stores.Joined(v, v.defAttr) then
+						if ~Stores.Unattached(v.defAttr) then
+							v.defAttr := Stores.CopyOf(v.defAttr)(TextModels.Attributes) 
+						end 
+						Stores.Join(v, v.defAttr) 
+					end  
+				end 
+				
+				if v.defRuler # nil then
+					Stores.Join(v, v.defRuler) 
+				end  
+		end 
+		RebuildView(v)
+	end Do
+	
+	proc DoSet(op: SetOp; mode: integer; v: StdView)
+	begin 
+		op.mode := mode
+		op.view := v
+		Views.Do(v, viewSettingKey, op)
+	end DoSet
+	
+	
+	// StdView
+	
+	proc (v: StdView) Internalize2(var rd: Stores.Reader)
+		var 
+			st: Stores.Store
+			r: TextRulers.Ruler
+			a: TextModels.Attributes
+			org, dy: integer
+			thisVersion: integer
+			hideMarks: boolean
+	begin 
+		v.Internalize2^(rd)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minVersion, maxStdVersion, thisVersion)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadBool(hideMarks)
+		rd.ReadStore(st)
+		assert(st # nil, 100)
+		if ~(st is TextRulers.Ruler) then
+			rd.TurnIntoAlien(Stores.alienComponent)
+			Stores.Report("#Text:AlienDefaultRuler", "", "", "")
+			return  
+		end 
+		r := st(TextRulers.Ruler)
+		TextModels.ReadAttr(rd, a)
+		rd.ReadInt(org)
+		rd.ReadInt(dy)
+		v.DisplayMarks(hideMarks)
+		v.setter := TextSetters.dir.New()
+		v.setter0 := nil
+		v.SetDefaults(r, a)
+		v.SetOrigin(org, dy)
+		v.trailer := nil
+		v.bot := 0
+	end Internalize2
+	
+	proc (v: StdView) Externalize2(var wr: Stores.Writer)
+		var 
+			org, dy: integer
+			hideMarks: boolean
+			a: Stores.Store
+	begin 
+		v.Externalize2^(wr)
+		if (v.context = nil) or v.context.Normalize() then
+			org := 0
+			dy := 0
+			hideMarks := true 
+		else 
+			org := v.org
+			dy := v.dy
+			hideMarks := v.hideMarks 
+		end 
+		wr.WriteVersion(maxStdVersion)
+		wr.WriteBool(hideMarks)
+		a := Stores.CopyOf(v.defAttr) // Stores.InitDomain(a, v.Domain());
+		Stores.Join(v, a)
+		// bkwd-comp hack: avoid link => so that pre release 1.3 Internalize can still read texts
+		wr.WriteStore(v.defRuler)
+		wr.WriteStore(a)
+		wr.WriteInt(org)
+		wr.WriteInt(dy)
+	end Externalize2
+	
+	proc (v: StdView) CopyFromModelView2(source: Views.View; model: Models.Model)
+		var 
+			s: TextSetters.Setter
+			r: TextRulers.Ruler
+	begin 
+		// v.CopyFromModelView^(source, model);
+		with source: StdView do 
+			s := Stores.CopyOf(source.setter)(TextSetters.Setter)
+			v.setter := s
+			v.setter0 := nil
+			r := TextRulers.CopyOf(source.defRuler, Views.deep)
+			v.DisplayMarks(source.HidesMarks())
+			v.SetDefaults(r, source.defAttr)
+			v.trailer := nil
+			v.bot := 0
+			if v.text = source.text then
+				v.org := source.org
+				v.dy := source.dy 
+			end  
+		end 
+	end CopyFromModelView2
+	
+	proc (v: StdView) Restore(f: Views.Frame; l, t, r, b: integer)
+		var 
+			st: TextSetters.Setter
+			u0, u: Line
+			y0, y, w, h: integer
+			end_: integer
+			pageF: boolean
+	begin 
+		assert(v.context # nil, 20)
+		if v.setter # nil then
+			v.context.GetSize(w, h) 
+		end 
+		if (v.setter = nil) or (v.setter.vw # w) then
+			Views.RemoveFrames(f, l, t, r, b) 
+		end 
+		ValidateLines(v, b)
+		u := v.trailer.next
+		y := v.dy
+		pageF := Views.IsPrinterFrame(f) & v.context.Normalize()
+		if pageF then // on page-formatted frames do not display truncated lines at bottom
+			st := v.ThisSetter()
+			end_ := st.NextPage(f.b - f.t, v.org) 
+		end 
+		while (u # v.trailer) & (y + u.h <= t) do 
+			inc(y, u.h)
+			u := u.next 
+		end 
+		y0 := y
+		u0 := u
+		if (u = v.trailer.next) & (y < b) then // at least one line per page
+			assert((u.box.len_ > 0) or u.box.eot or (u.next = v.trailer), 100)
+			DrawLine(v, u.start, u.box, f, l, r, y + u.asc, y + u.h - u.box.dsc - u.box.asc, pageF)
+			inc(y, u.h)
+			u := u.next 
+		end 
+		while (u # v.trailer) & (y < b) & (~pageF or (u.start < end_)) do 
+			assert((u.box.len_ > 0) or u.box.eot or (u.next = v.trailer), 101)
+			if u.box.ruler # u0.box.ruler then
+				DrawDecorations(v, u0, f, l, y0, r, y)
+				u0 := u
+				y0 := y 
+			end 
+			DrawLine(v, u.start, u.box, f, l, r, y + u.asc, y + u.h - u.box.dsc - u.box.asc, pageF)
+			inc(y, u.h)
+			u := u.next 
+		end 
+		if y0 # y then
+			DrawDecorations(v, u0, f, l, y0, r, y) 
+		end 
+	end Restore
+	
+	proc (v: StdView) DisplayMarks(hide: boolean)
+		var 
+			op: SetOp
+			c: Containers.Controller
+	begin 
+		if v.hideMarks # hide then
+			c := v.ThisController()
+			if c # nil then
+				Containers.FadeMarks(c, Containers.hide) 
+			end 
+			if (v.context # nil) & ~v.context.Normalize() then
+				new(op)
+				op.hideMarks := hide
+				DoSet(op, setMarks, v) 
+			else 
+				v.hideMarks := hide
+				RebuildView(v) 
+			end  
+		end 
+	end DisplayMarks
+	
+	proc (v: StdView) HidesMarks(): boolean
+	begin 
+		return v.hideMarks
+	end HidesMarks
+	
+	proc (v: StdView) SetSetter(setter: TextSetters.Setter)
+		var 
+			op: SetOp
+	begin 
+		assert(setter # nil, 20)
+		if v.setter # setter then
+			if v.setter # nil then
+				new(op)
+				op.setter := setter
+				DoSet(op, setSetter, v) 
+			else 
+				v.setter := setter 
+			end  
+		end 
+	end SetSetter
+	
+	proc (v: StdView) ThisSetter(): TextSetters.Setter
+		var 
+			st: TextSetters.Setter
+			w, h: integer
+	begin 
+		st := v.setter
+		assert(st # nil, 20)
+		if st # v.setter0 then
+			if v.context # nil then
+				v.context.GetSize(w, h) 
+			else 
+				if Dialog.metricSystem then
+					w := 165 * mm 
+				else 
+					w := 104 * inch16 
+				end  
+			end 
+			st.ConnectTo(v.text, v.defRuler, w, v.hideMarks)
+			v.setter0 := st 
+		end 
+		return st
+	end ThisSetter
+	
+	proc (d: StdView) AcceptableModel(m: Containers.Model): boolean
+	begin 
+		return m is TextModels.Model
+	end AcceptableModel
+	
+	proc (v: StdView) InitModel2(m: Containers.Model)
+	begin 
+		assert(m is TextModels.Model, 23)
+		v.text := m(TextModels.Model)
+	end InitModel2
+	
+	proc (v: StdView) SetOrigin(org, dy: integer)
+		var 
+			st: TextSetters.Setter
+			start: integer
+	begin 
+		assert(v.text # nil, 20)
+		st := v.ThisSetter()
+		start := st.ThisLine(org)
+		if start # org then
+			org := start
+			dy := 0 
+		end 
+		DoSetOrigin(v, org, dy, false)
+	end SetOrigin
+	
+	proc (v: StdView) PollOrigin(var org, dy: integer)
+	begin 
+		org := v.org
+		dy := v.dy
+	end PollOrigin
+	
+	proc (v: StdView) SetDefaults(r: TextRulers.Ruler; a: TextModels.Attributes)
+		var 
+			op: SetOp
+	begin 
+		assert(r # nil, 20)
+		assert(r.style.attr.init, 21)
+		assert(a # nil, 22)
+		assert(a.init, 23)
+		if (v.defRuler # r) or (v.defAttr # a) then
+			(* (*IF (v.context # NIL) & (r # v.defRuler) THEN*)
+			   IF (v.Domain() # NIL) & (r # v.defRuler) THEN
+			   Stores.InitDomain(r, v.Domain())
+			   END; *)
+			
+			
+			if r # v.defRuler then
+				Stores.Join(v, r) 
+			end 
+			new(op)
+			op.defRuler := r
+			op.defAttr := a
+			DoSet(op, setDefs, v) 
+		end 
+	end SetDefaults
+	
+	proc (v: StdView) PollDefaults(var r: TextRulers.Ruler; var a: TextModels.Attributes)
+	begin 
+		r := v.defRuler
+		a := v.defAttr
+	end PollDefaults
+	
+	(* PROCEDURE (v: StdView) PropagateDomain;
+	   VAR m: Models.Model;
+	   BEGIN
+	   ASSERT(v.setter # NIL, 20); ASSERT(v.text # NIL, 21);
+	   ASSERT(v.defRuler # NIL, 22); ASSERT(v.defAttr # NIL, 23);
+	   v.PropagateDomain^;
+	   m := v.ThisModel();
+	   IF m # NIL THEN Stores.InitDomain(m, v.Domain()) END;
+	   Stores.InitDomain(v.defRuler, v.Domain())
+	   END PropagateDomain; *)
+	
+	
+	(* PROCEDURE (v: StdView) Flush, NEW;
+	   BEGIN
+	   v.trailer := NIL; v.bot := 0; v.setter0 := NIL
+	   END Flush; *)
+	
+	
+	proc (v: StdView) HandleModelMsg2(var msg: Models.Message)
+	begin 
+		if msg.model = v.text then
+			with msg: Models.UpdateMsg do 
+				with msg: TextModels.UpdateMsg do 
+					if msg.op in {TextModels.insert, TextModels.delete, TextModels.replace} then
+						UpdateView(v, msg.beg, msg.end_, msg.delta) 
+					else  // unknown text op happened
+						RebuildView(v) 
+					end  
+				else  // unknown text update happened
+					RebuildView(v) 
+				end  
+			| msg: PositionMsg do 
+				v.ShowRange(msg.beg, msg.end_, msg.focusOnly) 
+			else  
+			end  
+		else  // domaincast received
+			with msg: TextRulers.UpdateMsg do 
+				StyleUpdate(v, msg.oldAttr) 
+			| msg: Models.UpdateMsg do  // forced rebuild
+				RebuildView(v) 
+			else  
+			end  
+		end 
+	end HandleModelMsg2
+	
+	proc (v: StdView) HandleViewMsg2(f: Views.Frame; var msg: Views.Message)
+	begin 
+		if msg.view = v then
+			with msg: FindAnyFrameMsg do 
+				if (msg.frame = nil) or (msg.frame.b - msg.frame.t > f.b - f.t) then
+					msg.frame := f 
+				end  
+			else  
+			end  
+		else 
+			with msg: Views.UpdateCachesMsg do  // display view in new frame
+				if Views.Era(v) # Models.Era(v.text) then
+					// view/setter caches outdated - possible if v previous to this notification had no frame open
+					v.setter0 := nil
+					v.trailer := nil
+					v.bot := 0 
+				end  
+			else  
+			end  
+		end 
+	end HandleViewMsg2
+	
+	proc (v: StdView) HandleCtrlMsg2(f: Views.Frame
+		var msg: Controllers.Message; var focus: Views.View
+		)
+	begin 
+		with msg: Controllers.PollSectionMsg do 
+			if (focus = nil) or ~msg.focus then
+				PollSection(v, f, msg)
+				focus := nil 
+			end  
+		| msg: FindFocusFrameMsg do 
+			if (msg.view = v) & (msg.frame = nil) then
+				msg.frame := f 
+			end  
+		| msg: Controllers.ScrollMsg do 
+			if (focus = nil) or ~msg.focus then
+				Scroll(v, f, msg)
+				focus := nil 
+			end  
+		| msg: Controllers.PageMsg do 
+			Page(v, f.b - f.t, msg.op, msg.pageY, msg.done, msg.eoy)
+			focus := nil 
+		else  
+		end 
+	end HandleCtrlMsg2
+	
+	proc (v: StdView) HandlePropMsg2(var p: Properties.Message)
+		const 
+			minW = 5 * point
+			maxW = maxHeight
+			minH = 5 * point
+			maxH = maxHeight
+		var 
+			st: TextSetters.Setter
+	begin 
+		with p: Properties.SizePref do 
+			if p.w = Views.undefined then
+				p.w := v.defRuler.style.attr.right 
+			end 
+			if p.h = Views.undefined then
+				p.h := max(integer) 
+			end  
+		| p: Properties.BoundsPref do 
+			st := v.ThisSetter()
+			st.GetBox(0, v.text.Length(), maxW, maxH, p.w, p.h)
+			if p.w < minW then
+				p.w := minW 
+			end 
+			if p.h < minH then
+				p.h := minH 
+			end  
+		| p: Properties.ResizePref do 
+			p.fixed := false
+			p.horFitToPage := ~(TextRulers.rightFixed in v.defRuler.style.attr.opts)
+			p.verFitToWin := true 
+		| p: Properties.TypePref do 
+			if Services.Is(v, p.type_) then
+				p.view := v 
+			end  
+		| p: Containers.DropPref do 
+			p.okToDrop := true 
+		else  
+		end 
+	end HandlePropMsg2
+	
+	
+	proc (v: StdView) GetThisLocation(f: Views.Frame; pos: integer; var loc: Location)
+		// pre: f must be displayed
+		// if position lies outside view, the next best location inside will be taken
+		var 
+			rd: TextSetters.Reader
+			t: Line
+			p1, y, w, h: integer
+	begin 
+		ValidateLines(v, f.b)
+		y := v.dy
+		if pos < v.org then
+			t := v.trailer.next
+			loc.start := t.start
+			loc.pos := t.start
+			loc.x := 0
+			loc.y := y
+			loc.asc := t.asc
+			loc.dsc := t.h - t.asc
+			loc.view := nil
+			return  
+		elsif pos < v.trailer.start then 
+			t := v.trailer.next
+			while ~t.box.eot & ~((t.start <= pos) & (pos < t.next.start)) do 
+				inc(y, t.h)
+				t := t.next 
+			end  
+		else  // pos >= v.trailer.start
+			t := v.trailer.next
+			while ~t.box.eot do 
+				inc(y, t.h)
+				t := t.next 
+			end 
+			if t = v.trailer then
+				loc.start := t.start
+				loc.pos := t.start
+				loc.x := 0
+				loc.y := y
+				loc.asc := t.asc
+				loc.dsc := t.h - t.asc
+				loc.view := nil
+				return  
+			end  
+		end 
+		p1 := t.start
+		rd := GetReader(v, p1, t.box)
+		rd.Read
+		while rd.pos < pos do 
+			p1 := rd.pos
+			rd.AdjustWidth(t.start, p1, t.box, rd.w)
+			inc(rd.x, rd.w)
+			rd.Read 
+		end 
+		if len(rd.string) > 1 then // collated subsequence
+			rd.x := f.CharPos(rd.x, pos - p1, rd.string, rd.attr.font)
+			if rd.pos = pos then
+				rd.Read 
+			end  
+		elsif rd.pos = pos then 
+			rd.AdjustWidth(t.start, pos, t.box, rd.w)
+			inc(rd.x, rd.w)
+			rd.Read 
+		else 
+			assert(p1 = pos, 100) 
+		end 
+		loc.view := rd.view
+		loc.start := t.start
+		loc.pos := pos
+		loc.x := rd.x
+		loc.y := y
+		loc.asc := t.asc
+		loc.dsc := t.h - t.asc
+		if loc.view # nil then
+			v.context.GetSize(w, h)
+			if rd.x + rd.w > w then
+				rd.w := w - rd.x 
+			end 
+			loc.l := rd.x
+			loc.t := y - rd.attr.offset + t.asc + rd.dsc - rd.h
+			loc.r := loc.l + rd.w
+			loc.b := loc.t + rd.h 
+		end 
+		CacheReader(v, rd)
+	end GetThisLocation
+	
+	proc (v: StdView) GetRange(f: Views.Frame; var beg, end_: integer)
+		var 
+			t: Line
+	begin 
+		ValidateLines(v, f.b)
+		t := ThisViewLine(v, f.t)
+		beg := t.start
+		end_ := Limit(v, f.b, true)
+	end GetRange
+	
+	proc (v: StdView) ThisPos(f: Views.Frame; x, y: integer): integer
+		// pre: f must be displayed
+		// post: f.org <= result <= v.text.Length()
+		var 
+			rd: TextSetters.Reader
+			t: Line
+			p1, end_, py: integer
+	begin 
+		ValidateLines(v, f.b)
+		t := v.trailer.next
+		py := v.dy
+		while ~t.box.eot & (py + t.h <= y) do 
+			inc(py, t.h)
+			t := t.next 
+		end 
+		p1 := t.start
+		end_ := p1 + t.box.len_
+		if py + t.h > y then
+			if (end_ > p1) & (y >= v.dy) then
+				if t.box.eot then
+					inc(end_) 
+				end 
+				rd := GetReader(v, p1, t.box)
+				rd.Read
+				rd.AdjustWidth(t.start, rd.pos, t.box, rd.w)
+				while (rd.x + rd.SplitWidth(rd.w) < x) & (rd.pos < end_) do 
+					p1 := rd.pos
+					inc(rd.x, rd.w)
+					rd.Read
+					rd.AdjustWidth(t.start, rd.pos, t.box, rd.w) 
+				end 
+				if len(rd.string) > 1 then // collated subsequence
+					inc(p1, f.CharIndex(rd.x, x, rd.string, rd.attr.font)) 
+				end 
+				CacheReader(v, rd) 
+			end  
+		else 
+			p1 := end_ 
+		end 
+		return p1
+	end ThisPos
+	
+	proc (v: StdView) ShowRangeIn(f: Views.Frame; beg, end_: integer)
+		const 
+			minH = 12 * point
+		var 
+			c: Models.Context
+			st: TextSetters.Setter
+			t, t1: Line
+			org0, last, len_, org, dy, p, q: integer
+			y, h, mh: integer
+			box, box0: TextSetters.LineBox
+			loc, loc1: Location
+			focus: boolean
+	begin 
+		focus := f = Controllers.FocusFrame()
+		c := v.context
+		st := v.ThisSetter()
+		ValidateLines(v, f.b)
+		org0 := v.org
+		last := Limit(v, f.b, false)
+		len_ := v.text.Length()
+		if last = len_ then
+			p := st.ThisLine(last)
+			LocateThisLine(v, p, t1, y)
+			h := f.b - y 
+		end 
+		if (beg > last) 
+			or (beg = last) & ((last < len_) or (len_ > 0) & (h < t1.h) & (h < minH)) 
+			or (end_ < org0) 
+			or (beg < end_) & (end_ = org0) then
+			org := -1
+			dy := 0
+			if beg <= org0 then // try to adjust by scrolling up
+				p := st.PreviousLine(v.org)
+				if p <= beg then // reveal one line at top
+					org := p
+					st.GetLine(org, box)
+					h := box.asc + box.dsc + st.GridOffset(-1, box)
+					if h > maxScrollHeight + fuseScrollHeight then
+						dy := -(h - h mod maxScrollHeight)
+						if h + dy < fuseScrollHeight then
+							inc(dy, maxScrollHeight) 
+						end  
+					end  
+				end  
+			end 
+			if (org = -1) & (beg >= last) then // try to adjust by scrolling down
+				p := st.ThisLine(last)
+				q := st.NextLine(p)
+				st.GetLine(q, box)
+				if (beg < q + box.len_) or (p = q) then // reveal one line at bottom
+					LocateThisLine(v, p, t1, y)
+					h := box.asc + box.dsc + st.GridOffset(t1.box.dsc, box)
+					if h > maxScrollHeight + fuseScrollHeight then
+						h := maxScrollHeight 
+					end 
+					mh := y + t1.h - f.b + h
+					t := v.trailer.next
+					h := v.dy
+					while (t # v.trailer) & (h < mh) do 
+						inc(h, t.h)
+						t := t.next 
+					end 
+					if t.start > v.org then
+						org := t.start 
+					end  
+				end  
+			end 
+			if org = -1 then // adjust by moving into "nice" position
+				mh := f.b div 3
+				org := st.ThisLine(beg)
+				st.GetLine(org, box0)
+				h := box0.asc + box0.dsc + st.GridOffset(-1, box0)
+				p := org
+				while (p > 0) & (h < mh) do 
+					dec(h, st.GridOffset(-1, box0))
+					org := p
+					p := st.PreviousLine(org)
+					st.GetLine(p, box)
+					inc(h, box.asc + box.dsc + st.GridOffset(box.dsc, box0))
+					box0 := box 
+				end 
+				if (org = len_) & (len_ > 0) then
+					org := st.PreviousLine(org) 
+				end  
+			end 
+			DoSetOrigin(v, org, dy, false) 
+		end 
+		if focus then
+			f := Controllers.FocusFrame()
+			if (f # nil) & (f.view = v) then
+				
+				v.GetThisLocation(f, beg, loc)
+				v.GetThisLocation(f, end_, loc1)
+				if (loc.y = loc1.y) & (loc.x <= loc1.x) then
+					c.MakeVisible(loc.x, loc.y, loc1.x, loc1.y) 
+				end  
+			else 
+				halt(100)  // this should not happen
+			end  
+		end 
+	(* IF c IS Documents.Context THEN
+	   v.GetThisLocation(f, beg, loc);
+	   v.GetThisLocation(f, end, loc1);
+	   IF (loc.y = loc1.y) & (loc.x <= loc1.x) THEN
+	   Documents.MakeVisible(c(Documents.Context).ThisDoc(), f, loc.x, loc.y, loc1.x, loc1.y)
+	   END
+	   END *)
+	
+	
+	end ShowRangeIn
+	
+	proc (v: StdView) ShowRange(beg, end_: integer; focusOnly: boolean)
+		var 
+			fmsg: FindFocusFrameMsg
+			amsg: FindAnyFrameMsg
+			f: Views.Frame
+	begin 
+		if focusOnly then
+			fmsg.view := v
+			fmsg.frame := nil
+			Controllers.Forward(fmsg)
+			f := fmsg.frame 
+		else 
+			amsg.frame := nil
+			Views.Broadcast(v, amsg)
+			f := amsg.frame 
+		end 
+		if f # nil then
+			v.ShowRangeIn(f, beg, end_) 
+		end 
+	end ShowRange
+	
+	
+	// StdDirectory
+	
+	proc (d: StdDirectory) New(text: TextModels.Model): View
+		var 
+			v: StdView
+			c: Controllers.Controller
+			r: TextRulers.Ruler
+	begin 
+		r := TextRulers.dir.New(nil)
+		if text = nil then
+			text := TextModels.dir.New() 
+		end 
+		// IF text.Domain() # NIL THEN Stores.InitDomain(r, text.Domain()) END;
+		Stores.Join(text, r)
+		new(v)
+		v.hideMarks := false
+		v.bot := 0
+		v.org := 0
+		v.dy := 0
+		v.InitModel(text)
+		v.SetDefaults(r, d.defAttr)
+		v.SetSetter(TextSetters.dir.New())
+		v.DisplayMarks(hide)
+		if ctrlDir # nil then
+			v.SetController(ctrlDir.New()) 
+		end 
+		// Stores.InitDomain(v, text.Domain());
+		Stores.Join(v, text)
+		return v
+	end New
+	
+	
+	proc Init
+		var 
+			d: StdDirectory
+			a: TextModels.Attributes
+			res: integer
+	begin 
+		Dialog.Call("TextControllers.Install", "#Text:CntrlInstallFailed", res)
+		new(a) // use defaults
+		a.InitFromProp(nil)
+		new(d)
+		d.defAttr := a
+		stdDir := d
+		dir := d
+	end Init
+
+begin
+	Init
+end TextViews

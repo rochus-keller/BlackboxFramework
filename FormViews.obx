@@ -1,0 +1,539 @@
+module FormViews
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   purpose	= ""
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Dialog, Ports, Stores, Models, Views, Controllers, Properties, Containers, FormModels
+	
+	const 
+		// minimal border between form view and any embedded view:
+		minBorder* = 4 * Ports.point
+		maxBorder* = 100 * Ports.mm
+		maxSize = 600 * Ports.mm
+		// range of currently supported versions
+		minVersion = 0
+		maxBaseVersion = 2
+		maxStdVersion = 1
+	
+	type 
+		View* = pointer to (* abstract *) record (Containers.View) end 
+		
+		Directory* = pointer to (* abstract *) record end 
+		
+		
+		StdView = pointer to record (View) 
+				border: integer
+				grid: integer // grid > 0
+				gridFactor: integer // gridFactor > 0
+				background: Ports.Color
+				cache: FormModels.Reader  // reuse form reader
+			end 
+		
+		StdDirectory = pointer to record (Directory) end 
+		
+		
+		ViewOp = pointer to record (Stores.Operation) 
+				view: StdView // view # NIL
+				border: integer // border >= minBorder
+				grid: integer // grid > 0
+				gridFactor: integer // gridFactor > 0
+				background: Ports.Color 
+			end 
+	
+	
+	var 
+		dir-, stdDir-: Directory
+		ctrldir-: Containers.Directory
+	
+	
+	// View
+	
+	proc (v: View) Internalize2-(var rd: Stores.Reader) // extensible
+		var 
+			thisVersion: integer
+	begin 
+		if ~rd.cancelled then
+			rd.ReadVersion(minVersion, maxBaseVersion, thisVersion)
+			if ~rd.cancelled then
+				if thisVersion in {0, 1} then
+					with v: StdView do  // backward compatibility with Rel. 1.3
+						rd.ReadInt(v.border)
+						rd.ReadInt(v.grid)
+						rd.ReadXInt(v.gridFactor)
+						if thisVersion = 1 then
+							rd.ReadInt(v.background) 
+						else 
+							v.background := Ports.defaultColor 
+						end  
+					end  
+				end  
+			end  
+		end 
+	end Internalize2
+	
+	proc (v: View) Externalize2-(var wr: Stores.Writer) // extensible
+	begin 
+		wr.WriteVersion(maxBaseVersion)
+	end Externalize2
+	
+	proc (v: View) ThisModel*(): FormModels.Model // extensible
+		var 
+			m: Containers.Model
+	begin 
+		m := v.ThisModel^()
+		if m = nil then
+			return nil 
+		else 
+			return m(FormModels.Model) 
+		end 
+	end ThisModel
+	
+	proc (v: View) SetBorder*(border: integer) end // new abstract
+	// border >= 0	20
+	
+	proc (v: View) Border*(): integer end // new abstract
+	
+	proc (v: View) SetGrid*(grid, gridFactor: integer) end // new abstract
+	(* grid > 0	20
+	   gridFactor > 0	21 *)
+	
+	
+	
+	proc (v: View) Grid*(): integer end // new abstract
+	
+	proc (v: View) GridFactor*(): integer end // new abstract
+	
+	proc (v: View) SetBackground*(background: Ports.Color) end // new abstract
+	
+	
+	// Directory
+	
+	proc (d: Directory) New*(f: FormModels.Model): View end // new abstract
+	(* f # NIL	20
+	   f.init	21 *)
+	
+	
+	
+	
+	// ViewOp
+	
+	proc (op: ViewOp) Do
+		var 
+			border, grid, gridFactor: integer
+			background: Ports.Color
+	begin 
+		// save old state of view
+		border := op.view.border
+		grid := op.view.grid
+		gridFactor := op.view.gridFactor
+		background := op.view.background
+		// set new state of view
+		op.view.border := op.border
+		op.view.grid := op.grid
+		op.view.gridFactor := op.gridFactor
+		op.view.background := op.background
+		Views.Update(op.view, Views.keepFrames)
+		// old state is new undo state
+		op.border := border
+		op.grid := grid
+		op.gridFactor := gridFactor
+		op.background := background
+	end Do
+	
+	
+	// StdView
+	
+	proc (v: StdView) Internalize2(var rd: Stores.Reader)
+		var 
+			thisVersion: integer
+	begin 
+		v.Internalize2^(rd)
+		if ~rd.cancelled then
+			rd.ReadVersion(minVersion, maxStdVersion, thisVersion)
+			if thisVersion # 0 then
+				rd.ReadInt(v.border)
+				rd.ReadInt(v.grid)
+				rd.ReadInt(v.gridFactor)
+				rd.ReadInt(v.background) 
+			end  
+		end 
+	end Internalize2
+	
+	proc (v: StdView) Externalize2(var wr: Stores.Writer)
+	begin 
+		v.Externalize2^(wr)
+		wr.WriteVersion(maxStdVersion)
+		wr.WriteInt(v.border)
+		wr.WriteInt(v.grid)
+		wr.WriteInt(v.gridFactor)
+		wr.WriteInt(v.background)
+	end Externalize2
+	
+	proc (v: StdView) CopyFromModelView2(source: Views.View; model: Models.Model)
+	begin 
+		with source: StdView do 
+			v.border := source.border
+			v.grid := source.grid
+			v.gridFactor := source.gridFactor
+			v.background := source.background 
+		end 
+	end CopyFromModelView2
+	
+	proc (d: StdView) AcceptableModel(m: Containers.Model): boolean
+	begin 
+		return m is FormModels.Model
+	end AcceptableModel
+	
+	proc (v: StdView) InitModel2(m: Containers.Model)
+	begin 
+		assert(m is FormModels.Model, 23)
+	end InitModel2
+	
+	proc (v: StdView) GetRect(f: Views.Frame; view: Views.View; var l, t, r, b: integer)
+	begin 
+		view.context(FormModels.Context).GetRect(l, t, r, b)
+	end GetRect
+	
+	proc (v: StdView) SetBorder(border: integer)
+		var 
+			op: ViewOp
+	begin 
+		assert(border >= 0, 20)
+		if border < minBorder then
+			border := minBorder 
+		elsif border > maxBorder then 
+			border := maxBorder 
+		end 
+		new(op)
+		op.view := v
+		op.border := border
+		op.grid := v.grid
+		op.gridFactor := v.gridFactor
+		op.background := v.background
+		Views.Do(v, "#Form:BorderChange", op)
+	end SetBorder
+	
+	proc (v: StdView) Border(): integer
+	begin 
+		return v.border
+	end Border
+	
+	proc (v: StdView) SetGrid(grid, gridFactor: integer)
+		var 
+			op: ViewOp
+	begin 
+		assert(grid > 0, 20)
+		assert(gridFactor > 0, 21)
+		new(op)
+		op.view := v
+		op.border := v.border
+		op.grid := grid
+		op.gridFactor := gridFactor
+		op.background := v.background
+		Views.Do(v, "#Form:GridChange", op)
+	end SetGrid
+	
+	proc (v: StdView) Grid(): integer
+	begin 
+		return v.grid
+	end Grid
+	
+	proc (v: StdView) GridFactor(): integer
+	begin 
+		return v.gridFactor
+	end GridFactor
+	
+	proc (v: StdView) SetBackground(background: Ports.Color)
+		var 
+			op: ViewOp
+	begin 
+		new(op)
+		op.view := v
+		op.border := v.border
+		op.grid := v.grid
+		op.gridFactor := v.gridFactor
+		op.background := background
+		Views.Do(v, "#Form:BackgroundChange", op)
+	end SetBackground
+	
+	proc (v: StdView) GetBackground(var color: Ports.Color)
+	begin 
+		if v.background = Ports.defaultColor then
+			color := Ports.dialogBackground 
+		else 
+			color := v.background 
+		end 
+	end GetBackground
+	
+	proc (v: StdView) Restore(f: Views.Frame; l, t, r, b: integer)
+		var 
+			form: FormModels.Model
+			ctrl: Containers.Controller
+			focus, q: Views.View
+			k, w, h, x, y: integer
+			s: FormModels.Reader
+	begin 
+		form := v.ThisModel()
+		if form # nil then
+			ctrl := v.ThisController()
+			if ctrl # nil then
+				focus := ctrl.ThisFocus() 
+			else 
+				focus := nil 
+			end 
+			s := form.NewReader(v.cache)
+			v.cache := s
+			s.Set(nil)
+			s.ReadView(q)
+			k := 0
+			while q # nil do 
+				if (s.r >= l) & (s.b >= t) & (s.l < r) & (s.t < b) then
+					Views.InstallFrame(f, q, s.l, s.t, k, q = focus) 
+				end 
+				s.ReadView(q)
+				inc(k) 
+			end  
+		else 
+			f.DrawRect(l, t, r, b, Ports.fill, Ports.grey12) 
+		end 
+		if (ctrl # nil) & ~(Containers.noCaret in ctrl.opts) then
+			k := v.grid * v.gridFactor
+			assert(k > 0, 100)
+			v.context.GetSize(w, h)
+			if w > maxSize then
+				w := maxSize 
+			end 
+			if h > maxSize then
+				h := maxSize 
+			end 
+			x := l - l mod k
+			while x <= w do 
+				f.MarkRect(x, 0, x + f.unit, h, Ports.fill, Ports.dim50, Ports.show)
+				inc(x, k) 
+			end 
+			y := t - t mod k
+			while y <= h do 
+				f.MarkRect(0, y, w, y + f.unit, Ports.fill, Ports.dim50, Ports.show)
+				inc(y, k) 
+			end  
+		end 
+	end Restore
+	
+	proc (v: StdView) HandleModelMsg2(var msg: Models.Message)
+	begin 
+		with msg: Models.UpdateMsg do 
+			with msg: FormModels.UpdateMsg do 
+				Views.UpdateIn(v, msg.l, msg.t, msg.r, msg.b, Views.rebuildFrames) 
+			else 
+				Views.Update(v, Views.rebuildFrames)  // catch all update messages
+			end  
+		else  
+		end 
+	end HandleModelMsg2
+	
+	proc GetBounds(v: StdView; var w, h: integer)
+		var 
+			form: FormModels.Model
+			r, b: integer
+			p: FormModels.Reader
+			q: Views.View
+	begin 
+		form := v.ThisModel()
+		if form # nil then
+			p := form.NewReader(v.cache)
+			v.cache := p
+			p.Set(nil) // set reader to bottom of view list
+			p.ReadView(q) // read bottom-most view
+			if q # nil then
+				r := 0
+				b := 0
+				while q # nil do 
+					if p.r > r then
+						r := p.r 
+					end 
+					if p.b > b then
+						b := p.b 
+					end 
+					p.ReadView(q) 
+				end 
+				w := r + v.border
+				h := b + v.border 
+			else 
+				w := 0
+				h := 0 
+			end  
+		else 
+			w := 0
+			h := 0 
+		end 
+	end GetBounds
+	
+	proc AssertRange(border: integer; var w, h: integer)
+		var 
+			min_: integer
+	begin  // prevent illegal values
+		min_ := 2 * border + FormModels.minViewSize
+		if w = Views.undefined then
+			w := 100 * Ports.mm 
+		elsif w < min_ then 
+			w := min_ 
+		elsif w > maxSize then 
+			w := maxSize 
+		end 
+		if h = Views.undefined then
+			h := 70 * Ports.mm 
+		elsif h < min_ then 
+			h := min_ 
+		elsif h > maxSize then 
+			h := maxSize 
+		end 
+	end AssertRange
+	
+	proc (v: StdView) HandlePropMsg2(var p: Properties.Message)
+		var 
+			sp: Properties.StdProp
+			q: Properties.Property
+	begin 
+		with p: Properties.BoundsPref do 
+			GetBounds(v, p.w, p.h) 
+		| p: Properties.SizePref do 
+			AssertRange(v.border, p.w, p.h) 
+		| p: Properties.PollMsg do 
+			new(sp)
+			sp.valid := {Properties.color}
+			sp.known := sp.valid
+			sp.color.val_ := v.background
+			p.prop := sp 
+		| p: Properties.SetMsg do 
+			q := p.prop
+			while q # nil do 
+				with q: Properties.StdProp do 
+					if (Properties.color in q.valid) & (q.color.val_ # v.background) then
+						v.SetBackground(q.color.val_) 
+					end  
+				else  
+				end 
+				q := q.next 
+			end  
+		| p: Containers.DropPref do 
+			p.okToDrop := true 
+		else  
+		end 
+	end HandlePropMsg2
+	
+	
+	// StdDirectory
+	
+	proc (d: StdDirectory) New(f: FormModels.Model): View
+		var 
+			v: StdView
+			grid, gridFactor: integer
+	begin 
+		assert(f # nil, 20)
+		new(v)
+		v.InitModel(f)
+		if ctrldir # nil then
+			v.SetController(ctrldir.New()) 
+		end 
+		v.SetBorder(minBorder)
+		if Dialog.metricSystem then
+			grid := 2 * Ports.mm // place at 2 mm resolution
+			gridFactor := 5 
+		else 
+			grid := Ports.inch div 16 // place at 1/16 inch resolution
+			gridFactor := 8 
+		end 
+		v.SetGrid(grid, gridFactor)
+		v.background := Ports.defaultColor
+		return v
+	end New
+	
+	
+	// miscellaneous
+	
+	proc Focus*(): View
+		var 
+			v: Views.View
+	begin 
+		v := Controllers.FocusView()
+		if (v # nil) & (v is View) then
+			return v(View) 
+		else 
+			return nil 
+		end 
+	end Focus
+	
+	proc FocusModel*(): FormModels.Model
+		var 
+			v: View
+	begin 
+		v := Focus()
+		if v # nil then
+			return v.ThisModel() 
+		else 
+			return nil 
+		end 
+	end FocusModel
+	
+	proc RoundToGrid*(v: View; var x, y: integer)
+		var 
+			grid: integer
+	begin 
+		grid := v.Grid()
+		x := x + grid div 2
+		y := y + grid div 2
+		x := x - x mod grid
+		y := y - y mod grid
+	end RoundToGrid
+	
+	proc New*(): View
+	begin 
+		return dir.New(FormModels.dir.New())
+	end New
+	
+	proc Deposit*
+	begin 
+		Views.Deposit(New())
+	end Deposit
+	
+	proc SetDir*(d: Directory)
+	begin 
+		assert(d # nil, 20)
+		dir := d
+	end SetDir
+	
+	proc SetCtrlDir*(d: Containers.Directory)
+	begin 
+		assert(d # nil, 20)
+		ctrldir := d
+	end SetCtrlDir
+	
+	proc Init
+		var 
+			d: StdDirectory
+			res: integer
+	begin 
+		Dialog.Call("FormControllers.Install", "#Form:CntrlInstallFailed", res)
+		new(d)
+		dir := d
+		stdDir := d
+	end Init
+
+begin
+	Init
+end FormViews

@@ -1,0 +1,156 @@
+module CommObxStreamsClient
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Services, CommStreams, TextModels, TextControllers, StdLog
+	
+	const 
+		protocol = "CommTCP" // driver for TCP/IP communication, over Winsock
+		remoteAdr = "127.0.0.1:900" (* loopback address, so you can test on your local machine;
+		   choose a port number that is not used yet (here: 900).
+		   You could also specify an IP address in the form
+		   "mymachine.mydomain.com:900" *)
+		
+		
+		
+		localAdr = "" // don't specify an address or port on the client side
+	
+	type 
+		Sender = pointer to record (Services.Action) 
+				prev, succ: Sender // linked to allow stopping upon module unloading
+				stream: CommStreams.Stream // during sending, the communicates through this object
+				idx, len_: integer // index for start of data into the buf array, and length remaining to be sent
+				buf: array 256 of byte  // data to be sent
+			end 
+	
+	var 
+		senders: Sender
+	
+	proc (s: Sender) Do
+		var 
+			written: integer
+	begin 
+		if s.stream.IsConnected() then
+			s.stream.WriteBytes(s.buf, s.idx, s.len_, written) // poll for outgoing data
+			inc(s.idx, written)
+			dec(s.len_, written)
+			if s.len_ > 0 then // keep action alive if there remains further data to send
+				Services.DoLater(s, Services.now) 
+			else 
+				s.stream.Close
+				if s.prev # nil then
+					s.prev.succ := s.succ 
+				else 
+					senders := s.succ 
+				end 
+				if s.succ # nil then
+					s.succ.prev := s.prev 
+				end  
+			end  
+		else  // connection was closed by server
+			if s.prev # nil then
+				s.prev.succ := s.succ 
+			else 
+				senders := s.succ 
+			end 
+			if s.succ # nil then
+				s.succ.prev := s.prev 
+			end 
+			if s.idx = 0 then
+				StdLog.String("client: connection was not accepted by server") 
+			else 
+				StdLog.String("client: connection was closed by server") 
+			end 
+			StdLog.Ln 
+		end 
+	end Do
+	
+	
+	proc Start(s: Sender)
+		var 
+			stream: CommStreams.Stream
+			res: integer
+	begin 
+		CommStreams.NewStream(protocol, localAdr, remoteAdr, stream, res)
+		if stream # nil then
+			s.prev := nil
+			s.succ := senders
+			senders := s
+			if s.succ # nil then
+				s.succ.prev := s 
+			end 
+			s.stream := stream
+			Services.DoLater(s, Services.now)
+			StdLog.String("client: connection opened")
+			StdLog.Ln 
+		else 
+			StdLog.String("client: error opening the connection (")
+			StdLog.Int(res)
+			StdLog.Char(")")
+			StdLog.Ln 
+		end 
+	end Start
+	
+	proc Stop
+	begin 
+		while senders # nil do 
+			senders.stream.Close
+			Services.RemoveAction(senders)
+			senders := senders.succ 
+		end 
+	end Stop
+	
+	proc SendTextSelection*
+		var 
+			c: TextControllers.Controller
+			beg, end_, i, len_: integer
+			rd: TextModels.Reader
+			ch: char
+			s: Sender
+	begin 
+		c := TextControllers.Focus()
+		if (c # nil) & c.HasSelection() then
+			new(s)
+			c.GetSelection(beg, end_)
+			rd := c.text.NewReader(nil)
+			rd.SetPos(beg)
+			i := 0
+			len_ := end_ - beg
+			if len_ >= len(s.buf) - 1 then // clip string if necessary
+				len_ := len(s.buf) - 1 
+			end 
+			while len_ # 0 do 
+				rd.ReadChar(ch)
+				if ch < 100x then // skip Unicode characters
+					s.buf[i] := short(short(ord(ch)))
+					inc(i) 
+				end 
+				dec(len_) 
+			end 
+			s.idx := 0
+			s.len_ := i
+			Start(s) 
+		else 
+			StdLog.String("client: no text selection found")
+			StdLog.Ln 
+		end 
+	end SendTextSelection
+
+(* CLOSE
+	Stop *)  // prevent the client from trapping after module unloading
+end CommObxStreamsClient

@@ -1,0 +1,1170 @@
+module Windows
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20150329, center #34, fixing the reuse of open documents
+	   - 20150703, center #65, notRecorded-operation overwrites Redo-tail in StdSequencer
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		Kernel, Ports, Files, Services, 
+		Stores, Sequencers, Models, Views, Controllers, Properties, 
+		Dialog, Converters, Containers, Documents
+	
+	const 
+		// Window.flags
+		isTool* = 0
+		isAux* = 1
+		noHScroll* = 2
+		noVScroll* = 3
+		noResize* = 4
+		allowDuplicates* = 5
+		neverDirty* = 6
+		
+		// Directory.Select lazy
+		eager* = false
+		lazy* = true
+		
+		notRecorded = 3
+	
+	type 
+		Window* = pointer to (* abstract *) record 
+				port-: Ports.Port
+				frame-: Views.RootFrame
+				doc-: Documents.Document
+				seq-: Sequencers.Sequencer
+				link-: Window // ring of windows with same sequencer
+				sub-: boolean
+				flags-: set
+				loc-: Files.Locator
+				name-: Files.Name
+				conv-: Converters.Converter 
+			end 
+		
+		Directory* = pointer to (* abstract *) record 
+				l*, t*, r*, b*: integer
+				minimized*, maximized*: boolean 
+			end 
+		
+		
+		OpElem = pointer to record 
+				next: OpElem
+				st: Stores.Store
+				op: Stores.Operation
+				name: Stores.OpName
+				invisible, transparent: boolean 
+			end 
+		
+		Script = pointer to record (Stores.Operation) 
+				up: Script
+				list: OpElem
+				level: integer // nestLevel at creation time
+				name: Stores.OpName 
+			end 
+		
+		StdSequencer = pointer to record (Sequencers.Sequencer) 
+				home: Window
+				trapEra: integer // last observed TrapCount value
+				modLevel: integer // dirty if modLevel > 0
+				entryLevel: integer // active = (entryLevel > 0)
+				nestLevel: integer // nesting level of BeginScript/Modification
+				modStack: array 64 of record store: Stores.Store; type_: integer end 
+				lastSt: Stores.Store
+				lastOp: Stores.Operation
+				script: Script
+				undo, redo: OpElem // undo/redo stacks
+				noUndo: boolean // script # NIL and BeginModification called
+				invisibleLevel, transparentLevel, notRecordedLevel: integer 
+			end 
+		
+		SequencerDirectory = pointer to record (Sequencers.Directory) end 
+		
+		Forwarder = pointer to record (Controllers.Forwarder) end 
+		
+		RootContext = pointer to record (Models.Context) 
+				win: Window 
+			end 
+		
+		Reducer = pointer to record (Kernel.Reducer) end 
+		
+		Hook = pointer to record (Views.MsgHook) end 
+		
+		CheckAction = pointer to record (Services.Action) 
+				wait: WaitAction 
+			end 
+		
+		WaitAction = pointer to record (Services.Action) 
+				check: CheckAction 
+			end 
+		
+		LangNotifier = pointer to record (Dialog.LangNotifier) end 
+	
+	var 
+		dir-, stdDir-: Directory
+	
+	
+	proc CharError
+	begin 
+		Dialog.Beep
+	end CharError
+	
+	
+	
+	// Window
+	
+	proc (w: Window) Init*(port: Ports.Port) // new
+	begin 
+		assert(w.port = nil, 20)
+		assert(port # nil, 21)
+		w.port := port
+	end Init
+	
+	proc (w: Window) SetTitle*(title: Views.Title) end // new abstract
+	proc (w: Window) GetTitle*(var title: Views.Title) end // new abstract
+	proc (w: Window) RefreshTitle*() end // new abstract
+	
+	proc (w: Window) SetSpec*(loc: Files.Locator; name: Files.Name; conv: Converters.Converter) // new extensible
+		var 
+			u: Window
+	begin 
+		u := w
+		repeat 
+			u := u.link
+			u.loc := loc
+			u.name := name
+			u.conv := conv 
+		until u = w 
+	end SetSpec
+	
+	proc (w: Window) Restore*(l, t, r, b: integer) // new
+		var 
+			f: Views.Frame
+			u, pw, ph: integer
+	begin 
+		f := w.frame
+		if f # nil then
+			w.port.GetSize(pw, ph)
+			u := w.port.unit
+			if r > pw then
+				r := pw 
+			end 
+			if b > ph then
+				b := ph 
+			end 
+			l := l * u - f.gx
+			t := t * u - f.gy
+			r := r * u - f.gx
+			b := b * u - f.gy
+			// only adds to the BlackBox region, but doesn't draw:
+			Views.UpdateRoot(w.frame, l, t, r, b, Views.keepFrames) 
+		end 
+	end Restore
+	
+	proc (w: Window) Update* // new
+	begin 
+		assert(w.frame # nil, 20)
+		// redraws the whole accumulated BlackBox region:
+		Views.ValidateRoot(w.frame)
+	end Update
+	
+	proc (w: Window) GetSize*(var width, height: integer) // new extensible
+	begin 
+		w.port.GetSize(width, height)
+	end GetSize
+	
+	proc (w: Window) SetSize*(width, height: integer) // new extensible
+		var 
+			c: Containers.Controller
+			w0, h0: integer
+	begin 
+		w.port.GetSize(w0, h0)
+		w.port.SetSize(width, height)
+		if w.frame # nil then
+			Views.AdaptRoot(w.frame) 
+		end 
+		c := w.doc.ThisController()
+		if c.opts * {Documents.winWidth, Documents.winHeight} # {} then
+			w.Restore(0, 0, width, height) 
+		end 
+	end SetSize
+	
+	proc (w: Window) BroadcastModelMsg*(var msg: Models.Message) // new extensible
+	begin 
+		if w.frame # nil then
+			Views.BroadcastModelMsg(w.frame, msg) 
+		end 
+	end BroadcastModelMsg
+	
+	proc (w: Window) BroadcastViewMsg*(var msg: Views.Message) // new extensible
+	begin 
+		if w.frame # nil then
+			Views.BroadcastViewMsg(w.frame, msg) 
+		end 
+	end BroadcastViewMsg
+	
+	proc (w: Window) ForwardCtrlMsg*(var msg: Controllers.Message) // new extensible
+	begin 
+		if w.frame # nil then
+			with msg: Controllers.CursorMessage do 
+				dec(msg.x, w.frame.gx)
+				dec(msg.y, w.frame.gy) 
+			else  
+			end 
+			Views.ForwardCtrlMsg(w.frame, msg) 
+		end 
+	end ForwardCtrlMsg
+	
+	proc (w: Window) MouseDown*(x, y, time: integer; modifiers: set) end // new abstract
+	
+	proc (w: Window) KeyDown*(ch: char; modifiers: set) // new extensible
+		var 
+			key: Controllers.EditMsg
+	begin 
+		if ch = 0x then
+			CharError 
+		else 
+			key.op := Controllers.pasteChar
+			key.char_ := ch
+			key.modifiers := modifiers
+			w.ForwardCtrlMsg(key) 
+		end 
+	end KeyDown
+	
+	proc (w: Window) Close* // new extensible
+		var 
+			u: Window
+			f: Views.Frame
+			s: Sequencers.Sequencer
+			msg: Sequencers.RemoveMsg
+	begin 
+		u := w.link
+		while u.link # w do 
+			u := u.link 
+		end 
+		u.link := w.link
+		f := w.frame
+		s := w.seq
+		if ~w.sub then
+			s.Notify(msg) 
+		end 
+		with s: StdSequencer do 
+			if s.home = w then
+				s.home := nil 
+			end  
+		else  
+		end 
+		w.port.SetSize(0, 0)
+		Views.AdaptRoot(w.frame)
+		w.port := nil
+		w.frame := nil
+		w.doc := nil
+		w.seq := nil
+		w.link := nil
+		w.loc := nil
+		f.Close
+	end Close
+	
+	
+	// Directory
+	
+	proc (d: Directory) NewSequencer*(): Sequencers.Sequencer // new
+		var 
+			s: StdSequencer
+	begin 
+		new(s)
+		Reset(s)
+		return s
+	end NewSequencer
+	
+	
+	proc (d: Directory) First*(): Window end // new abstract
+	proc (d: Directory) Next*(w: Window): Window end // new abstract
+	
+	proc (d: Directory) New*(): Window end // new abstract
+	
+	proc (d: Directory) Open*(w: Window; doc: Documents.Document
+		flags: set; name: Views.Title
+		loc: Files.Locator; fname: Files.Name
+		conv: Converters.Converter) // new extensible
+		
+		var 
+			v: Views.View
+			c: RootContext
+			s: Sequencers.Sequencer
+			f: Views.Frame
+			any: ANYPTR
+	begin 
+		assert(w # nil, 20)
+		assert(doc # nil, 21)
+		assert(doc.context = nil, 22)
+		v := doc.ThisView()
+		assert(v # nil, 23)
+		assert(w.doc = nil, 24)
+		assert(w.port # nil, 25)
+		if w.link = nil then // create new window ring
+			w.link := w 
+		end 
+		w.doc := doc
+		w.flags := flags
+		if w.seq = nil then
+			assert(doc.Domain() # nil, 27)
+			any := doc.Domain().GetSequencer()
+			if any # nil then
+				assert(any is Sequencers.Sequencer, 26)
+				w.seq := any(Sequencers.Sequencer) 
+			else 
+				w.seq := d.NewSequencer()
+				doc.Domain().SetSequencer(w.seq) 
+			end  
+		end 
+		s := w.seq
+		with s: StdSequencer do 
+			if s.home = nil then
+				s.home := w 
+			end  
+		else  
+		end 
+		new(c)
+		c.win := w
+		doc.InitContext(c)
+		doc.GetNewFrame(f)
+		w.frame := f(Views.RootFrame)
+		w.frame.ConnectTo(w.port)
+		Views.SetRoot(w.frame, w.doc, false, w.flags)
+		w.SetSpec(loc, fname, conv)
+	end Open
+	
+	proc (d: Directory) OpenSubWindow*(w: Window; doc: Documents.Document; flags: set; name: Views.Title) // new extensible
+		var 
+			u: Window
+			title: Views.Title
+	begin 
+		assert(w # nil, 20)
+		assert(doc # nil, 21)
+		u := d.First()
+		while (u # nil) & (u.seq # doc.Domain().GetSequencer()) do 
+			u := d.Next(u) 
+		end 
+		if u # nil then
+			w.sub := true
+			w.link := u.link
+			u.link := w
+			w.seq := u.seq
+			w.loc := u.loc
+			w.name := u.name
+			w.conv := u.conv
+			u.GetTitle(title)
+			d.Open(w, doc, flags, title, u.loc, u.name, u.conv) 
+		else 
+			d.Open(w, doc, flags, name, nil, "", nil) 
+		end 
+	end OpenSubWindow
+	
+	proc (d: Directory) Focus*(target: boolean): Window end // new abstract
+	proc (d: Directory) GetThisWindow*(p: Ports.Port; px, py: integer; var x, y: integer; var w: Window) end // new abstract
+	proc (d: Directory) Select*(w: Window; lazy: boolean) end // new abstract
+	proc (d: Directory) Close*(w: Window) end // new abstract
+	
+	proc (d: Directory) Update*(w: Window) // new
+		var 
+			u: Window
+	begin 
+		// redraws the BlackBox region of a given window, or of all windows
+		u := d.First()
+		while u # nil do 
+			assert(u.frame # nil, 101)
+			if (u = w) or (w = nil) then
+				RestoreSequencer(u.seq) 
+			end 
+			u := d.Next(u) 
+		end 
+	end Update
+	
+	proc (d: Directory) GetBounds*(var w, h: integer) end // new abstract
+	
+	
+	// RootContext
+	
+	proc (c: RootContext) GetSize(var w, h: integer)
+	begin 
+		c.win.port.GetSize(w, h)
+		w := w * c.win.port.unit
+		h := h * c.win.port.unit
+	end GetSize
+	
+	proc (c: RootContext) SetSize(w, h: integer)
+	end SetSize
+	
+	proc (c: RootContext) Normalize(): boolean
+	begin 
+		return true
+	end Normalize
+	
+	proc (c: RootContext) ThisModel(): Models.Model
+	begin 
+		return nil
+	end ThisModel
+	
+	
+	// sequencing utilities
+	
+	proc Prepend(s: Script; st: Stores.Store; in name: Stores.OpName; op: Stores.Operation)
+		var 
+			e: OpElem
+	begin 
+		assert(op # nil, 20)
+		new(e)
+		e.st := st
+		e.op := op
+		e.name := name
+		e.next := s.list
+		s.list := e
+	end Prepend
+	
+	proc Push(var list, e: OpElem)
+	begin 
+		e.next := list
+		list := e
+	end Push
+	
+	proc Pop(var list, e: OpElem)
+	begin 
+		e := list
+		list := list.next
+	end Pop
+	
+	proc Reduce(var list: OpElem; max_: integer)
+		var 
+			e: OpElem
+	begin 
+		e := list
+		while (max_ > 1) & (e # nil) do 
+			dec(max_)
+			e := e.next 
+		end 
+		if e # nil then
+			e.next := nil 
+		end 
+	end Reduce
+	
+	proc (r: Reducer) Reduce(full: boolean)
+		var 
+			e: OpElem
+			n: integer
+			w: Window
+	begin 
+		if dir # nil then
+			w := dir.First()
+			while w # nil do 
+				if w.seq is StdSequencer then
+					if full then
+						n := 1 
+					else 
+						n := 0
+						e := w.seq(StdSequencer).undo
+						while e # nil do 
+							inc(n)
+							e := e.next 
+						end 
+						if n > 20 then
+							n := n div 2 
+						else 
+							n := 10 
+						end  
+					end 
+					Reduce(w.seq(StdSequencer).undo, n) 
+				end 
+				w := dir.Next(w) 
+			end  
+		end 
+		Kernel.InstallReducer(r)
+	end Reduce
+	
+	proc Reset(s: StdSequencer)
+	begin 
+		s.trapEra := Kernel.trapCount
+		if (s.entryLevel # 0) or (s.nestLevel # 0) then
+			s.modLevel := 0
+			s.entryLevel := 0
+			s.nestLevel := 0
+			s.lastSt := nil
+			s.lastOp := nil
+			s.script := nil
+			s.noUndo := false
+			s.undo := nil
+			s.redo := nil
+			s.invisibleLevel := 0
+			s.transparentLevel := 0
+			s.notRecordedLevel := 0 
+		end 
+	end Reset
+	
+	proc Neutralize(st: Stores.Store)
+		var 
+			neutralize: Models.NeutralizeMsg
+	begin 
+		if st # nil then // st = NIL for scripts
+			with st: Models.Model do 
+				Models.Broadcast(st, neutralize) 
+			| st: Views.View do 
+				st.Neutralize 
+			else  
+			end  
+		end 
+	end Neutralize
+	
+	proc Do(s: StdSequencer; st: Stores.Store; op: Stores.Operation)
+	begin 
+		inc(s.entryLevel)
+		s.lastSt := nil
+		s.lastOp := nil
+		Neutralize(st)
+		op.Do
+		dec(s.entryLevel)
+	end Do
+	
+	proc AffectsDoc(s: StdSequencer; st: Stores.Store): boolean
+		var 
+			v, w: Window
+	begin 
+		w := s.home
+		if (w = nil) or (st = w.doc) or (st = w.doc.ThisView()) then
+			return true 
+		else 
+			v := w.link
+			while (v # w) & (st # v.doc) & (st # v.doc.ThisView()) do 
+				v := v.link 
+			end 
+			return v = w 
+		end 
+	end AffectsDoc
+	
+	
+	// Script
+	
+	proc (s: Script) Do
+		var 
+			e, f, g: OpElem
+	begin 
+		e := s.list
+		f := nil
+		repeat 
+			Neutralize(e.st)
+			e.op.Do
+			g := e.next
+			e.next := f
+			f := e
+			e := g 
+		until e = nil 
+		s.list := f
+	end Do
+	
+	
+	// StdSequencer
+	
+	proc (s: StdSequencer) Handle(var msg: ANYREC)
+		// send message to all windows attached to s
+		var 
+			w: Window
+	begin 
+		if s.trapEra # Kernel.trapCount then
+			Reset(s) 
+		end 
+		with msg: Models.Message do 
+			if msg is Models.UpdateMsg then
+				Properties.IncEra
+				if s.entryLevel = 0 then
+					// updates in dominated model bypassed the sequencer
+					Reset(s) // panic reset: clear sequencer
+					inc(s.modLevel)  // but leave dirty
+				end  
+			end 
+			w := dir.First()
+			while w # nil do 
+				if w.seq = s then
+					w.BroadcastModelMsg(msg) 
+				end 
+				w := dir.Next(w) 
+			end  
+		| msg: Views.Message do 
+			w := dir.First()
+			while w # nil do 
+				if w.seq = s then
+					w.BroadcastViewMsg(msg) 
+				end 
+				w := dir.Next(w) 
+			end  
+		else  
+		end 
+	end Handle
+	
+	
+	proc (s: StdSequencer) Dirty(): boolean
+	begin 
+		return s.modLevel > 0
+	end Dirty
+	
+	proc (s: StdSequencer) SetDirty(dirty: boolean)
+	begin 
+		if dirty then
+			inc(s.modLevel) 
+		else 
+			s.modLevel := 0 
+		end 
+	end SetDirty
+	
+	proc (s: StdSequencer) LastOp(st: Stores.Store): Stores.Operation
+	begin 
+		assert(st # nil, 20)
+		if s.lastSt = st then
+			return s.lastOp 
+		else 
+			return nil 
+		end 
+	end LastOp
+	
+	
+	proc (s: StdSequencer) BeginScript(in name: Stores.OpName; var script: Stores.Operation)
+		var 
+			sop: Script
+	begin 
+		if s.trapEra # Kernel.trapCount then
+			Reset(s) 
+		end 
+		inc(s.nestLevel)
+		if (s.nestLevel = 1) & (s.invisibleLevel = 0) & (s.transparentLevel = 0) & (s.notRecordedLevel = 0) then
+			inc(s.modLevel) 
+		end 
+		s.lastSt := nil
+		s.lastOp := nil
+		new(sop)
+		sop.up := s.script
+		sop.list := nil
+		sop.level := s.nestLevel
+		sop.name := name
+		s.script := sop
+		script := sop
+	end BeginScript
+	
+	proc (s: StdSequencer) Do(st: Stores.Store; in name: Stores.OpName; op: Stores.Operation)
+		var 
+			e: OpElem
+	begin 
+		assert(st # nil, 20)
+		assert(op # nil, 21)
+		if s.trapEra # Kernel.trapCount then
+			Reset(s) 
+		end 
+		Do(s, st, op)
+		if s.noUndo then // cannot undo: unbalanced BeginModification pending
+			s.lastSt := nil
+			s.lastOp := nil 
+		elsif (s.entryLevel = 0)  // don't record when called from within op.Do
+			& AffectsDoc(s, st) then  // don't record when Do affected child window only
+			s.lastSt := st
+			s.lastOp := op
+			if s.notRecordedLevel = 0 then
+				s.redo := nil  // clear redo stack
+			end 
+			if s.script # nil then
+				Prepend(s.script, st, name, op) 
+			else 
+				if (s.invisibleLevel = 0) & (s.transparentLevel = 0) & (s.notRecordedLevel = 0) then
+					inc(s.modLevel) 
+				end 
+				if s.notRecordedLevel = 0 then
+					new(e)
+					e.st := st
+					e.op := op
+					e.name := name
+					e.invisible := s.invisibleLevel > 0
+					e.transparent := s.transparentLevel > 0
+					Push(s.undo, e) 
+				end  
+			end  
+		end 
+	end Do
+	
+	proc (s: StdSequencer) Bunch(st: Stores.Store)
+		var 
+			lastOp: Stores.Operation
+	begin 
+		if s.trapEra # Kernel.trapCount then
+			Reset(s) 
+		end 
+		assert(st # nil, 20)
+		assert(st = s.lastSt, 21)
+		lastOp := s.lastOp
+		Do(s, st, lastOp)
+		if s.noUndo then
+			s.lastSt := nil
+			s.lastOp := nil 
+		elsif (s.entryLevel = 0)  // don't record when called from within op.Do
+			& AffectsDoc(s, st) then  // don't record when Do affected child window only
+			s.lastSt := st
+			s.lastOp := lastOp 
+		end 
+	end Bunch
+	
+	proc (s: StdSequencer) EndScript(script: Stores.Operation)
+		var 
+			e: OpElem
+	begin 
+		if s.trapEra # Kernel.trapCount then
+			Reset(s) 
+		end 
+		assert(script # nil, 20)
+		assert(s.script = script, 21)
+		with script: Script do 
+			assert(s.nestLevel = script.level, 22)
+			s.script := script.up
+			if s.entryLevel = 0 then // don't record when called from within op.Do
+				if script.list # nil then
+					if s.script # nil then
+						Prepend(s.script, nil, script.name, script) 
+					else  // outermost scripting level
+						s.redo := nil // clear redo stack
+						if ~s.noUndo then
+							new(e)
+							e.st := nil
+							e.op := script
+							e.name := script.name
+							e.invisible := s.invisibleLevel > 0
+							e.transparent := s.transparentLevel > 0
+							if s.notRecordedLevel = 0 then
+								Push(s.undo, e) 
+							end  
+						end 
+						s.lastSt := nil
+						s.lastOp := nil 
+					end  
+				else 
+					if (s.script = nil) & (s.modLevel > 0) & (s.invisibleLevel = 0) & (s.transparentLevel = 0) then
+						dec(s.modLevel) 
+					end  
+				end  
+			end  
+		end 
+		dec(s.nestLevel)
+		if s.nestLevel = 0 then
+			assert(s.script = nil, 22)
+			s.noUndo := false 
+		end 
+	end EndScript
+	
+	proc (s: StdSequencer) StopBunching
+	begin 
+		s.lastSt := nil
+		s.lastOp := nil
+	end StopBunching
+	
+	proc (s: StdSequencer) BeginModification(type_: integer; st: Stores.Store)
+	begin 
+		if s.trapEra # Kernel.trapCount then
+			Reset(s) 
+		end 
+		if s.nestLevel < len(s.modStack) then
+			s.modStack[s.nestLevel].store := st
+			s.modStack[s.nestLevel].type_ := type_ 
+		end 
+		inc(s.nestLevel)
+		if type_ = Sequencers.notUndoable then
+			inc(s.modLevel) // unbalanced!
+			s.noUndo := true
+			s.undo := nil
+			s.redo := nil
+			s.lastSt := nil
+			s.lastOp := nil
+			inc(s.entryLevel)  // virtual entry of modification "operation"
+		elsif type_ = Sequencers.invisible then 
+			inc(s.invisibleLevel) 
+		elsif type_ = Sequencers.clean then 
+			inc(s.transparentLevel) 
+		elsif type_ = notRecorded then 
+			inc(s.notRecordedLevel) 
+		end 
+	end BeginModification
+	
+	proc (s: StdSequencer) EndModification(type_: integer; st: Stores.Store)
+	begin 
+		if s.trapEra # Kernel.trapCount then
+			Reset(s) 
+		end 
+		assert(s.nestLevel > 0, 20)
+		if s.nestLevel <= len(s.modStack) then
+			assert((s.modStack[s.nestLevel - 1].store = st) & (s.modStack[s.nestLevel - 1].type_ = type_), 21) 
+		end 
+		dec(s.nestLevel)
+		if type_ = Sequencers.notUndoable then
+			dec(s.entryLevel) 
+		elsif type_ = Sequencers.invisible then 
+			dec(s.invisibleLevel) 
+		elsif type_ = Sequencers.clean then 
+			dec(s.transparentLevel) 
+		elsif type_ = notRecorded then 
+			dec(s.notRecordedLevel) 
+		end 
+		if s.nestLevel = 0 then
+			assert(s.script = nil, 22)
+			s.noUndo := false 
+		end 
+	end EndModification
+	
+	proc (s: StdSequencer) CanUndo(): boolean
+		var 
+			op: OpElem
+	begin 
+		if s.trapEra # Kernel.trapCount then
+			Reset(s) 
+		end 
+		op := s.undo
+		while (op # nil) & op.invisible do 
+			op := op.next 
+		end 
+		return op # nil
+	end CanUndo
+	
+	proc (s: StdSequencer) CanRedo(): boolean
+		var 
+			op: OpElem
+	begin 
+		if s.trapEra # Kernel.trapCount then
+			Reset(s) 
+		end 
+		op := s.redo
+		while (op # nil) & op.invisible do 
+			op := op.next 
+		end 
+		return op # nil
+	end CanRedo
+	
+	proc (s: StdSequencer) GetUndoName(var name: Stores.OpName)
+		var 
+			op: OpElem
+	begin 
+		if s.trapEra # Kernel.trapCount then
+			Reset(s) 
+		end 
+		op := s.undo
+		while (op # nil) & op.invisible do 
+			op := op.next 
+		end 
+		if op # nil then
+			name := op.name 
+		else 
+			name[0] := 0x 
+		end 
+	end GetUndoName
+	
+	proc (s: StdSequencer) GetRedoName(var name: Stores.OpName)
+		var 
+			op: OpElem
+	begin 
+		if s.trapEra # Kernel.trapCount then
+			Reset(s) 
+		end 
+		op := s.redo
+		while (op # nil) & op.invisible do 
+			op := op.next 
+		end 
+		if op # nil then
+			name := op.name 
+		else 
+			name[0] := 0x 
+		end 
+	end GetRedoName
+	
+	proc (s: StdSequencer) Undo
+		var 
+			e: OpElem
+	begin 
+		if s.trapEra # Kernel.trapCount then
+			Reset(s) 
+		end 
+		if s.undo # nil then
+			repeat 
+				Pop(s.undo, e)
+				Do(s, e.st, e.op)
+				Push(s.redo, e) 
+			until ~e.invisible or (s.undo = nil) 
+			if ~e.transparent then
+				if s.modLevel > 0 then
+					dec(s.modLevel) 
+				end  
+			end  
+		end 
+	end Undo
+	
+	proc (s: StdSequencer) Redo
+		var 
+			e: OpElem
+	begin 
+		if s.trapEra # Kernel.trapCount then
+			Reset(s) 
+		end 
+		if s.redo # nil then
+			Pop(s.redo, e)
+			Do(s, e.st, e.op)
+			Push(s.undo, e)
+			while (s.redo # nil) & s.redo.invisible do 
+				Pop(s.redo, e)
+				Do(s, e.st, e.op)
+				Push(s.undo, e) 
+			end 
+			if ~e.transparent then
+				inc(s.modLevel) 
+			end  
+		end 
+	end Redo
+	
+	
+	// Forwarder
+	
+	proc (f: Forwarder) Forward(target: boolean; var msg: Controllers.Message)
+		var 
+			w: Window
+	begin 
+		w := dir.Focus(target)
+		if w # nil then
+			w.ForwardCtrlMsg(msg) 
+		end 
+	end Forward
+	
+	proc (f: Forwarder) Transfer(var msg: Controllers.TransferMessage)
+		var 
+			w: Window
+			h: Views.Frame
+			p: Ports.Port
+			sx, sy, tx, ty, pw, ph: integer
+	begin 
+		h := msg.source
+		p := h.rider.Base()
+		// (msg.x, msg.y) is point in local coordinates of source frame
+		sx := (msg.x + h.gx) div h.unit
+		sy := (msg.y + h.gy) div h.unit
+		// (sx, sy) is point in global coordinates of source port
+		dir.GetThisWindow(p, sx, sy, tx, ty, w)
+		if w # nil then
+			// (tx, ty) is point in global coordinates of target port
+			w.port.GetSize(pw, ph)
+			msg.x := tx * w.port.unit
+			msg.y := ty * w.port.unit
+			// (msg.x, msg.y) is point in coordinates of target window
+			w.ForwardCtrlMsg(msg) 
+		end 
+	end Transfer
+	
+	
+	// miscellaneous
+	
+	proc SetDir*(d: Directory)
+	begin 
+		assert(d # nil, 20)
+		if stdDir = nil then
+			stdDir := d 
+		end 
+		dir := d
+	end SetDir
+	
+	// reuse of open documents; relevant flags are isAux, isTool, allowDuplicates
+	proc GetBySpec*(loc: Files.Locator; name: Files.Name; conv: Converters.Converter
+		flags: set): Window
+		var 
+			tool, aux: boolean
+			w: Window
+	begin 
+		if ~(allowDuplicates in flags) & (loc # nil) & (loc.res # 77) & (name # "") then
+			Kernel.MakeFileName(name, "")
+			tool := isTool in flags
+			aux := isAux in flags
+			w := dir.First()
+			while w # nil do 
+				if ~(allowDuplicates in w.flags) & (w.loc # nil) & (w.loc.res # 77) & (w.name # "") 
+					& Files.dir.SameFile(loc, name, w.loc, w.name) & (w.conv = conv) 
+					& (tool = (isTool in w.flags)) & (aux = (isAux in w.flags)) then
+					return w 
+				end 
+				w := dir.Next(w) 
+			end  
+		end 
+		return nil
+	end GetBySpec
+	
+	proc SelectBySpec*(loc: Files.Locator; name: Files.Name; conv: Converters.Converter
+		flags: set; var done: boolean)
+		var 
+			w: Window
+	begin 
+		w := GetBySpec(loc, name, conv, flags)
+		if w # nil then
+			dir.Select(w, lazy)
+			done := true 
+		else 
+			done := false 
+		end 
+	end SelectBySpec
+	
+	proc SelectByTitle*(v: Views.View; flags: set; title: Views.Title; var done: boolean)
+		var 
+			w: Window
+			t: Views.Title
+			n1, n2: array 64 of char
+	begin 
+		done := false
+		if v # nil then
+			if v is Documents.Document then
+				v := v(Documents.Document).ThisView() 
+			end 
+			Services.GetTypeName(v, n1) 
+		else 
+			n1 := "" 
+		end 
+		w := dir.First()
+		while w # nil do 
+			if ((w.flags / flags) * {isAux, isTool} = {}) & ~(allowDuplicates in w.flags) then
+				w.GetTitle(t)
+				if t = title then
+					Services.GetTypeName(w.doc.ThisView(), n2)
+					if (n1 = "") or (n1 = n2) then
+						dir.Select(w, lazy)
+						done := true
+						return  
+					end  
+				end  
+			end 
+			w := dir.Next(w) 
+		end 
+	end SelectByTitle
+	
+	
+	proc (h: Hook) Omnicast(var msg: ANYREC)
+		var 
+			w: Window
+	begin 
+		w := dir.First()
+		while w # nil do 
+			if ~w.sub then
+				w.seq.Handle(msg) 
+			end 
+			w := dir.Next(w) 
+		end 
+	end Omnicast
+	
+	proc RestoreSequencer(seq: Sequencers.Sequencer)
+		var 
+			w: Window
+	begin 
+		w := dir.First()
+		while w # nil do 
+			assert(w.frame # nil, 100)
+			if (seq = nil) or (w.seq = seq) then
+				w.Update  // causes redrawing of BlackBox region
+			end 
+			w := dir.Next(w) 
+		end 
+	end RestoreSequencer
+	
+	proc (h: Hook) RestoreDomain(d: Stores.Domain)
+		var 
+			seq: ANYPTR
+	begin 
+		if d = nil then
+			RestoreSequencer(nil) 
+		else 
+			seq := d.GetSequencer()
+			if seq # nil then
+				RestoreSequencer(seq(Sequencers.Sequencer)) 
+			end  
+		end 
+	end RestoreDomain
+	
+	
+	// SequencerDirectory
+	
+	proc (d: SequencerDirectory) New(): Sequencers.Sequencer
+	begin 
+		return dir.NewSequencer()
+	end New
+	
+	// CheckAction
+	
+	proc (a: CheckAction) Do
+		var 
+			w: Window
+			s: StdSequencer
+	begin 
+		Services.DoLater(a.wait, Services.resolution)
+		w := dir.First()
+		while w # nil do 
+			s := w.seq(StdSequencer)
+			if s.trapEra # Kernel.trapCount then
+				Reset(s) 
+			end 
+			assert(s.nestLevel = 0, 100)
+			// unbalanced calls of Views.BeginModification/EndModification or Views.BeginScript/EndScript
+			w := dir.Next(w) 
+		end 
+	end Do
+	
+	proc (a: WaitAction) Do
+	begin 
+		Services.DoLater(a.check, Services.immediately)
+	end Do
+	
+	
+	proc (n: LangNotifier) Notify
+		var 
+			w: Window
+			pw, ph: integer
+	begin 
+		w := dir.First()
+		while w # nil do 
+			w.port.GetSize(pw, ph)
+			w.Restore(0, 0, pw, ph)
+			w.RefreshTitle
+			w := dir.Next(w) 
+		end 
+	end Notify
+	
+	proc Init
+		var 
+			f: Forwarder
+			r: Reducer
+			sdir: SequencerDirectory
+			a: CheckAction
+			w: WaitAction
+			h: Hook
+			ln: LangNotifier
+	begin 
+		new(sdir)
+		Sequencers.SetDir(sdir)
+		new(h)
+		Views.SetMsgHook(h)
+		new(f)
+		Controllers.Register(f)
+		new(r)
+		Kernel.InstallReducer(r)
+		new(a)
+		new(w)
+		a.wait := w
+		w.check := a
+		Services.DoLater(a, Services.immediately)
+		new(ln)
+		Dialog.RegisterLangNotifier(ln)
+	end Init
+
+begin
+	Init
+end Windows

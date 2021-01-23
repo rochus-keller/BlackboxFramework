@@ -1,0 +1,376 @@
+module StdInterpreter
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20070209, bh, general command signatures
+	   - 20141027, center #19, full Unicode support for Component Pascal identifiers added
+	   - 20150403, center #36, support for long identifiers in StdInterpreter
+	   - 20170819, center #172, adding BOOLEAN parameters to StdInterpreter
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Kernel, Meta, Strings, Views, Dialog
+	
+	type 
+		IntValue = pointer to record (Meta.Value) 
+				int_: integer 
+			end 
+		StrValue = pointer to record (Meta.Value) 
+				str: Dialog.String 
+			end 
+		BoolValue = pointer to record (Meta.Value) 
+				bool: boolean 
+			end 
+		CallHook = pointer to record (Dialog.CallHook) end 
+	
+	
+	proc (hook: CallHook) Call(in proc_, errorMsg: array of char; var res: integer)
+		type 
+			Ident = Kernel.Name
+		const 
+			modNotFound = 10
+			procNotFound = 11
+			identExpected = 12
+			unknownIdent = 13
+			depositExpected = 14
+			noDepositExpected = 15
+			syntaxError = 16
+			lparenExpected = 17
+			rparenExpected = 18
+			containerExpected = 19
+			quoteExpected = 20
+			fileNotFound = 21
+			noController = 22
+			noDialog = 23
+			cannotUnload = 24
+			commaExpected = 25
+			incompParList = 26
+		const 
+			ident = 0
+			dot = 1
+			semicolon = 2
+			eot = 3
+			lparen = 4
+			rparen = 5
+			quote = 6
+			comma = 7
+			int_ = 8
+		var 
+			i, type_: integer
+			ch: char
+			id: Ident
+			x: integer
+			par: array 100 of pointer to Meta.Value
+			numPar: integer
+		
+		proc Concat(a, b: array of char; var c: array of char)
+			var 
+				i, j: integer
+				ch: char
+		begin 
+			if a = " " then
+				Dialog.MapString("#System:CommandError", c) 
+			else 
+				c := a 
+			end 
+			i := 0
+			while c[i] # 0x do 
+				inc(i) 
+			end 
+			c[i] := " "
+			inc(i)
+			j := 0
+			ch := b[0]
+			while ch # 0x do 
+				c[i] := ch
+				inc(i)
+				inc(j)
+				ch := b[j] 
+			end 
+			c[i] := 0x
+		end Concat
+		
+		proc Error(n: integer; msg, par0, par1: array of char)
+			var 
+				e, f: array 256 of char
+		begin 
+			if res = 0 then
+				res := n
+				if errorMsg # "" then
+					Dialog.MapString(errorMsg, e)
+					Dialog.MapParamString(msg, par0, par1, "", f)
+					Concat(e, f, f)
+					Dialog.ShowMsg(f) 
+				end  
+			end 
+		end Error
+		
+		proc Init(var s: array of char)
+			var 
+				i: integer
+		begin 
+			i := 0
+			while i < len(s) do 
+				s[i] := 0x
+				inc(i) 
+			end 
+		end Init
+		
+		proc ShowLoaderResult(in mod_: array of char)
+			var 
+				res: integer
+				importing, imported, object: array 256 of char
+		begin 
+			Kernel.GetLoaderResult(res, importing, imported, object)
+			case res of 
+				| Kernel.fileNotFound: 
+					Error(Kernel.fileNotFound, "#System:CodeFileNotFound", imported, "") 
+				| Kernel.syntaxError: 
+					Error(Kernel.syntaxError, "#System:CorruptedCodeFileFor", imported, "") 
+				| Kernel.objNotFound: 
+					Error(Kernel.objNotFound, "#System:ObjNotFoundImpFrom", imported, importing) 
+				| Kernel.illegalFPrint: 
+					Error(Kernel.illegalFPrint, "#System:ObjInconsImpFrom", imported, importing) 
+				| Kernel.cyclicImport: 
+					Error(Kernel.cyclicImport, "#System:CyclicImpFrom", imported, importing) 
+				| Kernel.noMem: 
+					Error(Kernel.noMem, "#System:NotEnoughMemoryFor", imported, "") 
+			else 
+				Error(res, "#System:CannotLoadModule", mod_, "") 
+			end 
+		end ShowLoaderResult
+		
+		proc CallProc(in mod_, proc_: array of char)
+			var 
+				i, t: Meta.Item
+				ok: boolean
+		begin 
+			ok := false
+			Meta.Lookup(mod_, i)
+			if i.obj = Meta.modObj then
+				i.Lookup(proc_, i)
+				if i.obj = Meta.procObj then
+					i.GetReturnType(t)
+					if (t.typ = 0) & (i.NumParam() = numPar) then
+						i.ParamCallVal(par, t, ok) 
+					else 
+						ok := false 
+					end 
+					if ~ok then
+						Error(incompParList, "#System:IncompatibleParList", mod_, proc_) 
+					end  
+				else 
+					Error(Kernel.commNotFound, "#System:CommandNotFoundIn", proc_, mod_) 
+				end  
+			else 
+				ShowLoaderResult(mod_) 
+			end 
+		end CallProc
+		
+		proc GetCh
+		begin 
+			if i < len(proc_) then
+				ch := proc_[i]
+				inc(i) 
+			else 
+				ch := 0x 
+			end 
+		end GetCh
+		
+		proc Scan
+			var 
+				j: integer
+				num: array 32 of char
+				r: integer
+		begin 
+			if res = 0 then
+				while (ch # 0x) & (ch <= " ") do 
+					GetCh 
+				end 
+				if ch = 0x then
+					type_ := eot 
+				elsif ch = "." then 
+					type_ := dot
+					GetCh 
+				elsif ch = ";" then 
+					type_ := semicolon
+					GetCh 
+				elsif ch = "(" then 
+					type_ := lparen
+					GetCh 
+				elsif ch = ")" then 
+					type_ := rparen
+					GetCh 
+				elsif ch = "'" then 
+					type_ := quote
+					GetCh 
+				elsif ch = "," then 
+					type_ := comma
+					GetCh 
+				elsif (ch >= "0") & (ch <= "9") or (ch = "-") then 
+					type_ := int_
+					j := 0
+					repeat 
+						num[j] := ch
+						inc(j)
+						GetCh 
+					until (ch < "0") or (ch > "9") & (ch < "A") or (ch > "H") 
+					num[j] := 0x
+					Strings.StringToInt(num, x, r) 
+				elsif Strings.IsIdentStart(ch) then 
+					type_ := ident
+					id[0] := ch
+					j := 1
+					GetCh
+					while (ch # 0x) & (i < len(proc_)) & Strings.IsIdent(ch) do 
+						id[j] := ch
+						inc(j)
+						GetCh 
+					end 
+					id[j] := 0x 
+				else 
+					Error(syntaxError, "#System:SyntaxError", "", "") 
+				end  
+			end 
+		end Scan
+		
+		proc String(var s: array of char)
+			var 
+				j: integer
+		begin 
+			if type_ = quote then
+				j := 0
+				while (ch # 0x) & (ch # "'") & (j < len(s) - 1) do 
+					s[j] := ch
+					inc(j)
+					GetCh 
+				end 
+				s[j] := 0x
+				if ch = "'" then
+					GetCh
+					Scan 
+				else 
+					Error(quoteExpected, "#System:QuoteExpected", "", "") 
+				end  
+			else 
+				Error(quoteExpected, "#System:QuoteExpected", "", "") 
+			end 
+		end String
+		
+		proc ParamList()
+			var 
+				iv: IntValue
+				sv: StrValue
+				bv: BoolValue
+		begin 
+			numPar := 0
+			if type_ = lparen then
+				Scan
+				while (numPar < len(par)) & (type_ # rparen) & (res = 0) do 
+					if type_ = quote then
+						new(sv)
+						String(sv.str)
+						par[numPar] := sv
+						inc(numPar) 
+					elsif type_ = int_ then 
+						new(iv)
+						iv.int_ := x
+						Scan
+						par[numPar] := iv
+						inc(numPar) 
+					elsif (type_ = ident) & ((id = "TRUE") or (id = "FALSE")) then 
+						new(bv)
+						bv.bool := (id = "TRUE")
+						Scan
+						par[numPar] := bv
+						inc(numPar) 
+					else 
+						Error(syntaxError, "#System:SyntaxError", "", "") 
+					end 
+					if type_ = comma then
+						Scan 
+					elsif type_ # rparen then 
+						Error(rparenExpected, "#System:RParenExpected", "", "") 
+					end  
+				end 
+				Scan 
+			end 
+		end ParamList
+		
+		proc Command
+			var 
+				left, right: Ident
+		begin 
+			// protect from parasitic anchors on stack
+			Init(left)
+			Init(right)
+			left := id
+			Scan
+			if type_ = dot then // Oberon command
+				Scan
+				if type_ = ident then
+					right := id
+					Scan
+					ParamList()
+					if res = 0 then
+						CallProc(left, right) 
+					end  
+				else 
+					Error(identExpected, "#System:IdentExpected", "", "") 
+				end  
+			else 
+				Error(unknownIdent, "#System:UnknownIdent", id, "") 
+			end 
+		end Command
+	
+	begin 
+		// protect from parasitic anchors on stack
+		i := 0
+		type_ := 0
+		Init(id)
+		x := 0
+		Views.ClearQueue
+		res := 0
+		i := 0
+		GetCh
+		Scan
+		if type_ = ident then
+			Command
+			while (type_ = semicolon) & (res = 0) do 
+				Scan
+				Command 
+			end 
+			if type_ # eot then
+				Error(syntaxError, "#System:SyntaxError", "", "") 
+			end  
+		else 
+			Error(syntaxError, "#System:SyntaxError", "", "") 
+		end 
+		if (res = 0) & (Views.Available() > 0) then
+			Error(noDepositExpected, "#System:NoDepositExpected", "", "") 
+		end 
+		Views.ClearQueue
+	end Call
+	
+	proc Init
+		var 
+			hook: CallHook
+	begin 
+		new(hook)
+		Dialog.SetCallHook(hook)
+	end Init
+
+begin
+	Init
+end StdInterpreter

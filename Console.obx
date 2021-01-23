@@ -1,0 +1,60 @@
+module Console
+	(* project	= "BlackBox"
+	   organization	= "Blackbox Framework Center"
+	   contributors	= "A. V. Shiryaev"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20121001, avs, interface based on OpenBUGS Console
+	   - 20170524, center #153, adding basic console I/O
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import HostConsole, Strings
+	
+	proc Open*
+	begin 
+		HostConsole.Open
+	end Open
+	
+	proc WriteStr*(in str: array of char)
+	begin 
+		HostConsole.WriteStr(str)
+	end WriteStr
+	
+	proc WriteChar*(ch: char)
+		var 
+			str: array 2 of char
+	begin 
+		str[0] := ch
+		str[1] := 0x
+		HostConsole.WriteStr(str)
+	end WriteChar
+	
+	proc WriteInt*(i: longint)
+		var 
+			str: array 24 of char
+	begin 
+		Strings.IntToString(i, str)
+		HostConsole.WriteStr(str)
+	end WriteInt
+	
+	proc WriteLn*
+	begin 
+		HostConsole.WriteLn
+	end WriteLn
+	
+	proc ReadLn*(var line: array of char)
+	begin 
+		HostConsole.ReadLn(line)
+	end ReadLn
+
+end Console

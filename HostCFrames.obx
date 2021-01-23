@@ -1,0 +1,4643 @@
+module HostCFrames
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20060407, mf, ListBox.DblClickOk: case f.sorted handled
+	   - 20070131, bh, Unicode support
+	   - 20070209, bh, Euro handling removed
+	   - 20151203, center #90, adding horizontal scroll bar to list boxes
+	   - 20160122, center #98, improvements of GUI controls
+	   - 20160704, center #116, calling Dialog.Update in the notifier of a selection box does not work as expected
+	   - 20170702, center #164 Backward compatibilty with UpDn Controls
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	// ColorField, DateField, TimeField, UpDownField
+	
+	import 
+		SYSTEM, WinApi, WinCtl, 
+		Kernel, Strings, Dates, Fonts, Ports, Views, 
+		Controllers, Dialog, HostFonts, HostRegistry, HostPorts, HostWindows, StdCFrames
+	
+	const 
+		ENTER = 0dx
+		ESC = 1bx
+		DEL = 07x
+		BS = 08x
+		TAB = 09x
+		LTAB = 0ax
+		AL = 1cx
+		AR = 1dx
+		AU = 1ex
+		AD = 1fx
+		PL = 10x
+		PR = 11x
+		PU = 12x
+		PD = 13x
+		DL = 14x
+		DR = 15x
+		DU = 16x
+		DD = 17x
+		dlgWindowExtra = 30
+		dropDownHeight = 30 * Ports.point
+		upDownWidth = 11 * Ports.point
+		numColors = 7
+		scrollRange = 16384
+		
+		// unicode non-characters, known in HostMenus, HostCFrames, Controls
+		apps = 0fdd0x // 'menu key',  WinApi.VK_APPS, bypasses BB's popup mechanism for edit controls
+		ctrlZ = 0fdd1x // bypasses BB's undo mechanism for edit controls
+		ctrlA = 0fdd2x // send ctrl-A (select all) to edit controls
+	
+	type 
+		Procedure = proc 
+		
+		Info = record 
+				wnd, ctrl, ud: WinApi.HANDLE
+				x1, y1, w1, h1, x2, y2, w2, h2: integer
+				hasFocus, dropDown, readOnly, undef: boolean
+				bkgnd: Ports.Color 
+			end 
+		
+		PushButton = pointer to record (StdCFrames.PushButton) 
+				i: Info 
+			end 
+		
+		CheckBox = pointer to record (StdCFrames.CheckBox) 
+				i: Info 
+			end 
+		
+		RadioButton = pointer to record (StdCFrames.RadioButton) 
+				i: Info 
+			end 
+		
+		ScrollBar = pointer to record (StdCFrames.ScrollBar) 
+				i: Info 
+			end 
+		
+		Field = pointer to record (StdCFrames.Field) 
+				i: Info
+				isUpdate: boolean
+				del: boolean  // needed know when an empty field is allowed. not perfect.
+			end 
+		
+		UpDownField = pointer to record (StdCFrames.UpDownField) 
+				i: Info
+				val_: integer
+				isUpdate: boolean 
+			end 
+		
+		DateField = pointer to record (StdCFrames.DateField) 
+				i: Info
+				isUpdate: boolean
+				cnt, val_: integer  // input state: val = current val, cnt = number of key strokes
+			end 
+		
+		TimeField = pointer to record (StdCFrames.TimeField) 
+				i: Info
+				isUpdate: boolean
+				cur: integer 
+			end 
+		
+		ColorField = pointer to record (StdCFrames.ColorField) 
+				i: Info
+				color: Ports.Color 
+			end 
+		
+		ListBox = pointer to record (StdCFrames.ListBox) 
+				i: Info 
+			end 
+		
+		SelectionBox = pointer to record (StdCFrames.SelectionBox) 
+				i: Info
+				num: integer
+				delayUpdate, needsUpdate: boolean 
+			end 
+		
+		ComboBox = pointer to record (StdCFrames.ComboBox) 
+				i: Info
+				edit: WinApi.HANDLE 
+			end 
+		
+		Caption = pointer to record (StdCFrames.Caption) 
+				i: Info 
+			end 
+		
+		Group = pointer to record (StdCFrames.Group) 
+				i: Info 
+			end 
+		
+		TFInfo = record 
+				tn: Dialog.TreeNode
+				wndAdr: integer 
+			end 
+		
+		TreeFrame = pointer to record (StdCFrames.TreeFrame) 
+				i: Info
+				inUpdateList: boolean
+				treeArray: pointer to array of TFInfo
+				curindex, selIndex: integer
+				folderimg, openimg, leafimg: integer
+				himl: WinCtl.Ptr_IMAGELIST 
+			end 
+		
+		Directory = pointer to record (StdCFrames.Directory) end 
+		
+		TrapCleaner = pointer to record (Kernel.TrapCleaner) end 
+		
+		BrushCache = pointer to record 
+				next: BrushCache
+				col: Ports.Color
+				brush: WinApi.HANDLE 
+			end 
+	
+	var 
+		instance: WinApi.HANDLE
+		SubclassCtl: proc (wnd: WinApi.HANDLE)
+		CtlColor: proc (msg, wPar, lPar: integer): integer
+		scW, scH: integer // screen width and height
+		updateAllowed: boolean
+		colors: array numColors of Ports.Color
+		// date format
+		dateSep: char // separator character
+		yearPart, monthPart, dayPart: integer // first = 1, last = 3
+		del1, del2: integer // position of separators
+		// time format
+		timeSep: char // separator character
+		lastPart: integer // 3 for 24h format, 4 for 12h format
+		desig: array 2, 8 of char // AM, PM strings
+		inHandleMouse*: boolean // to disable the main window handler in HostMenus
+		brushes: BrushCache
+	
+	
+	// auxiliary procedures
+	
+	proc WheelToArrow(f: StdCFrames.Frame; op: integer; var done: boolean)
+	begin 
+		if op in {Controllers.incLine, Controllers.incPage} then
+			f.KeyDown(AD) 
+		else 
+			f.KeyDown(AU) 
+		end 
+		done := true
+	end WheelToArrow
+	
+	proc GetSize(f: StdCFrames.Frame; var x, y, w, h: integer)
+		var 
+			u, x0, y0: integer
+	begin 
+		u := f.unit
+		f.view.context.GetSize(w, h)
+		x0 := f.gx
+		y0 := f.gy
+		x := x0 div u
+		y := y0 div u
+		w := (x0 + w) div u - x
+		h := (y0 + h) div u - y
+		if (SubclassCtl # nil) 
+			& ((f is Field) or (f is UpDownField) or (f is TimeField) or (f is DateField) 
+			or (f is ColorField) or (f is ListBox) or (f is SelectionBox) or (f is ComboBox)) then
+			inc(x, 1) // space for 3d border
+			inc(y, 1)
+			dec(w, 2)
+			dec(h, 2) 
+		end 
+	end GetSize
+	
+	proc Adapt(f: StdCFrames.Frame; var i: Info)
+		var 
+			res, x, y, w, h, cx, cy, cw, ch, udw, n, h0, h1: integer
+			r: HostPorts.Rider
+	begin 
+		if i.wnd # 0 then
+			r := f.rider(HostPorts.Rider)
+			if r.port.wnd # 0 then // port is a window
+				GetSize(f, x, y, w, h)
+				if i.dropDown then
+					n := WinApi.SendMessageW(i.ctrl, WinApi.CB_GETCOUNT, 0, 0)
+					h0 := WinApi.SendMessageW(i.ctrl, WinApi.CB_GETITEMHEIGHT, -1, 0)
+					h1 := WinApi.SendMessageW(i.ctrl, WinApi.CB_GETITEMHEIGHT, 0, 0)
+					if n < 1 then
+						n := 1 
+					elsif n > 8 then 
+						n := 8 
+					end 
+					h := h0 + h1 * n + 8 
+				end 
+				cx := r.l
+				cy := r.t
+				cw := r.r - r.l
+				ch := r.b - r.t
+				if (cx # i.x1) or (cy # i.y1) or (cw # i.w1) or (ch # i.h1) then
+					i.x1 := cx
+					i.y1 := cy
+					i.w1 := cw
+					i.h1 := ch
+					res := WinApi.MoveWindow(i.wnd, cx, cy, cw, ch, 0) 
+				end 
+				dec(x, cx)
+				dec(y, cy)
+				if (x # i.x2) or (y # i.y2) or (w # i.w2) or (h # i.h2) then
+					i.x2 := x
+					i.y2 := y
+					i.w2 := w
+					i.h2 := h
+					if i.ud # 0 then
+						udw := upDownWidth div f.unit
+						res := WinApi.MoveWindow(i.ud, x + w - udw, y + 1, udw, h - 2, 0)
+						dec(w, udw)
+						if SubclassCtl # nil then
+							dec(w) 
+						end  
+					end 
+					res := WinApi.MoveWindow(i.ctrl, x, y, w, h, 0) 
+				end  
+			end  
+		end 
+	end Adapt
+	
+	proc BkGndColor(f: Views.Frame): Ports.Color
+		var 
+			bgnd: Ports.Color
+			g: Views.Frame
+	begin 
+		g := f
+		repeat 
+			g := Views.HostOf(g)
+			bgnd := Views.transparent
+			g.view.GetBackground(bgnd) 
+		until bgnd # Views.transparent 
+		return bgnd
+	end BkGndColor
+	
+	proc Open(f: StdCFrames.Frame; class, name: WinApi.PtrWSTR
+		style, ex: set; var i: Info)
+		var 
+			res, x, y, w, h, cx, cy, cw, ch, udw: integer
+			p: HostPorts.Port
+			s: set
+			r: Ports.Rider
+			icex: WinCtl.INITCOMMONCONTROLSEX
+	begin 
+		f.noRedraw := true
+		r := f.rider
+		GetSize(f, x, y, w, h)
+		r.GetRect(cx, cy, cw, ch)
+		cw := cw - cx
+		ch := ch - cy
+		p := f.rider(HostPorts.Rider).port
+		if p.wnd # 0 then // port is a window
+			i.bkgnd := BkGndColor(f)
+			s := {27, 30} // disabled, child
+			i.wnd := WinApi.CreateWindowExW({}, "Oberon Ctrl", "", s, cx, cy, cw, ch, p.wnd, 0, instance, 0)
+			if i.wnd # 0 then
+				dec(x, cx)
+				dec(y, cy)
+				res := WinApi.SetWindowLongW(i.wnd, dlgWindowExtra, SYSTEM.VAL(integer, f))
+				i.ctrl := WinApi.CreateWindowExW(ex, class, name, style, x, y, w, h, i.wnd, 0, instance, 0)
+				if i.ctrl # 0 then
+					if (SubclassCtl # nil) & ~(f is PushButton) then
+						SubclassCtl(i.ctrl) 
+					end 
+					if f.font # nil then
+						res := WinApi.SendMessageW(i.ctrl, WinApi.WM_SETFONT, f.font(HostFonts.Font).dev.id, 0) 
+					end 
+					if (f is UpDownField) or (f is TimeField) or (f is DateField) then
+						style := {23, 28, 30} + WinCtl.UDS_ALIGNRIGHT + WinCtl.UDS_ARROWKEYS
+						udw := upDownWidth div f.unit
+						i.ud := WinCtl.CreateUpDownControl(style, x + w - udw, y, udw, h, i.wnd, 0, instance, 0, 1, 0, 0) 
+					(* ##=>alternative for "obsoleted" CreateUpDownControl
+					   
+					   icex.dwSize := SIZE(WinCtl.INITCOMMONCONTROLSEX); icex.dwICC := WinCtl.ICC_UPDOWN_CLASS;
+					   res := WinCtl.InitCommonControlsEx(icex);
+					   i.ud :=  WinApi.CreateWindowExW (
+					   {}, WinCtl.UPDOWN_CLASSW, "", style,
+					   x + w - udw, y, udw, h,
+					   (*0, 0, 0, 0, (*Set to zero to automatically size to fit the buddy window.*)*)
+					   i.wnd, 0, instance, 0);
+					   res := WinApi.SendMessageW(i.ud,  WinCtl.UDM_SETBUDDY, i.ctrl, 0);
+					   res := WinApi.SendMessageW(i.ud,  WinApi.WM_USER+111(*UDM_SETRANGE32*), 0, 1);
+					   res := WinApi.SendMessageW(i.ud,  WinCtl.UDM_SETPOS, 0, 0);
+					   ##<= *)
+					end 
+					Adapt(f, i)
+					res := WinApi.ShowWindow(i.wnd, 1)
+					res := WinApi.ShowWindow(i.ctrl, 1)
+					if i.ud # 0 then
+						res := WinApi.ShowWindow(i.ud, 1) 
+					end  
+				else 
+					res := WinApi.DestroyWindow(i.wnd)
+					i.wnd := 0 
+				end  
+			else 
+				i.ctrl := 0 
+			end  
+		else  // port is a printer -> define temp windows
+			i.wnd := 0
+			i.ctrl := 0 
+		(* s := {27, 31};	(* disabled, popup *)
+		   i.wnd := WinApi.CreateWindowExW({}, "Oberon Ctrl", "", s, scW - cw, scH - ch, cw, ch, 0, 0, instance, 0);
+		   res := WinApi.SetWindowLongW(i.wnd, dlgWindowExtra, SYSTEM.VAL(LONGINT, f));
+		   i.ctrl := WinApi.CreateWindowExW({}, class, name, style, x - cx, y - cy, w, h, i.wnd, 0, instance, 0) *)
+		
+		
+		end 
+	end Open
+	
+	proc Paint(f: StdCFrames.Frame; var i: Info)
+		var 
+			res, u: integer
+			r: HostPorts.Rider
+	begin 
+		r := f.rider(HostPorts.Rider)
+		u := f.unit
+		r.port.CloseBuffer
+		updateAllowed := true
+		res := WinApi.InvalidateRect(i.wnd, nil, 0)
+		res := WinApi.InvalidateRect(i.ctrl, nil, 0)
+		res := WinApi.UpdateWindow(i.wnd)
+		res := WinApi.UpdateWindow(i.ctrl)
+		if i.ud # 0 then
+			res := WinApi.UpdateWindow(i.ud) 
+		end 
+		updateAllowed := false
+	end Paint
+	
+	proc PaintRect(f: StdCFrames.Frame; var i: Info; l, t, r, b: integer)
+		var 
+			res, u: integer
+			ri: HostPorts.Rider
+			rect: WinApi.RECT
+	begin 
+		ri := f.rider(HostPorts.Rider)
+		u := f.unit
+		ri.port.CloseBuffer
+		updateAllowed := true
+		rect.left := l div f.unit
+		rect.top := t div f.unit
+		rect.right := r div f.unit
+		rect.bottom := b div f.unit
+		rect.left := rect.left
+		rect.top := rect.top
+		rect.right := rect.right
+		rect.bottom := rect.bottom
+		// round up if possible
+		if rect.left > i.x1 then
+			rect.left := rect.left - 1 
+		end 
+		if rect.top > i.y1 then
+			rect.top := rect.top - 1 
+		end 
+		if rect.right < i.x1 + i.w1 then
+			rect.right := rect.right + 1 
+		end 
+		if rect.bottom < i.y1 + i.h1 then
+			rect.bottom := rect.bottom + 1 
+		end 
+		res := WinApi.InvalidateRect(i.wnd, rect, 0)
+		res := WinApi.InvalidateRect(i.ctrl, rect, 0)
+		res := WinApi.UpdateWindow(i.wnd)
+		res := WinApi.UpdateWindow(i.ctrl)
+		if i.ud # 0 then
+			res := WinApi.UpdateWindow(i.ud) 
+		end 
+		updateAllowed := false
+	end PaintRect
+	
+	proc ExtractLine(in s: array of char; beg: integer; fnt: Fonts.Font; maxW: integer
+		var line: Dialog.String; var lineW, end_: integer
+		)
+		var 
+			i, len_, w: integer
+			ch: char
+	begin 
+		len_ := len(s)
+		assert(beg >= 0, 20)
+		assert(beg < len(s), 21)
+		assert(maxW > 0, 22)
+		assert(fnt # nil, 23)
+		i := 0
+		end_ := beg
+		lineW := 0
+		w := 0
+		repeat 
+			ch := s[i + beg]
+			if ch <= " " then
+				end_ := i + beg
+				lineW := w 
+			end 
+			line[i] := ch
+			inc(i)
+			line[i] := 0x
+			w := fnt.StringWidth(line)
+			if (w <= maxW) & ((ch = "-") or (ch = "_")) then
+				end_ := i + beg
+				lineW := w 
+			end  
+		until (i + beg = len_) or (w > maxW) 
+		if w <= maxW then
+			end_ := beg + i
+			line[end_ - beg] := 0x
+			lineW := w 
+		elsif end_ # beg then 
+			line[end_ - beg] := 0x 
+		else 
+			end_ := beg + i - 1
+			line[i - 1] := 0x
+			lineW := fnt.StringWidth(line) 
+		end 
+		assert(end_ > beg, 80)
+	end ExtractLine
+	
+	proc PrintString(f: Views.Frame; w: integer
+		in string: array of char; fnt: Fonts.Font; col: Ports.Color
+		x0, y0: integer; left, right, multiLine: boolean
+		)
+		var 
+			x, sw, asc, dsc, fw, beg, end_, len_, n: integer
+			s: Dialog.String
+	begin 
+		fnt.GetBounds(asc, dsc, fw)
+		sw := fnt.StringWidth(string)
+		w := max(fw, w - 2 * x0) // ensures that always at least one character fits
+		beg := 0
+		len_ := len(string)
+		n := 0
+		while beg < len_ do 
+			if multiLine then
+				ExtractLine(string, beg, fnt, w, s, sw, end_) 
+			else 
+				s := string
+				sw := fnt.StringWidth(s)
+				end_ := len_ 
+			end 
+			if ~left & ~right then
+				x := (w - sw) div 2 
+			elsif right & ~left then 
+				x := w - sw 
+			else 
+				x := 0 
+			end 
+			f.DrawString(x0 + x, n * (asc + dsc) + y0, col, s, fnt)
+			beg := end_
+			inc(n)
+			if (beg < len_) & (string[beg] = " ") then
+				inc(beg) 
+			end  
+		end 
+	end PrintString
+	
+	proc Print(f: StdCFrames.Frame; d, x, y: integer; label: array of char)
+		var 
+			w, h, sw, a, asc, dsc, fw: integer
+			font: Fonts.Font
+			on: boolean
+	begin 
+		if f.font # nil then
+			font := f.font 
+		else 
+			font := HostFonts.dlgFont 
+		end 
+		f.view.context.GetSize(w, h)
+		font.GetBounds(asc, dsc, fw)
+		if x < 0 then
+			sw := font.StringWidth(label)
+			x := (w - sw) div 2 
+		end 
+		if y < 0 then
+			y := (h + asc - dsc) div 2 
+		elsif y = 0 then 
+			y := asc 
+		end 
+		a := (h - 8 * Ports.point) div 2
+		if d = -1 then
+			f.DrawRect(2 * Ports.point, a, 10 * Ports.point, a + 8 * Ports.point, f.dot, Ports.defaultColor)
+			if (f is CheckBox) & (f(CheckBox).Get # nil) then
+				f(CheckBox).Get(f(CheckBox), on)
+				if on then
+					f.DrawLine(
+					2 * Ports.point + 2 * f.dot, a + 4 * Ports.point, 5 * Ports.point, a + 8 * Ports.point - 2 * f.dot, 
+					2 * Ports.point, Ports.defaultColor
+					)
+					f.DrawLine(
+					5 * Ports.point, a + 8 * Ports.point - 2 * f.dot, 10 * Ports.point - 2 * f.dot, a + 2 * f.dot, 
+					2 * Ports.point, Ports.defaultColor
+					) 
+				end  
+			end  
+		elsif d = -2 then 
+			f.DrawOval(2 * Ports.point, a, 10 * Ports.point, a + 8 * Ports.point, f.dot, Ports.defaultColor)
+			if f(RadioButton).Get # nil then
+				f(RadioButton).Get(f(RadioButton), on)
+				if on then
+					f.DrawOval(2 * Ports.point + 2 * f.dot, a + 2 * f.dot, 
+					10 * Ports.point - 2 * f.dot, a + 8 * Ports.point - 2 * f.dot, Ports.fill, Ports.black) 
+				end  
+			end  
+		elsif d = -3 then 
+			f.DrawRect(0, min(asc - f.dot, h), w, max(asc - f.dot, h), f.dot, Ports.defaultColor)
+			f.DrawRect(x, y - asc, x + font.StringWidth(label), y + dsc, Ports.fill, Ports.background) 
+		elsif d > 0 then 
+			f.DrawRect(0, 0, w, h, d, Ports.defaultColor) 
+		end 
+		(* WITH f: Field DO
+		   IF f.right & ~f.left THEN x := w - x - font.SStringWidth(label)
+		   ELSIF ~f.right & ~f.left THEN x := (w DIV 2) - (font.SStringWidth(label) DIV 2)
+		   END
+		   | f: Caption DO
+		   IF f.right & ~f.left THEN x := w - x - font.SStringWidth(label)
+		   ELSIF ~f.right & ~f.left THEN x := (w DIV 2) - (font.SStringWidth(label) DIV 2)
+		   END
+		   ELSE
+		   END;
+		   f.DrawSString(x, y, Ports.defaultColor, label, font) *)
+		
+		
+		with f: Field do 
+			PrintString(f, w, label, font, Ports.defaultColor, x, y, f.left, f.right, f.multiLine) 
+		| f: Caption do 
+			PrintString(f, w, label, font, Ports.defaultColor, x, y, f.left, f.right, true) 
+		else 
+			PrintString(f, w, label, font, Ports.defaultColor, x, y, true, false, false) 
+		end 
+	end Print
+	
+	proc IsEdit(wnd: WinApi.HANDLE): boolean
+		var 
+			res: integer
+			nm: array 32 of char
+	begin 
+		res := WinApi.GetClassNameW(wnd, nm, len(nm))
+		if res > 0 then
+			Strings.ToUpper(nm, nm) 
+		else 
+			nm := "" 
+		end 
+		return nm = "EDIT"
+	end IsEdit
+	
+	proc SendRightClick(edit: WinApi.HANDLE)
+		var 
+			res, n, pos, x, y: integer
+	begin 
+		res := WinApi.SendMessageW(edit, WinApi.EM_GETSEL, 0, SYSTEM.ADR(n))
+		if n > 0 then
+			dec(n) 
+		end 
+		pos := WinApi.SendMessageW(edit, WinApi.EM_POSFROMCHAR, n, 0)
+		x := (pos mod 65536) + 8
+		y := (pos div 65536) + 8
+		pos := x + 65536 * y
+		res := WinApi.SendMessageW(edit, WinApi.WM_RBUTTONDOWN, 0, pos)
+		res := WinApi.SendMessageW(edit, WinApi.WM_RBUTTONUP, 0, pos)
+	end SendRightClick
+	
+	proc SendKey(ch: char; wnd: WinApi.HANDLE)
+		var 
+			res, code: integer
+	begin 
+		case ch of 
+			| 10x: 
+				code := 21h 
+			| 11x: 
+				code := 22h 
+			| 12x: 
+				code := 21h 
+			| 13x: 
+				code := 22h 
+			| 14x: 
+				code := 24h 
+			| 15x: 
+				code := 23h 
+			| 16x: 
+				code := 24h 
+			| 17x: 
+				code := 23h 
+			| 1cx: 
+				code := 25h 
+			| 1dx: 
+				code := 27h 
+			| 1ex: 
+				code := 26h 
+			| 1fx: 
+				code := 28h 
+			| DEL: 
+				code := 2eh 
+		else 
+			code := 0 
+		end 
+		if code # 0 then
+			res := WinApi.SendMessageW(wnd, WinApi.WM_KEYDOWN, code, 0)
+			res := WinApi.SendMessageW(wnd, WinApi.WM_KEYUP, code, 0) 
+		elsif IsEdit(wnd) then 
+			if ch = apps then
+				SendRightClick(wnd) 
+			elsif ch = ctrlZ then 
+				res := WinApi.SendMessageW(wnd, WinApi.EM_UNDO, 0, 0) 
+			elsif ch = ctrlA then 
+				res := WinApi.SendMessageW(wnd, WinApi.EM_SETSEL, 0, -1) 
+			else 
+				res := WinApi.SendMessageW(wnd, WinApi.WM_CHAR, ord(ch), 0) 
+			end  
+		else 
+			res := WinApi.SendMessageW(wnd, WinApi.WM_CHAR, ord(ch), 0) 
+		end 
+	end SendKey
+	
+	proc (t: TrapCleaner) Cleanup
+	begin 
+		inHandleMouse := false
+	end Cleanup
+	
+	proc HandleMouse(wnd: WinApi.HANDLE; x, y: integer; buttons: set)
+		var 
+			res, b, hc, m: integer
+			pt: WinApi.POINT
+			w: WinApi.HANDLE
+			msg: WinApi.MSG
+			tc: TrapCleaner
+	begin 
+		new(tc)
+		Kernel.PushTrapCleaner(tc)
+		inHandleMouse := true
+		res := WinApi.ReleaseCapture()
+		b := 0
+		if HostPorts.left in buttons then
+			inc(b) 
+		end 
+		if HostPorts.right in buttons then
+			inc(b, 2) 
+		end 
+		if Controllers.extend in buttons then
+			inc(b, 4) 
+		end 
+		if Controllers.modify in buttons then
+			inc(b, 8) 
+		end 
+		pt.x := x
+		pt.y := y
+		repeat 
+			w := wnd
+			wnd := WinApi.ChildWindowFromPoint(wnd, pt)
+			res := WinApi.ClientToScreen(w, pt)
+			hc := WinApi.SendMessageW(wnd, WinApi.WM_NCHITTEST, 0, pt.x + pt.y * 65536)
+			res := WinApi.ScreenToClient(wnd, pt) 
+		until (hc # 1) or (w = wnd) 
+		if hc > 1 then
+			res := WinApi.ClientToScreen(wnd, pt)
+			if odd(b) then
+				m := WinApi.WM_NCLBUTTONDOWN 
+			else 
+				m := WinApi.WM_NCRBUTTONDOWN 
+			end 
+			res := WinApi.SendMessageW(wnd, m, hc, pt.x + pt.y * 65536) 
+		else 
+			res := WinApi.GetClassLongW(wnd, -26) // classStyle
+			if (Controllers.doubleClick in buttons) & odd(res div 8) then // DblClks IN classStyle
+				if odd(b) then
+					m := WinApi.WM_LBUTTONDBLCLK 
+				else 
+					m := WinApi.WM_RBUTTONDBLCLK 
+				end  
+			else 
+				if odd(b) then
+					m := WinApi.WM_LBUTTONDOWN 
+				else 
+					m := WinApi.WM_RBUTTONDOWN 
+				end  
+			end 
+			res := WinApi.SendMessageW(wnd, m, b, pt.x + pt.y * 65536) 
+		end 
+		repeat 
+			res := WinApi.GetMessageW(msg, 0, 0, 0)
+			if (msg.message >= WinApi.WM_MOUSEMOVE) & (msg.message <= WinApi.WM_MBUTTONDBLCLK) then
+				b := msg.wParam 
+			end 
+			if (msg.message = WinApi.WM_RBUTTONUP) & (b mod 4 = 0) & (31 in buttons) then
+				pt.x := msg.lParam mod 65536
+				pt.y := msg.lParam div 65536
+				res := WinApi.ClientToScreen(msg.hwnd, pt)
+				res := WinApi.ScreenToClient(wnd, pt)
+				msg.lParam := pt.x + pt.y * 65536
+				res := WinApi.SendMessageW(wnd, WinApi.WM_RBUTTONDOWN, msg.wParam, msg.lParam)
+				res := WinApi.SendMessageW(wnd, WinApi.WM_RBUTTONUP, msg.wParam, msg.lParam) 
+			else 
+				res := WinApi.TranslateMessage(msg)
+				res := WinApi.DispatchMessageW(msg) 
+			end  
+		until b mod 4 = 0 
+		inHandleMouse := false
+		Kernel.PopTrapCleaner(tc)
+	end HandleMouse
+	
+	proc HandleWheel(wnd: WinApi.HANDLE; x, y: integer; op, nofLines: integer
+		var done: boolean
+		)
+		var 
+			res: integer
+	begin 
+		if op = Controllers.incPage then
+			res := WinApi.SendMessageW(wnd, WinApi.WM_VSCROLL, WinApi.SB_PAGEDOWN, WinApi.NULL) 
+		elsif op = Controllers.decPage then 
+			res := WinApi.SendMessageW(wnd, WinApi.WM_VSCROLL, WinApi.SB_PAGEUP, WinApi.NULL) 
+		else 
+			if op = Controllers.incLine then
+				op := WinApi.SB_LINEDOWN 
+			else 
+				op := WinApi.SB_LINEUP 
+			end 
+			while nofLines > 0 do 
+				res := WinApi.SendMessageW(wnd, WinApi.WM_VSCROLL, op, WinApi.NULL)
+				dec(nofLines) 
+			end  
+		end 
+		done := true
+	end HandleWheel
+	
+	proc Mark(on, focus: boolean; var i: Info)
+		var 
+			res: integer
+	begin 
+		if focus then
+			if on then
+				if ~i.hasFocus then
+					res := WinApi.SendMessageW(i.ctrl, WinApi.WM_SETFOCUS, 0, 0)
+					i.hasFocus := true 
+				end  
+			else 
+				if i.hasFocus then
+					res := WinApi.SendMessageW(i.ctrl, WinApi.WM_KILLFOCUS, 0, 0)
+					i.hasFocus := false 
+				end  
+			end  
+		end 
+	end Mark
+	
+	proc SetLabel(in in_: array of char; var out: array of char)
+	begin 
+		Dialog.MapString(in_, out)
+	end SetLabel
+	
+	proc CheckLabel(in label: array of char; ctrl: integer)
+		var 
+			res: integer
+			lbl, s: Dialog.String
+	begin 
+		Dialog.MapString(label, lbl)
+		res := WinApi.GetWindowTextW(ctrl, s, len(s))
+		if s # lbl then
+			res := WinApi.SetWindowTextW(ctrl, lbl) 
+		end 
+	end CheckLabel
+	
+	// PushButton
+	
+	proc (f: PushButton) SetOffset(x, y: integer)
+	begin 
+		f.SetOffset^(x, y)
+		Adapt(f, f.i)
+	end SetOffset
+	
+	proc (f: PushButton) Close
+		var 
+			res: integer
+	begin 
+		if f.i.wnd # 0 then // deallocate
+			assert(f.rider # nil, 100)
+			assert(f.rider.Base() # nil, 101)
+			res := WinApi.DestroyWindow(f.i.wnd)
+			f.i.wnd := 0
+			f.i.ctrl := 0 
+		end 
+	// f.Close^
+	end Close
+	
+	proc (f: PushButton) Update
+		var 
+			res: integer
+			style: set
+	begin 
+		if ~f.disabled & ~f.readOnly then
+			if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+				if f.default then
+					style := bits(WinApi.GetWindowLongW(f.i.ctrl, -16)) // window style
+					res := WinApi.SetWindowLongW(f.i.ctrl, -16, ord(style + {0})) 
+				end 
+				res := WinApi.EnableWindow(f.i.ctrl, 1) 
+			end  
+		else 
+			if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
+				if f.default then
+					style := bits(WinApi.GetWindowLongW(f.i.ctrl, -16)) // window style
+					res := WinApi.SetWindowLongW(f.i.ctrl, -16, ord(style - {0})) 
+				end 
+				res := WinApi.EnableWindow(f.i.ctrl, 0) 
+			end  
+		end 
+		CheckLabel(f.label, f.i.ctrl)
+		res := WinApi.UpdateWindow(f.i.ctrl)
+	end Update
+	
+	proc (f: PushButton) Restore(l, t, r, b: integer)
+		var 
+			style: set
+			lbl: Dialog.String
+	begin 
+		SetLabel(f.label, lbl)
+		if f.i.ctrl = 0 then // lazy allocation
+			style := {16, 30} // pushbutton, tabstop, child
+			if f.default & ~f.disabled then // default
+				incl(style, 0) 
+			end 
+			Open(f, "BUTTON", lbl, style, {}, f.i) 
+		end 
+		f.Update
+		if f.i.wnd # 0 then
+			Paint(f, f.i) 
+		else 
+			Print(f, f.dot, -1, -1, lbl) 
+		end 
+	end Restore
+	
+	proc (f: PushButton) MouseDown(x, y: integer; buttons: set)
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			HandleMouse(f.i.wnd, x div f.unit, y div f.unit, buttons) 
+		end 
+	end MouseDown
+	
+	proc Execute(f: PushButton)
+		var 
+			old: WinApi.HANDLE
+	begin 
+		if f.Do # nil then
+			old := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
+			Dialog.ShowStatus("")
+			f.Do(f)
+			old := WinApi.SetCursor(old) 
+		end 
+	end Execute
+	
+	proc (f: PushButton) KeyDown(ch: char)
+	begin 
+		assert(~f.disabled, 100)
+		Execute(f)
+	end KeyDown
+	
+	proc (f: PushButton) Mark(on, focus: boolean)
+	begin 
+		Mark(on, f.front, f.i)
+	end Mark
+	
+	
+	
+	// CheckBox
+	
+	proc (f: CheckBox) SetOffset(x, y: integer)
+	begin 
+		f.SetOffset^(x, y)
+		Adapt(f, f.i)
+	end SetOffset
+	
+	proc (f: CheckBox) Close
+		var 
+			res: integer
+	begin 
+		if f.i.wnd # 0 then // deallocate
+			assert(f.rider # nil, 100)
+			assert(f.rider.Base() # nil, 101)
+			res := WinApi.DestroyWindow(f.i.wnd)
+			f.i.wnd := 0
+			f.i.ctrl := 0 
+		end 
+	// f.Close^
+	end Close
+	
+	proc (f: CheckBox) Update
+		var 
+			res: integer
+			value: boolean
+	begin 
+		if ~f.disabled then
+			f.Get(f, value)
+			if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 1) 
+			end 
+			if f.undef then
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETCHECK, 2, 0) 
+			elsif value then 
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETCHECK, 1, 0) 
+			else 
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETCHECK, 0, 0) 
+			end 
+			if f.readOnly then
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETSTATE, WinApi.TRUE_, 0) 
+			else 
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETSTATE, WinApi.FALSE_, 0) 
+			end  
+		else 
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETCHECK, 0, 0)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETSTATE, WinApi.FALSE_, 0)
+			if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 0) 
+			end  
+		end 
+		CheckLabel(f.label, f.i.ctrl)
+		res := WinApi.UpdateWindow(f.i.ctrl)
+	end Update
+	
+	proc (f: CheckBox) Restore(l, t, r, b: integer)
+		var 
+			style: set
+			lbl: Dialog.String
+	begin 
+		SetLabel(f.label, lbl)
+		if f.i.ctrl = 0 then // lazy allocation
+			(* f.Get(f, value);	(* update f.undef *)
+			   IF f.undef THEN style := {1, 2, 16, 30}	(* auto 3state, tabstop, child *)
+			   ELSE style := {0, 1, 16, 30}	(* auto checkbox, tabstop, child *)
+			   END; *)
+			
+			
+			style := {0, 2, 16, 30} // 3state, tabstop, child
+			Open(f, "BUTTON", lbl, style, {}, f.i) 
+		end 
+		f.Update
+		if f.i.wnd # 0 then
+			Paint(f, f.i) 
+		else 
+			Print(f, -1, 12 * Ports.point, -1, lbl) 
+		end 
+	end Restore
+	
+	proc (f: CheckBox) MouseDown(x, y: integer; buttons: set)
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			HandleMouse(f.i.wnd, x div f.unit, y div f.unit, buttons) 
+		end 
+	end MouseDown
+	
+	proc (f: CheckBox) KeyDown(ch: char)
+		var 
+			res: integer
+	begin 
+		assert(~f.disabled, 100)
+		if ch >= " " then
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, ord(" "), 0)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYUP, ord(" "), 0) 
+		end 
+	end KeyDown
+	
+	proc (f: CheckBox) Mark(on, focus: boolean)
+	begin 
+		Mark(on, f.front, f.i)
+	end Mark
+	
+	
+	
+	// RadioButton
+	
+	proc (f: RadioButton) SetOffset(x, y: integer)
+	begin 
+		f.SetOffset^(x, y)
+		Adapt(f, f.i)
+	end SetOffset
+	
+	proc (f: RadioButton) Close
+		var 
+			res: integer
+	begin 
+		if f.i.wnd # 0 then // deallocate
+			assert(f.rider # nil, 100)
+			assert(f.rider.Base() # nil, 101)
+			res := WinApi.DestroyWindow(f.i.wnd)
+			f.i.wnd := 0
+			f.i.ctrl := 0 
+		end 
+	// f.Close^
+	end Close
+	
+	proc (f: RadioButton) Update
+		var 
+			res: integer
+			value: boolean
+	begin 
+		if ~f.disabled then
+			f.Get(f, value)
+			if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 1) 
+			end 
+			if f.undef then
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETCHECK, 0, 0) 
+			elsif value then 
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETCHECK, 1, 0) 
+			else 
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETCHECK, 0, 0) 
+			end 
+			if f.readOnly then
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETSTATE, WinApi.TRUE_, 0) 
+			else 
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETSTATE, WinApi.FALSE_, 0) 
+			end  
+		else 
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETCHECK, 0, 0)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETSTATE, WinApi.FALSE_, 0)
+			if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 0) 
+			end  
+		end 
+		CheckLabel(f.label, f.i.ctrl)
+		res := WinApi.UpdateWindow(f.i.ctrl)
+	end Update
+	
+	proc (f: RadioButton) Restore(l, t, r, b: integer)
+		var 
+			lbl: Dialog.String
+	begin 
+		SetLabel(f.label, lbl)
+		if f.i.ctrl = 0 then // lazy allocation
+			Open(f, "BUTTON", lbl, {0, 3, 16, 30}, {}, f.i)  // auto radiobutton, tabstop, child
+		end 
+		f.Update
+		if f.i.wnd # 0 then
+			Paint(f, f.i) 
+		else 
+			Print(f, -2, 12 * Ports.point, -1, lbl) 
+		end 
+	end Restore
+	
+	proc (f: RadioButton) MouseDown(x, y: integer; buttons: set)
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			HandleMouse(f.i.wnd, x div f.unit, y div f.unit, buttons) 
+		end 
+	end MouseDown
+	
+	proc (f: RadioButton) KeyDown(ch: char)
+		var 
+			res: integer
+	begin 
+		assert(~f.disabled, 100)
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, ord(" "), 0)
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYUP, ord(" "), 0)
+	end KeyDown
+	
+	proc (f: RadioButton) Mark(on, focus: boolean)
+	begin 
+		Mark(on, f.front, f.i)
+	end Mark
+	
+	
+	
+	// ScrollBar
+	
+	proc (f: ScrollBar) SetOffset(x, y: integer)
+	begin 
+		f.SetOffset^(x, y)
+		Adapt(f, f.i)
+	end SetOffset
+	
+	proc (f: ScrollBar) Close
+		var 
+			res: integer
+	begin 
+		if f.i.wnd # 0 then // deallocate
+			assert(f.rider # nil, 100)
+			assert(f.rider.Base() # nil, 101)
+			res := WinApi.DestroyWindow(f.i.wnd)
+			f.i.wnd := 0
+			f.i.ctrl := 0 
+		end 
+	// f.Close^
+	end Close
+	
+	proc (f: ScrollBar) Update
+		var 
+			res, size_, sect, pos, p, q, m: integer
+			i: WinApi.SCROLLINFO
+	begin 
+		if ~f.disabled then
+			f.Get(f, size_, sect, pos)
+			if size_ > sect then
+				if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+					res := WinApi.EnableWindow(f.i.ctrl, 1) 
+				end 
+				
+				p := WinApi.MulDiv(pos, scrollRange, size_ - sect)
+				i.cbSize := size(WinApi.SCROLLINFO) // range, page, pos
+				i.fMask := {0, 1, 2}
+				res := WinApi.GetScrollInfo(f.i.ctrl, WinApi.SB_CTL, i)
+				if (res # 0) then
+					if sect > 0 then
+						q := WinApi.MulDiv(sect, scrollRange, size_ - sect)
+						m := scrollRange + q 
+					else 
+						q := -1
+						m := scrollRange 
+					end 
+					if (i.nPos # p) or (i.nPage # q + 1) then
+						i.nPos := p
+						i.nPage := q + 1
+						i.nMax := m
+						res := WinApi.SetScrollInfo(f.i.ctrl, WinApi.SB_CTL, i, 1) 
+					end  
+				elsif p # WinApi.GetScrollPos(f.i.ctrl, WinApi.SB_CTL) then 
+					res := WinApi.SetScrollPos(f.i.ctrl, WinApi.SB_CTL, p, 1) 
+				end  
+			(* IF WinApi.GetScrollPos(f.i.ctrl, WinApi.SBCtl) # pos THEN
+			   res := WinApi.SetScrollRange(f.i.ctrl, WinApi.SBCtl, 0, size, 1);
+			   res := WinApi.SetScrollPos(f.i.ctrl, WinApi.SBCtl, pos, 1)
+			   END *)
+			
+			
+			else 
+				if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
+					res := WinApi.EnableWindow(f.i.ctrl, 0) 
+				end  
+			end  
+		else 
+			if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 0) 
+			end  
+		end 
+		res := WinApi.UpdateWindow(f.i.ctrl)
+	end Update
+	
+	proc (f: ScrollBar) Restore(l, t, r, b: integer)
+		var 
+			res, w, h: integer
+			style: set
+	begin 
+		if f.i.ctrl = 0 then // lazy allocation
+			style := {(* 1, *)16, 30} // topalign, tabstop, child
+			f.view.context.GetSize(w, h)
+			if h > w then // vertical
+				incl(style, 0) 
+			end 
+			Open(f, "SCROLLBAR", "", style, {}, f.i)
+			res := WinApi.SetScrollRange(f.i.ctrl, WinApi.SB_CTL, 0, scrollRange, 1) 
+		end 
+		f.Update
+		if f.i.wnd # 0 then
+			Paint(f, f.i) 
+		else 
+			Print(f, f.dot, -1, -1, "") 
+		end 
+	end Restore
+	
+	proc (f: ScrollBar) MouseDown(x, y: integer; buttons: set)
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			HandleMouse(f.i.wnd, x div f.unit, y div f.unit, buttons) 
+		end 
+	end MouseDown
+	
+	proc (f: ScrollBar) KeyDown(ch: char)
+	begin 
+		assert(~f.disabled, 100)
+		SendKey(ch, f.i.ctrl)
+	end KeyDown
+	
+	proc (f: ScrollBar) Mark(on, focus: boolean)
+	begin 
+		Mark(on, f.front, f.i)
+	end Mark
+	
+	
+	
+	// Field
+	
+	proc (f: Field) SetOffset(x, y: integer)
+	begin 
+		f.SetOffset^(x, y)
+		Adapt(f, f.i)
+	end SetOffset
+	
+	proc (f: Field) Close
+		var 
+			res: integer
+	begin 
+		if f.i.wnd # 0 then // deallocate
+			assert(f.rider # nil, 100)
+			assert(f.rider.Base() # nil, 101)
+			res := WinApi.DestroyWindow(f.i.wnd)
+			f.i.wnd := 0
+			f.i.ctrl := 0 
+		end 
+	// f.Close^
+	end Close
+	
+	proc InsLF(var x: array of char)
+		var 
+			i, j: integer
+	begin 
+		i := 0
+		j := 0
+		while x[i] # 0x do 
+			if x[i] = 0dx then
+				inc(j) 
+			end 
+			inc(i)
+			inc(j) 
+		end 
+		x[j] := 0x
+		while i # j do 
+			dec(i)
+			dec(j)
+			if x[i] = 0dx then
+				x[j] := 0ax
+				dec(j) 
+			end 
+			x[j] := x[i] 
+		end 
+	end InsLF
+	
+	proc DelLF(var x: array of char)
+		var 
+			i, j: integer
+	begin 
+		i := 0
+		j := 0
+		while x[i] # 0x do 
+			if x[i] = 0ax then
+				inc(i) 
+			end 
+			x[j] := x[i]
+			inc(i)
+			inc(j) 
+		end 
+		x[j] := 0x
+	end DelLF
+	
+	proc Equal(f: Field; var x, y: array of char): boolean
+	begin 
+		DelLF(y)
+		return f.Equal(f, x, y)
+	end Equal
+	
+	proc (f: Field) Update
+		var 
+			res: integer
+			s, s1: array 512 of char
+			ps, ps1: pointer to array of char
+			style: set
+	begin 
+		if f.maxLen > 255 then
+			new(ps, 2 * f.maxLen + 1)
+			new(ps1, 2 * f.maxLen + 1)
+			if f.undef or f.disabled then
+				ps[0] := 0x 
+			else 
+				f.Get(f, ps^) 
+			end 
+			res := WinApi.GetWindowTextW(f.i.ctrl, ps1^, len(ps1^))
+			if (WinApi.GetWindowTextLengthW(f.i.ctrl) >= len(ps^)) or ~Equal(f, ps^, ps1^) then
+				f.isUpdate := true
+				if f.multiLine then
+					InsLF(ps^) 
+				end 
+				res := WinApi.SetWindowTextW(f.i.ctrl, ps^)
+				f.isUpdate := false 
+			end  
+		else 
+			if f.undef or f.disabled then
+				s := "" 
+			else 
+				f.Get(f, s) 
+			end 
+			res := WinApi.GetWindowTextW(f.i.ctrl, s1, len(s1))
+			if (WinApi.GetWindowTextLengthW(f.i.ctrl) >= len(s)) or ~Equal(f, s, s1) then
+				f.isUpdate := true
+				if f.multiLine then
+					InsLF(s) 
+				end 
+				res := WinApi.SetWindowTextW(f.i.ctrl, s)
+				f.isUpdate := false 
+			end  
+		end 
+		style := bits(WinApi.GetWindowLongW(f.i.ctrl, -16)) // window style
+		if (f.readOnly # f.i.readOnly) or (f.undef # f.i.undef) then
+			// res := WinApi.SetWindowLongW(f.i.ctrl, -16, ORD(style / {11}));
+			
+			
+			res := WinApi.InvalidateRect(f.i.ctrl, nil, 1)
+			f.i.readOnly := f.readOnly
+			f.i.undef := f.undef 
+		end 
+		if f.disabled then
+			if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 0) 
+			end  
+		else 
+			if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 1) 
+			end  
+		end 
+		res := WinApi.UpdateWindow(f.i.ctrl)
+	end Update
+	
+	proc (f: Field) Restore(l, t, r, b: integer)
+		var 
+			res, w, h: integer
+			style: set
+			s: Dialog.String
+	begin 
+		if f.i.ctrl = 0 then // lazy allocation
+			f.view.context.GetSize(w, h)
+			if h > dropDownHeight then
+				style := {2, 6, 16, 23, 30} // multiline, autovscroll, tabstop, border, child
+				if f.multiLine then // ver scroll
+					incl(style, 21) 
+				end  
+			else 
+				style := {7, 16, 23, 30}  // autohscroll, tabstop, border, child
+			end 
+			// IF f.readOnly THEN INCL(style, 11) END;	(* readonly *)
+			
+			
+			f.i.readOnly := f.readOnly
+			f.i.undef := f.undef
+			if f.right & ~f.left then // right align, multiline
+				style := style + {1, 2} 
+			elsif ~f.left then  // center, multiline
+				style := style + {0, 2} 
+			end 
+			if f.password then // password
+				incl(style, 5) 
+			end 
+			Open(f, "EDIT", "", style, WinApi.WS_EX_CLIENTEDGE, f.i)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_LIMITTEXT, f.maxLen, 0)
+			f.Update
+			if f.front & ~f.disabled then
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_SETFOCUS, 0, 0)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, 23h, 0) 
+			end  
+		else 
+			f.Update 
+		end 
+		if f.i.wnd # 0 then
+			Paint(f, f.i) 
+		else 
+			f.Get(f, s)
+			Print(f, f.dot, 2 * Ports.point, 0, s) 
+		end 
+	end Restore
+	
+	proc (f: Field) MouseDown(x, y: integer; buttons: set)
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			if ~f.readOnly then
+				incl(buttons, 31) 
+			end 
+			HandleMouse(f.i.wnd, x div f.unit, y div f.unit, buttons) 
+		end 
+	end MouseDown
+	
+	proc (f: Field) KeyDown(ch: char)
+	begin 
+		assert(~f.disabled, 100)
+		if f.multiLine or (ch # 0dx) then
+			f.del := false
+			if (ch = DEL) or (ch = BS) then
+				f.del := true 
+			end 
+			SendKey(ch, f.i.ctrl) 
+		end 
+	end KeyDown
+	
+	proc (f: Field) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean)
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			HandleWheel(f.i.ctrl, x, y, op, nofLines, done) 
+		end 
+	end WheelMove
+	
+	proc (f: Field) Edit(op: integer; var v: Views.View; var w, h: integer
+		var singleton, clipboard: boolean)
+		var 
+			res: integer
+	begin 
+		if clipboard then
+			if op = Controllers.cut then
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_CUT, 0, 0) 
+			elsif op = Controllers.copy_ then 
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_COPY, 0, 0) 
+			elsif op = Controllers.paste then 
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_PASTE, 0, 0) 
+			end  
+		elsif op = Controllers.cut then 
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_CLEAR, 0, 0) 
+		end 
+	end Edit
+	
+	proc (f: Field) Idle end // empty
+	
+	proc (f: Field) Select(from, to_: integer)
+		var 
+			res: integer
+	begin 
+		if to_ = max(integer) then
+			to_ := -1 
+		end 
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_SETSEL, from, to_)
+	end Select
+	
+	proc (f: Field) GetSelection(var from, to_: integer)
+		var 
+			res: integer
+	begin 
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_GETSEL, SYSTEM.ADR(from), SYSTEM.ADR(to_))
+		if from = -1 then
+			to_ := -1 
+		elsif to_ = -1 then 
+			to_ := max(integer) 
+		end 
+	end GetSelection
+	
+	proc (f: Field) Mark(on, focus: boolean)
+	begin 
+		Mark(on, f.front, f.i)
+	end Mark
+	
+	proc (f: Field) Length(): integer
+		var 
+			res: integer
+	begin 
+		res := WinApi.GetWindowTextLengthW(f.i.ctrl)
+		return res
+	end Length
+	
+	proc (f: Field) GetCursor(x, y: integer; modifiers: set; var cursor: integer)
+		var 
+			res, hc: integer
+			pt: WinApi.POINT
+	begin 
+		pt.x := (x - 1) div f.unit + 1
+		pt.y := (y - 1) div f.unit + 1
+		res := WinApi.ClientToScreen(f.i.wnd, pt)
+		hc := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_NCHITTEST, 0, pt.x + pt.y * 65536)
+		if hc = 1 then
+			cursor := Ports.textCursor 
+		end 
+	end GetCursor
+	
+	
+	
+	// UpDownField
+	
+	proc (f: UpDownField) SetOffset(x, y: integer)
+	begin 
+		f.SetOffset^(x, y)
+		Adapt(f, f.i)
+	end SetOffset
+	
+	proc (f: UpDownField) Close
+		var 
+			res: integer
+	begin 
+		if f.i.wnd # 0 then // deallocate
+			assert(f.rider # nil, 100)
+			assert(f.rider.Base() # nil, 101)
+			res := WinApi.DestroyWindow(f.i.wnd)
+			f.i.wnd := 0
+			f.i.ctrl := 0
+			f.i.ud := 0 
+		end 
+	// f.Close^
+	end Close
+	
+	proc (f: UpDownField) Update
+		var 
+			res, val_: integer
+			s, s1: array 16 of char
+			style: set
+			upd: boolean
+	begin 
+		if ~f.disabled then
+			if f.undef then
+				upd := true
+				s := "" 
+			else 
+				f.Get(f, val_)
+				res := WinApi.GetWindowTextW(f.i.ctrl, s1, len(s1))
+				Strings.IntToString(val_, s)
+				upd := (val_ # f.val_) or (s1 # s) 
+			end 
+			if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 1)
+				upd := true 
+			end 
+			if f.readOnly then
+				if WinApi.IsWindowEnabled(f.i.ud) # 0 then
+					res := WinApi.EnableWindow(f.i.ud, 0) 
+				end  
+			else 
+				if WinApi.IsWindowEnabled(f.i.ud) = 0 then
+					res := WinApi.EnableWindow(f.i.ud, 1) 
+				end  
+			end 
+			if upd then
+				f.isUpdate := true
+				res := WinApi.SetWindowTextW(f.i.ctrl, s)
+				f.val_ := val_
+				f.isUpdate := false 
+			end 
+			style := bits(WinApi.GetWindowLongW(f.i.ctrl, -16)) // window style
+			if (f.readOnly # f.i.readOnly) or (f.undef # f.i.undef) then
+				// res := WinApi.SetWindowLongW(f.i.ctrl, -16, ORD(style / {11}));
+				
+				
+				res := WinApi.InvalidateRect(f.i.ctrl, nil, 1)
+				f.i.readOnly := f.readOnly
+				f.i.undef := f.undef 
+			end  
+		else 
+			if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
+				f.isUpdate := true
+				res := WinApi.SetWindowTextW(f.i.ctrl, "")
+				f.isUpdate := false
+				res := WinApi.EnableWindow(f.i.ctrl, 0) 
+			end 
+			if WinApi.IsWindowEnabled(f.i.ud) # 0 then
+				res := WinApi.EnableWindow(f.i.ud, 0) 
+			end  
+		end 
+		res := WinApi.UpdateWindow(f.i.ctrl)
+	end Update
+	
+	proc (f: UpDownField) Restore(l, t, r, b: integer)
+		var 
+			res, w, h: integer
+			style: set
+			s: array 16 of char
+	begin 
+		if f.i.ctrl = 0 then // lazy allocation
+			f.view.context.GetSize(w, h)
+			style := {7, 16, 23, 30} // autohscroll, tabstop, border, child
+			// IF f.readOnly THEN INCL(style, 11) END;	(* readonly *)
+			
+			
+			f.i.readOnly := f.readOnly
+			f.i.undef := f.undef
+			f.val_ := 0
+			Open(f, "EDIT", "0", style, WinApi.WS_EX_CLIENTEDGE, f.i)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_LIMITTEXT, 16, 0)
+			f.Update
+			if f.front & ~f.disabled then
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_SETFOCUS, 0, 0)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, 23h, 0) 
+			end  
+		else 
+			f.Update 
+		end 
+		if f.i.wnd # 0 then
+			Paint(f, f.i) 
+		else 
+			f.Get(f, w)
+			Strings.IntToString(w, s)
+			Print(f, f.dot, 2 * Ports.point, 0, s) 
+		end 
+	end Restore
+	
+	proc (f: UpDownField) MouseDown(x, y: integer; buttons: set)
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			if (HostPorts.right in buttons) & ~f.readOnly then
+				incl(buttons, 31) 
+			end 
+			HandleMouse(f.i.wnd, x div f.unit, y div f.unit, buttons) 
+		end 
+	end MouseDown
+	
+	proc (f: UpDownField) KeyDown(ch: char)
+		var 
+			val_: integer
+	begin 
+		assert(~f.disabled, 100)
+		if (ch = AU) or (ch = AD) then
+			val_ := f.val_
+			if WinApi.GetKeyState(WinApi.VK_CONTROL) < 0 then // Ctrl key pressed
+				if ch = AU then
+					if ((f.min_ + 9) div 10 <= val_) & (val_ <= f.max_ div 10) then
+						val_ := val_ * 10 
+					end  
+				else 
+					if val_ < 0 then
+						inc(val_, 9) 
+					end 
+					val_ := val_ div 10 
+				end  
+			else 
+				if ch = AU then
+					if val_ <= f.max_ - f.inc_ then
+						val_ := val_ + f.inc_ 
+					else 
+						val_ := f.max_ 
+					end  
+				else 
+					if val_ >= f.min_ + f.inc_ then
+						val_ := val_ - f.inc_ 
+					else 
+						val_ := f.min_ 
+					end  
+				end  
+			end 
+			if val_ # f.val_ then
+				f.Set(f, val_)
+				f.Update 
+			end  
+		elsif (ch # 0dx) then 
+			SendKey(ch, f.i.ctrl) 
+		end 
+	end KeyDown
+	
+	proc (f: UpDownField) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean)
+	begin 
+		WheelToArrow(f, op, done)
+	end WheelMove
+	
+	proc (f: UpDownField) Edit(op: integer; var v: Views.View; var w, h: integer
+		var singleton, clipboard: boolean)
+		var 
+			res: integer
+	begin 
+		if clipboard then
+			if op = Controllers.cut then
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_CUT, 0, 0) 
+			elsif op = Controllers.copy_ then 
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_COPY, 0, 0) 
+			elsif op = Controllers.paste then 
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_PASTE, 0, 0) 
+			end  
+		elsif op = Controllers.cut then 
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_CLEAR, 0, 0) 
+		end 
+	end Edit
+	
+	proc (f: UpDownField) Idle end // empty
+	
+	proc (f: UpDownField) Select(from, to_: integer)
+		var 
+			res: integer
+	begin 
+		if to_ = max(integer) then
+			to_ := -1 
+		end 
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_SETSEL, from, to_)
+	end Select
+	
+	proc (f: UpDownField) GetSelection(var from, to_: integer)
+		var 
+			res: integer
+	begin 
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_GETSEL, SYSTEM.ADR(from), SYSTEM.ADR(to_))
+		if from = -1 then
+			to_ := -1 
+		elsif to_ = -1 then 
+			to_ := max(integer) 
+		end 
+	end GetSelection
+	
+	proc (f: UpDownField) Mark(on, focus: boolean)
+	begin 
+		Mark(on, f.front, f.i)
+	end Mark
+	
+	proc (f: UpDownField) GetCursor(x, y: integer; modifiers: set; var cursor: integer)
+		var 
+			res, hc: integer
+			pt: WinApi.POINT
+	begin 
+		pt.x := (x - 1) div f.unit + 1
+		pt.y := (y - 1) div f.unit + 1
+		res := WinApi.ClientToScreen(f.i.wnd, pt)
+		hc := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_NCHITTEST, 0, pt.x + pt.y * 65536)
+		if hc = 1 then
+			cursor := Ports.textCursor 
+		end 
+	end GetCursor
+	
+	
+	
+	// TimeField
+	
+	proc GetTimePart(var time: Dates.Time; part: integer; var val_, min_, max_: integer)
+	begin 
+		if part = -1 then
+			part := lastPart 
+		end 
+		if part = 4 then
+			val_ := time.hour div 12
+			min_ := 0
+			max_ := 1 
+		elsif part = 3 then 
+			val_ := time.second
+			min_ := 0
+			max_ := 59 
+		elsif part = 2 then 
+			val_ := time.minute
+			min_ := 0
+			max_ := 59 
+		elsif lastPart = 3 then 
+			val_ := time.hour
+			min_ := 0
+			max_ := 23 
+		else 
+			val_ := (time.hour - 1) mod 12 + 1
+			min_ := 1
+			max_ := 12 
+		end 
+	end GetTimePart
+	
+	proc SetTimePart(var time: Dates.Time; part: integer; val_: integer)
+	begin 
+		if part = -1 then
+			part := lastPart 
+		end 
+		if part = 4 then
+			time.hour := val_ * 12 + time.hour mod 12 
+		elsif part = 3 then 
+			time.second := val_ 
+		elsif part = 2 then 
+			time.minute := val_ 
+		elsif lastPart = 3 then 
+			time.hour := val_ 
+		else 
+			time.hour := time.hour div 12 * 12 + val_ mod 12 
+		end 
+	end SetTimePart
+	
+	proc TimeToString(var time: Dates.Time; var str: array of char)
+		var 
+			val_, min_, max_, i, j, k: integer
+	begin 
+		GetTimePart(time, 1, val_, min_, max_)
+		str[0] := chr(val_ div 10 + ord("0"))
+		str[1] := chr(val_ mod 10 + ord("0"))
+		str[2] := timeSep
+		GetTimePart(time, 2, val_, min_, max_)
+		str[3] := chr(val_ div 10 + ord("0"))
+		str[4] := chr(val_ mod 10 + ord("0"))
+		str[5] := timeSep
+		GetTimePart(time, 3, val_, min_, max_)
+		str[6] := chr(val_ div 10 + ord("0"))
+		str[7] := chr(val_ mod 10 + ord("0"))
+		if lastPart = 3 then
+			str[8] := 0x 
+		else 
+			str[8] := " "
+			i := 9
+			j := 0
+			k := time.hour div 12
+			while desig[k, j] # 0x do 
+				str[i] := desig[k, j]
+				inc(i)
+				inc(j) 
+			end 
+			str[i] := 0x 
+		end 
+	end TimeToString
+	
+	proc (f: TimeField) Select // new
+		var 
+			res: integer
+			sel: integer
+	begin 
+		f.GetSel(f, sel)
+		if sel = -1 then
+			sel := lastPart 
+		end 
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_SETSEL, 3 * sel - 3, 3 * sel - 1)
+	end Select
+	
+	proc (f: TimeField) SetOffset(x, y: integer)
+	begin 
+		f.SetOffset^(x, y)
+		Adapt(f, f.i)
+	end SetOffset
+	
+	proc (f: TimeField) Close
+		var 
+			res: integer
+	begin 
+		if f.i.wnd # 0 then // deallocate
+			assert(f.rider # nil, 100)
+			assert(f.rider.Base() # nil, 101)
+			res := WinApi.DestroyWindow(f.i.wnd)
+			f.i.wnd := 0
+			f.i.ctrl := 0
+			f.i.ud := 0 
+		end 
+	// f.Close^
+	end Close
+	
+	proc (f: TimeField) Update
+		var 
+			res: integer
+			s, s1: array 20 of char
+			time: Dates.Time
+			style: set
+	begin 
+		if ~f.disabled then
+			if f.undef then
+				s := "" 
+			else 
+				f.Get(f, time)
+				TimeToString(time, s) 
+			end 
+			if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 1) 
+			end 
+			if f.readOnly then
+				if WinApi.IsWindowEnabled(f.i.ud) # 0 then
+					res := WinApi.EnableWindow(f.i.ud, 0) 
+				end  
+			else 
+				if WinApi.IsWindowEnabled(f.i.ud) = 0 then
+					res := WinApi.EnableWindow(f.i.ud, 1) 
+				end  
+			end 
+			res := WinApi.GetWindowTextW(f.i.ctrl, s1, len(s1))
+			if s # s1 then
+				f.isUpdate := true
+				res := WinApi.SetWindowTextW(f.i.ctrl, s)
+				f.isUpdate := false 
+			end 
+			style := bits(WinApi.GetWindowLongW(f.i.ctrl, -16)) // window style
+			if (f.readOnly # f.i.readOnly) or (f.undef # f.i.undef) then
+				// res := WinApi.SetWindowLongW(f.i.ctrl, -16, ORD(style / {11}));
+				
+				
+				res := WinApi.InvalidateRect(f.i.ctrl, nil, 1)
+				f.i.readOnly := f.readOnly
+				f.i.undef := f.undef 
+			end 
+			f.Select 
+		else 
+			if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
+				f.isUpdate := true
+				res := WinApi.SetWindowTextW(f.i.ctrl, "")
+				f.isUpdate := false
+				res := WinApi.EnableWindow(f.i.ctrl, 0) 
+			end 
+			if WinApi.IsWindowEnabled(f.i.ud) # 0 then
+				res := WinApi.EnableWindow(f.i.ud, 0) 
+			end  
+		end 
+		res := WinApi.UpdateWindow(f.i.ctrl)
+	end Update
+	
+	proc (f: TimeField) Restore(l, t, r, b: integer)
+		var 
+			res, w, h: integer
+			style: set
+			s: array 20 of char
+			time: Dates.Time
+	begin 
+		if f.i.ctrl = 0 then // lazy allocation
+			f.view.context.GetSize(w, h)
+			style := {7, 16, 23, 30} // autohscroll, tabstop, border, child
+			// IF f.readOnly THEN INCL(style, 11) END;	(* readonly *)
+			
+			
+			f.i.readOnly := f.readOnly
+			f.i.undef := f.undef
+			Open(f, "EDIT", "", style, WinApi.WS_EX_CLIENTEDGE, f.i)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_LIMITTEXT, 16, 0)
+			f.Update
+			if f.front & ~f.disabled then
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_SETFOCUS, 0, 0)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, 23h, 0) 
+			end  
+		else 
+			f.Update 
+		end 
+		if f.i.wnd # 0 then
+			Paint(f, f.i) 
+		else 
+			f.Get(f, time)
+			TimeToString(time, s)
+			Print(f, f.dot, 2 * Ports.point, 0, s) 
+		end 
+	end Restore
+	
+	proc (f: TimeField) MouseDown(x, y: integer; buttons: set)
+		var 
+			res: integer
+			sel: integer
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			f.GetSel(f, sel)
+			if sel = 0 then
+				f.SetSel(f, 1)
+				f.Select 
+			end 
+			HandleMouse(f.i.wnd, x div f.unit, y div f.unit, buttons)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_GETSEL, 0, 0)
+			sel := res mod 65536 div 3 + 1
+			if sel >= lastPart then
+				sel := -1 
+			end 
+			f.cur := 0
+			f.SetSel(f, sel)
+			f.Select 
+		end 
+	end MouseDown
+	
+	proc (f: TimeField) KeyDown(ch: char)
+		var 
+			sel, s, val_, v, min_, max_: integer
+			time: Dates.Time
+	begin 
+		assert(~f.disabled, 100)
+		f.GetSel(f, sel)
+		s := sel
+		if s = -1 then
+			s := lastPart 
+		end 
+		f.Get(f, time)
+		GetTimePart(time, s, val_, min_, max_)
+		v := val_
+		if (ch = TAB) or (ch = AR) then
+			s := s mod lastPart + 1
+			f.cur := 0 
+		elsif (ch = LTAB) or (ch = AL) then 
+			dec(s)
+			f.cur := 0
+			if s <= 0 then
+				s := lastPart 
+			end  
+		elsif (ch = PL) or (ch = DL) then 
+			s := 1
+			f.cur := 0 
+		elsif (ch = PR) or (ch = DR) then 
+			s := lastPart
+			f.cur := 0 
+		elsif (ch = DEL) or (ch = BS) then 
+			v := min_ 
+		elsif ch = AU then 
+			if v < max_ then
+				inc(v) 
+			else 
+				v := min_ 
+			end  
+		elsif ch = AD then 
+			if v > min_ then
+				dec(v) 
+			else 
+				v := max_ 
+			end  
+		elsif (ch >= "0") & (ch <= "9") & (s < 4) then 
+			v := v * 10 mod 100 + ord(ch) - ord("0")
+			if v > max_ then
+				v := v mod 10 
+			elsif v < min_ then 
+				v := min_ 
+			end  
+		elsif s = 4 then 
+			if (ch = " ") or (cap(ch) = cap(desig[1 - v, 0])) then
+				v := 1 - v 
+			end  
+		end 
+		if s = lastPart then
+			s := -1 
+		end 
+		if v # val_ then
+			SetTimePart(time, s, v)
+			f.Set(f, time)
+			f.Update 
+		elsif s # sel then 
+			f.SetSel(f, s)
+			f.Select 
+		end 
+	end KeyDown
+	
+	proc (f: TimeField) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean)
+	begin 
+		WheelToArrow(f, op, done)
+	end WheelMove
+	
+	proc (f: TimeField) Edit(op: integer; var v: Views.View; var w, h: integer
+		var singleton, clipboard: boolean)
+		var 
+			res: integer
+	begin 
+		if clipboard then
+			if op = Controllers.copy_ then
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_COPY, 0, 0) 
+			end  
+		end 
+	end Edit
+	
+	proc (f: TimeField) Mark(on, focus: boolean)
+		var 
+			res: integer
+	begin 
+		Mark(on, f.front, f.i)
+		if ~on & focus then
+			f.SetSel(f, 0)
+			f.cur := 0
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_SETSEL, 0, 0) 
+		end 
+	end Mark
+	
+	proc (f: TimeField) GetCursor(x, y: integer; modifiers: set; var cursor: integer)
+		var 
+			res, hc: integer
+			pt: WinApi.POINT
+	begin 
+		pt.x := (x - 1) div f.unit + 1
+		pt.y := (y - 1) div f.unit + 1
+		res := WinApi.ClientToScreen(f.i.wnd, pt)
+		hc := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_NCHITTEST, 0, pt.x + pt.y * 65536)
+		if hc = 1 then
+			cursor := Ports.textCursor 
+		end 
+	end GetCursor
+	
+	
+	
+	// DateField
+	
+	proc GetDatePart(var date: Dates.Date; part: integer; var val_, min_, max_: integer)
+	(* GetDatePart picks the day, month or year part out of a given date and asigns it to the out
+	   parameter val, together with the min and max possible values for this part *)
+	
+	begin 
+		if part = -1 then
+			part := 3 
+		end 
+		if part = yearPart then
+			val_ := date.year
+			min_ := 1
+			max_ := 9999 
+		elsif part = monthPart then 
+			val_ := date.month
+			min_ := 1
+			max_ := 12 
+		else 
+			val_ := date.day
+			min_ := 1
+			if date.month = 0 then
+				max_ := 31 
+			elsif date.month = 2 then 
+				if (date.year mod 4 = 0) 
+					& ((date.year < 1583) or (date.year mod 100 # 0) or (date.year mod 400 = 0)) 
+				then
+					max_ := 29 
+				else 
+					max_ := 28 
+				end  
+			elsif date.month in {1, 3, 5, 7, 8, 10, 12} then 
+				max_ := 31 
+			else 
+				max_ := 30 
+			end  
+		end 
+	end GetDatePart
+	
+	proc SetDatePart(var date: Dates.Date; part: integer; val_: integer)
+		(* SetDatePart sets the day, month or year part in a given date to the value specivied
+		   by the parameter val.
+		   If the month is set, the day is adjusted to the possible range of days in this month.
+		   If the day is set, then the month may be changed in order to obtain a valid date *)
+		
+		var 
+			v, min_, max_: integer
+	begin 
+		if part = -1 then
+			part := 3 
+		end 
+		if part = yearPart then
+			date.year := val_ 
+		elsif part = monthPart then 
+			date.month := val_ 
+		else 
+			date.day := val_ 
+		end 
+		GetDatePart(date, dayPart, v, min_, max_)
+		if (part = monthPart) then // adjust day if month value is set and day > max
+			if v > max_ then
+				date.day := max_ 
+			end  
+		elsif part = yearPart then  // adjust month is day value is set and day > max
+			if v > max_ then
+				inc(date.month) 
+			end  
+		end 
+	end SetDatePart
+	
+	proc DateToString(var date: Dates.Date; var str: array of char)
+		var 
+			val_, min_, max_, p, i: integer
+	begin 
+		p := 1
+		i := 0
+		while p <= 3 do 
+			if p > 1 then
+				str[i] := dateSep
+				inc(i) 
+			end 
+			GetDatePart(date, p, val_, min_, max_)
+			if max_ = 9999 then
+				str[i] := chr(val_ div 1000 mod 10 + ord("0"))
+				inc(i)
+				str[i] := chr(val_ div 100 mod 10 + ord("0"))
+				inc(i) 
+			end 
+			str[i] := chr(val_ div 10 mod 10 + ord("0"))
+			inc(i)
+			str[i] := chr(val_ mod 10 + ord("0"))
+			inc(i)
+			inc(p) 
+		end 
+		str[i] := 0x
+	end DateToString
+	
+	proc (f: DateField) Select // new
+		var 
+			res: integer
+			sel, a, b: integer
+	begin 
+		f.GetSel(f, sel)
+		if sel = 1 then
+			a := 0
+			b := del1 
+		elsif sel = 2 then 
+			a := del1 + 1
+			b := del2 
+		else 
+			a := del2 + 1
+			b := del2 + 5 
+		end 
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_SETSEL, a, b)
+	end Select
+	
+	proc (f: DateField) SetOffset(x, y: integer)
+	begin 
+		f.SetOffset^(x, y)
+		Adapt(f, f.i)
+	end SetOffset
+	
+	proc (f: DateField) Close
+		var 
+			res: integer
+	begin 
+		if f.i.wnd # 0 then // deallocate
+			assert(f.rider # nil, 100)
+			assert(f.rider.Base() # nil, 101)
+			res := WinApi.DestroyWindow(f.i.wnd)
+			f.i.wnd := 0
+			f.i.ctrl := 0
+			f.i.ud := 0 
+		end 
+	// f.Close^
+	end Close
+	
+	proc (f: DateField) Update
+		var 
+			res: integer
+			s, s1: array 20 of char
+			date: Dates.Date
+			style: set
+			sel: integer
+	begin 
+		if ~f.disabled then
+			if f.undef then
+				s := "" 
+			else 
+				f.Get(f, date)
+				if f.cnt > 0 then
+					f.GetSel(f, sel)
+					SetDatePart(date, sel, f.val_) 
+				end 
+				DateToString(date, s) 
+			end 
+			if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 1) 
+			end 
+			if f.readOnly then
+				if WinApi.IsWindowEnabled(f.i.ud) # 0 then
+					res := WinApi.EnableWindow(f.i.ud, 0) 
+				end  
+			else 
+				if WinApi.IsWindowEnabled(f.i.ud) = 0 then
+					res := WinApi.EnableWindow(f.i.ud, 1) 
+				end  
+			end 
+			res := WinApi.GetWindowTextW(f.i.ctrl, s1, len(s1))
+			if s # s1 then
+				f.isUpdate := true
+				res := WinApi.SetWindowTextW(f.i.ctrl, s)
+				f.isUpdate := false 
+			end 
+			style := bits(WinApi.GetWindowLongW(f.i.ctrl, -16)) // window style
+			if (f.readOnly # f.i.readOnly) or (f.undef # f.i.undef) then
+				// res := WinApi.SetWindowLongW(f.i.ctrl, -16, ORD(style / {11}));
+				
+				
+				res := WinApi.InvalidateRect(f.i.ctrl, nil, 1)
+				f.i.readOnly := f.readOnly
+				f.i.undef := f.undef 
+			end 
+			f.Select 
+		else 
+			if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
+				f.isUpdate := true
+				res := WinApi.SetWindowTextW(f.i.ctrl, "")
+				f.isUpdate := false
+				res := WinApi.EnableWindow(f.i.ctrl, 0) 
+			end 
+			if WinApi.IsWindowEnabled(f.i.ud) # 0 then
+				res := WinApi.EnableWindow(f.i.ud, 0) 
+			end  
+		end 
+		res := WinApi.UpdateWindow(f.i.ctrl)
+	end Update
+	
+	proc (f: DateField) Restore(l, t, r, b: integer)
+		var 
+			res, w, h: integer
+			style: set
+			s: array 20 of char
+			date: Dates.Date
+	begin 
+		if f.i.ctrl = 0 then // lazy allocation
+			f.view.context.GetSize(w, h)
+			style := {7, 16, 23, 30} // autohscroll, tabstop, border, child
+			// IF f.readOnly THEN INCL(style, 11) END;	(* readonly *)
+			
+			
+			f.i.readOnly := f.readOnly
+			f.i.undef := f.undef
+			Open(f, "EDIT", "", style, WinApi.WS_EX_CLIENTEDGE, f.i)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_LIMITTEXT, 16, 0)
+			f.Update
+			if f.front & ~f.disabled then
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_SETFOCUS, 0, 0)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, 23h, 0) 
+			end  
+		else 
+			f.Update 
+		end 
+		if f.i.wnd # 0 then
+			Paint(f, f.i) 
+		else 
+			f.Get(f, date)
+			DateToString(date, s)
+			Print(f, f.dot, 2 * Ports.point, 0, s) 
+		end 
+	end Restore
+	
+	proc ActualizeDate(f: DateField)
+		var 
+			sel: integer
+			date: Dates.Date
+			val_, min_, max_: integer
+	begin 
+		if f.cnt > 0 then
+			f.GetSel(f, sel)
+			if sel = -1 then
+				sel := 3 
+			end 
+			f.Get(f, date)
+			if (sel = yearPart) & (f.cnt <= 2) then
+				if f.val_ < 50 then
+					f.val_ := f.val_ + 2000 
+				elsif f.val_ < 100 then 
+					f.val_ := f.val_ + 1900 
+				end  
+			end 
+			GetDatePart(date, sel, val_, min_, max_)
+			if (min_ <= f.val_) & (f.val_ <= max_) then
+				SetDatePart(date, sel, f.val_)
+				f.Set(f, date) 
+			end 
+			f.cnt := 0
+			f.Update 
+		end 
+	end ActualizeDate
+	
+	proc (f: DateField) MouseDown(x, y: integer; buttons: set)
+		var 
+			res: integer
+			sel: integer
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			ActualizeDate(f)
+			f.GetSel(f, sel)
+			if sel = 0 then
+				f.SetSel(f, 1)
+				f.Select 
+			end 
+			HandleMouse(f.i.wnd, x div f.unit, y div f.unit, buttons)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_GETSEL, 0, 0)
+			res := res mod 65536
+			if res <= del1 then
+				sel := 1 
+			elsif res <= del2 then 
+				sel := 2 
+			else 
+				sel := -1 
+			end 
+			f.SetSel(f, sel)
+			f.Select 
+		end 
+	end MouseDown
+	
+	proc (f: DateField) KeyDown(ch: char)
+		var 
+			sel, s, val_, min_, max_: integer
+			date: Dates.Date
+	begin 
+		assert(~f.disabled, 100)
+		f.GetSel(f, sel)
+		s := sel
+		if s = -1 then
+			s := 3 
+		end 
+		f.Get(f, date)
+		GetDatePart(date, s, val_, min_, max_)
+		
+		if (ch = TAB) or (ch = AR) then
+			s := s mod 3 + 1
+			ActualizeDate(f) 
+		elsif ((ch = ".") or (ch = ",")) & (f.cnt > 0) then 
+			s := s mod 3 + 1
+			ActualizeDate(f) 
+		elsif (ch = LTAB) or (ch = AL) then 
+			if s = 0 then
+				s := 1 
+			end 
+			s := (s - 2) mod 3 + 1
+			ActualizeDate(f) 
+		elsif (ch = PL) or (ch = DL) then 
+			s := 1
+			ActualizeDate(f) 
+		elsif (ch = PR) or (ch = DR) then 
+			s := 3
+			ActualizeDate(f) 
+		elsif (ch = DEL) or (ch = BS) then 
+			f.cnt := 4
+			f.val_ := min_
+			ActualizeDate(f) 
+		elsif ch = AU then 
+			if f.cnt = 0 then
+				f.cnt := 4
+				f.val_ := val_ 
+			end 
+			if f.val_ < max_ then
+				inc(f.val_) 
+			else 
+				f.val_ := min_ 
+			end 
+			ActualizeDate(f) 
+		elsif ch = AD then 
+			if f.cnt = 0 then
+				f.cnt := 4
+				f.val_ := val_ 
+			end 
+			if f.val_ > min_ then
+				dec(f.val_) 
+			else 
+				f.val_ := max_ 
+			end 
+			ActualizeDate(f) 
+		elsif (ch >= "0") & (ch <= "9") then 
+			if s = yearPart then
+				if f.cnt = 0 then
+					f.val_ := ord(ch) - ord("0")
+					inc(f.cnt)
+					f.Update 
+				else 
+					f.val_ := f.val_ * 10 + ord(ch) - ord("0")
+					inc(f.cnt)
+					if f.cnt = 4 then
+						ActualizeDate(f) 
+					else 
+						f.Update 
+					end  
+				end  
+			else 
+				if f.cnt = 0 then
+					f.val_ := ord(ch) - ord("0")
+					f.cnt := 1
+					f.Update 
+				else 
+					f.val_ := f.val_ * 10 mod 100 + ord(ch) - ord("0")
+					if (s = dayPart) & (max_ < f.val_) & (f.val_ <= 31) then
+						inc(date.month)
+						f.Set(f, date)
+						max_ := 31 
+					end 
+					if f.val_ > max_ then
+						f.val_ := f.val_ mod 10 
+					end 
+					ActualizeDate(f)
+					inc(s) 
+				end  
+			end  
+		end 
+		
+		if s = 3 then
+			s := -1 
+		end 
+		if s # sel then
+			f.SetSel(f, s)
+			f.Select 
+		end 
+	end KeyDown
+	
+	proc (f: DateField) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean)
+	begin 
+		WheelToArrow(f, op, done)
+	end WheelMove
+	
+	proc (f: DateField) Edit(op: integer; var v: Views.View; var w, h: integer
+		var singleton, clipboard: boolean)
+		var 
+			res: integer
+	begin 
+		if clipboard then
+			if op = Controllers.copy_ then
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_COPY, 0, 0) 
+			end  
+		end 
+	end Edit
+	
+	proc (f: DateField) Mark(on, focus: boolean)
+		var 
+			res: integer
+	begin 
+		if ~on then
+			ActualizeDate(f) 
+		end 
+		
+		Mark(on, f.front, f.i)
+		if ~on & focus then
+			f.SetSel(f, 0)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_SETSEL, 0, 0) 
+		end 
+	end Mark
+	
+	proc (f: DateField) GetCursor(x, y: integer; modifiers: set; var cursor: integer)
+		var 
+			res, hc: integer
+			pt: WinApi.POINT
+	begin 
+		pt.x := (x - 1) div f.unit + 1
+		pt.y := (y - 1) div f.unit + 1
+		res := WinApi.ClientToScreen(f.i.wnd, pt)
+		hc := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_NCHITTEST, 0, pt.x + pt.y * 65536)
+		if hc = 1 then
+			cursor := Ports.textCursor 
+		end 
+	end GetCursor
+	
+	
+	
+	// ColorField
+	
+	proc (f: ColorField) SetOffset(x, y: integer)
+	begin 
+		f.SetOffset^(x, y)
+		Adapt(f, f.i)
+	end SetOffset
+	
+	proc (f: ColorField) Close
+		var 
+			res: integer
+	begin 
+		if f.i.wnd # 0 then // deallocate
+			assert(f.rider # nil, 100)
+			assert(f.rider.Base() # nil, 101)
+			res := WinApi.DestroyWindow(f.i.wnd)
+			f.i.wnd := 0
+			f.i.ctrl := 0 
+		end 
+	// f.Close^
+	end Close
+	
+	proc (f: ColorField) Update
+		var 
+			res, i, j: integer
+			c: Ports.Color
+	begin 
+		if ~f.disabled then
+			if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 1) 
+			end 
+			if f.undef then
+				j := -1 
+			else 
+				f.Get(f, c)
+				j := 0
+				while (j < numColors) & (c # colors[j]) do 
+					inc(j) 
+				end  
+			end 
+			i := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_GETCURSEL, 0, 0)
+			if (i # j) or (j = numColors) & (c # f.color) then
+				f.color := c
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETCURSEL, j, 0) 
+			end  
+		else 
+			if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETCURSEL, -1, 0)
+				res := WinApi.EnableWindow(f.i.ctrl, 0) 
+			end  
+		end 
+		if f.readOnly # f.i.readOnly then
+			res := WinApi.InvalidateRect(f.i.ctrl, nil, 1)
+			f.i.readOnly := f.readOnly 
+		end 
+		res := WinApi.UpdateWindow(f.i.ctrl)
+	end Update
+	
+	proc (f: ColorField) Restore(l, t, r, b: integer)
+		var 
+			res, w, h, i: integer
+			style: set
+	begin 
+		if f.i.ctrl = 0 then // lazy allocation
+			f.view.context.GetSize(w, h)
+			f.i.dropDown := true
+			f.i.readOnly := f.readOnly
+			// drop down list, auto scroll, ownerdrawn, tabstop, ver scroll, border, child
+			style := {0, 1, 4, 6, 16, 21, 23, 30}
+			Open(f, "COMBOBOX", "", style, WinApi.WS_EX_CLIENTEDGE, f.i)
+			i := 0
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETEXTENDEDUI, 1, 0)
+			while i < numColors do 
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_ADDSTRING, 0, colors[i])
+				inc(i) 
+			end 
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_ADDSTRING, 0, -1)
+			Adapt(f, f.i) 
+		end 
+		f.Update
+		if f.i.wnd # 0 then
+			Paint(f, f.i) 
+		else 
+			Print(f, f.dot, -1, -1, "") 
+		end 
+	end Restore
+	
+	proc (f: ColorField) MouseDown(x, y: integer; buttons: set)
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			HandleMouse(f.i.wnd, x div f.unit, y div f.unit, buttons) 
+		end 
+	end MouseDown
+	
+	proc (f: ColorField) KeyDown(ch: char)
+		var 
+			res: integer
+	begin 
+		assert(~f.disabled, 100)
+		if ch = " " then
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, ord(ch), 0)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYUP, ord(ch), 0) 
+		else 
+			SendKey(ch, f.i.ctrl) 
+		end 
+	end KeyDown
+	
+	proc (f: ColorField) Mark(on, focus: boolean)
+	begin 
+		Mark(on, f.front, f.i)
+	end Mark
+	
+	
+	
+	// ListBox
+	
+	proc (f: ListBox) SetOffset(x, y: integer)
+	begin 
+		f.SetOffset^(x, y)
+		Adapt(f, f.i)
+	end SetOffset
+	
+	proc (f: ListBox) Close
+		var 
+			res: integer
+	begin 
+		if f.i.wnd # 0 then // deallocate
+			assert(f.rider # nil, 100)
+			assert(f.rider.Base() # nil, 101)
+			res := WinApi.DestroyWindow(f.i.wnd)
+			f.i.wnd := 0
+			f.i.ctrl := 0 
+		end 
+	// f.Close^
+	end Close
+	
+	proc (f: ListBox) Update
+		var 
+			res, i, j: integer
+	begin 
+		if ~f.disabled then
+			if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 1) 
+			end 
+			if f.undef then
+				i := -1 
+			else 
+				f.Get(f, i) 
+			end 
+			j := i
+			if f.i.dropDown then
+				if (i < 0) or (i >= WinApi.SendMessageW(f.i.ctrl, WinApi.CB_GETCOUNT, 0, 0)) then
+					j := -1 
+				elsif f.sorted then 
+					j := 0
+					while i # WinApi.SendMessageW(f.i.ctrl, WinApi.CB_GETITEMDATA, j, 0) do 
+						inc(j) 
+					end  
+				end 
+				i := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_GETCURSEL, j, 0)
+				if i # j then
+					res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETCURSEL, j, 0) 
+				end  
+			else 
+				if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+					res := WinApi.EnableWindow(f.i.ctrl, 1) 
+				end 
+				if (i < 0) or (i >= WinApi.SendMessageW(f.i.ctrl, WinApi.LB_GETCOUNT, 0, 0)) then
+					j := -1 
+				elsif f.sorted then 
+					j := 0
+					while i # WinApi.SendMessageW(f.i.ctrl, WinApi.LB_GETITEMDATA, j, 0) do 
+						inc(j) 
+					end  
+				end 
+				i := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_GETCURSEL, j, 0)
+				if i # j then
+					res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_SETCURSEL, j, 0) 
+				end  
+			end  
+		else 
+			if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
+				if f.i.dropDown then
+					res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETCURSEL, -1, 0) 
+				else 
+					res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_SETCURSEL, -1, 0) 
+				end 
+				res := WinApi.EnableWindow(f.i.ctrl, 0) 
+			end  
+		end 
+		if f.readOnly # f.i.readOnly then
+			res := WinApi.InvalidateRect(f.i.ctrl, nil, 1)
+			f.i.readOnly := f.readOnly 
+		end 
+		res := WinApi.UpdateWindow(f.i.ctrl)
+	end Update
+	
+	proc (f: ListBox) UpdateList
+		var 
+			res, i, w, maxW: integer
+			s: Dialog.String
+	begin 
+		if f.i.dropDown then
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_RESETCONTENT, 0, 0)
+			i := 0
+			f.GetName(f, i, s)
+			Dialog.MapString(s, s)
+			while s # "" do 
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_ADDSTRING, 0, SYSTEM.ADR(s))
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETITEMDATA, res, i)
+				inc(i)
+				f.GetName(f, i, s)
+				Dialog.MapString(s, s) 
+			end 
+			Adapt(f, f.i) 
+		else 
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_RESETCONTENT, 0, 0)
+			i := 0
+			f.GetName(f, i, s)
+			Dialog.MapString(s, s)
+			maxW := f.font.StringWidth(s)
+			while s # "" do 
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_ADDSTRING, 0, SYSTEM.ADR(s))
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_SETITEMDATA, res, i)
+				inc(i)
+				f.GetName(f, i, s)
+				Dialog.MapString(s, s)
+				w := f.font.StringWidth(s)
+				if w > maxW then
+					maxW := w 
+				end  
+			end  
+		end 
+		maxW := (maxW + Ports.point * 3) div f.unit
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_SETHORIZONTALEXTENT, maxW, 0)
+		f.Update
+	end UpdateList
+	
+	proc (f: ListBox) Restore(l, t, r, b: integer)
+		var 
+			i, res, w, h: integer
+			style: set
+			s: array 512 of char
+	begin 
+		if f.i.ctrl = 0 then // lazy allocation
+			f.view.context.GetSize(w, h)
+			if h > dropDownHeight then
+				f.i.dropDown := false
+				f.i.readOnly := f.readOnly
+				style := {0, 16, 20, 21, 23, 30} // notify, tabstop, hor scroll, ver scroll, border, child
+				if f.sorted then // sort
+					incl(style, 1) 
+				end 
+				Open(f, "LISTBOX", "", style, WinApi.WS_EX_CLIENTEDGE, f.i) 
+			else 
+				f.i.dropDown := true
+				style := {0, 1, 6, 16, 21, 23, 30} // drop down list, auto scroll, tabstop, ver scroll, border, child
+				if f.sorted then // sort
+					incl(style, 8) 
+				end 
+				Open(f, "COMBOBOX", "", style, WinApi.WS_EX_CLIENTEDGE, f.i)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETEXTENDEDUI, WinApi.TRUE_, 0) 
+			end 
+			f.UpdateList 
+		else 
+			f.Update 
+		end 
+		if f.i.wnd # 0 then
+			Paint(f, f.i) 
+		else 
+			f.Get(f, i)
+			f.GetName(f, i, s)
+			Print(f, f.dot, 2 * Ports.point, 0, s) 
+		end 
+	end Restore
+	
+	
+	proc (f: ListBox) DblClickOk(x, y: integer): boolean
+		var 
+			res, i, j, msg: integer
+			rect: WinApi.RECT
+	begin 
+		f.Get(f, i)
+		j := i
+		if f.sorted then
+			if f.i.dropDown then
+				msg := WinApi.CB_GETITEMDATA 
+			else 
+				msg := WinApi.LB_GETITEMDATA 
+			end 
+			j := 0
+			while i # WinApi.SendMessageW(f.i.ctrl, msg, j, 0) do 
+				inc(j) 
+			end  
+		end 
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_GETITEMRECT, j, SYSTEM.ADR(rect))
+		if res = WinApi.LB_ERR then
+			return false 
+		end 
+		x := x div f.unit
+		y := y div f.unit
+		return (x >= rect.left) & (x <= rect.right) & (y >= rect.top) & (y <= rect.bottom)
+	end DblClickOk
+	
+	proc (f: ListBox) MouseDown(x, y: integer; buttons: set)
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			HandleMouse(f.i.wnd, x div f.unit, y div f.unit, buttons) 
+		end 
+	end MouseDown
+	
+	proc (f: ListBox) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean)
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			HandleWheel(f.i.ctrl, x div f.unit, y div f.unit, op, nofLines, done) 
+		end 
+	end WheelMove
+	
+	proc (f: ListBox) KeyDown(ch: char)
+		var 
+			res: integer
+	begin 
+		assert(~f.disabled, 100)
+		if ch = " " then
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, ord(ch), 0)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYUP, ord(ch), 0) 
+		else 
+			SendKey(ch, f.i.ctrl) 
+		end 
+	end KeyDown
+	
+	proc (f: ListBox) Mark(on, focus: boolean)
+	begin 
+		Mark(on, f.front, f.i)
+	end Mark
+	
+	
+	
+	// SelectionBox
+	
+	proc (f: SelectionBox) SetOffset(x, y: integer)
+	begin 
+		f.SetOffset^(x, y)
+		Adapt(f, f.i)
+	end SetOffset
+	
+	proc (f: SelectionBox) Close
+		var 
+			res: integer
+	begin 
+		if f.i.wnd # 0 then // deallocate
+			assert(f.rider # nil, 100)
+			assert(f.rider.Base() # nil, 101)
+			res := WinApi.DestroyWindow(f.i.wnd)
+			f.i.wnd := 0
+			f.i.ctrl := 0 
+		end 
+	// f.Close^
+	end Close
+	
+	proc (f: SelectionBox) DblClickOk(x, y: integer): boolean
+		var 
+			res, i: integer
+			s: Dialog.String
+			sel: boolean
+			rect: WinApi.RECT
+	begin 
+		i := 0
+		f.GetName(f, i, s)
+		x := x div f.unit
+		y := y div f.unit
+		while s # "" do 
+			f.Get(f, i, sel)
+			if sel then
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_GETITEMRECT, i, SYSTEM.ADR(rect))
+				if res = WinApi.LB_ERR then
+					return false 
+				end 
+				if (x >= rect.left) & (x <= rect.right) & (y >= rect.top) & (y <= rect.bottom) then
+					return true 
+				end  
+			end 
+			inc(i)
+			f.GetName(f, i, s)
+			Dialog.MapString(s, s) 
+		end 
+		return false
+	end DblClickOk
+	
+	proc (f: SelectionBox) Update
+		var 
+			res, i, j, a, b: integer
+			sel: boolean
+	begin 
+		if f.delayUpdate then
+			f.needsUpdate := true
+			return  
+		end 
+		if ~f.disabled then
+			if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 1) 
+			end 
+			i := 0
+			while i < f.num do 
+				j := i
+				if f.sorted then
+					j := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_GETITEMDATA, i, 0) 
+				end 
+				f.Get(f, j, sel)
+				if sel & ~f.undef then
+					a := 1 
+				else 
+					a := 0 
+				end 
+				b := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_GETSEL, i, 0)
+				if a # b then
+					res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_SETSEL, a, i) 
+				end 
+				inc(i) 
+			end  
+		else 
+			if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_SETSEL, 0, -1)
+				res := WinApi.EnableWindow(f.i.ctrl, 0) 
+			end  
+		end 
+		if f.readOnly # f.i.readOnly then
+			res := WinApi.InvalidateRect(f.i.ctrl, nil, 1)
+			f.i.readOnly := f.readOnly 
+		end 
+		res := WinApi.UpdateWindow(f.i.ctrl)
+	end Update
+	
+	proc (f: SelectionBox) UpdateRange(op, from, to_: integer)
+		var 
+			res, i, a, b: integer
+			sel: boolean
+	begin 
+		assert((from >= 0) & (from <= to_) & (to_ < f.num), 100)
+		if (op = Dialog.set_) or (from # to_) then
+			f.Update
+			return  
+		end 
+		if ~f.disabled then
+			if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 1) 
+			end 
+			i := from
+			if f.sorted then
+				i := 0
+				while WinApi.SendMessageW(f.i.ctrl, WinApi.LB_GETITEMDATA, i, 0) # from do 
+					inc(i) 
+				end  
+			end 
+			f.Get(f, from, sel)
+			if sel then
+				a := 1 
+			else 
+				a := 0 
+			end 
+			b := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_GETSEL, i, 0)
+			if a # b then
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_SETSEL, a, i) 
+			end  
+		else 
+			if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 0) 
+			end  
+		end 
+	end UpdateRange
+	
+	proc (f: SelectionBox) UpdateList
+		var 
+			res, i, w, maxW: integer
+			s: Dialog.String
+	begin 
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_RESETCONTENT, 0, 0)
+		i := 0
+		f.GetName(f, i, s)
+		Dialog.MapString(s, s)
+		maxW := f.font.StringWidth(s)
+		while s # "" do 
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_ADDSTRING, 0, SYSTEM.ADR(s))
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_SETITEMDATA, res, i)
+			inc(i)
+			f.GetName(f, i, s)
+			Dialog.MapString(s, s)
+			w := f.font.StringWidth(s)
+			if w > maxW then
+				maxW := w 
+			end  
+		end 
+		maxW := (maxW + Ports.point * 3) div f.unit
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_SETHORIZONTALEXTENT, maxW, 0)
+		f.num := i
+		f.Update
+	end UpdateList
+	
+	proc (f: SelectionBox) Restore(l, t, r, b: integer)
+		var 
+			style: set
+	begin 
+		if f.i.ctrl = 0 then // lazy allocation
+			f.i.readOnly := f.readOnly
+			style := {0, 3, 16, 20, 21, 23, 30} + WinApi.LBS_EXTENDEDSEL
+			// notify, multiple sel, tabstop, hor scroll, ver scroll, border, child
+			if f.sorted then // sort
+				incl(style, 1) 
+			end 
+			Open(f, "LISTBOX", "", style, WinApi.WS_EX_CLIENTEDGE, f.i)
+			f.UpdateList 
+		else 
+			f.Update 
+		end 
+		if f.i.wnd # 0 then
+			Paint(f, f.i) 
+		else 
+			Print(f, f.dot, -1, -1, "") 
+		end 
+	end Restore
+	
+	proc (f: SelectionBox) MouseDown(x, y: integer; buttons: set)
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			HandleMouse(f.i.wnd, x div f.unit, y div f.unit, buttons) 
+		end 
+	end MouseDown
+	
+	proc (f: SelectionBox) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean)
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			HandleWheel(f.i.ctrl, x, y, op, nofLines, done) 
+		end 
+	end WheelMove
+	
+	proc (f: SelectionBox) KeyDown(ch: char)
+		var 
+			res: integer
+	begin 
+		assert(~f.disabled, 100)
+		if ch = " " then
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, ord(ch), 0)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYUP, ord(ch), 0) 
+		else 
+			SendKey(ch, f.i.ctrl) 
+		end 
+	end KeyDown
+	
+	proc (f: SelectionBox) Select(from, to_: integer) end // empty
+	
+	proc (f: SelectionBox) GetSelection(var from, to_: integer)
+	begin 
+		from := 0
+		to_ := max(integer)
+	end GetSelection
+	
+	proc (f: SelectionBox) Mark(on, focus: boolean)
+	begin 
+		Mark(on, f.front, f.i)
+	end Mark
+	
+	
+	
+	// ComboBox
+	
+	proc (f: ComboBox) SetOffset(x, y: integer)
+	begin 
+		f.SetOffset^(x, y)
+		Adapt(f, f.i)
+	end SetOffset
+	
+	proc (f: ComboBox) Close
+		var 
+			res: integer
+	begin 
+		if f.i.wnd # 0 then // deallocate
+			assert(f.rider # nil, 100)
+			assert(f.rider.Base() # nil, 101)
+			res := WinApi.DestroyWindow(f.i.wnd)
+			f.i.wnd := 0
+			f.i.ctrl := 0 
+		end 
+	// f.Close^
+	end Close
+	
+	proc (f: ComboBox) Update
+		var 
+			res: integer
+			s, s1: Dialog.String
+	begin 
+		if ~f.disabled then
+			if f.undef then
+				s := "" 
+			else 
+				f.Get(f, s) 
+			end 
+			if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 1) 
+			end 
+			res := WinApi.GetWindowTextW(f.i.ctrl, s1, len(s1))
+			if (WinApi.GetWindowTextLengthW(f.i.ctrl) >= len(s)) or (s # s1) then
+				if ~f.i.dropDown then
+					res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_FINDSTRINGEXACT, -1, SYSTEM.ADR(s))
+					res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETCURSEL, res, 0) 
+				end 
+				res := WinApi.SetWindowTextW(f.i.ctrl, s) 
+			end  
+		else 
+			if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETCURSEL, -1, 0)
+				res := WinApi.SetWindowTextW(f.i.ctrl, "")
+				res := WinApi.EnableWindow(f.i.ctrl, 0) 
+			end  
+		end 
+		res := WinApi.UpdateWindow(f.i.ctrl)
+	end Update
+	
+	proc (f: ComboBox) UpdateList
+		var 
+			res, i: integer
+			s: Dialog.String
+	begin 
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_RESETCONTENT, 0, 0)
+		i := 0
+		f.GetName(f, i, s)
+		Dialog.MapString(s, s)
+		while s # "" do 
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_ADDSTRING, 0, SYSTEM.ADR(s))
+			inc(i)
+			f.GetName(f, i, s)
+			Dialog.MapString(s, s) 
+		end 
+		Adapt(f, f.i)
+		f.Update
+	end UpdateList
+	
+	proc (f: ComboBox) Restore(l, t, r, b: integer)
+		var 
+			res, w, h: integer
+			s: Dialog.String
+			style: set
+			pt: WinApi.POINT
+	begin 
+		if f.i.ctrl = 0 then // lazy allocation
+			f.Get(f, s)
+			f.view.context.GetSize(w, h)
+			style := {6, 16, 21, 23, 30} // auto scroll, tabstop, ver scroll, border, child
+			if f.sorted then // sort
+				incl(style, 8) 
+			end 
+			f.i.dropDown := h <= dropDownHeight
+			if f.i.dropDown then // dropdown / simple
+				incl(style, 1) 
+			else 
+				incl(style, 0) 
+			end 
+			Open(f, "COMBOBOX", s, style, WinApi.WS_EX_CLIENTEDGE, f.i)
+			pt.x := 4
+			pt.y := 4
+			f.edit := WinApi.ChildWindowFromPoint(f.i.ctrl, pt) // hack found in win api manual !
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETEXTENDEDUI, 1, 0)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_LIMITTEXT, 255, 0)
+			f.UpdateList 
+		else 
+			f.Update 
+		end 
+		if f.i.wnd # 0 then
+			Paint(f, f.i) 
+		else 
+			Print(f, f.dot, -1, -1, "") 
+		end 
+	end Restore
+	
+	proc (f: ComboBox) MouseDown(x, y: integer; buttons: set)
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			if ~f.readOnly then
+				incl(buttons, 31) 
+			end 
+			HandleMouse(f.i.wnd, x div f.unit, y div f.unit, buttons) 
+		end 
+	end MouseDown
+	
+	proc (f: ComboBox) KeyDown(ch: char)
+	begin 
+		assert(~f.disabled, 100)
+		SendKey(ch, f.edit)
+	end KeyDown
+	
+	proc (f: ComboBox) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean)
+		var 
+			list: WinApi.HANDLE
+			res: integer
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			list := WinApi.GetWindow(f.edit, WinApi.GW_HWNDPREV)
+			if list = 0 then
+				if op in {Controllers.incLine, Controllers.incPage} then
+					res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SHOWDROPDOWN, WinApi.TRUE_, 0)
+					res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_SETCURSOR, f.i.ctrl, 
+						WinApi.HTBORDER + WinApi.WM_MOUSEMOVE * 65536) 
+				else 
+					res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SHOWDROPDOWN, WinApi.FALSE_, 0) 
+				end 
+				done := true 
+			else 
+				HandleWheel(list, x div f.unit, y div f.unit, op, nofLines, done) 
+			end  
+		end 
+	end WheelMove
+	
+	proc (f: ComboBox) Edit(op: integer
+		var v: Views.View; var w, h: integer; var singleton, clipboard: boolean
+		)
+		var 
+			res: integer
+	begin 
+		if clipboard then
+			if op = Controllers.cut then
+				res := WinApi.SendMessageW(f.edit, WinApi.WM_CUT, 0, 0) 
+			elsif op = Controllers.copy_ then 
+				res := WinApi.SendMessageW(f.edit, WinApi.WM_COPY, 0, 0) 
+			elsif op = Controllers.paste then 
+				res := WinApi.SendMessageW(f.edit, WinApi.WM_PASTE, 0, 0) 
+			end  
+		elsif op = Controllers.cut then 
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_CLEAR, 0, 0) 
+		end 
+	end Edit
+	
+	proc (f: ComboBox) Idle end // empty
+	
+	proc (f: ComboBox) Select(from, to_: integer)
+		var 
+			res: integer
+	begin 
+		if to_ > 32767 then
+			to_ := -1 
+		end 
+		if from < 0 then
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETEDITSEL, 0, 65535) 
+		else 
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETEDITSEL, 0, from mod 65536 + to_ * 65536) 
+		end 
+	end Select
+	
+	proc (f: ComboBox) GetSelection(var from, to_: integer)
+		var 
+			res: integer
+	begin 
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_GETEDITSEL, SYSTEM.ADR(from), SYSTEM.ADR(to_))
+		if from = -1 then
+			to_ := -1 
+		elsif to_ = -1 then 
+			to_ := max(integer) 
+		end 
+	end GetSelection
+	
+	proc (f: ComboBox) Mark(on, focus: boolean)
+		var 
+			res: integer
+	begin 
+		if f.front then
+			if on then
+				if ~f.i.hasFocus then
+					res := WinApi.SendMessageW(f.edit, WinApi.WM_SETFOCUS, 0, 0)
+					f.i.hasFocus := true 
+				end  
+			else 
+				if f.i.hasFocus then
+					res := WinApi.SendMessageW(f.edit, WinApi.WM_KILLFOCUS, 0, 0)
+					f.i.hasFocus := false 
+				end  
+			end  
+		end 
+	end Mark
+	
+	proc (f: ComboBox) Length(): integer
+		var 
+			res: integer
+	begin 
+		res := WinApi.GetWindowTextLengthW(f.i.ctrl)
+		return res
+	end Length
+	
+	proc (f: ComboBox) GetCursor(x, y: integer; modifiers: set; var cursor: integer)
+		var 
+			res, hc: integer
+			pt: WinApi.POINT
+	begin 
+		pt.x := (x - 1) div f.unit + 1
+		pt.y := (y - 1) div f.unit + 1
+		res := WinApi.ClientToScreen(f.i.wnd, pt)
+		hc := WinApi.SendMessageW(f.edit, WinApi.WM_NCHITTEST, 0, pt.x + pt.y * 65536)
+		if hc = 1 then
+			cursor := Ports.textCursor 
+		end 
+	(* u := f.unit; pt.x := x DIV u - 1; pt.y := y DIV u - 1;
+	   wnd := WinApi.ChildWindowFromPoint(f.i.ctrl, pt);
+	   IF wnd = f.edit THEN cursor := Ports.textCursor
+	   ELSE cursor := Ports.arrowCursor
+	   END
+	   
+	   u := f.unit; pt.x := x DIV u; pt.y := y DIV u;
+	   res := WinApi.ClientToScreen(f.i.wnd, pt);
+	   ChildWindowAt(f.i.wnd, pt, wnd, hc);
+	   res := WinApi.ScreenToClient(wnd, pt);
+	   res := WinApi.SendMessageW(wnd, WinApi.WMSetCursor, wnd, hc + WinApi.WMMouseMove * 65536);
+	   cursor := -1 *)
+	
+	
+	end GetCursor
+	
+	
+	
+	// Caption
+	
+	proc (f: Caption) SetOffset(x, y: integer)
+	begin 
+		f.SetOffset^(x, y)
+		Adapt(f, f.i)
+	end SetOffset
+	
+	proc (f: Caption) Close
+		var 
+			res: integer
+	begin 
+		if f.i.wnd # 0 then // deallocate
+			assert(f.rider # nil, 100)
+			assert(f.rider.Base() # nil, 101)
+			res := WinApi.DestroyWindow(f.i.wnd)
+			f.i.wnd := 0
+			f.i.ctrl := 0 
+		end 
+	// f.Close^
+	end Close
+	
+	proc (f: Caption) Update
+		var 
+			res: integer
+	begin 
+		if ~f.disabled then
+			if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 1) 
+			end  
+		else 
+			if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 0) 
+			end  
+		end 
+		CheckLabel(f.label, f.i.ctrl)
+		res := WinApi.UpdateWindow(f.i.ctrl)
+	end Update
+	
+	proc (f: Caption) Restore(l, t, r, b: integer)
+		var 
+			lbl: Dialog.String
+			style: set
+	begin 
+		SetLabel(f.label, lbl)
+		if f.i.ctrl = 0 then // lazy allocation
+			style := {30}
+			if f.left then
+				style := style + WinApi.SS_LEFT 
+			elsif f.right then 
+				style := style + WinApi.SS_RIGHT 
+			else 
+				style := style + WinApi.SS_CENTER 
+			end 
+			Open(f, "STATIC", lbl, style, {}, f.i)  // left, child
+		end 
+		f.Update
+		if f.i.wnd # 0 then
+			Paint(f, f.i) 
+		else 
+			Print(f, 0, 2 * Ports.point, 0, lbl) 
+		end 
+	end Restore
+	
+	
+	
+	// Group
+	
+	proc (f: Group) SetOffset(x, y: integer)
+	begin 
+		f.SetOffset^(x, y)
+		Adapt(f, f.i)
+	end SetOffset
+	
+	proc (f: Group) Close
+		var 
+			res: integer
+	begin 
+		if f.i.wnd # 0 then // deallocate
+			assert(f.rider # nil, 100)
+			assert(f.rider.Base() # nil, 101)
+			res := WinApi.DestroyWindow(f.i.wnd)
+			f.i.wnd := 0
+			f.i.ctrl := 0 
+		end 
+	// f.Close^
+	end Close
+	
+	proc (f: Group) Update
+		var 
+			res: integer
+	begin 
+		if ~f.disabled then
+			if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 1) 
+			end  
+		else 
+			if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 0) 
+			end  
+		end 
+		CheckLabel(f.label, f.i.ctrl)
+		res := WinApi.UpdateWindow(f.i.ctrl)
+	end Update
+	
+	proc (f: Group) Restore(l, t, r, b: integer)
+		var 
+			lbl: Dialog.String
+	begin 
+		SetLabel(f.label, lbl)
+		if f.i.ctrl = 0 then // lazy allocation
+			Open(f, "BUTTON", lbl, {0, 1, 2, 30}, {}, f.i)  // group box, child
+		end 
+		f.Update
+		if f.i.wnd # 0 then
+			Paint(f, f.i) 
+		else 
+			Print(f, -3, 2 * Ports.point, 0, lbl) 
+		end 
+	end Restore
+	
+	
+	// TreeFrame
+	
+	proc (f: TreeFrame) SetOffset(x, y: integer)
+	begin 
+		f.SetOffset^(x, y)
+		Adapt(f, f.i)
+	end SetOffset
+	
+	proc (f: TreeFrame) Close
+		var 
+			res: integer
+	begin 
+		if f.i.wnd # 0 then // deallocate
+			assert(f.rider # nil, 100)
+			assert(f.rider.Base() # nil, 101)
+			res := WinApi.DestroyWindow(f.i.wnd)
+			f.i.wnd := 0
+			f.i.ctrl := 0 
+		end 
+		if f.himl # nil then
+			res := WinCtl.ImageList_Destroy(f.himl) 
+		end 
+	end Close
+	
+	proc (f: TreeFrame) Recreate() // new
+		var 
+			res: integer
+			style: set
+			icex: WinCtl.INITCOMMONCONTROLSEX
+			ok: WinApi.BOOL
+			hbmp: WinApi.HANDLE
+	begin 
+		f.Close()
+		f.i.readOnly := f.readOnly
+		icex.dwSize := size(WinCtl.INITCOMMONCONTROLSEX)
+		icex.dwICC := WinCtl.ICC_TREEVIEW_CLASSES
+		ok := WinCtl.InitCommonControlsEx(icex)
+		style := WinApi.WS_VISIBLE + WinApi.WS_CHILD + WinApi.WS_BORDER + WinCtl.TVS_SHOWSELALWAYS 
+			+ WinCtl.TVS_DISABLEDRAGDROP
+		if f.haslines then
+			style := style + WinCtl.TVS_HASLINES 
+		end 
+		if f.hasbuttons then
+			style := style + WinCtl.TVS_HASBUTTONS 
+		end 
+		if f.atroot then
+			style := style + WinCtl.TVS_LINESATROOT 
+		end 
+		Open(f, WinCtl.WC_TREEVIEWW, "", style, {}, f.i) // 3
+		res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TV_FIRST + 033, 100, 0) // TVM_SETSCROLLTIME
+		if f.foldericons then
+			// Create an imagelist and associate it with the control
+			if f.himl # nil then
+				ok := WinCtl.ImageList_Destroy(f.himl) 
+			end 
+			f.himl := WinCtl.ImageList_Create(16, 16, {}, 3, 0)
+			if f.himl # nil then
+				hbmp := WinApi.LoadImageW(
+					instance, "#6", WinApi.IMAGE_ICON, 16, 16, ord(WinApi.LR_LOADTRANSPARENT))
+				f.folderimg := WinCtl.ImageList_ReplaceIcon(f.himl, -1, hbmp)
+				ok := WinApi.DestroyIcon(hbmp)
+				hbmp := WinApi.LoadImageW(
+					instance, "#7", WinApi.IMAGE_ICON, 16, 16, ord(WinApi.LR_LOADTRANSPARENT))
+				f.openimg := WinCtl.ImageList_ReplaceIcon(f.himl, -1, hbmp)
+				ok := WinApi.DestroyIcon(hbmp)
+				hbmp := WinApi.LoadImageW(
+					instance, "#8", WinApi.IMAGE_ICON, 16, 16, ord(WinApi.LR_LOADTRANSPARENT))
+				f.leafimg := WinCtl.ImageList_ReplaceIcon(f.himl, -1, hbmp)
+				ok := WinApi.DestroyIcon(hbmp)
+				res := WinApi.SendMessageW(
+					f.i.ctrl, WinCtl.TVM_SETIMAGELIST, WinCtl.TVSIL_NORMAL, SYSTEM.VAL(integer, f.himl)) 
+			end  
+		end 
+	end Recreate
+	
+	proc (f: TreeFrame) UpdateNT4 // new
+		var 
+			res: integer
+	begin 
+		if ~f.disabled then
+			if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 1) 
+			end  
+		else 
+			if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 0) 
+			end  
+		end 
+		res := WinApi.UpdateWindow(f.i.ctrl)
+		if ~f.disabled & (f.readOnly # f.i.readOnly) then
+			if f.readOnly or ~f.i.hasFocus then
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KILLFOCUS, 0, 0) 
+			end 
+			f.i.readOnly := f.readOnly 
+		end 
+	end UpdateNT4
+	
+	proc (f: TreeFrame) Update
+		var 
+			res: integer
+	begin 
+		if Dialog.platform = Dialog.windowsNT4 then
+			f.UpdateNT4
+			return  
+		end 
+		if ~f.disabled & ~f.readOnly then
+			res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TV_FIRST + 029, 0, -1) // TVM_SETBKCOLOR
+			if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 1) 
+			end  
+		elsif ~f.disabled & f.readOnly then 
+			res := WinApi.SendMessageW(
+				f.i.ctrl, WinCtl.TV_FIRST + 029, 0, Ports.dialogBackground) // TVM_SETBKCOLOR
+			if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 1) 
+			end  
+		else 
+			res := WinApi.SendMessageW(
+				f.i.ctrl, WinCtl.TV_FIRST + 029, 0, Ports.dialogBackground) // TVM_SETBKCOLOR
+			if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
+				res := WinApi.EnableWindow(f.i.ctrl, 0) 
+			end  
+		end 
+		res := WinApi.UpdateWindow(f.i.ctrl)
+		if ~f.disabled & (f.readOnly # f.i.readOnly) then
+			if f.readOnly then
+				// Selection has to be focused since it won't be visible on a gray backround otherwise
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_SETFOCUS, 0, 0) 
+			else 
+				if ~f.i.hasFocus then
+					res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KILLFOCUS, 0, 0) 
+				end  
+			end 
+			f.i.readOnly := f.readOnly 
+		end 
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_SETFOCUS, 0, 0)
+	end Update
+	
+	proc (f: TreeFrame) WinInsertItem(
+		var tn: Dialog.TreeNode; pWndAdr: integer; var wndAdr: integer
+		) // new
+		var 
+			res: integer
+			p: Dialog.TreeNode
+			s: Dialog.String
+			tvi: WinCtl.TVITEMW
+			tvins: WinCtl.TVINSERTSTRUCTW
+	begin 
+		assert(tn # nil, 20)
+		f.treeArray[f.curindex].tn := tn
+		p := f.Parent(f, tn)
+		tvi.mask := WinCtl.TVIF_TEXT + WinCtl.TVIF_PARAM + WinCtl.TVIF_IMAGE + WinCtl.TVIF_SELECTEDIMAGE
+		tn.GetName(s)
+		Dialog.MapString(s, s)
+		tvi.pszText := s
+		tvi.cchTextMax := len(s)
+		tvi.lParam := f.curindex
+		if tn.IsFolder() then
+			if tn.IsExpanded() then
+				tvi.iImage := f.openimg 
+			else 
+				tvi.iImage := f.folderimg 
+			end  
+		else 
+			tvi.iImage := f.leafimg 
+		end 
+		tvi.iSelectedImage := tvi.iImage
+		tvins.item := tvi
+		tvins.hParent := SYSTEM.VAL(WinCtl.Ptr_TREEITEM, pWndAdr)
+		if f.sorted then
+			tvins.hInsertAfter := SYSTEM.VAL(WinCtl.Ptr_TREEITEM, WinCtl.TVI_SORT) 
+		else 
+			tvins.hInsertAfter := SYSTEM.VAL(WinCtl.Ptr_TREEITEM, WinCtl.TVI_LAST) 
+		end 
+		wndAdr := WinApi.SendMessageW(f.i.ctrl, WinCtl.TVM_INSERTITEMW, 0, SYSTEM.ADR(tvins))
+		f.treeArray[f.curindex].wndAdr := wndAdr
+		if p # nil then
+			if p.IsExpanded() then
+				res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TVM_EXPAND, WinCtl.TVE_EXPAND, pWndAdr) 
+			else 
+				res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TVM_EXPAND, WinCtl.TVE_COLLAPSE, pWndAdr) 
+			end  
+		end 
+		inc(f.curindex)
+	end WinInsertItem
+	
+	proc (f: TreeFrame) InsertNode(tn: Dialog.TreeNode; pWndAdr: integer) // new
+		var 
+			wndAdr: integer
+	begin 
+		if tn # nil then
+			f.WinInsertItem(tn, pWndAdr, wndAdr)
+			f.InsertNode(f.Child(f, tn), wndAdr)
+			f.InsertNode(f.Next(f, tn), pWndAdr) 
+		end 
+	end InsertNode
+	
+	proc (f: TreeFrame) UpdateList
+		var 
+			res, len_, i: integer
+			done: boolean
+			sel: Dialog.TreeNode
+	begin 
+		f.inUpdateList := true
+		len_ := 0
+		f.curindex := 0
+		sel := f.Selected(f)
+		len_ := f.NofNodes(f)
+		if len_ > 0 then
+			new(f.treeArray, len_) 
+		end 
+		// Throw away the old windows control and create a new one
+		f.Recreate()
+		// Go through the tree and insert new nodes into the treeview
+		f.InsertNode(f.Child(f, nil), WinCtl.TVI_ROOT)
+		// Select the node that is selected
+		if sel = nil then
+			res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TVM_SELECTITEM, WinCtl.TVGN_CARET, 0) 
+		else 
+			i := 0
+			done := false
+			while (i < len_) & (~done) do 
+				if sel = f.treeArray[i].tn then
+					res := WinApi.SendMessageW(
+						f.i.ctrl, WinCtl.TVM_SELECTITEM, WinCtl.TVGN_CARET, f.treeArray[i].wndAdr)
+					done := true 
+				end 
+				inc(i) 
+			end  
+		end 
+		f.Select(f, sel)
+		f.Update
+		if f.i.hasFocus then
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_SETFOCUS, 0, 0) 
+		end 
+		f.inUpdateList := false
+	end UpdateList
+	
+	proc (f: TreeFrame) ExpandCollapse(index, action: integer) // new
+		var 
+			res: integer
+			tn: Dialog.TreeNode
+			tvi: WinCtl.TVITEMW
+	begin 
+		tn := f.treeArray[index].tn
+		if action = WinCtl.TVE_COLLAPSE then
+			f.SetExpansion(f, tn, false) 
+		elsif action = WinCtl.TVE_EXPAND then 
+			f.SetExpansion(f, tn, true) 
+		elsif action = WinCtl.TVE_TOGGLE then 
+			f.SetExpansion(f, tn, ~tn.IsExpanded()) 
+		end 
+		tvi.mask := WinCtl.TVIF_IMAGE + WinCtl.TVIF_SELECTEDIMAGE
+		tvi.hItem := SYSTEM.VAL(WinCtl.Ptr_TREEITEM, f.treeArray[index].wndAdr)
+		if tn.IsExpanded() then
+			tvi.iImage := f.openimg
+			tvi.iSelectedImage := f.openimg 
+		else 
+			tvi.iImage := f.folderimg
+			tvi.iSelectedImage := f.folderimg 
+		end 
+		res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TVM_SETITEMW, 0, SYSTEM.ADR(tvi))
+	end ExpandCollapse
+	
+	proc (f: TreeFrame) DblClickOk(x, y: integer): boolean
+		var 
+			res: integer
+			hinf: WinCtl.TVHITTESTINFO
+	begin 
+		hinf.pt.x := x div f.unit
+		hinf.pt.y := y div f.unit
+		res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TVM_HITTEST, 0, SYSTEM.ADR(hinf))
+		if hinf.hItem = nil then
+			return false 
+		else 
+			return SYSTEM.VAL(integer, hinf.hItem) = f.treeArray[f.selIndex].wndAdr 
+		end 
+	end DblClickOk
+	
+	proc (f: TreeFrame) MouseDown(x, y: integer; buttons: set)
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			HandleMouse(f.i.wnd, x div f.unit, y div f.unit, buttons) 
+		end 
+	end MouseDown
+	
+	proc (f: TreeFrame) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean)
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			HandleWheel(f.i.ctrl, x, y, op, nofLines, done) 
+		end 
+	end WheelMove
+	
+	proc (f: TreeFrame) Restore(l, t, r, b: integer)
+	begin 
+		if f.i.ctrl = 0 then // lazy allocation
+			f.UpdateList 
+		else 
+			f.Update 
+		end 
+		if f.i.wnd # 0 then
+			PaintRect(f, f.i, l, t, r, b) 
+		else 
+			Print(f, f.dot, -1, -1, "") 
+		end 
+	end Restore
+	
+	proc (f: TreeFrame) KeyDown(ch: char)
+		var 
+			res: integer
+	begin 
+		assert(~f.disabled, 100)
+		if ch = " " then
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, ord(ch), 0)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYUP, ord(ch), 0) 
+		else 
+			SendKey(ch, f.i.ctrl) 
+		end 
+	end KeyDown
+	
+	proc (f: TreeFrame) Mark(on, focus: boolean)
+	begin 
+		Mark(on, f.front, f.i)
+	end Mark
+	
+	proc (f: TreeFrame) GetSize(var w, h: integer)
+		var 
+			rect: WinApi.RECT
+			res: integer
+	begin 
+		res := WinApi.GetWindowRect(f.i.wnd, rect)
+		w := (rect.right - rect.left) * f.unit
+		h := (rect.bottom - rect.top) * f.unit
+	end GetSize
+	
+	
+	// Directory
+	
+	proc (d: Directory) GetPushButtonSize(var w, h: integer)
+	begin 
+		if w = Views.undefined then
+			w := 56 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 18 * Ports.point 
+		end 
+	end GetPushButtonSize
+	
+	proc (d: Directory) GetCheckBoxSize(var w, h: integer)
+	begin 
+		if w = Views.undefined then
+			w := 60 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 12 * Ports.point 
+		end 
+	end GetCheckBoxSize
+	
+	proc (d: Directory) GetRadioButtonSize(var w, h: integer)
+	begin 
+		if w = Views.undefined then
+			w := 60 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 12 * Ports.point 
+		end 
+	end GetRadioButtonSize
+	
+	proc (d: Directory) GetScrollBarSize(var w, h: integer)
+	begin 
+		if w = Views.undefined then
+			w := 120 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 12 * Ports.point 
+		end 
+	end GetScrollBarSize
+	
+	proc (d: Directory) GetFieldSize(max_: integer; var w, h: integer)
+	begin 
+		if w = Views.undefined then
+			if max_ = 0 then
+				w := 80 * Ports.point 
+			elsif max_ < 10 then 
+				w := 32 * Ports.point 
+			elsif max_ < 15 then 
+				w := 56 * Ports.point 
+			elsif max_ < 30 then 
+				w := 80 * Ports.point 
+			elsif max_ < 100 then 
+				w := 120 * Ports.point 
+			else 
+				w := 150 * Ports.point 
+			end  
+		end 
+		if h = Views.undefined then
+			h := 17 * Ports.point 
+		end 
+	end GetFieldSize
+	
+	proc (d: Directory) GetUpDownFieldSize(max_: integer; var w, h: integer)
+	begin 
+		if w = Views.undefined then
+			w := 56 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 17 * Ports.point 
+		end 
+	end GetUpDownFieldSize
+	
+	proc (d: Directory) GetDateFieldSize(var w, h: integer)
+	begin 
+		if w = Views.undefined then
+			w := 72 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 17 * Ports.point 
+		end 
+	end GetDateFieldSize
+	
+	proc (d: Directory) GetTimeFieldSize(var w, h: integer)
+	begin 
+		if w = Views.undefined then
+			w := 72 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 17 * Ports.point 
+		end 
+	end GetTimeFieldSize
+	
+	proc (d: Directory) GetColorFieldSize(var w, h: integer)
+	begin 
+		if w = Views.undefined then
+			w := 36 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 18 * Ports.point 
+		end 
+	end GetColorFieldSize
+	
+	proc (d: Directory) GetListBoxSize(var w, h: integer)
+	begin 
+		if w = Views.undefined then
+			w := 100 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 18 * Ports.point 
+		end 
+	end GetListBoxSize
+	
+	proc (d: Directory) GetSelectionBoxSize(var w, h: integer)
+	begin 
+		if w = Views.undefined then
+			w := 100 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 54 * Ports.point 
+		end 
+	end GetSelectionBoxSize
+	
+	proc (d: Directory) GetComboBoxSize(var w, h: integer)
+	begin 
+		if w = Views.undefined then
+			w := 100 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 18 * Ports.point 
+		end 
+	end GetComboBoxSize
+	
+	proc (d: Directory) GetCaptionSize(var w, h: integer)
+	begin 
+		if w = Views.undefined then
+			w := 50 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 12 * Ports.point 
+		end 
+	end GetCaptionSize
+	
+	proc (d: Directory) GetGroupSize(var w, h: integer)
+	begin 
+		if w = Views.undefined then
+			w := 100 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 100 * Ports.point 
+		end 
+	end GetGroupSize
+	
+	proc (d: Directory) GetTreeFrameSize(var w, h: integer)
+	begin 
+		if w = Views.undefined then
+			w := 100 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 100 * Ports.point 
+		end 
+	end GetTreeFrameSize
+	
+	proc (d: Directory) NewPushButton(): StdCFrames.PushButton
+		var 
+			f: PushButton
+	begin 
+		new(f)
+		return f
+	end NewPushButton
+	
+	proc (d: Directory) NewCheckBox(): StdCFrames.CheckBox
+		var 
+			f: CheckBox
+	begin 
+		new(f)
+		return f
+	end NewCheckBox
+	
+	proc (d: Directory) NewRadioButton(): StdCFrames.RadioButton
+		var 
+			f: RadioButton
+	begin 
+		new(f)
+		return f
+	end NewRadioButton
+	
+	proc (d: Directory) NewScrollBar(): StdCFrames.ScrollBar
+		var 
+			f: ScrollBar
+	begin 
+		new(f)
+		return f
+	end NewScrollBar
+	
+	proc (d: Directory) NewField(): StdCFrames.Field
+		var 
+			f: Field
+	begin 
+		new(f)
+		return f
+	end NewField
+	
+	proc (d: Directory) NewUpDownField(): StdCFrames.UpDownField
+		var 
+			f: UpDownField
+	begin 
+		new(f)
+		return f
+	end NewUpDownField
+	
+	proc (d: Directory) NewDateField(): StdCFrames.DateField
+		var 
+			f: DateField
+	begin 
+		new(f)
+		return f
+	end NewDateField
+	
+	proc (d: Directory) NewTimeField(): StdCFrames.TimeField
+		var 
+			f: TimeField
+	begin 
+		new(f)
+		return f
+	end NewTimeField
+	
+	proc (d: Directory) NewColorField(): StdCFrames.ColorField
+		var 
+			f: ColorField
+	begin 
+		new(f)
+		return f
+	end NewColorField
+	
+	proc (d: Directory) NewListBox(): StdCFrames.ListBox
+		var 
+			f: ListBox
+	begin 
+		new(f)
+		return f
+	end NewListBox
+	
+	proc (d: Directory) NewSelectionBox(): StdCFrames.SelectionBox
+		var 
+			f: SelectionBox
+	begin 
+		new(f)
+		return f
+	end NewSelectionBox
+	
+	proc (d: Directory) NewComboBox(): StdCFrames.ComboBox
+		var 
+			f: ComboBox
+	begin 
+		new(f)
+		return f
+	end NewComboBox
+	
+	proc (d: Directory) NewCaption(): StdCFrames.Caption
+		var 
+			f: Caption
+	begin 
+		new(f)
+		return f
+	end NewCaption
+	
+	proc (d: Directory) NewGroup(): StdCFrames.Group
+		var 
+			f: Group
+	begin 
+		new(f)
+		return f
+	end NewGroup
+	
+	proc (d: Directory) NewTreeFrame(): StdCFrames.TreeFrame
+		var 
+			f: TreeFrame
+	begin 
+		new(f)
+		f.inUpdateList := false
+		return f
+	end NewTreeFrame
+	
+	// control window class
+	
+	// Used for common controls, not standard controls
+	proc HandleNotifyMsg(wnd: WinApi.HANDLE; lParam, out: integer)
+		var 
+			c: StdCFrames.Frame
+			ret: integer
+			pnmhdr: WinApi.PtrNMHDR
+			pnmtv: WinCtl.PtrNMTREEVIEWW
+	begin 
+		ret := WinApi.FALSE_
+		c := SYSTEM.VAL(StdCFrames.Frame, WinApi.GetWindowLongW(wnd, dlgWindowExtra))
+		pnmhdr := SYSTEM.VAL(WinApi.PtrNMHDR, lParam)
+		with c: TreeFrame do 
+			if c.i.ctrl # 0 then
+				if ~c.inUpdateList & c.readOnly & (pnmhdr.code = WinCtl.TVN_SELCHANGINGW) then
+					ret := WinApi.TRUE_ 
+				elsif pnmhdr.code = WinCtl.TVN_SELCHANGEDW then 
+					pnmtv := SYSTEM.VAL(WinCtl.PtrNMTREEVIEWW, lParam)
+					c.selIndex := pnmtv.itemNew.lParam
+					c.Select(c, c.treeArray[c.selIndex].tn) 
+				elsif pnmhdr.code = WinCtl.TVN_ITEMEXPANDEDW then 
+					pnmtv := SYSTEM.VAL(WinCtl.PtrNMTREEVIEWW, lParam)
+					c.ExpandCollapse(pnmtv.itemNew.lParam, pnmtv.action) 
+				end  
+			end  
+		else  
+		end 
+		SYSTEM.PUT(out, ret)
+	end HandleNotifyMsg
+	
+	proc HandleCommand(wnd: WinApi.HANDLE; wParam, lParam: integer)
+		var 
+			res, nc, i, j: integer
+			c: StdCFrames.Frame
+			s: array 512 of char
+			ps: pointer to array of char
+			b: boolean
+	begin 
+		c := SYSTEM.VAL(StdCFrames.Frame, WinApi.GetWindowLongW(wnd, dlgWindowExtra))
+		nc := wParam div 65536
+		with c: PushButton do 
+			if c.i.ctrl # 0 then
+				if nc = WinApi.BN_CLICKED then
+					Execute(c) 
+				end  
+			end  
+		| c: CheckBox do 
+			if c.i.ctrl # 0 then
+				if nc = WinApi.BN_CLICKED then
+					i := WinApi.SendMessageW(c.i.ctrl, WinApi.BM_GETCHECK, 0, 0)
+					if i = 0 then
+						i := 1 
+					else 
+						i := 0 
+					end 
+					res := WinApi.SendMessageW(c.i.ctrl, WinApi.BM_SETCHECK, i, 0)
+					c.undef := false
+					c.Set(c, i = 1) 
+				(* c.undef := res = 2;
+				   c.Set(c, res = 1) *)
+				
+				
+				end  
+			end  
+		| c: RadioButton do 
+			if c.i.ctrl # 0 then
+				if nc = WinApi.BN_CLICKED then
+					res := WinApi.SendMessageW(c.i.ctrl, WinApi.BM_GETCHECK, 0, 0)
+					c.Set(c, res # 0) 
+				end  
+			end  
+		| c: Field do 
+			if c.i.ctrl # 0 then
+				if (nc = WinApi.EN_CHANGE) & ~c.isUpdate then
+					if ~c.left then // right center alignment implies multiline which sends two update messages
+						if c.maxLen > 255 then
+							new(ps, 2 * c.maxLen + 1)
+							res := WinApi.GetWindowTextW(c.i.ctrl, ps^, len(ps^))
+							if c.multiLine then
+								DelLF(ps^) 
+							end 
+							if c.del or (ps # "") then
+								c.Set(c, ps^) 
+							end  
+						else 
+							res := WinApi.GetWindowTextW(c.i.ctrl, s, len(s))
+							if c.multiLine then
+								DelLF(s) 
+							end 
+							if c.del or (s # "") then
+								c.Set(c, s) 
+							end  
+						end  
+					else 
+						if c.maxLen > 255 then
+							new(ps, 2 * c.maxLen + 1)
+							res := WinApi.GetWindowTextW(c.i.ctrl, ps^, len(ps^))
+							if c.multiLine then
+								DelLF(ps^) 
+							end 
+							c.Set(c, ps^) 
+						else 
+							res := WinApi.GetWindowTextW(c.i.ctrl, s, len(s))
+							if c.multiLine then
+								DelLF(s) 
+							end 
+							c.Set(c, s) 
+						end  
+					end  
+				end  
+			end  
+		| c: UpDownField do 
+			if c.i.ctrl # 0 then
+				if (nc = WinApi.EN_CHANGE) & ~c.isUpdate then
+					res := WinApi.GetWindowTextW(c.i.ctrl, s, len(s))
+					if (s = "") or (s = "-") then
+						c.val_ := 0
+						res := 0 
+					else 
+						Strings.StringToInt(s, c.val_, res) 
+					end 
+					if res = 0 then
+						c.Set(c, c.val_) 
+					else 
+						Dialog.Beep
+						c.Update 
+					end  
+				end  
+			end  
+		| c: ColorField do 
+			if c.i.ctrl # 0 then
+				if nc = WinApi.CBN_SELCHANGE then
+					i := WinApi.SendMessageW(c.i.ctrl, WinApi.CB_GETCURSEL, 0, 0)
+					if i = numColors then
+						Dialog.GetColor(c.color, i, b)
+						if b then
+							c.Set(c, i)
+							c.Update 
+						end  
+					elsif i >= 0 then 
+						c.color := colors[i]
+						c.Set(c, c.color) 
+					end  
+				end  
+			end  
+		| c: ListBox do 
+			if c.i.ctrl # 0 then
+				if c.i.dropDown then
+					if nc = WinApi.CBN_SELCHANGE then
+						i := WinApi.SendMessageW(c.i.ctrl, WinApi.CB_GETCURSEL, 0, 0)
+						if c.sorted then
+							i := WinApi.SendMessageW(c.i.ctrl, WinApi.CB_GETITEMDATA, i, 0) 
+						end 
+						if i >= 0 then
+							c.Set(c, i) 
+						end  
+					end  
+				else 
+					if nc = WinApi.LBN_SELCHANGE then
+						i := WinApi.SendMessageW(c.i.ctrl, WinApi.LB_GETCURSEL, 0, 0)
+						if c.sorted then
+							i := WinApi.SendMessageW(c.i.ctrl, WinApi.LB_GETITEMDATA, i, 0) 
+						end 
+						if i >= 0 then
+							c.Set(c, i) 
+						end  
+					end  
+				end  
+			end  
+		| c: SelectionBox do 
+			if c.i.ctrl # 0 then
+				if nc = WinApi.LBN_SELCHANGE then
+					(* i := WinApi.SendMessageW(c.i.ctrl, WinApi.LBGetAnchorIndex, 0, 0);
+					   j := WinApi.SendMessageW(c.i.ctrl, WinApi.LBGetCaretIndex, 0, 0);
+					   res := WinApi.SendMessageW(c.i.ctrl, WinApi.LBGetSel, i, 0);
+					   IF c.sorted THEN
+					   i := WinApi.SendMessageW(c.i.ctrl, WinApi.LBGetItemData, i, 0);
+					   j := WinApi.SendMessageW(c.i.ctrl, WinApi.LBGetItemData, j, 0)
+					   END;
+					   IF (i >= 0) & (i < c.num) THEN
+					   Log.Int(i); Log.Int(j); Log.Ln; Log.Int(wParam); Log.Int(lParam); Log.Int(res); Log.Ln;
+					   IF (res # 0) THEN c.Incl(c, i, i) ELSE c.Excl(c, i, i) END
+					   END *)
+					
+					
+					c.delayUpdate := true
+					c.needsUpdate := false
+					i := 0
+					while i < c.num do 
+						j := i
+						res := WinApi.SendMessageW(c.i.ctrl, WinApi.LB_GETSEL, j, 0)
+						if c.sorted then
+							j := WinApi.SendMessageW(c.i.ctrl, WinApi.LB_GETITEMDATA, j, 0) 
+						end 
+						c.Get(c, j, b)
+						if (res # 0) & ~b then
+							c.Incl(c, j, j) 
+						elsif (res = 0) & b then 
+							c.Excl(c, j, j) 
+						end 
+						inc(i) 
+					end 
+					c.delayUpdate := false
+					if c.needsUpdate then
+						c.Update 
+					end  
+				end  
+			end  
+		| c: ComboBox do 
+			if c.i.ctrl # 0 then
+				if nc = WinApi.CBN_EDITCHANGE then
+					res := WinApi.GetWindowTextW(c.i.ctrl, s, len(s))
+					c.Set(c, s) 
+				elsif nc = WinApi.CBN_SELCHANGE then 
+					i := WinApi.SendMessageW(c.i.ctrl, WinApi.CB_GETCURSEL, 0, 0)
+					if i >= 0 then
+						res := WinApi.SendMessageW(c.i.ctrl, WinApi.CB_GETLBTEXT, i, SYSTEM.ADR(s))
+						c.Set(c, s) 
+					end  
+				end  
+			end  
+		else  
+		end 
+	end HandleCommand
+	
+	proc HandleScroll(wnd: WinApi.HANDLE; wParam, lParam: integer)
+		var 
+			nc, size_, sect, pos: integer
+			c: StdCFrames.Frame
+			arrows: boolean
+	begin 
+		arrows := false
+		c := SYSTEM.VAL(StdCFrames.Frame, WinApi.GetWindowLongW(wnd, dlgWindowExtra))
+		with c: ScrollBar do 
+			if c.i.ctrl # 0 then
+				Views.ValidateRoot(Views.RootOf(c))
+				nc := wParam mod 65536
+				c.Get(c, size_, sect, pos)
+				if (nc = WinApi.SB_THUMBPOSITION) or 
+					HostWindows.visualScroll & (nc = WinApi.SB_THUMBTRACK) then
+					c.Set(c, WinApi.MulDiv(wParam div 65536, size_ - sect, scrollRange)) 
+				elsif nc = WinApi.SB_LINEUP then 
+					c.Track(c, StdCFrames.lineUp, pos) 
+				elsif nc = WinApi.SB_LINEDOWN then 
+					c.Track(c, StdCFrames.lineDown, pos) 
+				elsif nc = WinApi.SB_PAGEUP then 
+					c.Track(c, StdCFrames.pageUp, pos) 
+				elsif nc = WinApi.SB_PAGEDOWN then 
+					c.Track(c, StdCFrames.pageDown, pos) 
+				end 
+				c.Update 
+			end  
+		| c: UpDownField do 
+			if c.i.ctrl # 0 then
+				arrows := true 
+			end  
+		| c: TimeField do 
+			if c.i.ctrl # 0 then
+				arrows := true 
+			end  
+		| c: DateField do 
+			if c.i.ctrl # 0 then
+				arrows := true 
+			end  
+		else  
+		end 
+		if arrows then
+			nc := wParam mod 65536
+			if nc = WinApi.SB_THUMBPOSITION then
+				if wParam div 65536 # 0 then
+					c.KeyDown(AU) 
+				else 
+					c.KeyDown(AD) 
+				end  
+			end  
+		end 
+	end HandleScroll
+	
+	proc HandleDraw(wnd: WinApi.HANDLE; wParam, lParam: integer)
+		var 
+			res: integer
+			c: StdCFrames.Frame
+			p: WinApi.PtrDRAWITEMSTRUCT
+			brush: WinApi.HANDLE
+			rect: WinApi.RECT
+			col: Ports.Color
+	begin 
+		c := SYSTEM.VAL(StdCFrames.Frame, WinApi.GetWindowLongW(wnd, dlgWindowExtra))
+		p := SYSTEM.VAL(WinApi.PtrDRAWITEMSTRUCT, lParam)
+		with c: ColorField do 
+			if 0 in p.itemState then
+				rect := p.rcItem
+				brush := WinApi.CreateSolidBrush(HostPorts.selBackground)
+				res := WinApi.FillRect(p.hDC, rect, brush)
+				res := WinApi.DeleteObject(brush)
+				inc(rect.left)
+				inc(rect.top)
+				dec(rect.right)
+				dec(rect.bottom)
+				brush := WinApi.CreateSolidBrush(Ports.background)
+				res := WinApi.FillRect(p.hDC, rect, brush)
+				res := WinApi.DeleteObject(brush) 
+			else 
+				if c.disabled or c.readOnly then
+					brush := WinApi.CreateSolidBrush(Ports.dialogBackground) 
+				else 
+					brush := WinApi.CreateSolidBrush(Ports.background) 
+				end 
+				res := WinApi.FillRect(p.hDC, p.rcItem, brush)
+				res := WinApi.DeleteObject(brush) 
+			end 
+			if (p.itemID = numColors) & (p.rcItem.top > 20) then
+				brush := WinApi.CreateSolidBrush(HostPorts.textCol)
+				rect.top := p.rcItem.bottom - 6
+				rect.bottom := rect.top + 2
+				rect.left := p.rcItem.left + 4
+				rect.right := rect.left + 2
+				res := WinApi.FillRect(p.hDC, rect, brush)
+				rect.left := p.rcItem.left + 8
+				rect.right := rect.left + 2
+				res := WinApi.FillRect(p.hDC, rect, brush)
+				rect.left := p.rcItem.left + 12
+				rect.right := rect.left + 2
+				res := WinApi.FillRect(p.hDC, rect, brush) 
+			elsif p.itemID >= 0 then 
+				rect := p.rcItem
+				inc(rect.left, 2)
+				inc(rect.top, 2)
+				dec(rect.right, 2)
+				dec(rect.bottom, 2)
+				if p.itemID = numColors then
+					col := c.color 
+				elsif (p.itemID >= 0) & (p.itemID < len(colors)) then 
+					col := colors[p.itemID] 
+				else 
+					col := HostPorts.textCol 
+				end 
+				brush := WinApi.CreateSolidBrush(col)
+				res := WinApi.FillRect(p.hDC, rect, brush)
+				res := WinApi.DeleteObject(brush) 
+			end  
+		end 
+	end HandleDraw
+	
+	proc ColorBrush(col: Ports.Color): WinApi.HANDLE
+		var 
+			p: BrushCache
+	begin 
+		if col = Ports.white then
+			return WinApi.GetStockObject(WinApi.WHITE_BRUSH) 
+		elsif col = Ports.dialogBackground then 
+			return HostPorts.dialogBrush 
+		else 
+			p := brushes
+			while (p # nil) & (p.col # col) do 
+				p := p.next 
+			end 
+			if p # nil then
+				return p.brush 
+			else 
+				new(p)
+				p.col := col
+				p.brush := WinApi.CreateSolidBrush(col)
+				p.next := brushes
+				brushes := p
+				return p.brush 
+			end  
+		end 
+	end ColorBrush
+	
+	proc CtrlHandler(wnd: WinApi.HANDLE; message, wParam, lParam: integer): integer
+		var 
+			res: integer
+			c: StdCFrames.Frame
+			p: WinApi.PtrMEASUREITEMSTRUCT
+	begin 
+		if message = WinApi.WM_COMMAND then
+			Kernel.Try(HandleCommand, wnd, wParam, lParam)
+			return 0 
+		elsif message = WinApi.WM_NOTIFY then 
+			res := -1
+			Kernel.Try(HandleNotifyMsg, wnd, lParam, SYSTEM.ADR(res))
+			if res # -1 then
+				return res 
+			else 
+				return 0 
+			end  
+		elsif (message = WinApi.WM_HSCROLL) or (message = WinApi.WM_VSCROLL) then 
+			Kernel.Try(HandleScroll, wnd, wParam, lParam)
+			return 0 
+		elsif message = WinApi.WM_DRAWITEM then 
+			Kernel.Try(HandleDraw, wnd, wParam, lParam)
+			return 1 
+		elsif message = WinApi.WM_MEASUREITEM then 
+			c := SYSTEM.VAL(StdCFrames.Frame, WinApi.GetWindowLongW(wnd, dlgWindowExtra))
+			with c: ColorField do 
+				p := SYSTEM.VAL(WinApi.PtrMEASUREITEMSTRUCT, lParam)
+				if p.itemID = -1 then
+					p.itemHeight := 11 * Ports.point div c.unit + 1 
+				else 
+					p.itemHeight := 11 * Ports.point div c.unit - 1 
+				end 
+				return 1 
+			else  
+			end  
+		elsif (message >= WinApi.WM_CTLCOLORMSGBOX) & (message <= WinApi.WM_CTLCOLORSTATIC) then 
+			c := SYSTEM.VAL(StdCFrames.Frame, WinApi.GetWindowLongW(wnd, dlgWindowExtra))
+			if ((c is Field) or (c is UpDownField) or (c is TimeField) or (c is DateField) 
+				or (c is ListBox) or (c is SelectionBox) or (c is ColorField)) 
+				& (c.disabled or c.readOnly) then
+				res := WinApi.SetBkColor(wParam, Ports.dialogBackground)
+				res := WinApi.SetBkMode(wParam, 2) // opaque
+				return HostPorts.dialogBrush 
+			elsif (c is TreeFrame) & (c.disabled or c.readOnly) & (Dialog.platform # Dialog.windowsNT4) then 
+				res := WinApi.SetBkColor(wParam, Ports.dialogBackground)
+				res := WinApi.SetBkMode(wParam, 2) // opaque
+				return HostPorts.dialogBrush 
+			elsif ((c is Field) or (c is UpDownField) or (c is TimeField) or (c is DateField)) 
+				& ~c.disabled & c.undef then 
+				res := WinApi.SetBkMode(wParam, 1) // transparent
+				res := WinApi.SetTextColor(wParam, 0c0c0c0h)
+				return HostPorts.dim50Brush 
+			elsif c is Caption then 
+				res := WinApi.SetTextColor(wParam, HostPorts.dialogTextCol)
+				res := WinApi.SetBkColor(wParam, c(Caption).i.bkgnd)
+				res := WinApi.SetBkMode(wParam, 2) // opaque
+				return ColorBrush(c(Caption).i.bkgnd) 
+			elsif CtlColor # nil then 
+				res := CtlColor(message, wParam, lParam)
+				if res # 0 then
+					return res 
+				end  
+			elsif c is CheckBox then 
+				res := WinApi.SetTextColor(wParam, HostPorts.dialogTextCol)
+				res := WinApi.SetBkColor(wParam, c(CheckBox).i.bkgnd)
+				res := WinApi.SetBkMode(wParam, 2) // opaque
+				return ColorBrush(c(CheckBox).i.bkgnd) 
+			elsif c is RadioButton then 
+				res := WinApi.SetTextColor(wParam, HostPorts.dialogTextCol)
+				res := WinApi.SetBkColor(wParam, c(RadioButton).i.bkgnd)
+				res := WinApi.SetBkMode(wParam, 2) // opaque
+				return ColorBrush(c(RadioButton).i.bkgnd) 
+			elsif c is Group then 
+				res := WinApi.SetTextColor(wParam, HostPorts.dialogTextCol)
+				res := WinApi.SetBkColor(wParam, c(Group).i.bkgnd)
+				res := WinApi.SetBkMode(wParam, 2) // opaque
+				return ColorBrush(c(Group).i.bkgnd) 
+			end  
+		elsif message = WinApi.WM_ERASEBKGND then 
+			return 1 
+		end 
+		return WinApi.DefWindowProcW(wnd, message, wParam, lParam)
+	end CtrlHandler
+	
+	
+	proc SetDefFonts*
+	begin 
+		StdCFrames.defaultFont := HostFonts.dlgFont
+		StdCFrames.defaultLightFont := Fonts.dir.This(
+			HostFonts.dlgFont.typeface, HostFonts.dlgFont.size_, HostFonts.dlgFont.style, Fonts.normal)
+	end SetDefFonts
+	
+	proc Install
+		var 
+			dir: Directory
+	begin 
+		new(dir)
+		StdCFrames.SetDir(dir)
+	end Install
+	
+	proc InitClass
+		var 
+			res: integer
+			class: WinApi.WNDCLASSW
+	begin 
+		class.hCursor := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_ARROW))
+		class.hIcon := WinApi.LoadIconW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 1))
+		class.lpszMenuName := nil
+		class.lpszClassName := "Oberon Ctrl"
+		class.hbrBackground := 0 // no background
+		class.style := {}
+		class.hInstance := instance
+		class.lpfnWndProc := CtrlHandler
+		class.cbClsExtra := 0
+		class.cbWndExtra := dlgWindowExtra + 4
+		res := WinApi.RegisterClassW(class)
+	end InitClass
+	
+	proc InitNationalInfo
+		var 
+			res: integer
+			str: array 8 of char
+	begin 
+		res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_SDATE, str, len(str))
+		dateSep := str[0]
+		res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_STIME, str, len(str))
+		timeSep := str[0]
+		res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_IDATE, str, len(str))
+		if str = "1" then
+			dayPart := 1
+			monthPart := 2
+			yearPart := 3
+			del1 := 2
+			del2 := 5 
+		elsif str = "2" then 
+			yearPart := 1
+			monthPart := 2
+			dayPart := 3
+			del1 := 4
+			del2 := 7 
+		else 
+			monthPart := 1
+			dayPart := 2
+			yearPart := 3
+			del1 := 2
+			del2 := 5 
+		end 
+		res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_ITIME, str, len(str))
+		if str = "1" then
+			lastPart := 3 
+		else 
+			lastPart := 4
+			res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_S1159, str, len(str))
+			desig[0] := str
+			res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_S2359, str, len(str))
+			desig[1] := str 
+		end 
+	end InitNationalInfo
+	
+	proc InitColors
+	begin 
+		colors[0] := 000000ffh
+		colors[1] := 0000ff00h
+		colors[2] := 00ff0000h
+		colors[3] := 0000ffffh
+		colors[4] := 00ffff00h
+		colors[5] := 00ff00ffh
+		colors[6] := 00000000h
+	end InitColors
+	
+	proc Init
+	begin 
+		StdCFrames.setFocus := true
+		SetDefFonts
+		scW := WinApi.GetSystemMetrics(0) // screen width
+		scH := WinApi.GetSystemMetrics(1) // screen height
+		instance := WinApi.GetModuleHandleW(nil)
+		InitClass
+		InitNationalInfo
+		InitColors
+		Install
+	end Init
+
+begin
+	Init
+end HostCFrames

@@ -1,0 +1,159 @@
+module Converters
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20071109, bh, Converter search in Import corrected
+	   - 20160812, center #122, enabling write access to list of installed converters
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Meta, Files, Stores, Dialog
+	
+	const 
+		// hints
+		importAll* = 0 // can import all file types
+		canceled = 8
+	
+	type 
+		Importer* = proc (f: Files.File; var s: Stores.Store)
+		Exporter* = proc (s: Stores.Store; f: Files.File)
+		Converter* = pointer to record 
+				next*: Converter
+				imp-, exp-: Dialog.String
+				storeType-: Stores.TypeName
+				fileType-: Files.Type
+				opts-: set 
+			end 
+		
+		ImpVal = record (Meta.Value) p: Importer end 
+		ExpVal = record (Meta.Value) p: Exporter end 
+	
+	var 
+		list-: Converter
+		doc: Converter
+	
+	proc GetCommand(name: Dialog.String; var val_: Meta.Value; var ok: boolean)
+		var 
+			i: Meta.Item
+	begin 
+		Meta.LookupPath(name, i)
+		if (i.obj = Meta.procObj) or (i.obj = Meta.varObj) & (i.typ = Meta.procTyp) then
+			i.GetVal(val_, ok) 
+		else 
+			ok := false 
+		end 
+	end GetCommand
+	
+	
+	proc Register*(imp, exp: Dialog.String; storeType: Stores.TypeName; fileType: Files.Type; opts: set)
+		var 
+			e, f: Converter
+	begin 
+		assert((imp # "") or (exp # ""), 20)
+		assert(fileType # "", 21)
+		new(e)
+		e.next := nil
+		e.imp := imp
+		e.exp := exp
+		e.fileType := fileType
+		e.storeType := storeType
+		e.opts := opts
+		if (storeType = "") & (doc = nil) then
+			doc := e 
+		end 
+		if list = nil then
+			list := e 
+		else 
+			f := list
+			while f.next # nil do 
+				f := f.next 
+			end 
+			f.next := e 
+		end 
+	end Register
+	
+	
+	proc Import*(loc: Files.Locator; name: Files.Name; var conv: Converter; var s: Stores.Store)
+		var 
+			file: Files.File
+			val_: ImpVal
+			ok: boolean
+	begin 
+		assert(loc # nil, 20)
+		assert(name # "", 21)
+		file := Files.dir.Old(loc, name, Files.shared)
+		s := nil
+		if file # nil then
+			if conv = nil then
+				conv := list
+				while (conv # nil) & ((conv.fileType # file.type_) or (conv.imp = "")) do 
+					conv := conv.next 
+				end 
+				if conv = nil then
+					conv := list
+					while (conv # nil) & ~(importAll in conv.opts) do 
+						conv := conv.next 
+					end  
+				end  
+			else 
+				assert(conv.imp # "", 22) 
+			end 
+			if conv # nil then
+				GetCommand(conv.imp, val_, ok)
+				if ok then
+					val_.p(file, s) 
+				else 
+					Dialog.ShowMsg("#System:ConverterFailed") 
+				end  
+			else 
+				Dialog.ShowMsg("#System:NoConverterFound") 
+			end  
+		end 
+	end Import
+	
+	proc Export*(loc: Files.Locator; name: Files.Name; conv: Converter; s: Stores.Store)
+		var 
+			res: integer
+			file: Files.File
+			val_: ExpVal
+			ok: boolean
+	begin 
+		assert(s # nil, 20)
+		assert(~(s is Stores.Alien), 21)
+		assert(loc # nil, 22)
+		assert(name # "", 23)
+		file := Files.dir.New(loc, Files.ask) // fileLoc := loc;
+		if file # nil then
+			if conv = nil then
+				conv := doc 
+			else 
+				assert(conv.exp # "", 24) 
+			end 
+			GetCommand(conv.exp, val_, ok)
+			if ok then
+				val_.p(s, file)
+				if loc.res # canceled then
+					file.Register(name, conv.fileType, Files.ask, res)
+					loc.res := res 
+				end  
+			else 
+				Dialog.ShowMsg("#System:ConverterFailed")
+				loc.res := canceled 
+			end  
+		end 
+	end Export
+
+begin
+	list := nil
+end Converters

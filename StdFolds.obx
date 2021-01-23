@@ -1,0 +1,1108 @@
+module StdFolds
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20150327, center #32, remove fonts dependencies
+	   - 20150616, center #61, Unicode support for fold labels
+	   - 20160330, center #110, dialog improved
+	   - 20160324, center #111, code cleanups
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		Ports, Stores, Containers, Models, Views, Controllers, Fonts, 
+		Properties, Controls, 
+		TextModels, TextViews, TextControllers, TextSetters, 
+		Dialog, Services
+	
+	const 
+		expanded* = false
+		collapsed* = true
+		minVersion = 0
+		currentVersion = 1
+		
+		collapseFoldKey = "#Std:Collapse Fold"
+		expandFoldKey = "#Std:Expand Fold"
+		zoomInKey = "#Std:Zoom In"
+		zoomOutKey = "#Std:Zoom Out"
+		expandFoldsKey = "#Std:Expand Folds"
+		collapseFoldsKey = "#Std:Collapse Folds"
+		insertFoldKey = "#Std:Insert Fold"
+		setLabelKey = "#Std:Set Label"
+	
+	
+	type 
+		Label* = array 32 of char
+		
+		Fold* = pointer to record (Views.View) 
+				leftSide-: boolean
+				collapsed-: boolean
+				label-: Label // valid iff leftSide
+				hidden: TextModels.Model  // valid iff leftSide; NIL if no hidden text
+			end 
+		
+		Directory* = pointer to (* abstract *) record end 
+		
+		StdDirectory = pointer to record (Directory) end 
+		
+		FlipOp = pointer to record (Stores.Operation) 
+				text: TextModels.Model // containing text
+				leftpos, rightpos: integer  // position of left and right Fold
+			end 
+		
+		SetLabelOp = pointer to record (Stores.Operation) 
+				text: TextModels.Model // containing text
+				pos: integer // position of fold in text
+				oldlabel: Label 
+			end 
+		
+		Action = pointer to record (Services.Action) end 
+	
+	
+	var 
+		dir-, stdDir-: Directory
+		
+		foldData*: record 
+				nested*: boolean
+				useFilter*: boolean
+				filter*: Label
+				newLabel*: Label 
+			end 
+		
+		action: Action
+		fingerprint: integer // for the property inspector
+	
+	proc (d: Directory) New*(collapsed: boolean; label: Label
+		hiddenText: TextModels.Model): Fold end // new abstract
+	
+	
+	proc GetPair(fold: Fold; var l, r: Fold)
+		var 
+			c: Models.Context
+			text: TextModels.Model
+			rd: TextModels.Reader
+			v: Views.View
+			nest: integer
+	begin 
+		c := fold.context
+		l := nil
+		r := nil
+		with c: TextModels.Context do 
+			text := c.ThisModel()
+			rd := text.NewReader(nil)
+			if fold.leftSide then
+				l := fold
+				rd.SetPos(c.Pos() + 1)
+				nest := 1
+				repeat 
+					rd.ReadView(v)
+					if (v # nil) & (v is Fold) then
+						if v(Fold).leftSide then
+							inc(nest) 
+						else 
+							dec(nest) 
+						end  
+					end  
+				until (v = nil) or (nest = 0) 
+				if v # nil then
+					r := v(Fold) 
+				else 
+					r := nil 
+				end  
+			else 
+				r := fold
+				rd.SetPos(c.Pos())
+				nest := 1
+				repeat 
+					rd.ReadPrevView(v)
+					if (v # nil) & (v is Fold) then
+						if ~v(Fold).leftSide then
+							inc(nest) 
+						else 
+							dec(nest) 
+						end  
+					end  
+				until (v = nil) or (nest = 0) 
+				if v # nil then
+					l := v(Fold) 
+				else 
+					l := nil 
+				end  
+			end  
+		else   // fold not embedded in a text
+		end 
+		assert((l = nil) or l.leftSide & (l.hidden # nil), 100)
+		assert((r = nil) or ~r.leftSide & (r.hidden = nil), 101)
+	end GetPair
+	
+	proc (fold: Fold) HiddenText*(): TextModels.Model // new
+		var 
+			l, r: Fold
+	begin 
+		if fold.leftSide then
+			return fold.hidden 
+		else 
+			GetPair(fold, l, r)
+			if l # nil then
+				return l.hidden 
+			else 
+				return nil 
+			end  
+		end 
+	end HiddenText
+	
+	proc (fold: Fold) MatchingFold*(): Fold // new
+		var 
+			l, r: Fold
+	begin 
+		GetPair(fold, l, r)
+		if l # nil then
+			if fold = l then
+				return r 
+			else 
+				return l 
+			end  
+		else 
+			return nil 
+		end 
+	end MatchingFold
+	
+	proc CalcSize(f: Fold; var w, h: integer)
+		var 
+			c: Models.Context
+			font: Fonts.Font
+			asc, dsc, fw: integer
+	begin 
+		c := f.context
+		if (c # nil) & (c is TextModels.Context) then
+			font := c(TextModels.Context).Attr().font 
+		else 
+			font := Fonts.dir.Default() 
+		end 
+		font.GetBounds(asc, dsc, fw)
+		w := asc * 29 div 20
+		h := asc + dsc
+	end CalcSize
+	
+	proc Update(f: Fold)
+		var 
+			w, h: integer
+	begin 
+		CalcSize(f, w, h)
+		f.context.SetSize(w, h)
+		Views.Update(f, Views.keepFrames)
+	end Update
+	
+	proc FlipPair(l, r: Fold)
+		var 
+			text, hidden: TextModels.Model
+			cl, cr: Models.Context
+			lpos, rpos: integer
+	begin 
+		if (l # nil) & (r # nil) then
+			assert(l.leftSide, 100)
+			assert(~r.leftSide, 101)
+			assert(l.hidden # nil, 102)
+			assert(r.hidden = nil, 103)
+			cl := l.context
+			cr := r.context
+			text := cl(TextModels.Context).ThisModel()
+			lpos := cl(TextModels.Context).Pos() + 1
+			rpos := cr(TextModels.Context).Pos()
+			assert(lpos <= rpos, 104)
+			hidden := TextModels.CloneOf(text)
+			hidden.Insert(0, text, lpos, rpos)
+			text.Insert(lpos, l.hidden, 0, l.hidden.Length())
+			l.hidden := hidden
+			Stores.Join(l, hidden)
+			l.collapsed := ~l.collapsed
+			r.collapsed := l.collapsed
+			Update(l)
+			Update(r)
+			TextControllers.SetCaret(text, lpos) 
+		end 
+	end FlipPair
+	
+	proc (op: FlipOp) Do
+		var 
+			rd: TextModels.Reader
+			left, right: Views.View
+	begin 
+		rd := op.text.NewReader(nil)
+		rd.SetPos(op.leftpos)
+		rd.ReadView(left)
+		rd.SetPos(op.rightpos)
+		rd.ReadView(right)
+		FlipPair(left(Fold), right(Fold))
+		op.leftpos := left.context(TextModels.Context).Pos()
+		op.rightpos := right.context(TextModels.Context).Pos()
+	end Do
+	
+	proc (op: SetLabelOp) Do
+		var 
+			rd: TextModels.Reader
+			fold: Views.View
+			left, right: Fold
+			lab: Label
+	begin 
+		rd := op.text.NewReader(nil)
+		rd.SetPos(op.pos)
+		rd.ReadView(fold)
+		with fold: Fold do 
+			GetPair(fold, left, right)
+			if left # nil then
+				lab := fold.label
+				left.label := op.oldlabel
+				op.oldlabel := lab
+				right.label := left.label 
+			end  
+		end 
+	end Do
+	
+	proc SetProp(fold: Fold; p: Properties.Property)
+		var 
+			op: SetLabelOp
+			left, right: Fold
+	begin 
+		while p # nil do 
+			with p: Controls.Prop do 
+				if (Controls.label in p.valid) & (p.label # fold.label) then
+					GetPair(fold, left, right)
+					if left # nil then
+						new(op)
+						op.oldlabel := p.label
+						op.text := fold.context(TextModels.Context).ThisModel()
+						op.pos := fold.context(TextModels.Context).Pos()
+						Views.Do(fold, setLabelKey, op) 
+					end  
+				end  
+			else  
+			end 
+			p := p.next 
+		end 
+	end SetProp
+	
+	proc (fold: Fold) Flip* // new
+		var 
+			op: FlipOp
+			left, right: Fold
+	begin 
+		assert(fold # nil, 20)
+		new(op)
+		GetPair(fold, left, right)
+		if (left # nil) & (right # nil) then
+			op.text := fold.context(TextModels.Context).ThisModel()
+			op.leftpos := left.context(TextModels.Context).Pos()
+			op.rightpos := right.context(TextModels.Context).Pos()
+			Views.BeginModification(Views.clean, fold)
+			if ~left.collapsed then
+				Views.Do(fold, collapseFoldKey, op) 
+			else 
+				Views.Do(fold, expandFoldKey, op) 
+			end 
+			Views.EndModification(Views.clean, fold) 
+		end 
+	end Flip
+	
+	proc ReadNext(rd: TextModels.Reader; var fold: Fold)
+		var 
+			v: Views.View
+	begin 
+		repeat 
+			rd.ReadView(v) 
+		until rd.eot or (v is Fold) 
+		if ~rd.eot then
+			fold := v(Fold) 
+		else 
+			fold := nil 
+		end 
+	end ReadNext
+	
+	proc (fold: Fold) FlipNested* // new
+		var 
+			text: TextModels.Model
+			rd: TextModels.Reader
+			l, r: Fold
+			level: integer
+			op: Stores.Operation
+	begin 
+		assert(fold # nil, 20)
+		GetPair(fold, l, r)
+		if (l # nil) & (l.context # nil) & (l.context is TextModels.Context) then
+			text := l.context(TextModels.Context).ThisModel()
+			Models.BeginModification(Models.clean, text)
+			rd := text.NewReader(nil)
+			rd.SetPos(l.context(TextModels.Context).Pos())
+			if l.collapsed then
+				Models.BeginScript(text, expandFoldsKey, op)
+				ReadNext(rd, fold)
+				level := 1
+				while (fold # nil) & (level > 0) do 
+					if fold.leftSide & fold.collapsed then
+						fold.Flip 
+					end 
+					ReadNext(rd, fold)
+					if fold.leftSide then
+						inc(level) 
+					else 
+						dec(level) 
+					end  
+				end  
+			else  // l.state = expanded
+				Models.BeginScript(text, collapseFoldsKey, op)
+				level := 0
+				repeat 
+					ReadNext(rd, fold)
+					if fold.leftSide then
+						inc(level) 
+					else 
+						dec(level) 
+					end 
+					if (fold # nil) & ~fold.leftSide & ~fold.collapsed then
+						fold.Flip
+						rd.SetPos(fold.context(TextModels.Context).Pos() + 1) 
+					end  
+				until (fold = nil) or (level = 0)  
+			end 
+			Models.EndScript(text, op)
+			Models.EndModification(Models.clean, text) 
+		end 
+	end FlipNested
+	
+	proc (fold: Fold) HandlePropMsg-(var msg: Properties.Message)
+		var 
+			prop: Controls.Prop
+			c: Models.Context
+			a: TextModels.Attributes
+			asc, w: integer
+	begin 
+		with msg: Properties.SizePref do 
+			CalcSize(fold, msg.w, msg.h) 
+		| msg: Properties.ResizePref do 
+			msg.fixed := true 
+		| msg: Properties.FocusPref do 
+			msg.hotFocus := true 
+		| msg: Properties.PollMsg do 
+			new(prop)
+			prop.known := {Controls.label}
+			prop.valid := {Controls.label}
+			prop.readOnly := {}
+			prop.label := fold.label
+			msg.prop := prop 
+		| msg: Properties.SetMsg do 
+			SetProp(fold, msg.prop) 
+		| msg: TextSetters.Pref do 
+			c := fold.context
+			if (c # nil) & (c is TextModels.Context) then
+				a := c(TextModels.Context).Attr()
+				a.font.GetBounds(asc, msg.dsc, w) 
+			end  
+		else  
+		end 
+	end HandlePropMsg
+	
+	proc Track(fold: Fold; f: Views.Frame; x, y: integer; buttons: set; var hit: boolean)
+		var 
+			a: TextModels.Attributes
+			font: Fonts.Font
+			c: Models.Context
+			w, h, asc, dsc, fw: integer
+			isDown, in_, in0: boolean
+			modifiers: set
+	begin 
+		c := fold.context
+		hit := false
+		with c: TextModels.Context do 
+			a := c.Attr()
+			font := a.font
+			c.GetSize(w, h)
+			in0 := false
+			in_ := (0 <= x) & (x < w) & (0 <= y) & (y < h)
+			repeat 
+				if in_ # in0 then
+					f.MarkRect(0, 0, w, h, Ports.fill, Ports.hilite, false)
+					in0 := in_ 
+				end 
+				f.Input(x, y, modifiers, isDown)
+				in_ := (0 <= x) & (x < w) & (0 <= y) & (y < h) 
+			until ~isDown 
+			if in0 then
+				hit := true
+				font.GetBounds(asc, dsc, fw)
+				f.MarkRect(0, 0, w, asc + dsc, Ports.fill, Ports.hilite, false) 
+			end  
+		else  
+		end 
+	end Track
+	
+	proc (fold: Fold) HandleCtrlMsg*(f: Views.Frame; var msg: Views.CtrlMessage
+		var focus: Views.View)
+		var 
+			hit: boolean
+			pos: integer
+			l, r: Fold
+			context: TextModels.Context
+			text: TextModels.Model
+	begin 
+		with msg: Controllers.TrackMsg do 
+			if fold.context is TextModels.Context then
+				Track(fold, f, msg.x, msg.y, msg.modifiers, hit)
+				if hit then
+					if Controllers.modify in msg.modifiers then
+						fold.FlipNested 
+					else 
+						fold.Flip
+						context := fold.context(TextModels.Context)
+						text := context.ThisModel()
+						if TextViews.FocusText() = text then
+							GetPair(fold, l, r)
+							pos := context.Pos()
+							if fold = l then
+								TextControllers.SetCaret(text, pos + 1) 
+							else 
+								TextControllers.SetCaret(text, pos) 
+							end 
+							TextViews.ShowRange(text, pos, pos + 1, true) 
+						end  
+					end  
+				end  
+			end  
+		| msg: Controllers.PollCursorMsg do 
+			msg.cursor := Ports.refCursor 
+		else  
+		end 
+	end HandleCtrlMsg
+	
+	proc GetIconPath(fold: Fold; f: Views.Frame; w, h_dummy, asc: integer
+		var path: array of Ports.Point)
+		var 
+			i, xoff, w2, w4: integer
+	begin 
+		// use device coordinates for symmetric arrow rendering
+		w := w div f.unit
+		asc := asc div f.unit
+		w2 := w * 10 div 18
+		if ~odd(w2) then
+			dec(w2) 
+		end 
+		w4 := w2 div 2
+		xoff := (w - w2 - w4) div 2
+		if xoff < 1 then
+			xoff := 1 
+		end 
+		while xoff + w2 + w4 > w do 
+			dec(w2, 2)
+			dec(w4) 
+		end 
+		// left side icon
+		path[0].x := xoff // lower left
+		path[0].y := asc
+		path[1].x := path[0].x // upper left
+		path[1].y := path[0].y - w2
+		path[2].x := path[1].x + w2 // upper middle
+		path[2].y := path[1].y
+		path[3].x := path[2].x + w4 // right arrow
+		path[3].y := path[2].y + w4
+		path[4].x := path[2].x - 1 // lower middle, x offset -1 needed for symmetric filling
+		path[4].y := path[0].y
+		if ~fold.leftSide then // mirror
+			for i:= 0 to len(path) - 1 do 
+				path[i].x := w - path[i].x 
+			end  
+		end 
+		// convert to universal coordinates
+		for i:= 0 to len(path) - 1 do 
+			path[i].x := path[i].x * f.unit
+			path[i].y := path[i].y * f.unit 
+		end 
+	end GetIconPath
+	
+	proc DrawMarkers(fold: Fold; f: Views.Frame; in path: array of Ports.Point)
+		var 
+			w2, height, thickness, margin, len_, left, top: integer
+	begin 
+		// scale size and thickness of +/- markers, thickness / height = 1 / 7
+		w2 := abs(path[2].x - path[1].x) // universal coordinates
+		height := (path[0].y - path[1].y) // universal coordinates
+		thickness := height div f.unit div 7 // device coordinates
+		if thickness < 1 then
+			thickness := 1 
+		(* ELSIF ~ODD(thickness) THEN (* alternative for perfect symmetry but scales in larger increments *)
+		   DEC(thickness) *)
+		end 
+		thickness := thickness * f.unit // universal coordinates
+		margin := height div f.unit div 4 // device coordinates
+		if margin < 1 then // for small fonts
+			margin := 1 
+		end 
+		margin := margin * f.unit // universal coordinates
+		len_ := w2 - margin * 2 // universal coordinates
+		if ((len_ div f.unit) mod 2 = 1) & ((thickness div f.unit) mod 2 = 0) then
+			inc(len_, f.unit)  // avoid cross assymetry
+		end 
+		if len_ < 1 then // avoid TRAP in DrawRect for very small sizes
+			len_ := 1 
+		end 
+		// draw -
+		if fold.leftSide then
+			left := path[0].x + margin 
+		else 
+			left := path[2].x + margin 
+		end 
+		top := path[1].y + (height - thickness) div 2
+		f.DrawRect(left, top, left + len_, top + thickness, Ports.fill, Ports.white)
+		if fold.collapsed then // draw |
+			left := left + (len_ - thickness) div 2
+			top := path[1].y + margin
+			f.DrawRect(left, top, left + thickness, top + len_, Ports.fill, Ports.white) 
+		end 
+	end DrawMarkers
+	
+	proc (fold: Fold) Restore*(f: Views.Frame; l, t, r, b: integer)
+		var 
+			a: TextModels.Attributes
+			color: Ports.Color
+			c: Models.Context
+			font: Fonts.Font
+			w, h: integer
+			asc, dsc, fw: integer
+			path: array 5 of Ports.Point
+	begin 
+		CalcSize(fold, w, h) // important side effect: initializes Log window for drawing folds!
+		c := fold.context
+		if (c # nil) & (c is TextModels.Context) then
+			a := fold.context(TextModels.Context).Attr()
+			font := a.font
+			color := a.color 
+		else 
+			font := Fonts.dir.Default()
+			color := Ports.black 
+		end 
+		font.GetBounds(asc, dsc, fw)
+		GetIconPath(fold, f, w, h, asc, path)
+		f.DrawPath(path, len(path), Ports.fill, color, Ports.closedPoly)
+		DrawMarkers(fold, f, path)
+	end Restore
+	
+	proc (fold: Fold) CopyFromSimpleView-(source: Views.View)
+	begin 
+		// fold.CopyFrom^(source);
+		with source: Fold do 
+			assert(source.leftSide = (source.hidden # nil), 100)
+			fold.leftSide := source.leftSide
+			fold.collapsed := source.collapsed
+			fold.label := source.label
+			if source.hidden # nil then
+				fold.hidden := TextModels.CloneOf(source.hidden)
+				Stores.Join(fold.hidden, fold)
+				fold.hidden.InsertCopy(0, source.hidden, 0, source.hidden.Length()) 
+			end  
+		end 
+	end CopyFromSimpleView
+	
+	proc (fold: Fold) Internalize-(var rd: Stores.Reader)
+		var 
+			version: integer
+			store: Stores.Store
+			xint: integer
+	begin 
+		fold.Internalize^(rd)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minVersion, currentVersion, version)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadXInt(xint)
+		fold.leftSide := xint = 0
+		rd.ReadXInt(xint)
+		fold.collapsed := xint = 0
+		if version >= 1 then
+			rd.ReadString(fold.label) 
+		else 
+			rd.ReadXString(fold.label) 
+		end 
+		rd.ReadStore(store)
+		if store # nil then
+			fold.hidden := store(TextModels.Model)
+			Stores.Join(fold.hidden, fold) 
+		else 
+			fold.hidden := nil 
+		end 
+		fold.leftSide := store # nil
+	end Internalize
+	
+	proc HasWideChars(in s: array of char): boolean
+		var 
+			i: integer
+			ch: char
+	begin 
+		i := 0
+		ch := s[0]
+		while (ch # 0x) & (ch <= 0ffx) do 
+			inc(i)
+			ch := s[i] 
+		end 
+		return ch # 0x
+	end HasWideChars
+	
+	proc (fold: Fold) Externalize-(var wr: Stores.Writer)
+		var 
+			xint, version: integer
+	begin 
+		fold.Externalize^(wr)
+		if HasWideChars(fold.label) then
+			version := 1 
+		else 
+			version := 0 
+		end 
+		wr.WriteVersion(version)
+		if fold.hidden # nil then
+			xint := 0 
+		else 
+			xint := 1 
+		end 
+		wr.WriteXInt(xint)
+		if fold.collapsed then
+			xint := 0 
+		else 
+			xint := 1 
+		end 
+		wr.WriteXInt(xint)
+		if version >= 1 then
+			wr.WriteString(fold.label) 
+		else 
+			wr.WriteXString(fold.label) 
+		end 
+		wr.WriteStore(fold.hidden)
+	end Externalize
+	
+	// --------------------- expanding and collapsing in focus text ------------------------
+	
+	proc ExpandFolds*(text: TextModels.Model; nested: boolean; in label: array of char)
+		var 
+			op: Stores.Operation
+			fold, l, r: Fold
+			rd: TextModels.Reader
+	begin 
+		assert(text # nil, 20)
+		Models.BeginModification(Models.clean, text)
+		if nested then
+			Models.BeginScript(text, expandFoldsKey, op) 
+		else 
+			Models.BeginScript(text, zoomInKey, op) 
+		end 
+		rd := text.NewReader(nil)
+		rd.SetPos(0)
+		ReadNext(rd, fold)
+		while ~rd.eot do 
+			if fold.leftSide & fold.collapsed then
+				if (label = "") or (label = fold.label) then
+					fold.Flip
+					if ~nested then
+						GetPair(fold, l, r)
+						rd.SetPos(r.context(TextModels.Context).Pos()) 
+					end  
+				end  
+			end 
+			ReadNext(rd, fold) 
+		end 
+		Models.EndScript(text, op)
+		Models.EndModification(Models.clean, text)
+	end ExpandFolds
+	
+	proc CollapseFolds*(text: TextModels.Model; nested: boolean; in label: array of char)
+		var 
+			op: Stores.Operation
+			fold, r, l: Fold
+			rd: TextModels.Reader
+	begin 
+		assert(text # nil, 20)
+		Models.BeginModification(Models.clean, text)
+		if nested then
+			Models.BeginScript(text, collapseFoldsKey, op) 
+		else 
+			Models.BeginScript(text, zoomOutKey, op) 
+		end 
+		rd := text.NewReader(nil)
+		rd.SetPos(0)
+		ReadNext(rd, fold)
+		while ~rd.eot do 
+			if ~fold.leftSide & ~fold.collapsed then
+				GetPair(fold, l, r)
+				if (label = "") or (label = l.label) then
+					fold.Flip
+					GetPair(l, l, r)
+					rd.SetPos(r.context(TextModels.Context).Pos() + 1)
+					if ~nested then
+						repeat 
+							ReadNext(rd, fold) 
+						until rd.eot or fold.leftSide  
+					else 
+						ReadNext(rd, fold) 
+					end  
+				else 
+					ReadNext(rd, fold) 
+				end  
+			else 
+				ReadNext(rd, fold) 
+			end  
+		end 
+		Models.EndScript(text, op)
+		Models.EndModification(Models.clean, text)
+	end CollapseFolds
+	
+	proc ZoomIn*
+		var 
+			text: TextModels.Model
+	begin 
+		text := TextViews.FocusText()
+		if text # nil then
+			ExpandFolds(text, false, "") 
+		end 
+	end ZoomIn
+	
+	proc ZoomOut*
+		var 
+			text: TextModels.Model
+	begin 
+		text := TextViews.FocusText()
+		if text # nil then
+			CollapseFolds(text, false, "") 
+		end 
+	end ZoomOut
+	
+	proc Expand*
+		var 
+			text: TextModels.Model
+	begin 
+		text := TextViews.FocusText()
+		if text # nil then
+			ExpandFolds(text, true, "") 
+		end 
+	end Expand
+	
+	proc Collapse*
+		var 
+			text: TextModels.Model
+	begin 
+		text := TextViews.FocusText()
+		if text # nil then
+			CollapseFolds(text, true, "") 
+		end 
+	end Collapse
+	
+	// ---------------------- foldData dialogbox ---------------------------
+	
+	proc FilterGuard*(var par: Dialog.Par)
+	begin 
+		par.disabled := (TextViews.Focus() = nil) or ~foldData.useFilter
+	end FilterGuard
+	
+	proc SetLabelGuard*(var p: Dialog.Par)
+		var 
+			v: Views.View
+	begin 
+		Controllers.SetCurrentPath(Controllers.targetPath)
+		v := Containers.FocusSingleton()
+		p.disabled := (v = nil) or ~(v is Fold) or ~v(Fold).leftSide
+		Controllers.ResetCurrentPath()
+	end SetLabelGuard
+	
+	proc ExpandLabel*
+		var 
+			text: TextModels.Model
+	begin 
+		if ~foldData.useFilter & (foldData.filter # "") then
+			foldData.filter := ""
+			Dialog.Update(foldData) 
+		end 
+		text := TextViews.FocusText()
+		if text # nil then
+			if foldData.useFilter then
+				ExpandFolds(text, foldData.nested, foldData.filter) 
+			else 
+				ExpandFolds(text, foldData.nested, "") 
+			end  
+		end 
+	end ExpandLabel
+	
+	proc CollapseLabel*
+		var 
+			text: TextModels.Model
+	begin 
+		if ~foldData.useFilter & (foldData.filter # "") then
+			foldData.filter := ""
+			Dialog.Update(foldData) 
+		end 
+		text := TextViews.FocusText()
+		if text # nil then
+			if foldData.useFilter then
+				CollapseFolds(text, foldData.nested, foldData.filter) 
+			else 
+				CollapseFolds(text, foldData.nested, "") 
+			end  
+		end 
+	end CollapseLabel
+	
+	proc FindFold(first: boolean)
+		var 
+			c: TextControllers.Controller
+			r: TextModels.Reader
+			v: Views.View
+			pos, i: integer
+	begin 
+		c := TextControllers.Focus()
+		if c # nil then
+			if first then
+				pos := 0 
+			else 
+				pos := c.CaretPos()
+				if pos = TextControllers.none then
+					c.GetSelection(i, pos)
+					if pos = i then
+						pos := 0 
+					else 
+						inc(pos) 
+					end 
+					pos := min(pos, c.text.Length() - 1) 
+				end  
+			end 
+			r := c.text.NewReader(nil)
+			r.SetPos(pos)
+			repeat 
+				r.ReadView(v) 
+			until r.eot or ((v is Fold) & v(Fold).leftSide) & (~foldData.useFilter or (v(Fold).label = foldData.filter)) 
+			if r.eot then
+				c.SetCaret(0)
+				Dialog.Beep 
+			else 
+				pos := r.Pos()
+				c.view.ShowRange(pos - 1, pos, false)
+				c.SetSelection(pos - 1, pos)
+				if len(v(Fold).label) > 0 then
+					foldData.newLabel := v(Fold).label 
+				end 
+				Dialog.Update(foldData) 
+			end  
+		else 
+			Dialog.Beep 
+		end 
+	end FindFold
+	
+	proc FindNextFold*
+	begin 
+		FindFold(false)
+	end FindNextFold
+	
+	proc FindFirstFold*
+	begin 
+		FindFold(true)
+	end FindFirstFold
+	
+	proc SetLabel*
+		var 
+			v: Views.View
+	begin 
+		Controllers.SetCurrentPath(Controllers.targetPath)
+		v := Containers.FocusSingleton()
+		if (v # nil) & (v is Fold) & (len(foldData.newLabel) > 0) then
+			v(Fold).label := foldData.newLabel 
+		else 
+			Dialog.Beep 
+		end 
+		Controllers.ResetCurrentPath()
+	end SetLabel
+	
+	proc (a: Action) Do
+		var 
+			v: Views.View
+			fp: integer
+	begin 
+		Controllers.SetCurrentPath(Controllers.targetPath)
+		v := Containers.FocusSingleton()
+		if (v = nil) or ~(v is Fold) then
+			fingerprint := 0
+			foldData.newLabel := "" 
+		else 
+			fp := Services.AdrOf(v)
+			if fp # fingerprint then
+				foldData.newLabel := v(Fold).label
+				fingerprint := fp
+				Dialog.Update(foldData) 
+			end  
+		end 
+		Controllers.ResetCurrentPath()
+		Services.DoLater(action, Services.Ticks() + Services.resolution div 2)
+	end Do
+	
+	// ------------------------ inserting folds ------------------------
+	
+	proc Overlaps*(text: TextModels.Model; beg, end_: integer): boolean
+		var 
+			n, level: integer
+			rd: TextModels.Reader
+			v: Views.View
+	begin 
+		assert(text # nil, 20)
+		assert((beg >= 0) & (end_ <= text.Length()) & (beg <= end_), 21)
+		rd := text.NewReader(nil)
+		rd.SetPos(beg)
+		n := 0
+		level := 0
+		repeat 
+			rd.ReadView(v)
+			if ~rd.eot & (rd.Pos() <= end_) then
+				with v: Fold do 
+					inc(n)
+					if v.leftSide then
+						inc(level) 
+					else 
+						dec(level) 
+					end  
+				else  
+				end  
+			end  
+		until rd.eot or (level < 0) or (rd.Pos() >= end_) 
+		return (level # 0) or odd(n)
+	end Overlaps
+	
+	proc InsertionAttr(text: TextModels.Model; pos: integer): TextModels.Attributes
+		var 
+			rd: TextModels.Reader
+			ch: char
+	begin 
+		rd := text.NewReader(nil)
+		rd.SetPos(pos)
+		rd.ReadChar(ch)
+		return rd.attr
+	end InsertionAttr
+	
+	proc Insert*(text: TextModels.Model; label: Label; beg, end_: integer; collapsed: boolean)
+		var 
+			w: TextModels.Writer
+			fold: Fold
+			insop: Stores.Operation
+			a: TextModels.Attributes
+	begin 
+		assert(text # nil, 20)
+		assert((beg >= 0) & (end_ <= text.Length()) & (beg <= end_), 21)
+		a := InsertionAttr(text, beg)
+		w := text.NewWriter(nil)
+		w.SetPos(beg)
+		if a # nil then
+			w.SetAttr(a) 
+		end 
+		new(fold)
+		fold.leftSide := true
+		fold.collapsed := collapsed
+		fold.hidden := TextModels.CloneOf(text)
+		Stores.Join(fold, fold.hidden)
+		fold.label := label
+		Models.BeginScript(text, insertFoldKey, insop)
+		w.WriteView(fold, 0, 0)
+		w.SetPos(end_ + 1)
+		a := InsertionAttr(text, end_ + 1)
+		if a # nil then
+			w.SetAttr(a) 
+		end 
+		new(fold)
+		fold.leftSide := false
+		fold.collapsed := collapsed
+		fold.hidden := nil
+		fold.label := ""
+		w.WriteView(fold, 0, 0)
+		Models.EndScript(text, insop)
+	end Insert
+	
+	proc CreateGuard*(var par: Dialog.Par)
+		var 
+			c: TextControllers.Controller
+			beg, end_: integer
+	begin 
+		c := TextControllers.Focus()
+		if (c # nil) & ~(Containers.noCaret in c.opts) then
+			if c.HasSelection() then
+				c.GetSelection(beg, end_)
+				if Overlaps(c.text, beg, end_) then
+					par.disabled := true 
+				end  
+			end  
+		else 
+			par.disabled := true 
+		end 
+	end CreateGuard
+	
+	proc Create*(state: integer) // menu cmd parameters don't accept Booleans
+		var 
+			c: TextControllers.Controller
+			beg, end_: integer
+			collapsed: boolean
+	begin 
+		collapsed := state = 0
+		c := TextControllers.Focus()
+		if (c # nil) & ~(Containers.noCaret in c.opts) then
+			if c.HasSelection() then
+				c.GetSelection(beg, end_)
+				if ~Overlaps(c.text, beg, end_) then
+					Insert(c.text, "", beg, end_, collapsed) 
+				end  
+			else 
+				beg := c.CaretPos()
+				Insert(c.text, "", beg, beg, collapsed) 
+			end  
+		end 
+	end Create
+	
+	proc (d: StdDirectory) New(collapsed: boolean; label: Label
+		hiddenText: TextModels.Model): Fold
+		var 
+			fold: Fold
+	begin 
+		new(fold)
+		fold.leftSide := hiddenText # nil
+		fold.collapsed := collapsed
+		fold.label := label
+		fold.hidden := hiddenText
+		if hiddenText # nil then
+			Stores.Join(fold, fold.hidden) 
+		end 
+		return fold
+	end New
+	
+	proc SetDir*(d: Directory)
+	begin 
+		assert(d # nil, 20)
+		dir := d
+	end SetDir
+	
+	proc InitMod
+		var 
+			d: StdDirectory
+	begin 
+		foldData.useFilter := false
+		foldData.nested := false
+		foldData.filter := ""
+		foldData.newLabel := ""
+		new(d)
+		dir := d
+		stdDir := d
+		new(action)
+		Services.DoLater(action, Services.now)
+	end InitMod
+
+begin
+	InitMod
+end StdFolds

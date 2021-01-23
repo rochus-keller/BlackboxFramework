@@ -1,0 +1,80 @@
+module Fonts
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	const 
+		// universal units
+		mm* = 36000
+		point* = 12700 // 1/72 inch
+		
+		italic* = 0 // style elements
+		underline* = 1
+		strikeout* = 2
+		
+		normal* = 400
+		bold* = 700
+		
+		default* = "*"
+	
+	type 
+		Typeface* = array 64 of char
+		
+		Font* = pointer to (* abstract *) record 
+				typeface-: Typeface
+				size_-: integer
+				style-: set
+				weight-: integer 
+			end 
+		
+		TypefaceInfo* = pointer to record 
+				next*: TypefaceInfo
+				typeface*: Typeface 
+			end 
+		
+		Directory* = pointer to (* abstract *) record 
+			end 
+	
+	var 
+		dir-: Directory
+	
+	proc (f: Font) Init*(typeface: Typeface; size_: integer; style: set; weight: integer) // new
+	begin 
+		assert(f.size_ = 0, 20)
+		assert(size_ # 0, 21)
+		f.typeface := typeface
+		f.size_ := size_
+		f.style := style
+		f.weight := weight
+	end Init
+	
+	proc (f: Font) GetBounds*(var asc, dsc, w: integer) end // new abstract
+	proc (f: Font) StringWidth*(in s: array of char): integer end // new abstract
+	proc (f: Font) SStringWidth*(in s: array of char): integer end // new abstract
+	proc (f: Font) IsAlien*(): boolean end // new abstract
+	
+	proc (d: Directory) This*(typeface: Typeface; size_: integer; style: set; weight: integer): Font end // new abstract
+	proc (d: Directory) Default*(): Font end // new abstract
+	proc (d: Directory) TypefaceList*(): TypefaceInfo end // new abstract
+	
+	proc SetDir*(d: Directory)
+	begin 
+		assert(d # nil, 20)
+		dir := d
+	end SetDir
+
+end Fonts

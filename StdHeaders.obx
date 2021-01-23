@@ -1,0 +1,593 @@
+module StdHeaders
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	(* headers / footers support the following macros:
+	   
+	   &p - replaced by current page number as arabic numeral
+	   &r - replaced by current page number as roman numeral
+	   &R - replaced by current page number as capital roman numeral
+	   &a - replaced by current page number as alphanumeric character
+	   &A - replaced by current page number as capital alphanumeric character
+	   &d - replaced by printing date
+	   &t - replaced by printing time
+	   &&- replaced by & character
+	   &; - specifies split point
+	   &f - filename with path/title *)
+	
+	
+	
+	import 
+		Stores, Ports, Models, Views, Properties, Printing, TextModels, Fonts, Dialog, 
+		TextViews, Dates, Windows, Controllers, Containers
+	
+	const 
+		minVersion = 0
+		maxVersion = 2
+		mm = Ports.mm
+		point = Ports.point
+		maxWidth = 10000 * mm
+		alternate* = 0
+		number* = 1
+		head* = 2
+		foot* = 3
+		showFoot* = 4
+	
+	type 
+		Banner* = record 
+				left*, right*: array 128 of char
+				gap*: integer 
+			end 
+		
+		NumberInfo* = record 
+				new_*: boolean
+				first*: integer 
+			end 
+		
+		View = pointer to record (Views.View) 
+				alternate: boolean // alternate left/right
+				number: NumberInfo // new page number
+				head, foot: Banner
+				font: Fonts.Font
+				showFoot: boolean 
+			end 
+		
+		Prop* = pointer to record (Properties.Property) 
+				alternate*, showFoot*: boolean
+				number*: NumberInfo
+				head*, foot*: Banner 
+			end 
+		
+		ChangeFontOp = pointer to record (Stores.Operation) 
+				header: View
+				font: Fonts.Font 
+			end 
+		
+		ChangeAttrOp = pointer to record (Stores.Operation) 
+				header: View
+				alternate, showFoot: boolean
+				number: NumberInfo
+				head, foot: Banner 
+			end 
+	
+	var 
+		dialog*: record 
+				view: View
+				alternate*, showFoot*: boolean
+				number*: NumberInfo
+				head*, foot*: Banner 
+			end 
+	
+	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean)
+		var 
+			valid: set
+		proc Equal(in b1, b2: Banner): boolean
+		begin 
+			return (b1.left = b2.left) & (b1.right = b2.right) & (b1.gap = b2.gap)
+		end Equal
+	begin 
+		with q: Prop do 
+			valid := p.valid * q.valid
+			equal := true
+			if p.alternate # q.alternate then
+				excl(valid, alternate) 
+			end 
+			if p.showFoot # q.showFoot then
+				excl(valid, showFoot) 
+			end 
+			if (p.number.new_ # q.number.new_) or (p.number.first # q.number.first) then
+				excl(valid, number) 
+			end 
+			if ~Equal(p.head, q.head) then
+				excl(valid, head) 
+			end 
+			if ~Equal(p.foot, q.foot) then
+				excl(valid, foot) 
+			end 
+			if p.valid # valid then
+				p.valid := valid
+				equal := false 
+			end  
+		end 
+	end IntersectWith
+	
+	// SetAttrOp
+	
+	proc (op: ChangeFontOp) Do
+		var 
+			v: View
+			font: Fonts.Font
+			asc, dsc, w: integer
+			c: Models.Context
+	begin 
+		v := op.header
+		font := op.font
+		op.font := v.font
+		v.font := font
+		font.GetBounds(asc, dsc, w)
+		c := v.context
+		c.SetSize(maxWidth, asc + dsc + 2 * point)
+		Views.Update(v, Views.keepFrames)
+	end Do
+	
+	proc DoChangeFontOp(v: View; font: Fonts.Font)
+		var 
+			op: ChangeFontOp
+	begin 
+		if v.font # font then
+			new(op)
+			op.header := v
+			op.font := font
+			Views.Do(v, "#System:SetProp", op) 
+		end 
+	end DoChangeFontOp
+	
+	proc (op: ChangeAttrOp) Do
+		var 
+			v: View
+			alternate, showFoot: boolean
+			number: NumberInfo
+			head, foot: Banner
+	begin 
+		v := op.header
+		alternate := op.alternate
+		showFoot := op.showFoot
+		number := op.number
+		head := op.head
+		foot := op.foot
+		op.alternate := v.alternate
+		op.showFoot := v.showFoot
+		op.number := v.number
+		op.head := v.head
+		op.foot := v.foot
+		v.alternate := alternate
+		v.showFoot := showFoot
+		v.number := number
+		v.head := head
+		v.foot := foot
+		Views.Update(v, Views.keepFrames)
+	end Do
+	
+	proc DoChangeAttrOp(v: View; alternate, showFoot: boolean; number: NumberInfo
+		head, foot: Banner)
+		var 
+			op: ChangeAttrOp
+	begin 
+		new(op)
+		op.header := v
+		op.alternate := alternate
+		op.showFoot := showFoot
+		op.number := number
+		op.head := head
+		op.foot := foot
+		Views.Do(v, "#Std:HeaderChange", op)
+	end DoChangeAttrOp
+	
+	proc (v: View) CopyFromSimpleView(source: Views.View)
+	begin 
+		with source: View do 
+			v.alternate := source.alternate
+			v.number.new_ := source.number.new_
+			v.number.first := source.number.first
+			v.head := source.head
+			v.foot := source.foot
+			v.font := source.font
+			v.showFoot := source.showFoot 
+		end 
+	end CopyFromSimpleView
+	
+	proc (v: View) Externalize(var wr: Stores.Writer)
+	begin 
+		v.Externalize^(wr)
+		wr.WriteVersion(maxVersion)
+		wr.WriteString(v.head.left)
+		wr.WriteString(v.head.right)
+		wr.WriteInt(v.head.gap)
+		wr.WriteString(v.foot.left)
+		wr.WriteString(v.foot.right)
+		wr.WriteInt(v.foot.gap)
+		wr.WriteString(v.font.typeface)
+		wr.WriteInt(v.font.size_)
+		wr.WriteSet(v.font.style)
+		wr.WriteInt(v.font.weight)
+		wr.WriteBool(v.alternate)
+		wr.WriteBool(v.number.new_)
+		wr.WriteInt(v.number.first)
+		wr.WriteBool(v.showFoot)
+	end Externalize
+	
+	proc (v: View) Internalize(var rd: Stores.Reader)
+		var 
+			version: integer
+			typeface: Fonts.Typeface
+			size_: integer
+			style: set
+			weight: integer
+	
+	begin 
+		v.Internalize^(rd)
+		if ~rd.cancelled then
+			rd.ReadVersion(minVersion, maxVersion, version)
+			if ~rd.cancelled then
+				if version = 0 then
+					rd.ReadXString(v.head.left)
+					rd.ReadXString(v.head.right)
+					v.head.gap := 5 * mm
+					rd.ReadXString(v.foot.left)
+					rd.ReadXString(v.foot.right)
+					v.foot.gap := 5 * mm
+					rd.ReadXString(typeface)
+					rd.ReadXInt(size_)
+					v.font := Fonts.dir.This(typeface, size_ * point, {}, Fonts.normal)
+					rd.ReadXInt(v.number.first)
+					rd.ReadBool(v.number.new_)
+					rd.ReadBool(v.alternate) 
+				else 
+					rd.ReadString(v.head.left)
+					rd.ReadString(v.head.right)
+					rd.ReadInt(v.head.gap)
+					rd.ReadString(v.foot.left)
+					rd.ReadString(v.foot.right)
+					rd.ReadInt(v.foot.gap)
+					rd.ReadString(typeface)
+					rd.ReadInt(size_)
+					rd.ReadSet(style)
+					rd.ReadInt(weight)
+					v.font := Fonts.dir.This(typeface, size_, style, weight)
+					rd.ReadBool(v.alternate)
+					rd.ReadBool(v.number.new_)
+					rd.ReadInt(v.number.first)
+					if version = 2 then
+						rd.ReadBool(v.showFoot) 
+					else 
+						v.showFoot := false 
+					end  
+				end  
+			end  
+		end 
+	end Internalize
+	
+	proc SetProp(v: View; msg: Properties.SetMsg)
+		var 
+			p: Properties.Property
+			typeface: Fonts.Typeface
+			size_: integer
+			style: set
+			weight: integer
+			alt, sf: boolean
+			num: NumberInfo
+			h, f: Banner
+	begin 
+		p := msg.prop
+		while p # nil do 
+			with p: Properties.StdProp do 
+				if Properties.typeface in p.valid then
+					typeface := p.typeface 
+				else 
+					typeface := v.font.typeface 
+				end 
+				if Properties.size_ in p.valid then
+					size_ := p.size_ 
+				else 
+					size_ := v.font.size_ 
+				end 
+				if Properties.style in p.valid then
+					style := p.style.val_ 
+				else 
+					style := v.font.style 
+				end 
+				if Properties.weight in p.valid then
+					weight := p.weight 
+				else 
+					weight := v.font.weight 
+				end 
+				DoChangeFontOp(v, Fonts.dir.This(typeface, size_, style, weight)) 
+			| p: Prop do 
+				if alternate in p.valid then
+					alt := p.alternate 
+				else 
+					alt := v.alternate 
+				end 
+				if showFoot in p.valid then
+					sf := p.showFoot 
+				else 
+					sf := v.showFoot 
+				end 
+				if number in p.valid then
+					num := p.number 
+				else 
+					num := v.number 
+				end 
+				if head in p.valid then
+					h := p.head 
+				else 
+					h := v.head 
+				end 
+				if foot in p.valid then
+					f := p.foot 
+				else 
+					f := v.foot 
+				end 
+				DoChangeAttrOp(v, alt, sf, num, h, f) 
+			else  
+			end 
+			p := p.next 
+		end 
+	end SetProp
+	
+	proc PollProp(v: View; var msg: Properties.PollMsg)
+		var 
+			sp: Properties.StdProp
+			p: Prop
+	begin 
+		new(sp)
+		sp.known := {Properties.size_, Properties.typeface, Properties.style, Properties.weight}
+		sp.valid := sp.known
+		sp.size_ := v.font.size_
+		sp.typeface := v.font.typeface
+		sp.style.val_ := v.font.style
+		sp.style.mask := {Fonts.italic, Fonts.underline, Fonts.strikeout}
+		sp.weight := v.font.weight
+		Properties.Insert(msg.prop, sp)
+		new(p)
+		p.known := {alternate, number, head, foot, showFoot}
+		p.valid := p.known
+		p.head := v.head
+		p.foot := v.foot
+		p.alternate := v.alternate
+		p.showFoot := v.showFoot
+		p.number := v.number
+		Properties.Insert(msg.prop, p)
+	end PollProp
+	
+	proc PageMsg(v: View; msg: TextViews.PageMsg)
+	begin 
+		if Printing.par # nil then
+			Dialog.MapString(v.head.left, Printing.par.header.left)
+			Dialog.MapString(v.head.right, Printing.par.header.right)
+			Dialog.MapString(v.foot.left, Printing.par.footer.left)
+			Dialog.MapString(v.foot.right, Printing.par.footer.right)
+			Printing.par.header.font := v.font
+			Printing.par.footer.font := v.font
+			Printing.par.page.alternate := v.alternate
+			if v.number.new_ then
+				Printing.par.page.first := v.number.first - msg.current 
+			end 
+			Printing.par.header.gap := 5 * Ports.mm
+			Printing.par.footer.gap := 5 * Ports.mm 
+		end 
+	end PageMsg
+	
+	proc (v: View) Restore(f: Views.Frame; l, t, r, b: integer)
+		var  // line: Line;
+			d, w, h: integer
+			asc, dsc, x0, x1, y: integer
+			win: Windows.Window
+			title: Views.Title
+			dec_: boolean
+			pw, ph: integer
+			date: Dates.Date
+			time: Dates.Time
+			pageInfo: Printing.PageInfo
+			banner: Printing.Banner
+	begin 
+		if Views.IsPrinterFrame(f) then  // am drucken
+		end 
+		
+		v.font.GetBounds(asc, dsc, w)
+		
+		win := Windows.dir.First()
+		while (win # nil) & (win.doc.Domain() # v.Domain()) do 
+			win := Windows.dir.Next(win) 
+		end 
+		if win = nil then
+			title := "(" + Dialog.appName + ")" 
+		else 
+			win.GetTitle(title) 
+		end 
+		d := f.dot
+		v.context.GetSize(w, h)
+		win.doc.PollPage(pw, ph, l, t, r, b, dec_)
+		w := r - l
+		
+		f.DrawRect(0, 0, w, h, Ports.fill, Ports.grey25)
+		f.DrawRect(0, 0, w, h, 0, Ports.black)
+		
+		x0 := d
+		x1 := w - 2 * d
+		y := asc + d
+		
+		Dates.GetDate(date)
+		Dates.GetTime(time)
+		pageInfo.alternate := false
+		pageInfo.title := title
+		banner.font := v.font
+		if v.showFoot then
+			banner.gap := v.foot.gap
+			Dialog.MapString(v.foot.left, banner.left)
+			Dialog.MapString(v.foot.right, banner.right) 
+		else 
+			banner.gap := v.head.gap
+			Dialog.MapString(v.head.left, banner.left)
+			Dialog.MapString(v.head.right, banner.right) 
+		end 
+		Printing.PrintBanner(f, pageInfo, banner, date, time, x0, x1, y)
+	end Restore
+	
+	proc (v: View) HandlePropMsg(var msg: Properties.Message)
+		var 
+			asc, dsc, w: integer
+	begin 
+		with msg: Properties.SizePref do 
+			msg.w := maxWidth
+			if msg.h = Views.undefined then
+				v.font.GetBounds(asc, dsc, w)
+				msg.h := asc + dsc + 2 * point 
+			end  
+		| msg: Properties.ResizePref do 
+			msg.fixed := true 
+		| msg: TextModels.Pref do 
+			msg.opts := {TextModels.hideable} 
+		| msg: Properties.PollMsg do 
+			PollProp(v, msg) 
+		| msg: Properties.SetMsg do 
+			SetProp(v, msg) 
+		| msg: TextViews.PageMsg do 
+			PageMsg(v, msg) 
+		else  
+		end 
+	end HandlePropMsg
+	
+	proc (v: View) HandleCtrlMsg(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View)
+	begin 
+		with msg: Properties.EmitMsg do 
+			Views.HandlePropMsg(v, msg.set_) 
+		| msg: Properties.CollectMsg do 
+			Views.HandlePropMsg(v, msg.poll) 
+		else  
+		end 
+	end HandleCtrlMsg
+	
+	proc New*(p: Prop; f: Fonts.Font): Views.View
+		var 
+			v: View
+	begin 
+		new(v)
+		v.head := p.head
+		v.foot := p.foot
+		v.number := p.number
+		v.alternate := p.alternate
+		v.font := f
+		v.showFoot := false
+		return v
+	end New
+	
+	proc Deposit*
+		var 
+			v: View
+	begin 
+		new(v)
+		v.head.left := ""
+		v.head.right := "&d&;&p"
+		v.head.gap := 5 * mm
+		v.foot.left := ""
+		v.foot.right := ""
+		v.foot.gap := 5 * mm
+		v.font := Fonts.dir.Default()
+		v.number.first := 1
+		v.number.new_ := false
+		v.alternate := false
+		v.showFoot := false
+		Views.Deposit(v)
+	end Deposit
+	
+	// property dialog
+	
+	proc InitDialog*
+		var 
+			p: Properties.Property
+	begin 
+		Properties.CollectProp(p)
+		while p # nil do 
+			with p: Properties.StdProp do  
+			| p: Prop do 
+				dialog.alternate := p.alternate
+				dialog.showFoot := p.showFoot
+				dialog.number := p.number
+				dialog.head := p.head
+				dialog.head.gap := dialog.head.gap div point
+				dialog.foot := p.foot
+				dialog.foot.gap := dialog.foot.gap div point
+				Dialog.Update(dialog) 
+			else  
+			end 
+			p := p.next 
+		end 
+	end InitDialog
+	
+	proc Set*
+		var 
+			p: Prop
+	begin 
+		new(p)
+		p.valid := {alternate, number, head, foot, showFoot}
+		p.alternate := dialog.alternate
+		p.showFoot := dialog.showFoot
+		p.number := dialog.number
+		p.head := dialog.head
+		p.head.gap := p.head.gap * point
+		p.foot := dialog.foot
+		p.foot.gap := p.foot.gap * point
+		Properties.EmitProp(nil, p)
+	end Set
+	
+	proc HeaderGuard*(var par: Dialog.Par)
+		var 
+			v: Views.View
+	begin 
+		v := Containers.FocusSingleton()
+		if (v # nil) & (v is View) then
+			par.disabled := false
+			if (dialog.view = nil) or (dialog.view # v) then
+				dialog.view := v(View)
+				InitDialog 
+			end  
+		else 
+			par.disabled := true
+			dialog.view := nil 
+		end 
+	end HeaderGuard
+	
+	proc AlternateGuard*(var par: Dialog.Par)
+	begin 
+		HeaderGuard(par)
+		if ~par.disabled then
+			par.disabled := ~dialog.alternate 
+		end 
+	end AlternateGuard
+	
+	proc NewNumberGuard*(var par: Dialog.Par)
+	begin 
+		HeaderGuard(par)
+		if ~par.disabled then
+			par.disabled := ~dialog.number.new_ 
+		end 
+	end NewNumberGuard
+
+end StdHeaders

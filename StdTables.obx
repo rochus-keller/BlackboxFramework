@@ -1,0 +1,1837 @@
+module StdTables
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20160321, center #110, use mapped strings for labels in all forms
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		Services, Fonts, Ports, Dialog, Meta, Stores, Models, Views, Controllers, Containers, Properties, Controls, 
+		TextModels, TextViews, HostPorts
+	
+	const 
+		minVersion = 0
+		tabVersion = 2
+		maxCol = 256
+		defColW = 30 * Ports.mm
+		left = -1 // adjustment modes
+		right = -2
+		center = -3
+		move = 1 // cursor modes
+		adjust = 2
+		field = 3
+		
+		tab = 09x
+		ltab = 0ax
+		lineChar = 0dx
+		esc = 1bx
+		
+		line* = 0dx // line feed characher for labels
+		deselect* = -1 // notifier op-values
+		select* = -2
+		changed* = -3
+		layoutEditable* = 0 // values for property validity in Prop
+		dataEditable* = 1
+		selectionStyle* = 2
+		noSelect* = 0 // selection style values
+		cellSelect* = 1
+		rowSelect* = 2
+		colSelect* = 3
+		crossSelect* = 4
+	
+	type 
+		Table* = record 
+				rows-, cols-: integer
+				selection: Selection
+				labels: pointer to array of Dialog.String
+				data: pointer to array of array of Dialog.String
+				weights: pointer to array of array of integer
+				styles: pointer to array of array of set
+				colors: pointer to array of array of Ports.Color 
+			end 
+		
+		Selection = pointer to record 
+				on: boolean
+				row, col: integer  // only valid if on = TRUE
+			end 
+		
+		Prop* = pointer to record (Properties.Property) 
+				layoutEditable*, dataEditable*: boolean
+				selectionStyle*: integer 
+			end 
+		
+		Control = pointer to record (Controls.Control) 
+				// persistent
+				sprop: Properties.StdProp // font attributes
+				tprop: Prop // table attributes
+				columns: integer // width[0..columns-1] and mode[0..columns-1] are defined
+				width: array maxCol of integer
+				mode: array maxCol of integer
+				
+				// not persistent
+				fldFont, titFont: Fonts.Font // cell fonts
+				rowHeight, labelHeight, baseOff: integer // height of rows, height of the label row and offset for font
+				orgRow, orgX: integer // scroll state, orgX in coordinates, orgRow in rows
+				
+				selRow, selCol: integer // selected field
+				showSelection: boolean
+				hasSelection: boolean // control has a selected field
+				
+				x, y, w, h: integer
+				field: Views.View  // textfield used to enter cell content
+			end 
+		
+		Directory* = pointer to (* abstract *) record end 
+		StdDirectory = pointer to record (Directory) end 
+		
+		PropOp = pointer to record (Stores.Operation)  // typeface, style and size
+				tab: Control
+				sprop: Properties.StdProp
+				tprop: Prop 
+			end 
+		
+		FormatOp = pointer to record (Stores.Operation)  // cell format
+				tab: Control
+				col, width, mode: integer 
+			end 
+		
+		TableValue = record (Meta.Value) 
+				t: Table 
+			end 
+		
+		Context = pointer to record (Models.Context) 
+				w, h: integer
+				base: Views.View 
+			end 
+		
+		Action = pointer to record (Services.Action) end 
+	
+	var 
+		dir-, stdDir-: Directory
+		text*: Dialog.String // used to edit cell. Only one cell can be active at once
+		dlg*: record 
+				layoutEditable*, dataEditable*: boolean
+				selectionStyle*: Dialog.List
+				fingerprint: integer
+				known, valid: set 
+			end 
+		action: Action
+	
+	proc CountLines(in s: Dialog.String): integer
+		var 
+			i, r, l: integer
+	begin 
+		r := 1
+		l := len(s)
+		for i:= 0 to l - 1 do 
+			if s[i] = line then
+				inc(r) 
+			end  
+		end 
+		return r
+	end CountLines
+	
+	
+	// Prop
+	
+	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean)
+		var 
+			valid: set
+			p0: Prop
+	begin 
+		p0 := q(Prop)
+		valid := p.valid * p0.valid
+		equal := true
+		if p.layoutEditable # p0.layoutEditable then
+			excl(valid, layoutEditable) 
+		end 
+		if p.dataEditable # p0.dataEditable then
+			excl(valid, dataEditable) 
+		end 
+		if p.selectionStyle # p0.selectionStyle then
+			excl(valid, selectionStyle) 
+		end 
+		if valid # p.valid then
+			p.valid := valid
+			equal := false 
+		end 
+	end IntersectWith
+	
+	// Table
+	
+	proc (var tab: Table) SetSize*(rows, cols: integer) // new
+		var 
+			i, j, fr, fc: integer
+			labels: pointer to array of Dialog.String
+			data: pointer to array of array of Dialog.String
+			weights: pointer to array of array of integer
+			styles: pointer to array of array of set
+			colors: pointer to array of array of Ports.Color
+	begin 
+		assert((rows >= 0) & (cols >= 0), 20)
+		assert((cols > 0) or ((cols = 0) & (rows = 0)), 21)
+		tab.rows := rows
+		tab.cols := cols
+		if rows > 0 then
+			data := tab.data
+			new(tab.data, rows, cols)
+			weights := tab.weights
+			new(tab.weights, rows, cols)
+			styles := tab.styles
+			new(tab.styles, rows, cols)
+			colors := tab.colors
+			new(tab.colors, rows, cols)
+			if data # nil then
+				for i:= 0 to min(rows, len(data, 0)) - 1 do 
+					for j:= 0 to min(cols, len(data, 1)) - 1 do 
+						tab.data[i, j] := data[i, j]
+						tab.weights[i, j] := weights[i, j]
+						tab.styles[i, j] := styles[i, j]
+						tab.colors[i, j] := colors[i, j] 
+					end  
+				end  
+			end 
+			// set defaults
+			if data = nil then
+				fr := 0
+				fc := 0 
+			else 
+				fr := len(data, 0)
+				fc := len(data, 1) 
+			end 
+			for i:= fr to len(tab.data, 0) - 1 do 
+				for j:= fc to len(tab.data, 1) - 1 do 
+					tab.weights[i, j] := Fonts.normal
+					tab.styles[i, j] := {}
+					tab.colors[i, j] := Ports.black 
+				end  
+			end  
+		else 
+			tab.data := nil 
+		end 
+		if cols > 0 then
+			labels := tab.labels
+			new(tab.labels, cols)
+			if labels # nil then
+				for i:= 0 to min(cols, len(labels)) - 1 do 
+					tab.labels[i] := labels[i] 
+				end  
+			end  
+		else 
+			tab.labels := nil 
+		end 
+		if tab.selection = nil then
+			new(tab.selection) 
+		else 
+			tab.selection.on := false 
+		end 
+	end SetSize
+	
+	proc (var tab: Table) SetItem*(row, col: integer; (* IN *)item: Dialog.String) // new
+	begin 
+		assert(tab.data # nil, 20)
+		tab.data[row, col] := item
+	end SetItem
+	
+	proc (var tab: Table) GetItem*(row, col: integer; var item: Dialog.String) // new
+	begin 
+		assert(tab.data # nil, 20)
+		item := tab.data[row, col]
+	end GetItem
+	
+	proc (var tab: Table) SetLabel*(col: integer; (* IN *)label: Dialog.String) // new
+	begin 
+		assert(tab.labels # nil, 20)
+		tab.labels[col] := label
+	end SetLabel
+	
+	proc (var tab: Table) GetLabel*(col: integer; var label: Dialog.String) // new
+	begin 
+		assert(tab.labels # nil, 20)
+		label := tab.labels[col]
+	end GetLabel
+	
+	proc (var tab: Table) HasSelection*(): boolean // new
+	begin 
+		return (tab.selection # nil) & (tab.selection.on)
+	end HasSelection
+	
+	proc (var tab: Table) GetSelection*(var row, col: integer) // new
+	begin 
+		assert(tab.selection # nil, 20)
+		assert(tab.selection.on, 21)
+		row := tab.selection.row
+		col := tab.selection.col
+	end GetSelection
+	
+	proc (var tab: Table) Select*(row, col: integer) // new
+	begin 
+		assert(tab.selection # nil, 20)
+		tab.selection.on := true
+		tab.selection.row := row
+		tab.selection.col := col
+	end Select
+	
+	proc (var tab: Table) Deselect* // new
+	begin 
+		assert(tab.selection # nil, 20)
+		tab.selection.on := false
+	end Deselect
+	
+	proc (var tab: Table) SetAttr*(l, t, r, b: integer; style: set; weight: integer; color: Ports.Color) // new
+		var 
+			i, j: integer
+	begin 
+		assert(tab.data # nil, 20)
+		for i:= t to b do 
+			for j:= l to r do 
+				tab.weights[i, j] := weight
+				tab.styles[i, j] := style
+				tab.colors[i, j] := color 
+			end  
+		end 
+	end SetAttr
+	
+	proc (var tab: Table) GetAttr*(row, col: integer; var style: set; var weight: integer
+		var color: Ports.Color) // new
+	begin 
+		assert(tab.data # nil, 20)
+		weight := tab.weights[row, col]
+		style := tab.styles[row, col]
+		color := tab.colors[row, col]
+	end GetAttr
+	
+	
+	// Context
+	
+	proc (c: Context) GetSize(var w, h: integer)
+	begin 
+		w := c.w
+		h := c.h
+	end GetSize
+	
+	proc (c: Context) Normalize(): boolean
+	begin 
+		return c.base.context.Normalize()
+	end Normalize
+	
+	proc (c: Context) Consider(var p: Models.Proposal)
+	begin 
+		c.base.context.Consider(p)
+	end Consider
+	
+	proc (c: Context) ThisModel(): Models.Model
+	begin 
+		return nil
+	end ThisModel
+	
+	proc NewField(t: Control; col, w, h: integer): Views.View
+		var 
+			c: Context
+			p: Controls.Prop
+			v: Views.View
+			prop: Properties.StdProp
+			setMsg: Properties.SetMsg
+	begin 
+		new(p)
+		p.link := "StdTables.text"
+		if t.mode[col] = left then
+			p.opt[Controls.left] := true 
+		elsif t.mode[col] = right then 
+			p.opt[Controls.right] := true 
+		end 
+		// bug in controls, thus adjusting has to be set to left mode
+		p.opt[Controls.left] := true
+		p.opt[Controls.right] := false
+		v := Controls.dir.NewField(p)
+		
+		new(c)
+		c.w := w
+		c.h := h
+		c.base := t
+		v.InitContext(c)
+		
+		new(prop)
+		prop.typeface := t.fldFont.typeface
+		prop.size_ := t.fldFont.size_ - Fonts.point
+		prop.style.val_ := t.fldFont.style
+		prop.style.mask := t.fldFont.style
+		prop.weight := t.fldFont.weight
+		prop.valid := {Properties.typeface..Properties.weight}
+		prop.known := prop.valid
+		setMsg.prop := prop
+		Views.HandlePropMsg(v, setMsg)
+		return v
+	end NewField
+	
+	proc SendNotifyMsg(c: Control)
+		var 
+			msg: Views.NotifyMsg
+	begin 
+		msg.id0 := c.item.adr
+		msg.id1 := msg.id0 + c.item.Size()
+		msg.opts := {2, 4} // update, guardcheck
+		Views.Omnicast(msg)
+	end SendNotifyMsg
+	
+	proc GetSize(c: Control; var rows, cols: integer)
+		var 
+			item: Meta.Item
+	begin 
+		if c.item.Valid() then
+			item := c.item
+			c.item.Lookup("rows", item)
+			rows := item.IntVal()
+			c.item.Lookup("cols", item)
+			cols := item.IntVal() 
+		else 
+			rows := 0
+			cols := 0 
+		end 
+	end GetSize
+	
+	proc GetLabel(c: Control; col: integer; var val_: Dialog.String; var ok: boolean)
+		var 
+			t: TableValue
+	begin 
+		assert(c.item.Valid(), 20)
+		c.item.GetVal(t, ok)
+		t.t.GetLabel(col, val_)
+	end GetLabel
+	
+	proc GetAttr(c: Control; row, col: integer
+		var style: set; var weight: integer; var color: Ports.Color; var ok: boolean)
+		var 
+			t: TableValue
+	begin 
+		assert(c.item.Valid(), 20)
+		c.item.GetVal(t, ok)
+		t.t.GetAttr(row, col, style, weight, color)
+	end GetAttr
+	
+	proc GetText(c: Control; row, col: integer; var val_: Dialog.String; var ok: boolean)
+		var 
+			t: TableValue
+	begin 
+		assert(c.item.Valid(), 20)
+		c.item.GetVal(t, ok)
+		t.t.GetItem(row, col, val_)
+	end GetText
+	
+	proc SetText(c: Control; f: Views.Frame; row, col: integer; in val_: Dialog.String; var ok: boolean)
+		var 
+			t: TableValue
+	begin 
+		assert(c.item.Valid(), 20)
+		c.item.GetVal(t, ok)
+		if ok then
+			t.t.SetItem(row, col, val_)
+			// Notify(c, row, col, {}, changed);
+			SendNotifyMsg(c)
+			Controls.Notify(c, f, changed, row, col) 
+		end 
+	end SetText
+	
+	proc GetSelection(c: Control; var on: boolean; var row, col: integer; var ok: boolean)
+		var 
+			t: TableValue
+	begin 
+		assert(c.item.Valid(), 20)
+		c.item.GetVal(t, ok)
+		if ok then
+			on := t.t.HasSelection()
+			if on then
+				t.t.GetSelection(row, col) 
+			else 
+				row := -1
+				col := -1 
+			end  
+		end 
+	end GetSelection
+	
+	proc SetSelection(c: Control; f: Views.Frame; on: boolean; row, col: integer; var ok: boolean)
+		var 
+			t: TableValue
+	begin 
+		assert(c.item.Valid(), 20)
+		c.item.GetVal(t, ok)
+		if ok then
+			if on then
+				t.t.Select(row, col)
+				Controls.Notify(c, f, select, row, col) 
+			else 
+				t.t.Deselect
+				Controls.Notify(c, f, deselect, row, col) 
+			end 
+			SendNotifyMsg(c) 
+		end 
+	end SetSelection
+	
+	
+	proc SetupControl(t: Control)
+		var 
+			i, asc, dsc, w: integer
+	begin 
+		t.fldFont := Fonts.dir.This(t.sprop.typeface, t.sprop.size_, t.sprop.style.val_, Fonts.normal)
+		t.titFont := Fonts.dir.This(t.sprop.typeface, t.sprop.size_, t.sprop.style.val_, Fonts.bold)
+		t.rowHeight := 3 * t.sprop.size_ div 2
+		t.fldFont.GetBounds(asc, dsc, w)
+		t.rowHeight := asc + dsc + 4 * Ports.point
+		t.baseOff := (t.rowHeight - asc - dsc) div 2 + asc
+		i := t.columns
+		while i < maxCol do 
+			t.width[i] := defColW
+			t.mode[i] := center
+			inc(i) 
+		end 
+		if t.field # nil then
+			t.field.context(Context).h := t.rowHeight 
+		end 
+		t.labelHeight := t.rowHeight
+	end SetupControl
+	
+	
+	// Directory
+	
+	proc (d: Directory) NewControl*(p: Controls.Prop): Views.View end // new abstract
+	
+	
+	// PropOp
+	
+	proc (op: PropOp) Do
+		var 
+			c: Control
+			sprop: Properties.StdProp
+			tprop: Prop
+	begin 
+		assert((op.sprop # nil) or (op.tprop # nil), 20)
+		c := op.tab
+		if op.sprop # nil then
+			sprop := Properties.CopyOf(c.sprop)(Properties.StdProp)
+			sprop.valid := op.sprop.valid // fields to be restored
+			if Properties.typeface in sprop.valid then
+				c.sprop.typeface := op.sprop.typeface 
+			end 
+			if Properties.size_ in sprop.valid then
+				c.sprop.size_ := op.sprop.size_ 
+			end 
+			if Properties.style in sprop.valid then
+				c.sprop.style.mask := c.sprop.style.mask + op.sprop.style.mask
+				c.sprop.style.val_ := c.sprop.style.val_ - op.sprop.style.mask + op.sprop.style.val_ 
+			end 
+			if sprop.valid # {} then
+				SetupControl(c) 
+			end 
+			op.sprop := sprop 
+		end 
+		if op.tprop # nil then
+			tprop := Properties.CopyOf(c.tprop)(Prop)
+			tprop.valid := op.tprop.valid // fields to be restored
+			if layoutEditable in tprop.valid then
+				c.tprop.layoutEditable := op.tprop.layoutEditable 
+			end 
+			if dataEditable in tprop.valid then
+				c.tprop.dataEditable := op.tprop.dataEditable 
+			end 
+			if selectionStyle in tprop.valid then
+				c.tprop.selectionStyle := op.tprop.selectionStyle 
+			end 
+			op.tprop := tprop 
+		end 
+		Views.Update(c, Views.rebuildFrames)
+	end Do
+	
+	
+	// FormatOp
+	
+	proc (op: FormatOp) Do
+		var 
+			t: Control
+			c, w, m: integer
+	begin 
+		t := op.tab
+		c := op.col
+		w := op.width
+		m := op.mode
+		op.width := t.width[c]
+		op.mode := t.mode[c]
+		t.width[c] := w
+		t.mode[c] := m
+		if c >= t.columns then
+			t.columns := c + 1 
+		end 
+		Views.Update(t, Views.keepFrames)
+	end Do
+	
+	
+	// properties
+	
+	proc PollProp(c: Control; var list: Properties.Property)
+		var 
+			p: Properties.Property
+	begin 
+		p := Properties.CopyOf(c.sprop)
+		p.valid := {Properties.typeface, Properties.size_, Properties.style, Properties.weight}
+		p.known := p.valid
+		p.readOnly := {Properties.weight}
+		Properties.Insert(list, p)
+		p := Properties.CopyOf(c.tprop)
+		p.valid := {layoutEditable, dataEditable, selectionStyle}
+		p.known := p.valid
+		p.readOnly := {}
+		Properties.Insert(list, p)
+	end PollProp
+	
+	proc SetProp(c: Control; p: Properties.Property)
+		var 
+			op: PropOp
+			valid: set
+	begin 
+		op := nil
+		while p # nil do 
+			with p: Properties.StdProp do 
+				valid := p.valid * {Properties.typeface, Properties.size_, Properties.style}
+				if valid # {} then
+					if op = nil then
+						new(op)
+						op.tab := c 
+					end 
+					op.sprop := Properties.CopyOf(p)(Properties.StdProp)
+					op.sprop.valid := valid 
+				end  
+			| p: Prop do 
+				valid := p.valid * {layoutEditable, dataEditable, selectionStyle}
+				if valid # {} then
+					if op = nil then
+						new(op)
+						op.tab := c 
+					end 
+					op.tprop := Properties.CopyOf(p)(Prop)
+					op.tprop.valid := valid 
+				end  
+			else  
+			end 
+			p := p.next 
+		end 
+		if op # nil then
+			Views.Do(c, "#System:SetProp", op) 
+		end 
+	end SetProp
+	
+	
+	// Control
+	
+	proc DrawBorder(f: Views.Frame; x, y, w, h: integer)
+	begin 
+		f.DrawRect(x, y, x + f.dot, y + h, Ports.fill, Ports.white)
+		f.DrawRect(x + f.dot, y + 0, x + 2 * f.dot, y + h, Ports.fill, Ports.grey25)
+		f.DrawRect(x + 0, y + 0, x + w, y + f.dot, Ports.fill, Ports.white)
+		f.DrawRect(x + f.dot, y + f.dot, x + w, y + 2 * f.dot, Ports.fill, Ports.grey25)
+		f.DrawRect(x + w - f.dot, y + 0, x + w, y + h, Ports.fill, Ports.grey50)
+		f.DrawRect(x + w - 2 * f.dot, y + f.dot, x + w - f.dot, y + h - f.dot, Ports.fill, Ports.black)
+		f.DrawRect(x + 0, y + h - f.dot, x + w, y + h, Ports.fill, Ports.grey50)
+		f.DrawRect(x + f.dot, y + h - 2 * f.dot, x + w - f.dot, y + h - f.dot, Ports.fill, Ports.black)
+	end DrawBorder
+	
+	proc DrawLabel(f: Views.Frame; x, y, w, x0, y0, w0, h0, mode: integer
+		var is_: array of char; font: Fonts.Font; rowHeight: integer)
+		var 
+			dx, i, j, si, sw, rw: integer
+			s: Dialog.String
+	begin 
+		dec(w, 4 * f.dot)
+		inc(x, 2 * f.dot)
+		j := 0
+		y := y - rowHeight
+		while is_[j] # 0x do 
+			si := 0
+			while (is_[j] # 0x) & (is_[j] # line) do 
+				s[si] := is_[j]
+				inc(si)
+				inc(j) 
+			end 
+			if is_[j] = line then
+				inc(j) 
+			end 
+			s[si] := 0x
+			y := y + rowHeight
+			sw := font.StringWidth(s)
+			if sw > w then
+				rw := w - font.StringWidth("...")
+				if (rw >= 0) & (len(s) >= 4) then
+					i := f.CharIndex(0, rw, s, font)
+					if i > 0 then
+						dec(i) 
+					end 
+					if i > len(s) - 4 then
+						i := len(s) - 4 
+					end 
+					s[i] := "."
+					s[i + 1] := "."
+					s[i + 2] := "."
+					s[i + 3] := 0x
+					sw := font.StringWidth(s) 
+				else 
+					sw := 0 
+				end  
+			end 
+			if sw > 0 then
+				dx := x
+				if mode = center then
+					dx := x + (w - sw) div 2 
+				elsif mode = right then 
+					dx := x + w - sw 
+				end 
+				f.DrawString(dx, y, Ports.black, s, font) 
+			end  
+		end 
+		DrawBorder(f, x0, y0, w0, h0)
+	end DrawLabel
+	
+	proc DrawField(f: Views.Frame; x, y, w, mode: integer; var s: array of char; font: Fonts.Font
+		color: Ports.Color)
+		var 
+			i, sw, rw: integer
+	begin 
+		dec(w, 4 * f.dot)
+		inc(x, 2 * f.dot)
+		sw := font.StringWidth(s)
+		if sw > w then
+			rw := w - font.StringWidth("...")
+			if (rw >= 0) & (len(s) >= 4) then
+				i := f.CharIndex(0, rw, s, font)
+				if i > 0 then
+					dec(i) 
+				end 
+				if i > len(s) - 4 then
+					i := len(s) - 4 
+				end 
+				s[i] := "."
+				s[i + 1] := "."
+				s[i + 2] := "."
+				s[i + 3] := 0x
+				sw := font.StringWidth(s) 
+			else 
+				sw := 0 
+			end  
+		end 
+		if sw > 0 then
+			if mode = center then
+				inc(x, (w - sw) div 2) 
+			elsif mode = right then 
+				inc(x, w - sw) 
+			end 
+			f.DrawString(x, y, color, s, font) 
+		end 
+	end DrawField
+	
+	proc GetRect(t: Control; f: Views.Frame; row, col: integer; var x, y, w, h: integer
+		var visible: boolean)
+		var 
+			c: integer
+	begin 
+		c := 0
+		x := 2 * f.dot - t.orgX
+		while c < col do 
+			inc(x, t.width[c])
+			inc(c) 
+		end 
+		if row >= t.orgRow then
+			visible := true
+			if row = -1 then
+				h := t.labelHeight 
+			else 
+				h := t.rowHeight 
+			end 
+			y := (row - t.orgRow) * t.rowHeight + t.labelHeight + 3 * f.dot
+			w := t.width[col] 
+		else 
+			visible := false 
+		end 
+	end GetRect
+	
+	
+	proc DrawSelection(tab: Control; f: Views.Frame; selRow, selCol: integer; show: boolean)
+		var 
+			c, l, t, r, b, cols, rows: integer
+	begin 
+		if (selRow >= tab.orgRow) or (tab.tprop.selectionStyle in {colSelect, crossSelect}) then
+			GetSize(tab, rows, cols)
+			if (0 <= selRow) & (selRow < rows) & (0 <= selCol) & (selCol < cols) then
+				if tab.tprop.selectionStyle = cellSelect then // mark selected cell
+					l := 2 * f.dot - tab.orgX
+					c := 0
+					while c < selCol do 
+						inc(l, tab.width[c])
+						inc(c) 
+					end 
+					r := l + tab.width[selCol]
+					t := (selRow - tab.orgRow) * tab.rowHeight + tab.labelHeight + 3 * f.dot
+					b := t + tab.rowHeight
+					f.MarkRect(l + f.dot, t + f.dot, r - 2 * f.dot, b - 2 * f.dot, Ports.fill, Ports.hilite, show) 
+				elsif tab.tprop.selectionStyle = rowSelect then  // mark selected row
+					l := 2 * f.dot - tab.orgX
+					r := l
+					c := 0
+					while c < cols do 
+						inc(r, tab.width[c])
+						inc(c) 
+					end 
+					t := (selRow - tab.orgRow) * tab.rowHeight + tab.labelHeight + 3 * f.dot
+					b := t + tab.rowHeight
+					f.MarkRect(l + f.dot, t + f.dot, r - 2 * f.dot, b - 2 * f.dot, Ports.fill, Ports.hilite, show) 
+				elsif tab.tprop.selectionStyle = colSelect then  // mark selected column
+					l := 2 * f.dot - tab.orgX
+					c := 0
+					while c < selCol do 
+						inc(l, tab.width[c])
+						inc(c) 
+					end 
+					r := l + tab.width[selCol]
+					t := tab.labelHeight + 3 * f.dot
+					b := t + tab.rowHeight * (rows - tab.orgRow)
+					f.MarkRect(l + f.dot, t + f.dot, r - 2 * f.dot, b - 2 * f.dot, Ports.fill, Ports.hilite, show) 
+				elsif tab.tprop.selectionStyle = crossSelect then  // mark both the row and column
+					if selRow >= tab.orgRow then
+						l := 2 * f.dot - tab.orgX
+						r := l
+						c := 0
+						t := (selRow - tab.orgRow) * tab.rowHeight + tab.labelHeight + 3 * f.dot
+						b := t + tab.rowHeight
+						if selCol > 0 then
+							while c < selCol do 
+								inc(r, tab.width[c])
+								inc(c) 
+							end 
+							f.MarkRect(l + f.dot, t + f.dot, r - 2 * f.dot, b - 2 * f.dot, Ports.fill, Ports.hilite, show) 
+						end 
+						if selCol + 1 < cols then
+							r := r + tab.width[selCol]
+							l := r
+							c := selCol + 1
+							while c < cols do 
+								inc(r, tab.width[c])
+								inc(c) 
+							end 
+							f.MarkRect(l + f.dot, t + f.dot, r - 2 * f.dot, b - 2 * f.dot, Ports.fill, Ports.hilite, show) 
+						end  
+					end 
+					l := 2 * f.dot - tab.orgX
+					c := 0
+					while c < selCol do 
+						inc(l, tab.width[c])
+						inc(c) 
+					end 
+					r := l + tab.width[selCol]
+					t := tab.labelHeight + 3 * f.dot
+					b := t + tab.rowHeight * (rows - tab.orgRow)
+					f.MarkRect(l + f.dot, t + f.dot, r - 2 * f.dot, b - 2 * f.dot, Ports.fill, Ports.hilite, show) 
+				end  
+			end  
+		end 
+	end DrawSelection
+	
+	proc Select(c: Control; f: Views.Frame; on: boolean)
+		var 
+			ok: boolean
+	begin 
+		if on # c.hasSelection then
+			c.hasSelection := on
+			c.showSelection := on
+			SetSelection(c, f, on, c.selRow, c.selCol, ok) 
+		end 
+	end Select
+	
+	proc ViewFromSelection(t: Control): Views.View
+		var 
+			str: Dialog.String
+			ok: boolean
+	begin 
+		if t.hasSelection & t.showSelection then
+			GetText(t, t.selRow, t.selCol, str, ok)
+			if ok then
+				return TextViews.dir.New(TextModels.dir.NewFromString(str)) 
+			else 
+				return nil 
+			end  
+		else 
+			return nil 
+		end 
+	end ViewFromSelection
+	
+	proc GetControlSize(t: Control; dot: integer; var w, h: longint)
+		var 
+			r, c, i: integer
+	begin 
+		if ~t.disabled & t.item.Valid() then
+			w := 0
+			h := 0
+			GetSize(t, r, c)
+			i := 0
+			while (i < c) & (i < maxCol) do 
+				inc(w, t.width[i])
+				inc(i) 
+			end 
+			inc(w, 3 * dot)
+			h := long(r - t.orgRow) * t.rowHeight + t.labelHeight 
+		else 
+			w := Views.undefined
+			h := Views.undefined 
+		end 
+	end GetControlSize
+	
+	proc CheckPos(t: Control; x, y, dot: integer; var col, type_, p: integer)
+		var 
+			c, a: integer
+			w, h: longint
+	begin 
+		GetControlSize(t, dot, w, h)
+		inc(x, t.orgX)
+		if (x >= 0) & (x <= w) & (y >= 0) & (y <= h) then
+			c := 0
+			w := 0
+			type_ := 0
+			inc(x, dot)
+			while (c < maxCol) & (x >= w + t.width[c]) do 
+				inc(w, t.width[c])
+				inc(c) 
+			end 
+			if (x <= w + 3 * dot) & (c > 0) then
+				col := c - 1
+				p := short(w) + dot - t.orgX
+				type_ := move 
+			elsif y - dot < t.labelHeight then 
+				type_ := adjust
+				col := c
+				a := t.width[c] div 3
+				if x < w + a then
+					p := left 
+				elsif x > w + a * 2 then 
+					p := right 
+				else 
+					p := center 
+				end  
+			else 
+				col := c
+				p := (y - t.labelHeight - dot) div t.rowHeight + t.orgRow - 1 + 1
+				type_ := field 
+			end  
+		else 
+			type_ := 0 
+		end 
+	end CheckPos
+	
+	proc MoveLine(t: Control; f: Views.Frame; col, x0: integer)
+		var 
+			w, h, x, y, x1, limit: integer
+			m: set
+			isDown: boolean
+			op: FormatOp
+	begin 
+		t.context.GetSize(w, h)
+		x := x0
+		limit := x0 - t.width[col] + 2 * f.dot
+		repeat 
+			f.Input(x1, y, m, isDown)
+			if x1 < limit then
+				x1 := limit 
+			end 
+			if x1 # x then
+				f.MarkRect(x, 0, x + f.dot, h, Ports.fill, Ports.invert, false)
+				x := x1
+				f.MarkRect(x, 0, x + f.dot, h, Ports.fill, Ports.invert, true) 
+			end  
+		until ~isDown 
+		new(op)
+		op.tab := t
+		op.col := col
+		op.width := t.width[col] + x - x0
+		op.mode := t.mode[col]
+		Views.Do(t, "#System:SetLayout", op)
+	end MoveLine
+	
+	proc ChangeAdjust(t: Control; col, mode: integer)
+		var 
+			op: FormatOp
+	begin 
+		new(op)
+		op.tab := t
+		op.col := col
+		op.width := t.width[col]
+		op.mode := mode
+		Views.Do(t, "#System:SetLayout", op)
+	end ChangeAdjust
+	
+	proc ControlSections(t: Control; f: Views.Frame; vertical: boolean; var size_, part, pos: integer)
+		var 
+			r, c, w, max_: integer
+	begin 
+		size_ := 0
+		part := 0
+		pos := 0
+		GetSize(t, r, c)
+		if vertical then
+			size_ := r
+			part := (f.b - (f.t + t.labelHeight + 3 * f.dot)) div t.rowHeight
+			pos := t.orgRow 
+		else 
+			w := 0
+			max_ := min(c, maxCol)
+			c := 0
+			while (c < max_) do 
+				inc(w, t.width[c])
+				inc(c) 
+			end 
+			size_ := w + 3 * f.dot
+			part := f.r - f.l
+			pos := t.orgX 
+		end 
+	end ControlSections
+	
+	proc ScrollControl(t: Control; f: Views.Frame; op, pos: integer; vertical: boolean)
+		var 
+			size_, part, p, delta, l, t0, r, b: integer
+	begin 
+		if vertical then
+			ControlSections(t, f, true, size_, part, p)
+			delta := part - 1
+			if delta < 1 then
+				delta := 1 
+			end 
+			case op of 
+				| Controllers.decLine: 
+					dec(p) 
+				| Controllers.incLine: 
+					inc(p) 
+				| Controllers.decPage: 
+					dec(p, delta) 
+				| Controllers.incPage: 
+					inc(p, delta) 
+				| Controllers.gotoPos: 
+					p := pos 
+			end 
+			if p > size_ - part then
+				p := size_ - part 
+			end 
+			if p < 0 then
+				p := 0 
+			end 
+			delta := (f.gy + t.labelHeight + 3 * f.dot) div f.unit
+			f.rider.GetRect(l, t0, r, b)
+			if b > delta then
+				if t0 < delta then
+					f.rider.SetRect(l, delta, r, b) 
+				end 
+				Views.Scroll(t, 0, (t.orgRow - p) * t.rowHeight)
+				if f.rider # nil then
+					f.rider.SetRect(l, t0, r, b) 
+				end  
+			end 
+			t.orgRow := p 
+		else 
+			ControlSections(t, f, false, size_, part, p)
+			delta := part - defColW
+			if delta < defColW then
+				delta := defColW 
+			end 
+			case op of 
+				| Controllers.decLine: 
+					dec(p, defColW) 
+				| Controllers.incLine: 
+					inc(p, defColW) 
+				| Controllers.decPage: 
+					dec(p, delta) 
+				| Controllers.incPage: 
+					inc(p, delta) 
+				| Controllers.gotoPos: 
+					p := pos 
+			end 
+			if p >= size_ - part then
+				p := size_ - part 
+			end 
+			if p < 0 then
+				p := 0 
+			end 
+			Views.Scroll(t, t.orgX - p, 0)
+			t.orgX := p 
+		end 
+	end ScrollControl
+	
+	proc HandleChar(t: Control; f: Views.Frame; ch: char)
+	begin 
+		case ch of 
+			| 10x: 
+				ScrollControl(t, f, Controllers.decPage, 0, false) 
+			| 11x: 
+				ScrollControl(t, f, Controllers.incPage, 0, false) 
+			| 12x: 
+				ScrollControl(t, f, Controllers.decPage, 0, true) 
+			| 13x: 
+				ScrollControl(t, f, Controllers.incPage, 0, true) 
+			| 14x: 
+				ScrollControl(t, f, Controllers.gotoPos, 0, false) 
+			| 15x: 
+				ScrollControl(t, f, Controllers.gotoPos, max(integer), false) 
+			| 16x: 
+				ScrollControl(t, f, Controllers.gotoPos, 0, true) 
+			| 17x: 
+				ScrollControl(t, f, Controllers.gotoPos, max(integer), true) 
+			| 1cx: 
+				ScrollControl(t, f, Controllers.decLine, 0, false) 
+			| 1dx: 
+				ScrollControl(t, f, Controllers.incLine, 0, false) 
+			| 1ex: 
+				ScrollControl(t, f, Controllers.decLine, 0, true) 
+			| 1fx: 
+				ScrollControl(t, f, Controllers.incLine, 0, true) 
+			| 07x, 08x, 1bx:  // rdel, del, esc
+				Select(t, f, false) 
+		else  
+		end 
+	end HandleChar
+	
+	
+	proc (t: Control) Internalize2(var rd: Stores.Reader)
+		var 
+			thisVersion, i: integer
+			lockedLayout, lockedData, markRow, markCol: boolean
+	begin 
+		rd.ReadVersion(minVersion, tabVersion, thisVersion)
+		if ~rd.cancelled then
+			if thisVersion = tabVersion then // current table version
+				new(t.tprop)
+				rd.ReadBool(t.tprop.layoutEditable)
+				rd.ReadBool(t.tprop.dataEditable)
+				rd.ReadInt(t.tprop.selectionStyle) 
+			elsif thisVersion = 1 then  // intermediate Table version (after 1.4 Beta, before 1.4 final)
+				rd.ReadBool(lockedLayout)
+				rd.ReadBool(lockedData)
+				rd.ReadBool(markRow)
+				rd.ReadBool(markCol)
+				new(t.tprop)
+				t.tprop.layoutEditable := ~lockedLayout
+				t.tprop.dataEditable := ~lockedData
+				if markRow then
+					if markCol then
+						t.tprop.selectionStyle := noSelect 
+					else 
+						t.tprop.selectionStyle := rowSelect 
+					end  
+				else 
+					if markCol then
+						t.tprop.selectionStyle := colSelect 
+					else 
+						t.tprop.selectionStyle := cellSelect 
+					end  
+				end  
+			else  // old version, 1.4 Beta
+				t.tprop.layoutEditable := true
+				t.tprop.dataEditable := true
+				t.tprop.selectionStyle := cellSelect 
+			end 
+			new(t.sprop)
+			rd.ReadString(t.sprop.typeface)
+			rd.ReadInt(t.sprop.size_)
+			rd.ReadSet(t.sprop.style.val_)
+			t.sprop.style.mask := {Fonts.italic, Fonts.underline, Fonts.strikeout}
+			t.sprop.weight := Fonts.normal
+			rd.ReadInt(t.columns)
+			i := 0
+			while i < t.columns do 
+				rd.ReadInt(t.width[i])
+				rd.ReadInt(t.mode[i])
+				inc(i) 
+			end 
+			SetupControl(t) 
+		end 
+	end Internalize2
+	
+	proc (t: Control) Externalize2(var wr: Stores.Writer)
+		var 
+			i: integer
+	begin 
+		wr.WriteVersion(tabVersion)
+		wr.WriteBool(t.tprop.layoutEditable)
+		wr.WriteBool(t.tprop.dataEditable)
+		wr.WriteInt(t.tprop.selectionStyle)
+		wr.WriteString(t.sprop.typeface)
+		wr.WriteInt(t.sprop.size_)
+		wr.WriteSet(t.sprop.style.val_)
+		wr.WriteInt(t.columns)
+		i := 0
+		while i < t.columns do 
+			wr.WriteInt(t.width[i])
+			wr.WriteInt(t.mode[i])
+			inc(i) 
+		end 
+	end Externalize2
+	
+	proc (t: Control) CopyFromSimpleView2(source: Controls.Control)
+	begin 
+		with source: Control do 
+			t.sprop := Properties.CopyOf(source.sprop)(Properties.StdProp)
+			t.tprop := Properties.CopyOf(source.tprop)(Prop)
+			t.columns := source.columns
+			t.width := source.width
+			t.mode := source.mode
+			SetupControl(t) 
+		end 
+	end CopyFromSimpleView2
+	
+	proc (t: Control) GetBackground(var color: Ports.Color)
+	begin 
+		color := Ports.background
+	end GetBackground
+	
+	proc Paint(c: Control; f: Views.Frame; l, t, r, b: integer)
+		var 
+			width, w, h, rows, cols, row, col, x, y, rowHeight, dl, weight: integer
+			font: Fonts.Font
+			str: Dialog.String
+			ok: boolean
+			style: set
+			color: Ports.Color
+	begin 
+		c.context.GetSize(w, h)
+		if ~c.disabled & c.item.Valid() then
+			GetSize(c, rows, cols)
+			dec(c.rowHeight, c.rowHeight mod f.unit)
+			row := -1
+			y := 2 * f.dot
+			font := c.titFont
+			while (row < rows) & (y < b) do 
+				if row = -1 then
+					rowHeight := 1
+					for col:= 0 to cols - 1 do 
+						GetLabel(c, col, str, ok)
+						dl := CountLines(str)
+						if dl > rowHeight then
+							rowHeight := dl 
+						end  
+					end 
+					rowHeight := rowHeight * c.rowHeight
+					c.labelHeight := rowHeight 
+				else 
+					rowHeight := c.rowHeight 
+				end 
+				if ~Views.IsPrinterFrame(f) or (y + rowHeight < b) then
+					col := 0
+					x := 2 * f.dot - c.orgX
+					while (col < cols) & (col < maxCol) & (x < r) do 
+						width := c.width[col]
+						if x + width >= 0 then
+							f.DrawRect(x - f.dot, y, x, y + rowHeight, Ports.fill, Ports.black) // left vertical separation line
+							if ~Views.IsPrinterFrame(f) or (x + width < r) then
+								if row = -1 then
+									GetLabel(c, col, str, ok)
+									f.DrawRect(x, y, x + width - f.dot, y + rowHeight - f.dot, Ports.fill, Ports.grey25)
+									// background
+									DrawLabel(f, x, y + c.baseOff, width - f.dot, x, y, width, rowHeight, 
+									c.mode[col], str, font, c.rowHeight) 
+								else 
+									GetText(c, row, col, str, ok)
+									GetAttr(c, row, col, style, weight, color, ok)
+									f.DrawRect(x, y, x + width - f.dot, y + rowHeight - f.dot, Ports.fill, Ports.white)
+									// background
+									DrawField(f, x, y + c.baseOff, width - f.dot, c.mode[col], str, 
+									Fonts.dir.This(font.typeface, font.size_, style, weight), color) 
+								end  
+							end  
+						end 
+						inc(col)
+						inc(x, width) 
+					end 
+					f.DrawRect(x - f.dot, y, x, y + rowHeight, Ports.fill, Ports.black) // right vertical separator line
+					if Views.IsPrinterFrame(f) & (x >= r) then
+						dec(x, width) 
+					end 
+					
+					if row = -1 then
+						row := c.orgRow
+						font := c.fldFont
+						inc(y, f.dot) 
+					else 
+						inc(row) 
+					end  
+				end 
+				inc(y, rowHeight)
+				f.DrawRect(f.dot - c.orgX, y - f.dot, x, y, Ports.fill, Ports.black)  // bottom line
+			end 
+			if f.dot - c.orgX < x then
+				f.DrawRect(f.dot - c.orgX, f.dot, x, 2 * f.dot, Ports.fill, Ports.black)
+				f.DrawRect(f.dot - c.orgX, c.labelHeight + f.dot, x, c.labelHeight + 2 * f.dot, Ports.fill, Ports.black) 
+			end  
+		else 
+			f.DrawRect(f.dot, f.dot, w - f.dot, h - f.dot, Ports.fill, Ports.grey25)
+			f.DrawRect(0, 0, w, h, f.dot, Ports.black) 
+		end 
+	end Paint
+	
+	proc (c: Control) Restore(f: Views.Frame; l, t, r, b: integer)
+		var 
+			visible: boolean
+			g: Views.Frame
+	begin 
+		Paint(c, f, l, t, r, b)
+		if c.field # nil then
+			GetRect(c, f, c.selRow, c.selCol, c.x, c.y, c.w, c.h, visible)
+			if visible then
+				Views.InstallFrame(f, c.field, c.x, c.y, 0, true) 
+			else 
+				g := Views.ThisFrame(f, c.field)
+				if g # nil then
+					Views.RemoveFrame(f, g) 
+				end  
+			end  
+		end 
+	end Restore
+	
+	proc (c: Control) Update(f: Views.Frame; op, from, to_: integer)
+	begin 
+		Views.Update(c, Views.keepFrames)
+	end Update
+	
+	proc (c: Control) RestoreMarks(f: Views.Frame; l, t, r, b: integer)
+		var 
+			row, col: integer
+			ok, on: boolean
+	begin 
+		if c.item.Valid() then
+			GetSelection(c, on, row, col, ok)
+			if ok then
+				c.hasSelection := on
+				if on then
+					c.selRow := row
+					c.selCol := col
+					c.showSelection := c.field = nil
+					if c.showSelection then
+						DrawSelection(c, f, c.selRow, c.selCol, true) 
+					end  
+				end  
+			end  
+		end 
+	end RestoreMarks
+	
+	proc AddEditField(t: Control; f: Views.Frame; row, col: integer)
+		var 
+			g: Views.Frame
+			mMsg: Controllers.MarkMsg
+			ok, visible: boolean
+	begin 
+		GetRect(t, f, row, col, t.x, t.y, t.w, t.h, visible)
+		if visible then
+			GetText(t, row, col, text, ok)
+			t.field := NewField(t, col, t.w, t.h)
+			Stores.Join(t, t.field)
+			
+			Views.InstallFrame(f, t.field, t.x, t.y, 0, true)
+			mMsg.show := true
+			mMsg.focus := true
+			g := Views.ThisFrame(f, t.field)
+			if g # nil then
+				Views.ForwardCtrlMsg(g, mMsg) 
+			end  
+		end 
+	end AddEditField
+	
+	proc DisableEditField(t: Control; f: Views.Frame; update: boolean)
+		var 
+			g: Views.Frame
+			mMsg: Controllers.MarkMsg
+			ok: boolean
+	begin 
+		if t.field # nil then
+			mMsg.show := false
+			mMsg.focus := false
+			g := Views.ThisFrame(f, t.field)
+			if g # nil then
+				Views.ForwardCtrlMsg(g, mMsg)
+				Views.RemoveFrame(f, g) 
+			end 
+			t.field := nil
+			if update then
+				SetText(t, f, t.selRow, t.selCol, text, ok) 
+			end 
+			t.showSelection := true 
+		end 
+	end DisableEditField
+	
+	proc MoveEditField(t: Control; f: Views.Frame; right: boolean)
+		var 
+			rows, cols: integer
+			ok: boolean
+	begin 
+		DisableEditField(t, f, true)
+		GetSize(t, rows, cols)
+		Select(t, f, false)
+		if right then
+			t.selCol := (t.selCol + 1) mod cols
+			if t.selCol = 0 then
+				t.selRow := (t.selRow + 1) mod rows 
+			end  
+		else 
+			t.selCol := (t.selCol - 1) mod cols
+			if t.selCol = cols - 1 then
+				t.selRow := (t.selRow - 1) mod rows 
+			end  
+		end 
+		t.hasSelection := true
+		t.showSelection := false
+		SetSelection(t, f, true, t.selRow, t.selCol, ok)
+		AddEditField(t, f, t.selRow, t.selCol)
+	end MoveEditField
+	
+	proc TrackMouse(t: Control; f: Views.Frame; var r, c, type_: integer)
+		var 
+			x, y, selr, selc: integer
+			m: set
+			isDown, sel: boolean
+	begin 
+		selr := t.selRow
+		selc := t.selCol
+		sel := t.hasSelection
+		repeat 
+			f.Input(x, y, m, isDown)
+			CheckPos(t, x, y, f.dot, c, type_, r)
+			if sel & ((type_ # field) or (selr # r) or (selc # c)) then
+				DrawSelection(t, f, selr, selc, false) 
+			end 
+			if (type_ = field) & (~sel or (selr # r) or (selc # c)) then
+				DrawSelection(t, f, r, c, true) 
+			end 
+			sel := type_ = field
+			selr := r
+			selc := c 
+		until ~isDown 
+		if ~sel & t.hasSelection then
+			DrawSelection(t, f, t.selRow, t.selCol, true) 
+		end 
+	end TrackMouse
+	
+	proc (t: Control) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View)
+		var 
+			p, col, type_: integer
+			x, y: integer
+			m: set
+			isDown: boolean
+			ok, rebuild: boolean
+			c, w, size_, part, pos: integer
+	begin 
+		if ~t.disabled & t.item.Valid() then
+			with msg: Controllers.PollOpsMsg do 
+				if t.field # nil then
+					focus := t.field 
+				elsif t.hasSelection then 
+					msg.valid := {Controllers.copy_} 
+				end  
+			| msg: Controllers.PollCursorMsg do 
+				if (t.field # nil) & (msg.x >= t.x) & (msg.x <= t.x + t.w) & (msg.y >= t.y) & (msg.y <= t.y + t.h) then
+					focus := t.field 
+				else 
+					CheckPos(t, msg.x, msg.y, f.dot, col, type_, p)
+					if (type_ = move) & t.tprop.layoutEditable then
+						msg.cursor := HostPorts.resizeHCursor 
+					elsif (type_ = adjust) & t.tprop.layoutEditable then 
+						msg.cursor := Ports.refCursor 
+					elsif ~t.readOnly & (type_ = field) then 
+						msg.cursor := Ports.tableCursor 
+					end  
+				end  
+			| msg: Controllers.MarkMsg do 
+				if t.field # nil then
+					DisableEditField(t, f, true)
+					Views.Update(t, Views.rebuildFrames) 
+				end  
+			| msg: Controllers.SelectMsg do 
+				if t.field # nil then
+					focus := t.field 
+				elsif ~msg.set_ then 
+					Select(t, f, false) 
+				end  
+			| msg: Controllers.EditMsg do 
+				if t.field # nil then
+					if msg.op = Controllers.pasteChar then
+						if (msg.char_ = lineChar) or (msg.char_ = esc) then
+							DisableEditField(t, f, msg.char_ # esc)
+							Views.Update(t, Views.rebuildFrames) 
+						elsif (msg.char_ = tab) or (msg.char_ = ltab) then 
+							MoveEditField(t, f, msg.char_ = tab)
+							Views.Update(t, Views.rebuildFrames) 
+						else 
+							focus := t.field 
+						end  
+					else 
+						focus := t.field 
+					end  
+				else 
+					if (msg.op = Controllers.pasteChar) & (msg.char_ = lineChar) & 
+						(t.tprop.selectionStyle = cellSelect) & t.hasSelection then
+						t.showSelection := false
+						SetSelection(t, f, true, t.selRow, t.selCol, ok)
+						AddEditField(t, f, t.selRow, t.selCol)
+						Views.Update(t, Views.keepFrames) 
+					elsif msg.op = Controllers.pasteChar then 
+						HandleChar(t, f, msg.char_) 
+					elsif msg.op = Controllers.copy_ then 
+						msg.view := ViewFromSelection(t)
+						msg.w := 0
+						msg.h := 0
+						msg.isSingle := false 
+					end  
+				end  
+			| msg: Controllers.TrackMsg do 
+				if (t.field # nil) & (msg.x >= t.x) & (msg.x <= t.x + t.w) & (msg.y >= t.y) & (msg.y <= t.y + t.h) then
+					focus := t.field 
+				else 
+					rebuild := t.field # nil // update below after notifications
+					DisableEditField(t, f, true)
+					CheckPos(t, msg.x, msg.y, f.dot, col, type_, p)
+					if type_ = move then
+						if t.tprop.layoutEditable then
+							MoveLine(t, f, col, p) 
+						end  
+					elsif type_ = adjust then 
+						if t.tprop.layoutEditable then
+							ChangeAdjust(t, col, p)
+							repeat 
+								f.Input(x, y, m, isDown) 
+							until ~isDown  
+						end  
+					elsif ~t.readOnly & (type_ = field) then 
+						TrackMouse(t, f, p, col, type_)
+						if type_ = field then
+							if ~t.readOnly & t.tprop.dataEditable 
+								& ((Controllers.doubleClick in msg.modifiers) or (t.tprop.selectionStyle = noSelect)) 
+							then
+								Select(t, f, false)
+								t.selRow := p
+								t.selCol := col
+								t.hasSelection := true
+								t.showSelection := false
+								SetSelection(t, f, true, t.selRow, t.selCol, ok)
+								AddEditField(t, f, p, col)
+								Views.Update(t, Views.keepFrames) 
+							else 
+								if (t.selRow # p) or (t.selCol # col) or ~t.hasSelection then
+									Select(t, f, false)
+									t.selRow := p
+									t.selCol := col
+									Select(t, f, true) 
+								elsif t.tprop.selectionStyle = cellSelect then 
+									Select(t, f, false) 
+								end  
+							end  
+						end  
+					end 
+					if rebuild then
+						Views.Update(t, Views.rebuildFrames) 
+					end  
+				end  
+			| msg: Controllers.PollSectionMsg do 
+				ControlSections(t, f, msg.vertical, msg.wholeSize, msg.partSize, msg.partPos)
+				if (msg.partPos > 0) & (msg.partPos > msg.wholeSize - msg.partSize) then
+					ScrollControl(t, f, Controllers.gotoPos, msg.wholeSize - msg.partSize, msg.vertical)
+					ControlSections(t, f, msg.vertical, msg.wholeSize, msg.partSize, msg.partPos) 
+				end 
+				msg.valid := msg.partSize < msg.wholeSize
+				msg.done := true 
+			| msg: Controllers.ScrollMsg do 
+				ScrollControl(t, f, msg.op, msg.pos, msg.vertical)
+				msg.done := true 
+			| msg: Controllers.PageMsg do 
+				if msg.op in {Controllers.nextPageY, Controllers.gotoPageY} then // vertical
+					ControlSections(t, f, true, size_, part, pos)
+					if msg.op = Controllers.nextPageY then
+						t.orgRow := pos + part 
+					else 
+						t.orgRow := msg.pageY * part 
+					end 
+					msg.done := true
+					msg.eoy := t.orgRow >= size_ 
+				else  // horizontal
+					ControlSections(t, f, false, size_, part, pos)
+					if msg.op = Controllers.nextPageX then
+						t.orgX := pos + part 
+					else 
+						t.orgX := msg.pageX * part 
+					end 
+					if (t.orgX > 0) & (t.orgX < size_) then
+						c := 0
+						w := 0
+						while w < t.orgX do 
+							inc(w, t.width[c])
+							inc(c) 
+						end 
+						t.orgX := w - t.width[c - 1] + 1 * f.dot 
+					end 
+					msg.done := true
+					msg.eox := t.orgX >= size_ 
+				end  
+			else  
+			end  
+		end 
+	end HandleCtrlMsg2
+	
+	proc (t: Control) HandlePropMsg2(var msg: Properties.Message)
+		var 
+			w, h: longint
+	begin 
+		with msg: Properties.FocusPref do 
+			if ~t.disabled then
+				msg.setFocus := true 
+			end  
+		| msg: Properties.SizePref do 
+			if (msg.w = Views.undefined) & (msg.h = Views.undefined) then
+				GetControlSize(t, Ports.point, w, h)
+				msg.w := short(min(w, max(integer)))
+				msg.h := short(min(h, max(integer))) 
+			end 
+			if msg.w = Views.undefined then
+				msg.w := 80 * Ports.mm 
+			end 
+			if msg.h = Views.undefined then
+				msg.h := 30 * Ports.mm 
+			end  
+		| msg: Properties.ResizePref do 
+			msg.horFitToWin := true
+			msg.verFitToWin := true 
+		| msg: Controls.PropPref do 
+			msg.valid := {Controls.link, Controls.label, Controls.guard, Controls.notifier} 
+		| msg: Properties.PollMsg do 
+			PollProp(t, msg.prop) 
+		| msg: Properties.SetMsg do 
+			SetProp(t, msg.prop) 
+		| msg: Properties.ControlPref do 
+			if (t.field # nil) & ((msg.char_ = lineChar) or (msg.char_ = esc) or (msg.char_ = tab) or (msg.char_ = ltab)) 
+				or (t.field = nil) & (t.tprop.selectionStyle = cellSelect) & t.hasSelection & (msg.char_ = lineChar) 
+			then
+				msg.accepts := true 
+			end  
+		else 
+			if t.field # nil then
+				Views.HandlePropMsg(t.field, msg) 
+			end  
+		end 
+	end HandlePropMsg2
+	
+	proc (c: Control) CheckLink(var ok: boolean)
+		var 
+			item: Meta.Item
+			mod_: Meta.Name
+			name: Meta.Name
+	begin 
+		item := c.item
+		if (item.typ = Meta.recTyp) then
+			item.GetTypeName(mod_, name)
+			if (mod_ = "StdTables") & (name = "Table") then
+				ok := true 
+			else 
+				ok := false 
+			end  
+		else 
+			ok := false 
+		end 
+	end CheckLink
+	
+	
+	// Property Dialog
+	
+	
+	proc PollPropForDlg
+		var 
+			q: Properties.Property
+			p: Prop
+	begin 
+		dlg.layoutEditable := true
+		dlg.dataEditable := true
+		dlg.selectionStyle.index := cellSelect
+		dlg.known := {}
+		dlg.valid := {}
+		Properties.CollectProp(q)
+		while (q # nil) & ~(q is Prop) do 
+			q := q.next 
+		end 
+		if q # nil then
+			p := q(Prop)
+			dlg.known := p.known
+			dlg.valid := p.valid
+			if layoutEditable in p.valid then
+				dlg.layoutEditable := p.layoutEditable 
+			end 
+			if dataEditable in p.valid then
+				dlg.dataEditable := p.dataEditable 
+			end 
+			if selectionStyle in p.valid then
+				dlg.selectionStyle.index := p.selectionStyle 
+			end  
+		end 
+		Dialog.Update(dlg)
+	end PollPropForDlg
+	
+	proc SetPropFromDlg
+		var 
+			p: Prop
+	begin 
+		new(p)
+		p.known := dlg.known
+		p.valid := dlg.valid
+		p.layoutEditable := dlg.layoutEditable
+		p.dataEditable := dlg.dataEditable
+		p.selectionStyle := dlg.selectionStyle.index
+		Properties.EmitProp(nil, p)
+	end SetPropFromDlg
+	
+	proc (a: Action) Do
+		var 
+			c: Containers.Controller
+			v: Views.View
+			fp: integer
+	begin 
+		Controllers.SetCurrentPath(Controllers.targetPath)
+		c := Containers.Focus()
+		fp := 0
+		if c # nil then
+			c.GetFirstView(Containers.selection, v)
+			while v # nil do 
+				fp := fp + Services.AdrOf(v)
+				c.GetNextView(Containers.selection, v) 
+			end  
+		end 
+		if fp # dlg.fingerprint then
+			PollPropForDlg
+			dlg.fingerprint := fp 
+		end 
+		Controllers.ResetCurrentPath()
+		Services.DoLater(a, Services.Ticks() + Services.resolution div 2)
+	end Do
+	
+	proc InitDialog*
+	begin 
+		if action = nil then
+			new(action)
+			Services.DoLater(action, Services.now) 
+		end 
+		Controllers.SetCurrentPath(Controllers.targetPath)
+		PollPropForDlg
+		Controllers.ResetCurrentPath()
+	end InitDialog
+	
+	proc Set*
+	begin 
+		Controllers.SetCurrentPath(Controllers.targetPath)
+		SetPropFromDlg
+		PollPropForDlg
+		Controllers.ResetCurrentPath()
+	end Set
+	
+	proc Guard*(idx: integer; var par: Dialog.Par)
+	begin 
+		if ~(idx in dlg.known) then
+			par.disabled := true 
+		elsif ~(idx in dlg.valid) then 
+			par.undef := true 
+		end 
+	end Guard
+	
+	proc Notifier*(idx, op, from, to_: integer)
+	begin 
+		if op = Dialog.changed then
+			incl(dlg.valid, idx) 
+		end 
+	end Notifier
+	
+	
+	// StdDirectory
+	
+	proc InitStdProp(var p: Properties.StdProp)
+		var 
+			f: Fonts.Font
+	begin 
+		new(p)
+		f := Fonts.dir.Default()
+		p.typeface := f.typeface
+		p.size_ := f.size_
+		p.style.val_ := f.style
+		p.style.mask := {Fonts.italic, Fonts.underline, Fonts.strikeout}
+		p.weight := Fonts.normal
+	end InitStdProp
+	
+	proc InitTableProp(var p: Prop)
+	begin 
+		new(p)
+		p.layoutEditable := true
+		p.dataEditable := true
+		p.selectionStyle := cellSelect
+	end InitTableProp
+	
+	proc (d: StdDirectory) NewControl(p: Controls.Prop): Views.View
+		var 
+			c: Control
+	begin 
+		new(c)
+		Controls.OpenLink(c, p)
+		InitStdProp(c.sprop)
+		InitTableProp(c.tprop)
+		SetupControl(c)
+		return c
+	end NewControl
+	
+	
+	proc SetDir*(d: Directory)
+	begin 
+		assert(d # nil, 20)
+		dir := d
+	end SetDir
+	
+	proc DepositControl*
+		var 
+			p: Controls.Prop
+	begin 
+		new(p)
+		p.link := ""
+		p.label := ""
+		p.guard := ""
+		p.notifier := ""
+		p.level := 0
+		p.opt[Controls.sorted] := false
+		Views.Deposit(dir.NewControl(p))
+	end DepositControl
+	
+	proc SetupSelectionStyleList(var l: Dialog.List)
+	begin 
+		l.SetLen(5)
+		l.SetItem(noSelect, "#Std:No Selection")
+		l.SetItem(cellSelect, "#Std:Select Cell")
+		l.SetItem(rowSelect, "#Std:Select Row")
+		l.SetItem(colSelect, "#Std:Select Column")
+		l.SetItem(crossSelect, "#Std:Select Row & Column")
+	end SetupSelectionStyleList
+	
+	proc Init
+		var 
+			d: StdDirectory
+	begin 
+		new(d)
+		stdDir := d
+		dir := d
+		SetupSelectionStyleList(dlg.selectionStyle)
+	end Init
+
+begin
+	Init
+(* CLOSE
+	Services.RemoveAction(action) *) 
+end StdTables

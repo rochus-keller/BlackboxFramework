@@ -1,0 +1,43 @@
+module XhtmlEntitySets
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   references	= "http://www.w3.org/TR/xhtml1/DTD/HTMLlat1x.ent,
+	   http://www.w3.org/TR/xhtml1/DTD/HTMLspecialx.ent,
+	   http://www.w3.org/TR/xhtml1/DTD/HTMLsymbolx.ent"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20050811, mf (reported by Helmut Zinn), procedure MapCharToEntity: changed "ch <= 039D6X" to "ch <= 03D6X"
+	   - 20160514, center #113, fixes for XHTML export
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	proc MapCharToEntity*(ch: char; var s: array of char)
+	begin 
+		case ch of 
+			| 0022x: 
+				s := "&quot;" 
+			| 0026x: 
+				s := "&amp;" 
+			| 0027x: 
+				s := "&apos;" 
+			| 003cx: 
+				s := "&lt;" 
+			| 003ex: 
+				s := "&gt;" 
+		else 
+			s[0] := ch
+			s[1] := 0x 
+		end 
+	end MapCharToEntity
+
+end XhtmlEntitySets

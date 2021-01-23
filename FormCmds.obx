@@ -1,0 +1,579 @@
+module FormCmds
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   purpose	= ""
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		Strings, Dialog, Ports, Stores, Models, Views, Properties, Controls, Containers, 
+		FormModels, FormViews, FormControllers, StdCmds
+	
+	const 
+		mm = Ports.mm
+		inch16th = Ports.inch div 16
+		left = 0
+		top = 1
+		right = 2
+		bottom = 3
+		row = 4
+		column = 5
+	
+	var 
+		grid*: record 
+				resolution*: integer // resolution > 0
+				metricSystem*: boolean 
+			end 
+		
+		find*: record 
+				from*, to_*: array 256 of char
+				link*, label*, guard*, notifier*: boolean 
+			end 
+	
+	
+	proc FindExtrema(c: FormControllers.Controller; var l, t, r, b, h, v: integer
+		var s: FormControllers.List)
+		var 
+			n: integer
+			p: FormControllers.List
+			q: FormModels.Reader
+			w: Views.View
+	begin  // there is at least one view selected
+		l := max(integer)
+		t := max(integer)
+		r := min(integer)
+		b := min(integer)
+		h := 0
+		v := 0
+		n := 0
+		s := nil
+		q := c.form.NewReader(nil)
+		q.Set(nil)
+		q.ReadView(w)
+		while w # nil do 
+			if c.IsSelected(w) then
+				inc(h, q.l)
+				inc(h, q.r)
+				inc(v, q.t)
+				inc(v, q.b)
+				inc(n, 2)
+				new(p)
+				p.next := s
+				s := p
+				p.view := w
+				if q.l < l then
+					l := q.l 
+				end 
+				if q.t < t then
+					t := q.t 
+				end 
+				if q.r > r then
+					r := q.r 
+				end 
+				if q.b > b then
+					b := q.b 
+				end  
+			end 
+			q.ReadView(w) 
+		end 
+		h := h div n
+		v := v div n
+	end FindExtrema
+	
+	proc Move(c: FormControllers.Controller; s: FormControllers.List; p, side: integer
+		name: Stores.OpName)
+		var 
+			script: Stores.Operation
+			w, h: integer
+			l, t, r, b: integer
+			s0: FormControllers.List
+	begin 
+		s0 := s
+		Models.BeginScript(c.form, name, script)
+		while s # nil do 
+			s.view.context(FormModels.Context).GetRect(l, t, r, b)
+			w := r - l
+			h := b - t
+			if side = left then
+				l := p
+				r := l + w 
+			elsif side = top then 
+				t := p
+				b := t + h 
+			elsif side = right then 
+				r := p
+				l := r - w 
+			elsif side = bottom then 
+				b := p
+				t := b - h 
+			elsif side = row then 
+				t := p - h div 2
+				b := t + h 
+			elsif side = column then 
+				l := p - w div 2
+				r := l + w 
+			end 
+			c.form.Resize(s.view, l, t, r, b)
+			s := s.next 
+		end 
+		Models.EndScript(c.form, script)
+		while s0 # nil do 
+			c.Select(s0.view)
+			s0 := s0.next 
+		end 
+	end Move
+	
+	proc AlignLeft*
+		// Guard: SelectionGuard
+		var 
+			c: FormControllers.Controller
+			l, t, r, b, h, v: integer
+			s: FormControllers.List
+	begin 
+		c := FormControllers.Focus()
+		if (c # nil) & c.HasSelection() then
+			FindExtrema(c, l, t, r, b, h, v, s)
+			Move(c, s, l, left, "#Form:AlignLeft") 
+		end 
+	end AlignLeft
+	
+	proc AlignRight*
+		// Guard: SelectionGuard
+		var 
+			c: FormControllers.Controller
+			l, t, r, b, h, v: integer
+			s: FormControllers.List
+	begin 
+		c := FormControllers.Focus()
+		if (c # nil) & c.HasSelection() then
+			FindExtrema(c, l, t, r, b, h, v, s)
+			Move(c, s, r, right, "#Form:AlignRight") 
+		end 
+	end AlignRight
+	
+	proc AlignTop*
+		// Guard: SelectionGuard
+		var 
+			c: FormControllers.Controller
+			l, t, r, b, h, v: integer
+			s: FormControllers.List
+	begin 
+		c := FormControllers.Focus()
+		if (c # nil) & c.HasSelection() then
+			FindExtrema(c, l, t, r, b, h, v, s)
+			Move(c, s, t, top, "#Form:AlignTop") 
+		end 
+	end AlignTop
+	
+	proc AlignBottom*
+		// Guard: SelectionGuard
+		var 
+			c: FormControllers.Controller
+			l, t, r, b, h, v: integer
+			s: FormControllers.List
+	begin 
+		c := FormControllers.Focus()
+		if (c # nil) & c.HasSelection() then
+			FindExtrema(c, l, t, r, b, h, v, s)
+			Move(c, s, b, bottom, "#Form:AlignBottom") 
+		end 
+	end AlignBottom
+	
+	proc AlignToRow*
+		// Guard: SelectionGuard
+		var 
+			c: FormControllers.Controller
+			l, t, r, b, h, v: integer
+			s: FormControllers.List
+	begin 
+		c := FormControllers.Focus()
+		if (c # nil) & c.HasSelection() then
+			FindExtrema(c, l, t, r, b, h, v, s)
+			Move(c, s, v, row, "#Form:AlignHorizontal") 
+		end 
+	end AlignToRow
+	
+	proc AlignToColumn*
+		// Guard: SelectionGuard
+		var 
+			c: FormControllers.Controller
+			l, t, r, b, h, v: integer
+			s: FormControllers.List
+	begin 
+		c := FormControllers.Focus()
+		if (c # nil) & c.HasSelection() then
+			FindExtrema(c, l, t, r, b, h, v, s)
+			Move(c, s, h, column, "#Form:AlignVertical") 
+		end 
+	end AlignToColumn
+	
+	
+	proc SelectOffGridViews*
+		var 
+			c: FormControllers.Controller
+			v: Views.View
+			h: FormModels.Reader
+			l, t, r, b, l0, t0, r0, b0: integer
+	begin 
+		c := FormControllers.Focus()
+		if c # nil then
+			c.SelectAll(false)
+			h := c.form.NewReader(nil)
+			h.ReadView(v)
+			while v # nil do 
+				v.context(FormModels.Context).GetRect(l, t, r, b)
+				l0 := l
+				t0 := t
+				r0 := r
+				b0 := b
+				FormViews.RoundToGrid(c.view, l0, t0)
+				FormViews.RoundToGrid(c.view, r0, b0)
+				if (l0 # l) or (t0 # t) or (r0 # r) or (b0 # b) then
+					c.Select(v) 
+				end 
+				h.ReadView(v) 
+			end  
+		end 
+	end SelectOffGridViews
+	
+	
+	proc Selection(c: FormControllers.Controller): FormControllers.List
+		var 
+			p, q: FormControllers.List
+			h: FormModels.Reader
+			v: Views.View
+	begin 
+		p := nil
+		h := c.form.NewReader(nil)
+		h.Set(nil)
+		h.ReadView(v)
+		while v # nil do 
+			if c.IsSelected(v) then
+				new(q)
+				q.next := p
+				p := q
+				q.view := v 
+			end 
+			h.ReadView(v) 
+		end 
+		return p
+	end Selection
+	
+	proc ForceToGrid*
+		// Guard: SelectionGuard
+		var 
+			c: FormControllers.Controller
+			l, t, r, b: integer
+			sel, sel0: FormControllers.List
+			s: Stores.Operation
+	begin 
+		c := FormControllers.Focus()
+		if (c # nil) & c.HasSelection() then
+			Models.BeginScript(c.form, "#Form:ForceToGrid", s)
+			sel := Selection(c)
+			sel0 := sel
+			while sel # nil do 
+				sel.view.context(FormModels.Context).GetRect(l, t, r, b)
+				FormViews.RoundToGrid(c.view, l, t)
+				FormViews.RoundToGrid(c.view, r, b)
+				c.form.Resize(sel.view, l, t, r, b)
+				sel := sel.next 
+			end 
+			Models.EndScript(c.form, s)
+			while sel0 # nil do 
+				c.Select(sel0.view)
+				sel0 := sel0.next 
+			end  
+		end 
+	end ForceToGrid
+	
+	proc SortViews*
+		// Guard: FocusGuard
+		var 
+			c: FormControllers.Controller
+			script: Stores.Operation
+			r: FormModels.Reader
+			p, q: Views.View
+		
+		proc IsAbove(p, q: Views.View): boolean
+			var 
+				l0, l1, t0, t1, r, b: integer
+		begin 
+			p.context(FormModels.Context).GetRect(l0, t0, r, b)
+			q.context(FormModels.Context).GetRect(l1, t1, r, b)
+			return (t0 < t1) or (t0 = t1) & (l0 <= l1)
+		end IsAbove
+	
+	begin 
+		c := FormControllers.Focus()
+		if (c # nil) & (c.form.NofViews() > 1) then
+			c.SelectAll(false)
+			Models.BeginScript(c.form, "#Form:ChangeZOrder", script)
+			r := c.form.NewReader(nil)
+			repeat  // bubble sort
+				r.Set(nil)
+				r.ReadView(p)
+				r.ReadView(q)
+				while (q # nil) & IsAbove(p, q) do 
+					p := q
+					r.ReadView(q) 
+				end 
+				if q # nil then
+					c.form.PutAbove(p, q) 
+				end  
+			until q = nil 
+			Models.EndScript(c.form, script)
+			c.SelectAll(true) 
+		end 
+	end SortViews
+	
+	proc SetAsFirst*
+		// Guard: SingletonGuard
+		// send to back
+		var 
+			c: FormControllers.Controller
+			v: Views.View
+	begin 
+		c := FormControllers.Focus()
+		if c # nil then
+			v := c.Singleton()
+			if v # nil then
+				c.form.PutAbove(v, nil)
+				c.SetSingleton(v) 
+			end  
+		end 
+	end SetAsFirst
+	
+	proc SetAsLast*
+		// Guard: SingletonGuard
+		// bring to front
+		var 
+			c: FormControllers.Controller
+			v, p, q: Views.View
+			r: FormModels.Reader
+	begin 
+		c := FormControllers.Focus()
+		if c # nil then
+			v := c.Singleton()
+			if v # nil then
+				r := c.form.NewReader(nil)
+				r.Set(v)
+				p := v
+				repeat 
+					q := p
+					r.ReadView(p) 
+				until p = nil 
+				c.form.PutAbove(v, q)
+				c.SetSingleton(v) 
+			end  
+		end 
+	end SetAsLast
+	
+	proc InsertAround*
+		// Guard: SelectionGuard
+		const 
+			d = 3 * Ports.mm
+		var 
+			c: FormControllers.Controller
+			v: Views.View
+			rd: FormModels.Reader
+			l, t, r, b: integer
+			s: Stores.Operation
+	begin 
+		assert(Views.Available() = 1, 20)
+		c := FormControllers.Focus()
+		if (c # nil) & c.HasSelection() then
+			l := max(integer)
+			t := max(integer)
+			r := min(integer)
+			b := min(integer)
+			rd := c.form.NewReader(nil)
+			rd.ReadView(v)
+			while v # nil do 
+				if c.IsSelected(v) then
+					if rd.l < l then
+						l := rd.l 
+					end 
+					if rd.t < t then
+						t := rd.t 
+					end 
+					if rd.r > r then
+						r := rd.r 
+					end 
+					if rd.b > b then
+						b := rd.b 
+					end  
+				end 
+				rd.ReadView(v) 
+			end 
+			assert(l < r, 100)
+			dec(l, d)
+			dec(t, 3 * d)
+			inc(r, d)
+			inc(b, d)
+			FormViews.RoundToGrid(c.view, l, t)
+			FormViews.RoundToGrid(c.view, r, b)
+			Views.Fetch(v)
+			Models.BeginScript(c.form, "#Form:InsertAround", s)
+			c.form.Insert(v, l, t, r, b)
+			c.form.PutAbove(v, nil)
+			Models.EndScript(c.form, s)
+			c.SetSingleton(v) 
+		else 
+			StdCmds.PasteView 
+		end 
+	end InsertAround
+	
+	proc InitGridDialog*
+		// Guard: FocusGuard
+		var 
+			c: FormControllers.Controller
+			g: integer
+	begin 
+		c := FormControllers.Focus()
+		if c # nil then
+			g := c.view.Grid()
+			if g mod mm = 0 then
+				grid.resolution := g div mm
+				grid.metricSystem := true 
+			elsif g mod inch16th = 0 then 
+				grid.resolution := g div inch16th
+				grid.metricSystem := false 
+			elsif Dialog.metricSystem then 
+				grid.resolution := g div mm
+				grid.metricSystem := true 
+			else 
+				grid.resolution := g div inch16th
+				grid.metricSystem := false 
+			end 
+			Dialog.Update(grid) 
+		end 
+	end InitGridDialog
+	
+	proc SetGrid*
+		// Guard: FocusGuard
+		var 
+			c: FormControllers.Controller
+			n: integer
+	begin 
+		c := FormControllers.Focus()
+		if (c # nil) & (grid.resolution > 0) then
+			if grid.metricSystem then
+				n := 10 div grid.resolution
+				if n < 1 then
+					n := 1 
+				end 
+				c.view.SetGrid(grid.resolution * mm, n) 
+			else 
+				n := 8 div grid.resolution
+				if n < 1 then
+					n := 1 
+				end 
+				c.view.SetGrid(grid.resolution * inch16th, n) 
+			end  
+		end 
+	end SetGrid
+	
+	// renaming of controls
+	
+	proc Rename*
+		// Guard: StdCmds.ContainerGuard
+		var 
+			c: Containers.Controller
+			v: Views.View
+			msg: Properties.PollMsg
+			p, q: Properties.Property
+			setMsg: Properties.SetMsg
+		
+		proc Replace(var s: array of char; in from, to_: array of char)
+			var 
+				pos: integer
+		begin 
+			Strings.Find(s, from, 0, pos)
+			while pos >= 0 do 
+				Strings.Replace(s, pos, len(from), to_)
+				Strings.Find(s, from, pos + len(to_), pos) 
+			end 
+		end Replace
+	
+	begin 
+		c := Containers.Focus()
+		if c # nil then
+			c.GetFirstView(Containers.any, v)
+			while v # nil do 
+				msg.prop := nil
+				Views.HandlePropMsg(v, msg)
+				p := msg.prop
+				while (p # nil) & ~(p is Controls.Prop) do 
+					p := p.next 
+				end 
+				if p # nil then
+					q := Properties.CopyOf(p)
+					with q: Controls.Prop do 
+						if find.label & (Controls.label in q.valid) then
+							Replace(q.label, find.from, find.to_) 
+						end 
+						if find.link & (Controls.link in q.valid) then
+							Replace(q.link, find.from, find.to_) 
+						end 
+						if find.guard & (Controls.guard in q.valid) then
+							Replace(q.guard, find.from, find.to_) 
+						end 
+						if find.notifier & (Controls.notifier in q.valid) then
+							Replace(q.notifier, find.from, find.to_) 
+						end  
+					end 
+					setMsg.prop := q
+					Views.HandlePropMsg(v, setMsg) 
+				end 
+				c.GetNextView(Containers.any, v) 
+			end  
+		end 
+	end Rename
+	
+	
+	// standard form-related guards
+	
+	proc FocusGuard*(var par: Dialog.Par)
+	// in non-FormView menus; otherwise implied by menu type
+	begin 
+		par.disabled := FormViews.Focus() = nil
+	end FocusGuard
+	
+	proc SelectionGuard*(var par: Dialog.Par)
+		// in non-FormView menus; otherwise use "SelectionGuard"
+		var 
+			c: FormControllers.Controller
+	begin 
+		c := FormControllers.Focus()
+		par.disabled := (c = nil) or ~c.HasSelection()
+	end SelectionGuard
+	
+	proc SingletonGuard*(var par: Dialog.Par)
+		// in non-FormView menus; otherwise use "SingletonGuard"
+		var 
+			c: FormControllers.Controller
+	begin 
+		c := FormControllers.Focus()
+		par.disabled := (c = nil) or (c.Singleton() = nil)
+	end SingletonGuard
+
+begin
+	find.link := true
+	find.label := true
+	find.guard := true
+	find.notifier := true
+end FormCmds

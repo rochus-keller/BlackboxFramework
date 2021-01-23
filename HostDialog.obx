@@ -1,0 +1,1638 @@
+module HostDialog
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20070130, bh, new Windows versions
+	   - 20070131, bh, Unicode support
+	   - 20070319, bh, page orientation added to page setup dialog
+	   - 20150326, center #33, adding platform detection for wine, Windows 7, and Windows 8
+	   - 20150903, center #68, option for suppressing Dialog.Beep
+	   - 20151202, center #89, adding language selection to Preferences dialog
+	   - 20160307, center #105, serverMode added
+	   - 20170823, center #155, Cleanups in the sources of HostDialog
+	   - 20171106, center #181, fixing error handling of HostDialog.OpenExternal
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	
+	import 
+		WinApi, WinDlg, SYSTEM, 
+		Kernel, Strings, Dates, Fonts, Ports, Files, Stores, Views, Controllers, Properties, 
+		Printers, Dialog, Windows, Converters, Services, 
+		HostFonts, HostFiles, HostRegistry, HostPorts, HostWindows, HostPrinters, 
+		StdCmds, 
+		HostCFrames // don't remove
+	
+	
+	const 
+		// CloseDialog res
+		save* = 1
+		cancel* = 2
+		
+		dirtyString = "#Host:SaveChanges"
+		defaultLanguage = "en"
+	
+	
+	type 
+		Preview = pointer to record (Views.View) end 
+		
+		UpdateMsg = record (Views.Message) end 
+		
+		DatesHook = pointer to record (Dates.Hook) end 
+		DialogHook = pointer to record (Dialog.GetHook) end 
+		ShowHook = pointer to record (Dialog.ShowHook) end 
+		GetSpecHook = pointer to record (Views.GetSpecHook) end 
+		LanguageHook = pointer to record (Dialog.LanguageHook) end 
+		WineHook = pointer to record (Dialog.WineHook) isWine: boolean end 
+		ExtCallHook = pointer to record (Dialog.ExtCallHook) end 
+		CallName = carray 8191 of char
+		CallNamePtr = pointer to CallName
+	
+	var 
+		window-: Windows.Window // window created/selected by most recent Old or Open
+		oldWindow-: boolean // most recent Old or Open selected existing window
+		
+		osVersion-: integer
+		extType*: Files.Type
+		
+		impType*: record 
+				list*: Dialog.List
+				done: boolean 
+			end 
+		
+		setup*: record 
+				decorate*: boolean
+				landscape*: boolean
+				left*, right*, top*, bottom*: real
+				w, h: integer
+				hs, vs: real 
+			end 
+		
+		prefs*: record 
+				useTTMetric*: boolean
+				visualScroll*: boolean
+				statusbar*: integer
+				thickCaret*: boolean
+				caretPeriod*: integer
+				beep*: boolean
+				serverMode*: boolean
+				language*: Dialog.Combo 
+			end 
+		
+		ShowOleStatus*: proc (w: Windows.Window; s: array of char)
+		
+		actualPath*: array 256 of char
+		
+		fn: WinDlg.OPENFILENAMEW
+		ftype: array 16 of char
+		filter: array 2048 of char
+		fname: array 260 of char
+		prt: WinDlg.PRINTDLGW
+		font: WinDlg.CHOOSEFONTW
+		logFont: WinApi.LOGFONTW
+		col: WinDlg.CHOOSECOLORW
+		customColors: array 16 of Ports.Color
+		prefFName, prefDName: Fonts.Typeface
+		prefFSize, prefDSize, prefDWght: integer
+		prefDStyle: set
+		typeList: array 64 of Converters.Converter
+		defConv: Converters.Converter
+		all: Converters.Converter
+		
+		dialogHook: DialogHook
+		
+		callNameTaken, isWine: boolean // params of OpenExternal and RunExternal
+		openExtErr, runExtErr: array 64 of char
+		hideExtRunWindow*: boolean
+	
+	
+	proc Append(var s: array of char; var idx: integer; in t: array of char)
+		var 
+			len_, i: integer
+			ch: char
+	begin 
+		i := 0
+		ch := t[0]
+		len_ := len(s) - 1
+		while (idx < len_) & (ch # 0x) do 
+			s[idx] := ch
+			inc(idx)
+			inc(i)
+			ch := t[i] 
+		end 
+		s[idx] := 0x
+	end Append
+	
+	proc MapConv(cmd: array of char; var name: array of char)
+		var 
+			i: integer
+			sub, str: Dialog.String
+	begin 
+		str := cmd
+		i := 0
+		while str[i] >= "0" do 
+			inc(i) 
+		end 
+		str[i] := 0x
+		Kernel.SplitName(str, sub, str)
+		if sub = "" then
+			sub := "System" 
+		end 
+		str := "#"
+		i := 1
+		Append(str, i, sub)
+		Append(str, i, ":")
+		Append(str, i, cmd)
+		Dialog.MapString(str, name)
+	end MapConv
+	
+	// simulates modal dialog
+	proc WaitDialogClose
+		var 
+			res: integer
+			w: HostWindows.Window
+			msg: WinApi.MSG
+	begin 
+		w := HostWindows.dir.First()
+		repeat 
+			if WinApi.PeekMessageW(msg, 0, 0, 0, 1) # 0 then
+				if (msg.hwnd = w.wnd) or (msg.message = WinApi.WM_PAINT) then
+					res := WinApi.TranslateMessage(msg)
+					res := WinApi.DispatchMessageW(msg) 
+				end  
+			end  
+		until w.wnd = 0 
+	end WaitDialogClose
+	
+	proc ShowParamStatus*(in str, p0, p1, p2: array of char)
+		var 
+			res: integer
+			st: array 513 of char
+			w: Windows.Window
+	begin 
+		Dialog.MapParamString(str, p0, p1, p2, st)
+		w := Windows.dir.Focus(Controllers.targetPath)
+		if (w # nil) & (HostWindows.inPlace in w.flags) & (ShowOleStatus # nil) then
+			ShowOleStatus(w, " " + st) 
+		else 
+			st := " " + st
+			res := WinApi.SetWindowTextW(HostWindows.status, st)
+			res := WinApi.UpdateWindow(HostWindows.status) 
+		end 
+	end ShowParamStatus
+	
+	proc ShowParamMsg*(in str, p0, p1, p2: array of char)
+		var 
+			res: integer
+			st: array 512 of char
+	begin 
+		assert(str # "", 20)
+		Dialog.MapParamString(str, p0, p1, p2, st)
+		res := WinApi.MessageBoxW(HostWindows.ActualWnd(), st, Dialog.appName, {4, 5})
+	end ShowParamMsg
+	
+	proc (h: ShowHook) ShowParamMsg(in str, p0, p1, p2: array of char)
+	begin 
+		ShowParamMsg(str, p0, p1, p2)
+	end ShowParamMsg
+	
+	proc (h: ShowHook) ShowParamStatus(in str, p0, p1, p2: array of char)
+	begin 
+		ShowParamStatus(str, p0, p1, p2)
+	end ShowParamStatus
+	
+	// general OK dialog
+	
+	proc (hook: DialogHook) GetOK(in str, p0, p1, p2: array of char; form: set; var res: integer)
+		var 
+			r: integer
+			st: array 512 of char
+			type_: set
+	begin 
+		assert(str # "", 20)
+		Dialog.MapParamString(str, p0, p1, p2, st)
+		if Dialog.yes in form then
+			if Dialog.cancel in form then
+				type_ := WinApi.MB_YESNOCANCEL + WinApi.MB_ICONQUESTION 
+			else 
+				type_ := WinApi.MB_YESNO + WinApi.MB_ICONQUESTION 
+			end  
+		else 
+			if Dialog.cancel in form then
+				type_ := WinApi.MB_OKCANCEL + WinApi.MB_ICONWARNING 
+			else 
+				type_ := WinApi.MB_OK + WinApi.MB_ICONWARNING 
+			end  
+		end 
+		r := WinApi.MessageBoxW(HostWindows.ActualWnd(), st, Dialog.appName, type_)
+		if r = WinApi.IDOK then
+			res := Dialog.ok 
+		elsif r = WinApi.IDCANCEL then 
+			res := Dialog.cancel 
+		elsif r = WinApi.IDYES then 
+			res := Dialog.yes 
+		elsif r = WinApi.IDNO then 
+			res := Dialog.no 
+		else 
+			res := 0 
+		end 
+	end GetOK
+	
+	
+	// time
+	
+	proc (hook: DatesHook) GetTime(var d: Dates.Date; var t: Dates.Time)
+		var 
+			dt: WinApi.SYSTEMTIME
+	begin 
+		WinApi.GetLocalTime(dt)
+		d.year := dt.wYear
+		d.month := dt.wMonth
+		d.day := dt.wDay
+		t.hour := dt.wHour
+		t.minute := dt.wMinute
+		t.second := dt.wSecond
+	end GetTime
+	
+	proc (hook: DatesHook) GetUTCTime(var d: Dates.Date; var t: Dates.Time)
+		var 
+			dt: WinApi.SYSTEMTIME
+	begin 
+		WinApi.GetSystemTime(dt)
+		d.year := dt.wYear
+		d.month := dt.wMonth
+		d.day := dt.wDay
+		t.hour := dt.wHour
+		t.minute := dt.wMinute
+		t.second := dt.wSecond
+	end GetUTCTime
+	
+	proc (hook: DatesHook) GetUTCBias(var bias: integer)
+		var 
+			res: integer
+			info: WinApi.TIME_ZONE_INFORMATION
+	begin 
+		bias := 0
+		res := WinApi.GetTimeZoneInformation(info)
+		if res # -1 then
+			if bits(res) = WinApi.TIME_ZONE_ID_DAYLIGHT then
+				bias := info.Bias + info.DaylightBias 
+			else 
+				bias := info.Bias + info.StandardBias 
+			end  
+		end 
+	end GetUTCBias
+	
+	
+	// import type dialog
+	
+	proc ImpOk*
+	begin 
+		impType.done := true
+		StdCmds.CloseDialog
+	end ImpOk
+	
+	
+	// file dialogs
+	
+	// asks user for a file name (for file internalization)
+	proc (hook: DialogHook) GetIntSpec(
+		in defType: Files.Type; var loc: Files.Locator; var name: Files.Name
+		)
+		var 
+			res, i, j: integer
+			lfn: array 260 of char
+	begin 
+		// set filter
+		ftype := defType
+		i := 0
+		if ftype = "" then
+			ftype := "odc" 
+		end 
+		if ftype # "*" then
+			Append(filter, i, "*.")
+			Append(filter, i, ftype)
+			inc(i)
+			Append(filter, i, "*.")
+			Append(filter, i, ftype)
+			inc(i) 
+		else 
+			ftype := "" 
+		end 
+		Append(filter, i, "*.*")
+		inc(i)
+		Append(filter, i, "*.*")
+		inc(i)
+		filter[i] := 0x
+		// open dialog
+		fn.nFilterIndex := 1
+		fname := ""
+		if loc # nil then // set old dir
+			actualPath := loc(HostFiles.Locator).path
+			i := 0 
+		end 
+		fn.Flags := {2, 3, 11, 12, 19} // hideReadOnly, noChangeDir, pathMustExist, fileMustExist, new look
+		fn.hwndOwner := HostWindows.ActualWnd()
+		if WinDlg.GetOpenFileNameW(fn) # 0 then
+			i := 0
+			j := fn.nFileOffset
+			while fname[j] # 0x do 
+				name[i] := fname[j]
+				inc(i)
+				inc(j) 
+			end 
+			name[i] := 0x
+			fname[fn.nFileOffset - 1] := 0x
+			actualPath := fname
+			lfn := fname
+			loc := HostFiles.NewLocator(lfn) 
+		else 
+			loc := nil
+			res := WinDlg.CommDlgExtendedError()
+			assert(res = 0, 100) 
+		end 
+		res := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
+	end GetIntSpec
+	
+	// asks user for a file name (for file internalization)
+	proc GetIntSpec*(var loc: Files.Locator; var name: Files.Name; var conv: Converters.Converter)
+		var 
+			res, i, j, n: integer
+			t: Dialog.String
+			c: Converters.Converter
+			lfn: array 260 of char
+	begin 
+		// set filter
+		ftype := "odc"
+		if loc # nil then
+			defConv := conv
+			if conv # nil then
+				ftype := conv.fileType 
+			end  
+		end 
+		typeList[0] := Converters.list // document converter
+		Dialog.MapString("#Host:Document", t)
+		i := 0
+		Append(filter, i, t)
+		Append(filter, i, " (*.odc)")
+		inc(i)
+		Append(filter, i, "*.odc")
+		inc(i)
+		n := 1
+		fn.nFilterIndex := 1
+		c := Converters.list
+		while c # nil do 
+			if (c.imp # "") & (c.fileType # "odc") then
+				typeList[n] := c
+				MapConv(c.imp, t)
+				Append(filter, i, t)
+				Append(filter, i, " (*.")
+				Append(filter, i, c.fileType)
+				Append(filter, i, ")")
+				inc(i)
+				Append(filter, i, "*.")
+				Append(filter, i, c.fileType)
+				inc(i)
+				if defConv = c then
+					fn.nFilterIndex := n + 1 
+				end 
+				inc(n) 
+			end 
+			c := c.next 
+		end 
+		Dialog.MapString("#Host:AllFiles", t)
+		Append(filter, i, t)
+		Append(filter, i, " (*.*)")
+		inc(i)
+		Append(filter, i, "*.*")
+		inc(i)
+		filter[i] := 0x
+		if defConv = all then
+			fn.nFilterIndex := n + 1 
+		end 
+		// open dialog
+		if loc # nil then
+			fname := name 
+		else 
+			fname := "" 
+		end 
+		if loc # nil then // set old dir
+			actualPath := loc(HostFiles.Locator).path
+			i := 0
+			while actualPath[i] # 0x do 
+				inc(i) 
+			end 
+			actualPath[i] := "\"
+			actualPath[i + 1] := 0x 
+		end 
+		fn.Flags := {2, 3, 11, 12, 19} // hideReadOnly, noChangeDir, pathMustExist, fileMustExist, new look
+		fn.hwndOwner := HostWindows.ActualWnd()
+		if WinDlg.GetOpenFileNameW(fn) # 0 then
+			i := 0
+			j := fn.nFileOffset
+			while fname[j] # 0x do 
+				name[i] := fname[j]
+				inc(i)
+				inc(j) 
+			end 
+			name[i] := 0x
+			fname[fn.nFileOffset - 1] := 0x
+			actualPath := fname
+			lfn := fname
+			loc := HostFiles.NewLocator(lfn)
+			if fn.nFilterIndex <= n then
+				conv := typeList[fn.nFilterIndex - 1]
+				defConv := conv 
+			else  // ask for desired file type
+				impType.list.SetLen(n)
+				Dialog.MapString("#Host:Document", t)
+				impType.list.SetItem(0, t)
+				i := 1
+				while i < n do 
+					MapConv(typeList[i].imp, t)
+					impType.list.SetItem(i, t)
+					inc(i) 
+				end 
+				impType.list.index := 0
+				impType.done := false
+				Dialog.Call("StdCmds.OpenToolDialog('HostDialog.impType', '#Host:OpenFile')", " ", res)
+				WaitDialogClose
+				if impType.done then
+					conv := typeList[impType.list.index] 
+				else 
+					loc := nil
+					conv := nil 
+				end 
+				defConv := all 
+			end  
+		else 
+			loc := nil
+			conv := nil
+			res := WinDlg.CommDlgExtendedError()
+			assert(res = 0, 100) 
+		end 
+		res := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
+	end GetIntSpec
+	
+	proc (h: GetSpecHook) GetIntSpec(var loc: Files.Locator; var name: Files.Name
+		var conv: Converters.Converter)
+	begin 
+		GetIntSpec(loc, name, conv)
+	end GetIntSpec
+	
+	(* 06.11.02. not needed anymore. ##=>
+	   
+	   For earlier Windows versions, this procedure was supposed to transfer the file-type from
+	   the "Save as type" control to the "File name" control. But since Windows 98, it seems neither
+	   to work properly nor to be need anymore.##<= *)
+	proc HookProc(wnd: WinApi.HANDLE; msg, wParam, lParam: integer): integer
+		var 
+			i, j: integer
+			s: array 256 of char
+			t: array 8 of char
+			edit: WinApi.HANDLE
+	begin 
+		if (msg = WinApi.WM_COMMAND) & (lParam # 0) & (wParam = 10470h) then
+			i := WinApi.GetWindowTextW(lParam, s, len(s))
+			dec(i)
+			if s[i] = ")" then
+				dec(i) 
+			end 
+			j := i
+			while (j >= 0) & (s[j] # ".") do 
+				dec(j) 
+			end 
+			if (j > 0) & (s[j - 1] = "*") & (j >= i - 3) & (j < i) then
+				t[0] := s[j + 1]
+				t[1] := s[j + 2]
+				t[2] := s[j + 3]
+				t[i - j] := 0x
+				edit := WinApi.GetDlgItem(WinApi.GetParent(lParam), 480h)
+				if edit # 0 then
+					i := WinApi.GetWindowTextW(edit, s, len(s))
+					j := i - 1
+					while (j >= 0) & (s[j] # ".") do 
+						dec(j) 
+					end 
+					if j < 0 then
+						j := i 
+					end 
+					s[j] := "."
+					s[j + 1] := t[0]
+					s[j + 2] := t[1]
+					s[j + 3] := t[2]
+					s[j + 4] := 0x
+					i := WinApi.SetWindowTextW(edit, s) 
+				end  
+			end  
+		end 
+		return 0
+	end HookProc
+	
+	// ask user for a file name (for file externalization)
+	proc (hook: DialogHook) GetExtSpec(
+		in default: Files.Name; in defType: Files.Type; var loc: Files.Locator; var name: Files.Name
+		)
+		var 
+			res, i, j: integer
+			lfn: array 260 of char
+	begin 
+		// set filter
+		ftype := defType
+		i := 0
+		if ftype = "" then
+			ftype := "odc" 
+		end 
+		if ftype # "*" then
+			Append(filter, i, "*.")
+			Append(filter, i, ftype)
+			inc(i)
+			Append(filter, i, "*.")
+			Append(filter, i, ftype)
+			inc(i) 
+		else 
+			ftype := "" 
+		end 
+		Append(filter, i, "*.*")
+		inc(i)
+		Append(filter, i, "*.*")
+		inc(i)
+		filter[i] := 0x
+		// open dialog
+		fn.nFilterIndex := 1
+		fname := default
+		if loc # nil then // set old dir
+			actualPath := loc(HostFiles.Locator).path
+			i := 0 
+		end 
+		fn.Flags := {1, 2, 3, 11, 19} // overwritePrompt, hideReadOnly, noChangeDir, pathMustExist, new look
+		fn.hwndOwner := HostWindows.ActualWnd()
+		res := WinDlg.GetSaveFileNameW(fn)
+		if (res = 0) & (WinDlg.CommDlgExtendedError() = 3002h) then
+			fname := ""
+			res := WinDlg.GetSaveFileNameW(fn) 
+		end 
+		if res # 0 then
+			i := 0
+			j := fn.nFileOffset
+			while fname[j] # 0x do 
+				name[i] := fname[j]
+				inc(i)
+				inc(j) 
+			end 
+			name[i] := 0x
+			fname[fn.nFileOffset - 1] := 0x
+			actualPath := fname
+			lfn := fname
+			loc := HostFiles.NewLocator(lfn) 
+		else 
+			loc := nil
+			res := WinDlg.CommDlgExtendedError()
+			assert(res = 0, 100) 
+		end 
+		res := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
+	end GetExtSpec
+	
+	// ask user for a file name (for file externalization)
+	proc GetExtSpec*(
+		s: Stores.Store; var loc: Files.Locator; var name: Files.Name; var conv: Converters.Converter
+		)
+		var 
+			res, i, j, n: integer
+			t: array 64 of char
+			c: Converters.Converter
+			lfn: array 260 of char
+	begin 
+		// set filter
+		if conv # nil then
+			ftype := conv.fileType 
+		else 
+			ftype := "odc" 
+		end 
+		typeList[0] := Converters.list // document converter
+		c := Converters.list
+		fn.nFilterIndex := 1
+		Dialog.MapString("#Host:Document", t)
+		i := 0
+		Append(filter, i, t)
+		Append(filter, i, " (*.odc)")
+		inc(i)
+		Append(filter, i, "*.odc")
+		inc(i)
+		n := 1
+		while c # nil do 
+			if (c.exp # "") & ((c.storeType = "") or Services.Is(s, c.storeType)) & (c.fileType # "odc") then
+				typeList[n] := c
+				MapConv(c.exp, t)
+				Append(filter, i, t)
+				Append(filter, i, " (*.")
+				Append(filter, i, c.fileType)
+				Append(filter, i, ")")
+				inc(i)
+				Append(filter, i, "*.")
+				Append(filter, i, c.fileType)
+				inc(i)
+				if c = conv then
+					fn.nFilterIndex := n + 1 
+				end 
+				inc(n) 
+			end 
+			c := c.next 
+		end 
+		filter[i] := 0x
+		// open dialog
+		fname := name
+		i := 0
+		// overwritePrompt, hideReadOnly, noChangeDir, (* en hook, *) pathMustExist
+		fn.Flags := {1, 2, 3, (* 5 , *)11, 19}
+		while fname[i] # 0x do 
+			inc(i) 
+		end 
+		while (i > 0) & (fname[i] # ".") do 
+			dec(i) 
+		end 
+		if i > 0 then
+			if (conv # nil) & (conv.exp = "") then
+				ftype := "odc"
+				fname[i] := 0x 
+			else 
+				j := 0
+				while (ftype[j] # 0x) & (cap(fname[i + j + 1]) = cap(ftype[j])) do 
+					inc(j) 
+				end 
+				if fname[i + j + 1] = ftype[j] then
+					fname[i] := 0x 
+				end  
+			end  
+		end 
+		if loc # nil then // set old dir
+			actualPath := loc(HostFiles.Locator).path
+			i := 0
+			while actualPath[i] # 0x do 
+				inc(i) 
+			end 
+			actualPath[i] := "\"
+			actualPath[i + 1] := 0x 
+		end 
+		fn.hwndOwner := HostWindows.ActualWnd()
+		res := WinDlg.GetSaveFileNameW(fn)
+		if (res = 0) & (WinDlg.CommDlgExtendedError() = 3002h) then
+			fname := ""
+			res := WinDlg.GetSaveFileNameW(fn) 
+		end 
+		if res # 0 then
+			i := 0
+			j := fn.nFileOffset
+			while fname[j] # 0x do 
+				name[i] := fname[j]
+				inc(i)
+				inc(j) 
+			end 
+			name[i] := 0x
+			fname[fn.nFileOffset - 1] := 0x
+			actualPath := fname
+			lfn := fname
+			loc := HostFiles.NewLocator(lfn)
+			conv := typeList[fn.nFilterIndex - 1] 
+		else 
+			loc := nil
+			res := WinDlg.CommDlgExtendedError()
+			assert(res = 0, 100) 
+		end 
+		res := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
+	end GetExtSpec
+	
+	proc (h: GetSpecHook) GetExtSpec(
+		s: Stores.Store; var loc: Files.Locator; var name: Files.Name; var conv: Converters.Converter
+		)
+	begin 
+		GetExtSpec(s, loc, name, conv)
+	end GetExtSpec
+	
+	// printer dialogs
+	
+	// page setup previewer view
+	
+	proc (v: Preview) Restore(f: Views.Frame; l, t, r, b: integer)
+		const 
+			scale = 16
+			rmm = Ports.mm div scale
+			size_ = 460 * rmm
+		var 
+			u, w, h, x, y, uu: integer
+	begin 
+		u := f.unit
+		if Dialog.metricSystem then
+			uu := 10 * rmm 
+		else 
+			uu := Ports.inch div scale 
+		end 
+		w := setup.w div scale
+		h := setup.h div scale
+		x := (size_ - w) div 2
+		y := (size_ - h) div 2
+		l := short(entier(setup.left * uu))
+		t := short(entier(setup.top * uu))
+		r := short(entier(setup.right * uu))
+		b := short(entier(setup.bottom * uu))
+		f.DrawRect(x, y, x + w, y + h, Ports.fill, Ports.background)
+		f.DrawRect(x - u, y - u, x + w + u, y + h + u, 0, Ports.defaultColor)
+		if setup.decorate then
+			if t < 14 * rmm then
+				t := 14 * rmm 
+			end 
+			f.DrawRect(x + l, y + 10 * rmm, x + l + 20 * rmm, y + 10 * rmm + u, Ports.fill, Ports.defaultColor)
+			f.DrawRect(x + w - r - 8 * rmm, y + 10 * rmm, x + w - r, y + 10 * rmm + u, Ports.fill, Ports.defaultColor) 
+		end 
+		if (w - r > l) & (h - b > t) then
+			f.DrawRect(x + l, y + t, x + w - r, y + h - b, 0, Ports.defaultColor) 
+		end 
+	end Restore
+	
+	proc (v: Preview) HandleViewMsg(f: Views.Frame; var msg: Views.Message)
+	begin 
+		with msg: UpdateMsg do 
+			Views.Update(v, Views.keepFrames) 
+		else  
+		end 
+	end HandleViewMsg
+	
+	proc Deposit*
+		var 
+			v: Preview
+	begin 
+		new(v)
+		Views.Deposit(v)
+	end Deposit
+	
+	// page setup dialog
+	
+	proc SetupNotify*(op, from, to_: integer)
+		var 
+			msg: UpdateMsg
+			t: integer
+	begin 
+		if op = Dialog.changed then
+			if setup.landscape # (setup.w > setup.h) then
+				t := setup.w
+				setup.w := setup.h
+				setup.h := t 
+			end 
+			Views.Omnicast(msg)
+			Dialog.Update(setup) 
+		end 
+	end SetupNotify
+	
+	proc SetupOk*
+		var 
+			win: Windows.Window
+			w, h, l, t, r, b, uu: integer
+	begin 
+		win := Windows.dir.Focus(Controllers.targetPath)
+		if win # nil then
+			if Dialog.metricSystem then
+				uu := 10 * Ports.mm 
+			else 
+				uu := Ports.inch 
+			end 
+			w := setup.w
+			h := setup.h
+			l := short(entier(setup.left * uu))
+			t := short(entier(setup.top * uu))
+			r := w - short(entier(setup.right * uu))
+			b := h - short(entier(setup.bottom * uu))
+			if (0 <= l) & (l < r) & (r <= w) & (0 <= t) & (t < b) & (b <= h) then
+				win.doc.SetPage(w, h, l, t, r, b, setup.decorate)
+				StdCmds.CloseDialog 
+			else 
+				Dialog.Beep 
+			end  
+		end 
+	end SetupOk
+	
+	proc InitPageSetup*
+		var 
+			win: Windows.Window
+			w, h, pw, ph, l, t, r, b, uu: integer
+			p: Printers.Printer
+	begin 
+		win := Windows.dir.Focus(Controllers.targetPath)
+		if win # nil then
+			if Dialog.metricSystem then
+				uu := Ports.mm div 10 
+			else 
+				uu := Ports.inch div 100 
+			end 
+			win.doc.PollPage(w, h, l, t, r, b, setup.decorate)
+			p := Printers.dir.Current()
+			if p # nil then
+				HostPrinters.GetPage(p, pw, ph)
+				if (pw > ph) = (w > h) then
+					w := pw
+					h := ph 
+				else 
+					w := ph
+					h := pw 
+				end  
+			end 
+			r := w - r
+			b := h - b
+			setup.left := l div uu / 100
+			setup.right := r div uu / 100
+			setup.top := t div uu / 100
+			setup.bottom := b div uu / 100
+			setup.w := w
+			setup.h := h
+			setup.hs := setup.right + setup.left
+			setup.vs := setup.bottom + setup.top
+			setup.landscape := w > h 
+		end 
+	end InitPageSetup
+	
+	
+	proc PrintDialog*(
+		hasSelection: boolean; var from, to_, copies: integer; var selection: boolean
+		)
+		var 
+			res: integer
+	begin 
+		prt.Flags := {18(* , 20 *)} // use dev mode copies, hide print to file
+		if ~hasSelection then // no selection
+			incl(prt.Flags, 2) 
+		end 
+		prt.nCopies := 1
+		prt.hwndOwner := HostWindows.ActualWnd()
+		prt.nFromPage := 1
+		prt.nToPage := 1
+		res := WinDlg.PrintDlgW(prt)
+		if (res = 0) & (WinDlg.CommDlgExtendedError() = 4106) then
+			prt.hDevMode := 0
+			res := WinDlg.PrintDlgW(prt) 
+		end 
+		if (res = 0) & (WinDlg.CommDlgExtendedError() = 4108) then
+			prt.hDevMode := 0
+			prt.hDevNames := 0
+			res := WinDlg.PrintDlgW(prt) 
+		end 
+		HostPrinters.SetCurrent(prt.hDevNames, prt.hDevMode)
+		if res # 0 then
+			if 0 in prt.Flags then // print selection
+				selection := true
+				from := 0
+				to_ := 0 
+			elsif 1 in prt.Flags then  // print pages
+				selection := false
+				from := prt.nFromPage - 1
+				to_ := prt.nToPage - 1 
+			else  // print all
+				selection := false
+				from := 0
+				to_ := 32767 
+			end 
+			copies := prt.nCopies 
+		else 
+			copies := 0
+			res := WinDlg.CommDlgExtendedError()
+			assert(res = 0, 100) 
+		end 
+	end PrintDialog
+	
+	proc PrintSetup*
+		var 
+			res: integer
+			pt: Printers.Printer
+	begin 
+		pt := Printers.dir.Current()
+		if pt # nil then
+			pt.SetOrientation(setup.landscape)
+			HostPrinters.GetCurrent(prt.hDevNames, prt.hDevMode) 
+		end 
+		prt.Flags := {6} // PrintSetup
+		prt.hwndOwner := HostWindows.ActualWnd()
+		res := WinDlg.PrintDlgW(prt)
+		if (res = 0) & (WinDlg.CommDlgExtendedError() = 4108) then
+			prt.hDevMode := 0
+			prt.hDevNames := 0
+			res := WinDlg.PrintDlgW(prt) 
+		end 
+		HostPrinters.SetCurrent(prt.hDevNames, prt.hDevMode)
+		pt := Printers.dir.Current()
+		if pt # nil then
+			HostPrinters.GetPage(pt, setup.w, setup.h)
+			setup.landscape := setup.w > setup.h 
+		end 
+		SetupNotify(Dialog.changed, 0, 0)
+	end PrintSetup
+	
+	
+	proc CloseDialog*(w: Windows.Window; quit: boolean; var res: integer)
+		var 
+			r: integer
+			title: Views.Title
+			text: array 256 of char
+	begin 
+		w.GetTitle(title)
+		Dialog.MapParamString(dirtyString, title, 0dx, 0dx, text)
+		r := WinApi.MessageBoxW(w(HostWindows.Window).wnd, text, Dialog.appName, {0, 1, 5})
+		if r = 6 then
+			res := save 
+		elsif r = 2 then 
+			res := cancel 
+		else 
+			res := 0 
+		end 
+		r := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
+	end CloseDialog
+	
+	proc (hook: DialogHook) GetColor(in_: Ports.Color; var out: Ports.Color; var set_: boolean)
+		var 
+			res: integer
+	begin 
+		col.rgbResult := in_
+		if col.rgbResult = Ports.defaultColor then
+			col.rgbResult := HostPorts.textCol 
+		end 
+		col.hwndOwner := HostWindows.ActualWnd()
+		set_ := WinDlg.ChooseColorW(col) # 0
+		out := col.rgbResult
+		if ~set_ then
+			res := WinDlg.CommDlgExtendedError()
+			assert(res = 0, 100) 
+		end 
+		res := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
+	end GetColor
+	
+	// open color dialog and set selection to choosen color
+	proc ColorDialog*
+		var 
+			set_: boolean
+			p: Properties.StdProp
+			col: Ports.Color
+	begin 
+		Properties.CollectStdProp(p)
+		if ~(Properties.color in p.known) then
+			p.color.val_ := Ports.black 
+		end 
+		// ColorDialog0(p.color.val, col, set);
+		dialogHook.GetColor(p.color.val_, col, set_)
+		if set_ then
+			StdCmds.Color(col) 
+		end 
+	end ColorDialog
+	
+	proc FontDialog0(full: boolean; var typeface: array of char; var size_: integer
+		var color: Ports.Color; var weight: integer; var style: set; var set_: boolean
+		)
+		var 
+			res: integer
+	begin 
+		logFont.lfHeight := -((size_ + HostWindows.unit div 2) div HostWindows.unit)
+		logFont.lfWeight := weight
+		if Fonts.italic in style then
+			logFont.lfItalic := 1x 
+		else 
+			logFont.lfItalic := 0x 
+		end 
+		if Fonts.underline in style then
+			logFont.lfUnderline := 1x 
+		else 
+			logFont.lfUnderline := 0x 
+		end 
+		if Fonts.strikeout in style then
+			logFont.lfStrikeOut := 1x 
+		else 
+			logFont.lfStrikeOut := 0x 
+		end 
+		logFont.lfFaceName := typeface
+		font.hwndOwner := HostWindows.ActualWnd()
+		if full then
+			font.Flags := {0, 6, 8, 11, 16}  // screenFonts, initToLogFont, effects, noVectorFonts, forceFontExist
+		else 
+			font.Flags := {0, 6, 11, 20, 21}  // screenFonts, initToLogFont, noVectorFonts, no style, no size
+		end 
+		if color = Ports.defaultColor then
+			font.rgbColors := HostPorts.textCol 
+		else 
+			font.rgbColors := color 
+		end 
+		set_ := WinDlg.ChooseFontW(font) # 0
+		if set_ then
+			typeface := logFont.lfFaceName
+			size_ := font.iPointSize * Ports.point div 10
+			assert((size_ + HostWindows.unit div 2) div HostWindows.unit = abs(logFont.lfHeight), 120)
+			weight := logFont.lfWeight
+			style := {}
+			if logFont.lfItalic # 0x then
+				incl(style, Fonts.italic) 
+			end 
+			if logFont.lfUnderline # 0x then
+				incl(style, Fonts.underline) 
+			end 
+			if logFont.lfStrikeOut # 0x then
+				incl(style, Fonts.strikeout) 
+			end 
+			if font.rgbColors = HostPorts.textCol then
+				color := Ports.defaultColor 
+			else 
+				color := font.rgbColors 
+			end  
+		else 
+			res := WinDlg.CommDlgExtendedError()
+			assert(res = 0, 100) 
+		end 
+		res := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
+	end FontDialog0
+	
+	// open font dialog and set selection to choosen attributes
+	proc FontDialog*
+		var 
+			set_: boolean
+			p, p0: Properties.StdProp
+	begin 
+		Properties.CollectStdProp(p0)
+		if Properties.typeface in p0.known then
+			new(p)
+			p.typeface := p0.typeface
+			p.size_ := p0.size_
+			p.color.val_ := p0.color.val_
+			p.weight := p0.weight
+			p.style := p0.style
+			FontDialog0(true, p.typeface, p.size_, p.color.val_, p.weight, p.style.val_, set_)
+			if set_ then
+				p.valid := {Properties.typeface, Properties.style, Properties.weight, Properties.size_, Properties.color}
+				p.style.mask := {Fonts.italic, Fonts.underline, Fonts.strikeout}
+				Properties.EmitProp(nil, p) 
+			end  
+		end 
+	end FontDialog
+	
+	// open font dialog and set selection to choosen typeface
+	proc TypefaceDialog*
+		var 
+			set_: boolean
+			p, p0: Properties.StdProp
+			s: integer
+			c: Ports.Color
+			w: integer
+			st: set
+	begin 
+		Properties.CollectStdProp(p0)
+		if Properties.typeface in p0.known then
+			new(p)
+			p.typeface := p0.typeface
+			FontDialog0(false, p.typeface, s, c, w, st, set_)
+			if set_ then
+				p.valid := {Properties.typeface}
+				Properties.EmitProp(nil, p) 
+			end  
+		end 
+	end TypefaceDialog
+	
+	
+	// preferences dialog
+	
+	proc DefFont*
+		var 
+			tf: Fonts.Typeface
+			size_: integer
+			color: Ports.Color
+			w: integer
+			style: set
+			set_: boolean
+	begin 
+		tf := prefFName
+		size_ := prefFSize
+		w := Fonts.normal
+		style := {}
+		color := Ports.defaultColor
+		FontDialog0(true, tf, size_, color, w, style, set_)
+		if set_ then
+			prefFName := tf
+			prefFSize := size_ 
+		end 
+	end DefFont
+	
+	proc DlgFont*
+		var 
+			tf: Fonts.Typeface
+			size_: integer
+			color: Ports.Color
+			w: integer
+			style: set
+			set_: boolean
+	begin 
+		tf := prefDName
+		size_ := prefDSize
+		w := prefDWght
+		style := prefDStyle
+		color := Ports.defaultColor
+		FontDialog0(true, tf, size_, color, w, style, set_)
+		if set_ then
+			prefDName := tf
+			prefDSize := size_
+			prefDStyle := style
+			prefDWght := w 
+		end 
+	end DlgFont
+	
+	proc PrefOk*
+		var 
+			res: integer
+			rect: WinApi.RECT
+	begin 
+		HostFonts.SetDefaultFont(prefFName, prefFSize)
+		HostFonts.SetDialogFont(prefDName, prefDSize, prefDStyle, prefDWght)
+		HostFonts.SetTTMetric(prefs.useTTMetric)
+		HostWindows.SetVisualScroll(prefs.visualScroll)
+		if prefs.statusbar = 1 then
+			Dialog.showsStatus := true
+			HostWindows.memInStatus := false 
+		elsif prefs.statusbar = 2 then 
+			Dialog.showsStatus := true
+			HostWindows.memInStatus := true 
+		else 
+			Dialog.showsStatus := false 
+		end 
+		Dialog.Call("StdCmds.UpdateAll", "", res)
+		Dialog.Call("StdCmds.RecalcAllSizes", "", res)
+		Dialog.Call("TextCmds.UpdateDefaultAttr", "", res)
+		HostCFrames.SetDefFonts
+		HostRegistry.WriteBool("noStatus", ~Dialog.showsStatus)
+		HostRegistry.WriteBool("memStatus", HostWindows.memInStatus)
+		res := WinApi.GetClientRect(HostWindows.main, rect)
+		HostWindows.ResizeMainWindow(0, rect.right, rect.bottom)
+		Dialog.thickCaret := prefs.thickCaret
+		Dialog.caretPeriod := prefs.caretPeriod
+		Dialog.beep := prefs.beep
+		Dialog.serverMode := prefs.serverMode
+		HostRegistry.WriteBool("thickCaret", Dialog.thickCaret)
+		HostRegistry.WriteInt("caretPeriod", Dialog.caretPeriod)
+		HostRegistry.WriteBool("beep", Dialog.beep)
+		HostRegistry.WriteBool("serverMode", Dialog.serverMode)
+		prefs.language.item[2] := 0x
+		Dialog.SetLanguage(prefs.language.item, Dialog.persistent)
+	end PrefOk
+	
+	proc InitLanguage
+		var 
+			loc: Files.Locator
+			li: Files.LocInfo
+			lang: Dialog.Language
+			n: integer
+	begin 
+		prefs.language.SetItem(0, defaultLanguage)
+		n := 1
+		loc := Files.dir.This("System/Rsrc/")
+		li := Files.dir.LocList(loc)
+		while li # nil do 
+			if len(li.name) = 2 then
+				Strings.ToLower(li.name, lang)
+				prefs.language.SetItem(n, lang)
+				inc(n) 
+			end 
+			li := li.next 
+		end 
+		prefs.language.SetLen(n)
+		prefs.language.item := Dialog.language
+		if prefs.language.item = '' then
+			prefs.language.item := defaultLanguage 
+		end 
+	end InitLanguage
+	
+	proc InitPrefDialog*
+	begin 
+		prefFName := HostFonts.defFont.alias
+		prefFSize := HostFonts.defFont.size_
+		prefDName := HostFonts.dlgFont.typeface
+		prefDSize := HostFonts.dlgFont.size_
+		prefDStyle := HostFonts.dlgFont.style
+		prefDWght := HostFonts.dlgFont.weight
+		prefs.useTTMetric := HostFonts.useTTMetric
+		prefs.visualScroll := HostWindows.visualScroll
+		if ~Dialog.showsStatus then
+			prefs.statusbar := 0 
+		elsif HostWindows.memInStatus then 
+			prefs.statusbar := 2 
+		else 
+			prefs.statusbar := 1 
+		end 
+		prefs.thickCaret := Dialog.thickCaret
+		prefs.caretPeriod := Dialog.caretPeriod
+		prefs.beep := Dialog.beep
+		prefs.serverMode := Dialog.serverMode
+		InitLanguage
+	end InitPrefDialog
+	
+	
+	// date / time
+	
+	proc (hook: DatesHook) DateToString(d: Dates.Date; format: integer; var str: array of char)
+		var 
+			res, pos, i: integer
+			time: WinApi.SYSTEMTIME
+			fmt: array 64 of char
+	begin 
+		time.wYear := short(d.year)
+		time.wMonth := short(d.month)
+		time.wDay := short(d.day)
+		if format = Dates.short_ then
+			res := WinApi.GetDateFormatW(
+				HostRegistry.localeId, WinApi.DATE_SHORTDATE, time, nil, str, len(str)) 
+		elsif format = Dates.long_ then 
+			res := WinApi.GetDateFormatW(HostRegistry.localeId, WinApi.DATE_LONGDATE, time, nil, str, len(str)) 
+		else 
+			res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_SLONGDATE, fmt, len(fmt))
+			if format # Dates.abbreviated then // remove weekday
+				Strings.Find(fmt, "dddd", 0, pos)
+				i := pos + 4
+				if pos < 0 then
+					Strings.Find(fmt, "ddd", 0, pos)
+					i := pos + 3 
+				end 
+				if pos >= 0 then
+					while (fmt[i] # 0x) & (cap(fmt[i]) < "A") or (cap(fmt[i]) > "Z") do 
+						inc(i) 
+					end 
+					Strings.Replace(fmt, pos, i - pos, "") 
+				end  
+			end 
+			if format # Dates.plainLong then // abbreviated
+				Strings.Find(fmt, "dddd", 0, pos)
+				if pos >= 0 then
+					Strings.Replace(fmt, pos, 4, "ddd") 
+				end 
+				Strings.Find(fmt, "MMMM", 0, pos)
+				if pos >= 0 then
+					Strings.Replace(fmt, pos, 4, "MMM") 
+				end  
+			end 
+			res := WinApi.GetDateFormatW(HostRegistry.localeId, {}, time, fmt, str, len(str)) 
+		end 
+		if res = 0 then
+			str := "?" 
+		end 
+	end DateToString
+	
+	proc (hook: DatesHook) TimeToString(t: Dates.Time; var str: array of char)
+		var 
+			res: integer
+			time: WinApi.SYSTEMTIME
+	begin 
+		time.wHour := short(t.hour)
+		time.wMinute := short(t.minute)
+		time.wSecond := short(t.second)
+		time.wMilliseconds := 0
+		res := WinApi.GetTimeFormatW(HostRegistry.localeId, {}, time, nil, str, len(str))
+		if res = 0 then
+			str := "?" 
+		end 
+	end TimeToString
+	
+	proc (hook: LanguageHook) SetLanguage(
+		lang: Dialog.Language; persistent: boolean; var ok: boolean
+		)
+	begin 
+		ok := (lang = "") or (len(lang) = 2)
+		if ok & persistent then
+			HostRegistry.WriteString("language", lang) 
+		end 
+	end SetLanguage
+	
+	proc (hook: LanguageHook) GetPersistentLanguage(var lang: Dialog.Language)
+		var 
+			res: integer
+			s: array 32 of char
+	begin 
+		HostRegistry.ReadString("language", s, res)
+		if res = 0 then
+			assert((s = "") or (len(s) = 2), 100)
+			lang := s 
+		else 
+			lang := "" 
+		end 
+	end GetPersistentLanguage
+	
+	proc (hook: WineHook) IsWine*(): boolean
+		var 
+			h: WinApi.HMODULE
+			adr: WinApi.FARPROC
+			res: integer
+	begin 
+		if hook.isWine then
+			return true 
+		else 
+			// http://habrahabr.ru/blogs/development/76131/
+			h := WinApi.LoadLibraryW("ntdll.dll")
+			if h # WinApi.NULL then
+				adr := WinApi.GetProcAddress(h, "wine_get_version")
+				res := WinApi.FreeLibrary(h)
+				if adr # nil then
+					hook.isWine := true
+					return true 
+				end  
+			end 
+			Dialog.SetWineHook(nil) // ~Dialog.IsWine()
+			return false 
+		end 
+	end IsWine
+	
+	// thread safe; error numbers as returned from WinApi.GetLastError()
+	proc FormatErrorMsg*(error: integer; in arg1, arg2, arg3: array of char
+		var errMsg: array of char)
+		const 
+			format = 
+			WinApi.FORMAT_MESSAGE_FROM_SYSTEM + WinApi.FORMAT_MESSAGE_ARGUMENT_ARRAY
+		var 
+			args: array 4 of WinApi.PtrWSTR
+			res: integer
+	begin 
+		args[0] := arg1
+		args[1] := arg2
+		args[2] := arg3
+		args[3] := nil
+		res := WinApi.FormatMessageW(format, 0, error, 0, errMsg, len(errMsg), args[0])
+	end FormatErrorMsg
+	
+	// thread safe; error numbers as returned from WinApi.GetLastError
+	proc ShowErrorDialog*(error: integer; in arg1, arg2, arg3, msgPrefix: array of char)
+		var 
+			errMsg: CallName
+			res: integer
+	begin 
+		FormatErrorMsg(error, arg1, arg2, arg3, errMsg)
+		errMsg := msgPrefix + errMsg
+		res := WinApi.MessageBoxW(Kernel.mainWnd, errMsg, Dialog.appName, WinApi.MB_ICONERROR)
+	end ShowErrorDialog
+	
+	proc Start*(name: array of char) // deprecated; better use Dialog.RunExternal
+		var 
+			info: WinApi.STARTUPINFOW
+			process: WinApi.PROCESS_INFORMATION
+	begin 
+		// res := WinApi.WinExec(name, WinApi.SW_NORMAL)
+		WinApi.GetStartupInfoW(info)
+		info.wShowWindow := WinApi.SW_NORMAL
+		if WinApi.CreateProcessW(nil, name, nil, nil, WinApi.FALSE_, {}, 0, nil, info, process) = 0 then
+			ShowErrorDialog(WinApi.GetLastError(), name, "%2", "%3", runExtErr + name + 0dx + 0dx) 
+		end 
+	end Start
+	
+	proc OpenExternal(lpParameter: integer): integer // runs in a thread
+		var 
+			fileNamePtr: CallNamePtr
+			fileName, fileName2: CallName
+			sxinfo: WinApi.SHELLEXECUTEINFOW
+			error: integer
+	begin 
+		fileNamePtr := SYSTEM.VAL(CallNamePtr, lpParameter)
+		fileName := fileNamePtr
+		callNameTaken := true
+		sxinfo.cbSize := size(WinApi.SHELLEXECUTEINFOW)
+		sxinfo.fMask := {10} // SEE_MASK_DEFAULT + SEE_MASK_FLAG_NO_UI
+		sxinfo.hwnd := 0
+		sxinfo.lpVerb := "open"
+		sxinfo.lpFile := fileName
+		sxinfo.lpParameters := nil
+		sxinfo.lpDirectory := nil
+		sxinfo.nShow := WinApi.SW_SHOW
+		if WinApi.ShellExecuteExW(sxinfo) = 1 then
+			return 0 
+		end 
+		error := WinApi.GetLastError()
+		if isWine & (error = 0) & (sxinfo.hInstApp <= 32) then // work around a bug in wine: error can be 0
+			error := WinApi.ERROR_NO_ASSOCIATION 
+		end 
+		if isWine & (error = WinApi.ERROR_NO_ASSOCIATION) then // retry with Linux desktop associations
+			fileName2 := "winebrowser " + fileName
+			sxinfo.lpFile := fileName2
+			if WinApi.ShellExecuteExW(sxinfo) = 1 then
+				return 0 
+			end  
+		// use original (error, fileName) for error reporting
+		end 
+		ShowErrorDialog(error, fileName, "%2", "%3", openExtErr + fileName + 0dx + 0dx)
+		return 0
+	end OpenExternal
+	
+	proc (h: ExtCallHook) OpenExternal*(in fileName: array of char)
+		var 
+			t: WinApi.HANDLE
+			res: WinApi.BOOL
+	begin 
+		callNameTaken := false
+		isWine := Dialog.IsWine()
+		t := WinApi.CreateThread(nil, 1024 * 64, OpenExternal, SYSTEM.ADR(fileName), {}, nil)
+		if t # 0 then
+			while ~callNameTaken do 
+				WinApi.Sleep(1) 
+			end 
+			res := WinApi.CloseHandle(t) 
+		end 
+	end OpenExternal
+	
+	proc RunExternal(lpParameter: integer): integer // runs in a thread
+		var 
+			exeNamePtr: CallNamePtr
+			exeName: CallName
+			opts: set
+			pos: integer
+			info: WinApi.STARTUPINFOW
+			process: WinApi.PROCESS_INFORMATION
+			cmd: array 12 of char
+	begin 
+		exeNamePtr := SYSTEM.VAL(CallNamePtr, lpParameter)
+		exeName := exeNamePtr
+		WinApi.GetStartupInfoW(info)
+		if hideExtRunWindow then
+			info.wShowWindow := WinApi.SW_HIDE
+			opts := WinApi.CREATE_NO_WINDOW 
+		else 
+			info.wShowWindow := WinApi.SW_NORMAL
+			opts := {} 
+		end 
+		callNameTaken := true
+		if isWine then // work around a bug in wine 'cmd': requires a console to be already open
+			while exeName[0] = " " do  // trim left
+				Strings.Extract(exeName, 1, len(exeName) - 1, exeName) 
+			end 
+			Strings.Find(exeName, " ", 0, pos)
+			if pos > 0 then
+				Strings.Extract(exeName, 0, min(pos, 8), cmd) 
+			else 
+				Strings.Extract(exeName, 0, 8, cmd) 
+			end 
+			Strings.ToUpper(cmd, cmd)
+			if (cmd = "CMD") or (cmd = "CMD.EXE") then
+				exeName := "wineconsole " + exeName 
+			end  
+		end 
+		if WinApi.CreateProcessW(nil, exeName, nil, nil, WinApi.FALSE_, opts, 0, nil, info, process) = 0 then
+			ShowErrorDialog(WinApi.GetLastError(), exeName, "%2", "%3", runExtErr + exeName + 0dx + 0dx) 
+		end 
+		return 0
+	end RunExternal
+	
+	proc (h: ExtCallHook) RunExternal*(in exeName: array of char)
+		var 
+			t: WinApi.HANDLE
+			res: WinApi.BOOL
+	begin 
+		callNameTaken := false
+		isWine := Dialog.IsWine()
+		t := WinApi.CreateThread(nil, 1024 * 64, RunExternal, SYSTEM.ADR(exeName), {}, nil)
+		if t # 0 then
+			while ~callNameTaken do 
+				WinApi.Sleep(1) 
+			end 
+			hideExtRunWindow := false
+			res := WinApi.CloseHandle(t) 
+		end 
+	end RunExternal
+	
+	
+	// initialization
+	
+	proc InitDialogs
+		var 
+			i: integer
+	begin 
+		// file dialog data structure
+		fn.lStructSize := size(WinDlg.OPENFILENAMEW)
+		fn.hInstance := 0
+		fn.lpstrCustomFilter := nil
+		fn.lpstrFilter := filter
+		fn.nFilterIndex := 1
+		i := WinApi.GetCurrentDirectoryW(len(actualPath), actualPath)
+		fn.lpstrInitialDir := actualPath
+		fn.lpstrTitle := nil
+		fn.lpstrFileTitle := nil
+		fn.lpstrFile := fname
+		fn.nMaxFile := len(fname)
+		fn.lpstrDefExt := ftype
+		ftype := "$"
+		fn.lpfnHook := HookProc
+		// print dialog data structure
+		prt.lStructSize := size(WinDlg.PRINTDLGW)
+		prt.hDevMode := 0
+		prt.hDevNames := 0
+		prt.nMinPage := 1
+		prt.nMaxPage := -1
+		// font dialog data structure
+		font.lStructSize := size(WinDlg.CHOOSEFONTW)
+		font.hDC := 0
+		font.lpLogFont := SYSTEM.VAL(WinApi.PtrLOGFONTW, SYSTEM.ADR(logFont))
+		font.rgbColors := 0
+		font.hInstance := 0
+		font.lpszStyle := nil
+		font.nFontType := 2000h // screenFontType
+		logFont.lfWidth := 0
+		logFont.lfEscapement := 0
+		logFont.lfOrientation := 0
+		logFont.lfCharSet := 0x
+		logFont.lfOutPrecision := 0x
+		logFont.lfClipPrecision := 0x
+		logFont.lfQuality := 0x
+		logFont.lfPitchAndFamily := 0x
+		// color dialog data structure
+		col.lStructSize := size(WinDlg.CHOOSECOLORW)
+		col.lpCustColors := customColors
+		col.Flags := {0} // rgbInit
+		i := 0
+		while i < 16 do 
+			customColors[i] := 0ffffffh
+			inc(i) 
+		end 
+	end InitDialogs
+	
+	proc Init*
+		var 
+			n, v, res: integer
+			b: boolean
+			getSpecHook: GetSpecHook
+			datesHook: DatesHook
+			showHook: ShowHook
+			languageHook: LanguageHook
+			wineHook: WineHook
+			extCallHook: ExtCallHook
+	begin 
+		new(all)
+		v := WinApi.GetVersion()
+		osVersion := v mod 256 * 100 + v div 256 mod 256
+		if v >= 0 then
+			if osVersion < 400 then
+				Dialog.platform := Dialog.windowsNT3 
+			elsif osVersion < 500 then 
+				Dialog.platform := Dialog.windowsNT4 
+			elsif osVersion = 500 then 
+				Dialog.platform := Dialog.windows2000 
+			elsif osVersion < 600 then 
+				Dialog.platform := Dialog.windowsXP 
+			elsif osVersion = 600 then 
+				Dialog.platform := Dialog.windowsVista 
+			elsif osVersion = 601 then 
+				Dialog.platform := Dialog.windows7 
+			else 
+				Dialog.platform := Dialog.windows8 
+			end  
+		else 
+			Dialog.platform := Dialog.windows98 
+		end 
+		
+		HostRegistry.ReadBool("noStatus", b, res)
+		Dialog.showsStatus := (res # 0) or ~b
+		HostRegistry.ReadBool("memStatus", b, res)
+		HostWindows.memInStatus := (res = 0) & b
+		HostRegistry.ReadBool("thickCaret", b, res)
+		if res = 0 then
+			Dialog.thickCaret := b 
+		end 
+		HostRegistry.ReadInt("caretPeriod", n, res)
+		if res = 0 then
+			Dialog.caretPeriod := n 
+		end 
+		HostRegistry.ReadBool("beep", b, res)
+		if res = 0 then
+			Dialog.beep := b 
+		end 
+		HostRegistry.ReadBool("serverMode", b, res)
+		if res = 0 then
+			Dialog.serverMode := b 
+		end 
+		
+		new(wineHook)
+		Dialog.SetWineHook(wineHook)
+		new(showHook)
+		Dialog.SetShowHook(showHook)
+		new(dialogHook)
+		Dialog.SetGetHook(dialogHook)
+		new(getSpecHook)
+		Views.SetGetSpecHook(getSpecHook)
+		new(datesHook)
+		Dates.SetHook(datesHook)
+		new(languageHook)
+		Dialog.SetLanguageHook(languageHook)
+		new(extCallHook)
+		Dialog.SetExtCallHook(extCallHook)
+		
+		HostFiles.MapParamString := Dialog.MapParamString
+		Dialog.ResetLanguage
+		Dialog.MapString("#Host:openExtErr", openExtErr)
+		Dialog.MapString("#Host:runExtErr", runExtErr)
+		hideExtRunWindow := false
+	end Init
+
+begin
+	Init
+	InitDialogs
+end HostDialog
