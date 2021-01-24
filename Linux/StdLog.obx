@@ -1,0 +1,460 @@
+module StdLog
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20160408, center #111, code cleanups
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		Log, Fonts, Ports, Stores, Models, Views, Dialog, HostDialog, StdDialog, 
+		TextModels, TextMappers, TextRulers, TextViews, TextControllers
+	
+	const 
+		// IntForm base
+		charCode* = TextMappers.charCode
+		decimal* = TextMappers.decimal
+		hexadecimal* = TextMappers.hexadecimal
+		
+		// IntForm showBase
+		hideBase* = TextMappers.hideBase
+		showBase* = TextMappers.showBase
+		
+		mm = Ports.mm
+	
+	type 
+		ShowHook = pointer to record (Dialog.ShowHook) end 
+		LogHook = pointer to record (Log.Hook) end 
+	
+	var 
+		logAlerts: boolean
+		
+		text-, buf-: TextModels.Model
+		defruler-: TextRulers.Ruler
+		dir-: TextViews.Directory
+		
+		out, subOut: TextMappers.Formatter
+		
+		showHook: ShowHook
+	
+	
+	proc Flush
+	begin 
+		text.Append(buf)
+		Views.RestoreDomain(text.Domain())
+	end Flush
+	
+	proc Char*(ch: char) 
+	begin 
+		out.WriteChar(ch)
+		Flush
+	end Char
+	
+	proc Int*(i: longint) 
+	begin 
+		out.WriteChar(" ")
+		out.WriteInt(i)
+		Flush
+	end Int
+	
+	proc Real*(x: real) 
+	begin 
+		out.WriteChar(" ")
+		out.WriteReal(x)
+		Flush
+	end Real
+	
+	proc String*(in str: array of char) 
+	begin 
+		out.WriteString(str)
+		Flush
+	end String
+	
+	proc Bool*(x: boolean) 
+	begin 
+		out.WriteChar(" ")
+		out.WriteBool(x)
+		Flush
+	end Bool
+	
+	proc Set*(x: set) 
+	begin 
+		out.WriteChar(" ")
+		out.WriteSet(x)
+		Flush
+	end Set
+	
+	proc IntForm*(x: longint; base, minWidth: integer; fillCh: char; showBase: boolean) 
+	begin 
+		out.WriteIntForm(x, base, minWidth, fillCh, showBase)
+		Flush
+	end IntForm
+	
+	proc RealForm*(x: real; precision, minW, expW: integer; fillCh: char) 
+	begin 
+		out.WriteRealForm(x, precision, minW, expW, fillCh)
+		Flush
+	end RealForm
+	
+	proc Tab*
+	begin 
+		out.WriteTab
+		Flush
+	end Tab
+	
+	proc Ln*
+	begin 
+		out.WriteLn
+		Flush
+		TextViews.ShowRange(text, text.Length(), text.Length(), TextViews.any)
+	end Ln
+	
+	proc Para*
+	begin 
+		out.WritePara
+		Flush
+		TextViews.ShowRange(text, text.Length(), text.Length(), TextViews.any)
+	end Para
+	
+	proc View*(v: Views.View) 
+	begin 
+		out.WriteView(v)
+		Flush
+	end View
+	
+	proc ViewForm*(v: Views.View; w, h: integer) 
+	begin 
+		out.WriteViewForm(v, w, h)
+		Flush
+	end ViewForm
+	
+	proc ParamMsg*(in msg, p0, p1, p2: array of char) 
+	begin 
+		out.WriteParamMsg(msg, p0, p1, p2)
+		Flush
+	end ParamMsg
+	
+	proc Msg*(in msg: array of char) 
+	begin 
+		out.WriteMsg(msg)
+		Flush
+	end Msg
+	
+	proc (hook: ShowHook) ShowParamMsg(in s, p0, p1, p2: array of char) 
+	begin 
+		if Dialog.showsStatus then
+			Dialog.ShowParamStatus(s, p0, p1, p2)
+			if logAlerts then
+				ParamMsg(s, p0, p1, p2)
+				Ln 
+			end  
+		else 
+			if logAlerts then
+				Open
+				ParamMsg(s, p0, p1, p2)
+				Ln 
+			else 
+				HostDialog.ShowParamMsg(s, p0, p1, p2) 
+			end  
+		end 
+	end ShowParamMsg
+	
+	proc (hook: ShowHook) ShowParamStatus(in s, p0, p1, p2: array of char) 
+	begin 
+		HostDialog.ShowParamStatus(s, p0, p1, p2)
+	end ShowParamStatus
+	
+	
+	proc NewView*(): TextViews.View 
+		var 
+			v: TextViews.View
+	begin 
+		Flush
+		Dialog.SetShowHook(showHook) // attach alert dialogs
+		v := dir.New(text)
+		v.SetDefaults(TextRulers.CopyOf(defruler, Views.deep), dir.defAttr)
+		return v
+	end NewView
+	
+	proc New*
+	begin 
+		Views.Deposit(NewView())
+	end New
+	
+	
+	proc SetDefaultRuler*(ruler: TextRulers.Ruler) 
+	begin 
+		defruler := ruler
+	end SetDefaultRuler
+	
+	proc SetDir*(d: TextViews.Directory) 
+	begin 
+		assert(d # nil, 20)
+		dir := d
+	end SetDir
+	
+	
+	proc Open*
+		var 
+			v: Views.View
+			pos: integer
+	begin 
+		v := NewView()
+		StdDialog.Open(v, "#Dev:Log", nil, "", nil, false, true, false, false, true)
+		Views.RestoreDomain(text.Domain())
+		pos := text.Length()
+		TextViews.ShowRange(text, pos, pos, TextViews.any)
+		TextControllers.SetCaret(text, pos)
+	end Open
+	
+	proc Clear*
+	begin 
+		Models.BeginModification(Models.notUndoable, text)
+		text.Delete(0, text.Length())
+		buf.Delete(0, buf.Length())
+		Models.EndModification(Models.notUndoable, text)
+	end Clear
+	
+	
+	// Sub support
+	
+	proc Guard(o: ANYPTR): boolean 
+	begin 
+		return 
+			(o # nil) & 
+			~((o is TextModels.Model) & (o = text) 
+			or (o is Stores.Domain) & (o = text.Domain()) 
+			or (o is TextViews.View) & (o(TextViews.View).ThisModel() = text)
+			)
+	end Guard
+	
+	proc ClearBuf
+		var 
+			subBuf: TextModels.Model
+	begin 
+		subBuf := subOut.rider.Base()
+		subBuf.Delete(0, subBuf.Length())
+	end ClearBuf
+	
+	proc FlushBuf
+		var 
+			buf: TextModels.Model
+	begin 
+		buf := subOut.rider.Base()
+		if buf.Length() > 0 then
+			if ~Log.synch then
+				Open() 
+			end 
+			text.Append(buf) 
+		end 
+	end FlushBuf
+	
+	proc SubFlush
+	begin 
+		if Log.synch then
+			FlushBuf
+			if Log.force then
+				Views.RestoreDomain(text.Domain()) 
+			end  
+		end 
+	end SubFlush
+	
+	proc (log: LogHook) Guard*(o: ANYPTR): boolean 
+	begin 
+		return Guard(o)
+	end Guard
+	
+	proc (log: LogHook) ClearBuf*
+	begin 
+		ClearBuf
+	end ClearBuf
+	
+	proc (log: LogHook) FlushBuf*
+	begin 
+		FlushBuf
+	end FlushBuf
+	
+	proc (log: LogHook) Beep*
+	begin 
+		Dialog.Beep
+	end Beep
+	
+	proc (log: LogHook) Char*(ch: char) 
+	begin 
+		subOut.WriteChar(ch)
+		SubFlush
+	end Char
+	
+	proc (log: LogHook) Int*(n: integer) 
+	begin 
+		subOut.WriteChar(" ")
+		subOut.WriteInt(n)
+		SubFlush
+	end Int
+	
+	proc (log: LogHook) Real*(x: real) 
+	begin 
+		subOut.WriteChar(" ")
+		subOut.WriteReal(x)
+		SubFlush
+	end Real
+	
+	proc (log: LogHook) String*(in str: array of char) 
+	begin 
+		subOut.WriteString(str)
+		SubFlush
+	end String
+	
+	proc (log: LogHook) Bool*(x: boolean) 
+	begin 
+		subOut.WriteChar(" ")
+		subOut.WriteBool(x)
+		SubFlush
+	end Bool
+	
+	proc (log: LogHook) Set*(x: set) 
+	begin 
+		subOut.WriteChar(" ")
+		subOut.WriteSet(x)
+		SubFlush
+	end Set
+	
+	proc (log: LogHook) IntForm*(x: integer; base, minWidth: integer; fillCh: char; showBase: boolean) 
+	begin 
+		subOut.WriteIntForm(x, base, minWidth, fillCh, showBase)
+		SubFlush
+	end IntForm
+	
+	proc (log: LogHook) RealForm*(x: real; precision, minW, expW: integer; fillCh: char) 
+	begin 
+		subOut.WriteRealForm(x, precision, minW, expW, fillCh)
+		SubFlush
+	end RealForm
+	
+	proc (log: LogHook) Tab*
+	begin 
+		subOut.WriteTab
+		SubFlush
+	end Tab
+	
+	proc (log: LogHook) Ln*
+	begin 
+		subOut.WriteLn
+		SubFlush
+		if Log.synch then
+			Views.RestoreDomain(text.Domain()) 
+		end 
+	end Ln
+	
+	proc (log: LogHook) Para*
+	begin 
+		subOut.WritePara
+		SubFlush
+		if Log.synch then
+			Views.RestoreDomain(text.Domain()) 
+		end 
+	end Para
+	
+	proc (log: LogHook) View*(v: ANYPTR) 
+	begin 
+		if (v # nil) & (v is Views.View) then
+			subOut.WriteView(v(Views.View))
+			SubFlush 
+		end 
+	end View
+	
+	proc (log: LogHook) ViewForm*(v: ANYPTR; w, h: integer) 
+	begin 
+		assert(v # nil, 20)
+		if (v # nil) & (v is Views.View) then
+			subOut.WriteViewForm(v(Views.View), w, h)
+			SubFlush 
+		end 
+	end ViewForm
+	
+	proc (log: LogHook) ParamMsg*(in s, p0, p1, p2: array of char) 
+		var 
+			msg: array 256 of char
+			i: integer
+			ch: char
+	begin 
+		if logAlerts then
+			if Log.synch then
+				Open 
+			end 
+			Dialog.MapParamString(s, p0, p1, p2, msg)
+			i := 0
+			ch := msg[0]
+			while ch # 0x do 
+				if ch = TextModels.line then
+					subOut.WriteLn 
+				elsif ch = TextModels.para then 
+					subOut.WritePara 
+				elsif ch = TextModels.tab then 
+					subOut.WriteTab 
+				elsif ch >= " " then 
+					subOut.WriteChar(ch) 
+				end 
+				inc(i)
+				ch := msg[i] 
+			end 
+			subOut.WriteLn
+			SubFlush 
+		else 
+			HostDialog.ShowParamMsg(s, p0, p1, p2) 
+		end 
+	end ParamMsg
+	
+	
+	proc AttachSubLog
+		var 
+			h: LogHook
+	begin 
+		subOut.ConnectTo(TextModels.dir.New())
+		new(h)
+		Log.SetHook(h)
+	end AttachSubLog
+	
+	proc DetachSubLog
+	begin 
+		Log.SetHook(nil)
+	end DetachSubLog
+	
+	
+	proc Init
+		var 
+			font: Fonts.Font
+			p: TextRulers.Prop
+			x: integer
+			i: integer
+	begin 
+		logAlerts := true // logReports := FALSE;
+		
+		text := TextModels.dir.New()
+		buf := TextModels.CloneOf(text)
+		out.ConnectTo(buf)
+		
+		font := TextModels.dir.attr.font
+		defruler := TextRulers.dir.New(nil)
+		TextRulers.SetRight(defruler, 80 * mm)
+		dir := TextViews.dir
+		new(showHook)
+	end Init
+
+begin
+	Init
+	AttachSubLog
+(* CLOSE
+	DetachSubLog *) 
+end StdLog

@@ -1,0 +1,524 @@
+module HostFonts
+	
+	import SYSTEM, 
+		Kernel, Fonts, HostRegistry, 
+		Pango:= Gtk2Pango, GLib:= Gtk2GLib, Gdk:= Gtk2Gdk
+	
+	const 
+		defSize = 10 * Fonts.point // size of default font
+		dlgSize = 8 * Fonts.point // size of dialog font
+		defFontInit = "Verdana"
+		dlgFontInit = "Sans"
+	
+	type 
+		Typeface = Fonts.Typeface
+		
+		Font* = pointer to record (Fonts.Font) 
+				asc*, dsc*, w: integer
+				desc-: Pango.PangoFontDescription
+				alias-: Fonts.Typeface  // alias # typeface & typeface # "*" == alien font
+			end 
+		
+		Directory = pointer to record (Fonts.Directory) end 
+		
+		Identifier = record (Kernel.Identifier) 
+				tface: Fonts.Typeface
+				size_: integer
+				style: set
+				weight: integer 
+			end 
+		
+		Counter = record (Kernel.Identifier) 
+				count: integer 
+			end 
+		
+		Traverser = record (Kernel.Identifier) 
+			end 
+	
+	var 
+		dir: Directory
+		defFont-, dlgFont-: Font
+		defFontName, dlgFontName: Fonts.Typeface
+		defFontSize, dlgFontSize, dlgFontWght: integer
+		dlgFontStyle: set
+		pixel-: integer // screen resolution
+		context-: Pango.PangoContext
+		layout-: Pango.PangoLayout
+	
+	proc IntToString(x: integer; var s: array of char) 
+		var 
+			j, k: integer
+			ch: char
+			a: array 32 of char
+	begin 
+		assert(x >= 0, 20)
+		k := 0
+		j := 0
+		repeat 
+			a[j] := short(chr(x mod 10 + ord("0")))
+			x := x div 10
+			inc(j) 
+		until x = 0 
+		assert(k + j < len(s), 20)
+		repeat 
+			dec(j)
+			ch := a[j]
+			s[k] := ch
+			inc(k) 
+		until j = 0 
+		s[k] := 0x
+	end IntToString
+	
+	proc ParsePangoString*(in str: array of char
+		var typeface: Typeface; var size_: integer
+		var style: set; var weight: integer) 
+		var 
+			fdesc: Pango.PangoFontDescription
+	begin 
+		fdesc := Pango.font_description_from_string(str)
+		typeface := Pango.font_description_get_family(fdesc)
+		size_ := (Pango.font_description_get_size(fdesc) + 512) div 1024 * Fonts.point
+		weight := Pango.font_description_get_weight(fdesc)
+		style := {}
+		case Pango.font_description_get_style(fdesc) of 
+			| Pango.STYLE_NORMAL:  
+			| Pango.STYLE_OBLIQUE, 
+			Pango.STYLE_ITALIC: 
+				incl(style, Fonts.italic) 
+		else  
+		end 
+	end ParsePangoString
+	
+	proc MakePangoString*(typeface: Typeface; size_: integer; style: set; weight: integer
+		var str: array of char) 
+		var 
+			s_size, s_weight, s_slant: array 10 of char
+	begin 
+		if typeface = Fonts.default then
+			typeface := defFontName 
+		end 
+		if weight = Fonts.bold then
+			s_weight := "Bold" 
+		else 
+			s_weight := "" 
+		end 
+		if Fonts.italic in style then
+			s_slant := "Italic" 
+		else 
+			s_slant := "" 
+		end 
+		if size_ # 0 then
+			IntToString(size_ div Fonts.point, s_size) 
+		else 
+			s_size := "" 
+		end 
+		str := short(typeface) + " " + s_weight + " " + s_slant + " " + s_size
+	end MakePangoString
+	
+	proc Cleanup(f: Font) 
+	begin 
+		Pango.font_description_free(f.desc)
+		f.desc := nil
+	end Cleanup
+	
+	// width methods for unicode
+	proc (f: Font) wTab*(ch: char): integer  // new
+	begin 
+		return 0 // ???
+	end wTab
+	
+	proc (f: Font) fTab*(ch: char): integer  // new
+	begin 
+		return 0
+	end fTab
+	
+	proc (f: Font) tTab*(ch: char): integer  // new
+	begin 
+		return 0
+	end tTab
+	
+	
+	// Font
+	proc (f: Font) GetBounds*(var asc, dsc, w: integer) 
+	begin 
+		asc := f.asc
+		dsc := f.dsc
+		w := f.w
+	end GetBounds
+	
+	
+	proc ShapeUString(layout: Pango.PangoLayout; us: GLib.PString; font: Fonts.Font) 
+		var 
+			attrs: Pango.PangoAttrList
+			attr: Pango.PangoAttribute
+			i: integer
+	begin 
+		// replace digit-space to non-break space
+		i := 1
+		while i < len(us) do 
+			if (us[i - 1] = 0c2x) & (us[i] = 08fx) then
+				us[i] := 0a0x 
+			end 
+			inc(i) 
+		end 
+		
+		Pango.layout_set_text(layout, us, -1)
+		attrs := Pango.attr_list_new()
+		if font # nil then
+			Pango.layout_set_font_description(layout, font(Font).desc)
+			if Fonts.underline in font.style then
+				attr := Pango.attr_underline_new(1) 
+			else 
+				attr := Pango.attr_underline_new(0) 
+			end 
+			attr.start_index := 0
+			attr.end_index := len(us)
+			Pango.attr_list_insert(attrs, attr) 
+		end 
+		Pango.layout_set_attributes(layout, attrs)
+		Pango.attr_list_unref(attrs)
+	end ShapeUString
+	
+	
+	proc ShapeString*(layout: Pango.PangoLayout; in s: array of char; font: Fonts.Font) 
+		var 
+			us: GLib.PString
+	begin 
+		us := GLib.g_utf16_to_utf8(s, -1, nil, nil, nil)
+		if us = nil then // !!!
+			ShapeUString(layout, '', nil) 
+		else 
+			ShapeUString(layout, us, font)
+			GLib.g_free(SYSTEM.VAL(GLib.gpointer, us)) 
+		end 
+	end ShapeString
+	
+	proc ShapeSString*(layout: Pango.PangoLayout; in s: array of char; font: Fonts.Font) 
+		var 
+			us: GLib.PString
+	begin 
+		us := GLib.g_locale_to_utf8(s, -1, nil, nil, nil)
+		if us = nil then // !!!
+			ShapeUString(layout, '', nil) 
+		else 
+			ShapeUString(layout, us, font)
+			GLib.g_free(SYSTEM.VAL(GLib.gpointer, us)) 
+		end 
+	end ShapeSString
+	
+	proc (font: Font) StringWidth*(in s: array of char): integer 
+		var 
+			rect: Pango.PangoRectangle
+	begin 
+		ShapeString(layout, s, font)
+		Pango.layout_line_get_pixel_extents(
+		Pango.layout_get_line(layout, 0), nil, rect)
+		return (rect.x + rect.width) * pixel
+	end StringWidth
+	
+	proc (font: Font) SStringWidth*(in s: array of char): integer 
+		var 
+			rect: Pango.PangoRectangle
+	begin 
+		ShapeUString(layout, s, font)
+		Pango.layout_line_get_pixel_extents(
+		Pango.layout_get_line(layout, 0), nil, rect)
+		return (rect.x + rect.width) * pixel
+	end SStringWidth
+	
+	proc (f: Font) IsAlien*(): boolean 
+	begin 
+		return (f.typeface # Fonts.default) & (f.alias # f.typeface)
+	end IsAlien
+	
+	proc (f: Font) FINALIZE-
+	begin 
+		Cleanup(f)
+	end FINALIZE
+	
+	proc SetupFont(font: Font) 
+		var 
+			metrics: Pango.PangoFontMetrics
+			language: Pango.PangoLanguage
+	begin 
+		font.desc := Pango.font_description_new()
+		Pango.font_description_set_family(font.desc, short(font.alias))
+		if Fonts.italic in font.style then
+			Pango.font_description_set_style(font.desc, Pango.STYLE_ITALIC) 
+		end 
+		Pango.font_description_set_weight(font.desc, font.weight)
+		// Pango.font_description_set_absolute_size (font.desc, (font.size*Pango.SCALE) DIV pixel);
+		Pango.font_description_set_size(font.desc, (font.size_ * Pango.SCALE) div Fonts.point)
+		
+		language := Pango.context_get_language(context) // !!!
+		metrics := Pango.context_get_metrics(context, font.desc, language)
+		font.asc := Pango.font_metrics_get_ascent(metrics) * pixel div 1024
+		font.dsc := Pango.font_metrics_get_descent(metrics) * pixel div 1024
+		font.w := Pango.font_metrics_get_approximate_char_width(metrics) * pixel div 1024
+		Pango.font_metrics_unref(metrics)
+	end SetupFont
+	
+	
+	proc NewFont(typeface: Fonts.Typeface; size_: integer; style: set; weight: integer): Font 
+		var 
+			font: Font
+	begin 
+		new(font)
+		if typeface = Fonts.default then
+			font.alias := defFontName 
+		else 
+			font.alias := typeface 
+		end 
+		font.Init(typeface, size_, style, weight)
+		SetupFont(font)
+		return font
+	end NewFont
+	
+	
+	proc (var id: Identifier) Identified(): boolean 
+		var 
+			f: Font
+	begin 
+		f := id.obj(Font)
+		return (f.typeface = id.tface) & (f.size_ = id.size_) 
+			& (f.style = id.style) & (f.weight = id.weight)
+	end Identified
+	
+	// Directory
+	proc (d: Directory) This(typeface: Fonts.Typeface; size_: integer; style: set; weight: integer): Font 
+		var 
+			f: Font
+			i: Identifier
+			p: ANYPTR
+	begin 
+		assert(size_ > 0, 20)
+		style := style * {Fonts.italic, Fonts.underline, Fonts.strikeout}
+		i.tface := typeface
+		i.size_ := size_
+		i.style := style
+		i.weight := weight
+		i.typ := SYSTEM.TYP(Font)
+		p := Kernel.ThisFinObj(i)
+		if p # nil then // found in cache
+			f := p(Font) 
+		elsif typeface = "" then 
+			f := defFont 
+		else 
+			f := NewFont(typeface, size_, style, weight) 
+		end 
+		return f
+	end This
+	
+	proc (d: Directory) Default(): Fonts.Font 
+	begin 
+		return defFont
+	end Default
+	
+	proc (d: Directory) TypefaceList*(): Fonts.TypefaceInfo 
+		type 
+			PtrSTR = unsafe pointer to carray of char
+			StrArray = unsafe pointer to carray of PtrSTR
+		const  // taken from the Gtk FontPicker
+			maxFonts = 32767
+		var 
+			xFontNames: StrArray
+			numFonts, fmLen, fndLen, i, j, k: integer
+			typefaceInfo, t, q: Fonts.TypefaceInfo
+			familyName, foundryName: array 256 of char
+	begin 
+		typefaceInfo := nil
+		(* TODO: ##=>
+		   
+		   xFontNames := LinX11.XListFonts(Gdk.gdk_display, "-*", maxFonts, numFonts);
+		   i := 0;
+		   WHILE i < numFonts DO
+		   IF xFontNames[i][0] = "+" THEN
+		   (* The XLFD standard calls for the possibility of a version string *)
+		   (* beginning with "+" prepended to the current XLFD name, and *)
+		   (*  reserved for possible future use. For now we omit these names. *)
+		   (* If they appear in the future we may need to include them. *)
+		   ELSIF xFontNames[i][0] = "-" THEN
+		   (* First char must be "-". Skip illegal XLFD name. *)
+		   j := 0; k := 1;
+		   WHILE (k < 255) & (xFontNames[i][k] # "-") DO
+		   foundryName[j] := Strings.Lower(xFontNames[i][k]); INC(j); INC(k)
+		   END;
+		   foundryName[j] := 0X;
+		   j := 0; INC(k);
+		   WHILE (k < 255) & (xFontNames[i][k] # "-") DO
+		   familyName[j] := Strings.Lower(xFontNames[i][k]); INC(j); INC(k)
+		   END;
+		   familyName[j] := 0X;
+		   fmLen := LEN(familyName$); fndLen := LEN(foundryName$);
+		   IF fmLen < LEN(Fonts.Typeface) THEN
+		   IF fmLen + fndLen + 1 < LEN(Fonts.Typeface) THEN
+		   familyName := familyName + "-" + foundryName
+		   END;
+		   q := NIL; t := typefaceInfo;
+		   WHILE (t # NIL) & (t.typeface < familyName) DO
+		   q := t; t := t.next
+		   END;
+		   IF q = NIL THEN
+		   IF (t = NIL) OR (t.typeface # familyName) THEN (* at front *)
+		   NEW(q); q.typeface := familyName$;
+		   q . next := t; typefaceInfo := q
+		   END
+		   ELSIF (t = NIL) OR (t.typeface # familyName) THEN (* after q *)
+		   NEW(t); t.typeface := familyName$;
+		   t.next := q.next; q.next := t
+		   END
+		   END;
+		   END;
+		   INC(i)
+		   END;
+		   LinX11.XFreeFontNames (xFontNames);
+		   ##<= *)
+		return typefaceInfo
+	end TypefaceList
+	
+	
+	// miscellaneous
+	
+	proc (var id: Counter) Identified(): boolean 
+	begin 
+		inc(id.count)
+		return false
+	end Identified
+	
+	proc NofFonts*(): integer 
+		var 
+			p: ANYPTR
+			cnt: Counter
+	begin 
+		cnt.typ := SYSTEM.TYP(Font)
+		cnt.count := 0
+		p := Kernel.ThisFinObj(cnt)
+		return cnt.count
+	end NofFonts
+	
+	proc InstallDir*
+	begin 
+		Fonts.SetDir(dir)
+	end InstallDir
+	
+	
+	proc (var id: Traverser) Identified(): boolean 
+		var 
+			f: Font
+	begin 
+		f := id.obj(Font)
+		if (f.typeface = Fonts.default) & (f.alias # defFontName) then
+			Cleanup(f)
+			f.alias := defFontName
+			SetupFont(f) 
+		end 
+		return false
+	end Identified
+	
+	proc SetDefaultFont*(tf: Fonts.Typeface; size_: integer) 
+		var 
+			t: Traverser
+			p: ANYPTR
+	begin 
+		assert(tf # "", 20)
+		assert(size_ > 0, 21)
+		if tf = Fonts.default then
+			tf := defFontName 
+		end 
+		if (defFontName # tf) or (defFontSize # size_) then
+			defFontName := tf
+			defFontSize := size_
+			t.typ := SYSTEM.TYP(Font)
+			p := Kernel.ThisFinObj(t)
+			defFont := dir.This(Fonts.default, defFontSize, {}, Fonts.normal)
+			HostRegistry.WriteString("DefFontName", defFontName)
+			HostRegistry.WriteInt("DefFontSize", defFontSize) 
+		end 
+	end SetDefaultFont
+	
+	proc SetDialogFont*(tf: Fonts.Typeface; size_: integer; style: set; weight: integer) 
+		var 
+			i: integer
+	begin 
+		assert(tf # "", 20)
+		assert(size_ > 0, 21)
+		if (dlgFontName # tf) or (dlgFontSize # size_) 
+			or (dlgFontStyle # style) or (dlgFontWght # weight) 
+		then
+			dlgFontName := tf
+			dlgFontSize := size_
+			dlgFontStyle := style
+			dlgFontWght := weight
+			dlgFont := dir.This(dlgFontName, dlgFontSize, dlgFontStyle, dlgFontWght)
+			HostRegistry.WriteString("DlgFontName", dlgFontName)
+			HostRegistry.WriteInt("DlgFontSize", dlgFontSize)
+			i := 0
+			if Fonts.italic in dlgFontStyle then
+				inc(i, 1) 
+			end 
+			if Fonts.underline in dlgFontStyle then
+				inc(i, 2) 
+			end 
+			if Fonts.strikeout in dlgFontStyle then
+				inc(i, 4) 
+			end 
+			if dlgFontWght > Fonts.normal then
+				inc(i, 8) 
+			end 
+			HostRegistry.WriteInt("DlgFontStyle", i) 
+		end 
+	end SetDialogFont
+	
+	proc Init
+		var 
+			i, res: integer
+	begin 
+		pixel := (Fonts.mm * Gdk.gdk_screen_height_mm()) div Gdk.gdk_screen_height()
+		context := Gdk.gdk_pango_context_get()
+		layout := Pango.layout_new(context)
+		new(dir)
+		Fonts.SetDir(dir)
+		dlgFontStyle := {}
+		dlgFontWght := Fonts.normal
+		
+		HostRegistry.ReadString("DefFontName", defFontName, res)
+		HostRegistry.ReadInt("DefFontSize", defFontSize, res)
+		
+		HostRegistry.ReadString("DlgFontName", dlgFontName, res)
+		HostRegistry.ReadInt("DlgFontSize", dlgFontSize, res)
+		HostRegistry.ReadInt("DlgFontStyle", i, res)
+		i := 0
+		if odd(i) then
+			incl(dlgFontStyle, Fonts.italic) 
+		end 
+		if odd(i div 2) then
+			incl(dlgFontStyle, Fonts.underline) 
+		end 
+		if odd(i div 4) then
+			incl(dlgFontStyle, Fonts.strikeout) 
+		end 
+		if odd(i div 8) then
+			dlgFontWght := Fonts.bold 
+		end 
+		
+		if (defFontName = "") then
+			defFontName := defFontInit 
+		end 
+		if (defFontSize < 5 * Fonts.point) or (defFontSize > 100 * Fonts.point) then
+			defFontSize := defSize 
+		end 
+		
+		if (dlgFontName = "") then
+			dlgFontName := dlgFontInit 
+		end 
+		if (dlgFontSize < 5 * Fonts.point) or (dlgFontSize > 100 * Fonts.point) then
+			dlgFontSize := dlgSize 
+		end 
+		
+		defFont := dir.This(Fonts.default, defFontSize, {}, Fonts.normal)
+		dlgFont := dir.This(dlgFontName, dlgFontSize, dlgFontStyle, dlgFontWght)
+	end Init
+
+begin
+	Init
+end HostFonts

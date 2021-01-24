@@ -1,0 +1,557 @@
+module Controllers
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20141213, center #21, Fixing Controllers.TickMsg.tick overflow bug.
+	   - 20170905, center #173, adding new modifiers to Controllers
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Kernel, Services, Ports, Stores, Models, Views
+	
+	const 
+		// Forward target
+		targetPath* = true
+		frontPath* = false
+		
+		// ScrollMsg.op
+		decLine* = 0
+		incLine* = 1
+		decPage* = 2
+		incPage* = 3
+		gotoPos* = 4
+		
+		// PageMsg.op
+		nextPageX* = 0
+		nextPageY* = 1
+		gotoPageX* = 2
+		gotoPageY* = 3
+		
+		// PollOpsMsg.valid, EditMsg.op
+		cut* = 0
+		copy_* = 1
+		pasteChar* = 2 // pasteLChar* = 3; // pasteView* = 5;
+		paste* = 4
+		
+		// TrackMsg.modifiers, EditMsg.modifiers
+		doubleClick* = 0 // clicking history
+		extend* = 1 // modifier keys
+		modify* = 2
+		popup* = 3 // show popup menu
+		pick* = 4 // pick attributes
+		
+		// PollDropMsg.mark, PollDrop mark
+		noMark* = false
+		mark* = true
+		// PollDropMsg.show, PollDrop show
+		hide* = false
+		show* = true
+		
+		minVersion = 0
+		maxVersion = 0
+	
+	
+	type 
+		
+		// messages
+		
+		Message* = Views.CtrlMessage
+		
+		PollFocusMsg* = (* extensible *) record (Message) 
+				focus*: Views.Frame  // OUT, preset to NIL
+			end 
+		
+		PollSectionMsg* = record (Message) 
+				focus*, vertical*: boolean // IN
+				wholeSize*: integer // OUT, preset to 1
+				partSize*: integer // OUT, preset to 1
+				partPos*: integer // OUT, preset to 0
+				valid*, done*: boolean  // OUT, preset to (FALSE, FALSE)
+			end 
+		
+		PollOpsMsg* = record (Message) 
+				type_*: Stores.TypeName // OUT, preset to ""
+				pasteType*: Stores.TypeName // OUT, preset to ""
+				singleton*: Views.View // OUT, preset to NIL
+				selectable*: boolean // OUT, preset to FALSE
+				valid*: set  // OUT, preset to {}
+			end 
+		
+		ScrollMsg* = record (Message) 
+				focus*, vertical*: boolean // IN
+				op*: integer // IN
+				pos*: integer // IN
+				done*: boolean  // OUT, preset to FALSE
+			end 
+		
+		PageMsg* = record (Message) 
+				op*: integer // IN
+				pageX*, pageY*: integer // IN
+				done*, eox*, eoy*: boolean  // OUT, preset to (FALSE, FALSE, FALSE)
+			end 
+		
+		TickMsg* = record (Message) 
+				tick*: longint  // IN
+			end 
+		
+		MarkMsg* = record (Message) 
+				show*: boolean // IN
+				focus*: boolean  // IN
+			end 
+		
+		SelectMsg* = record (Message) 
+				set_*: boolean  // IN
+			end 
+		
+		
+		RequestMessage* = (* abstract *) record (Message) 
+				requestFocus*: boolean  // OUT, preset (by framework) to FALSE
+			end 
+		
+		EditMsg* = record (RequestMessage) 
+				op*: integer // IN
+				modifiers*: set // IN, valid if op IN {pasteChar, pasteLchar}
+				char_*: char // IN, valid if op = pasteChar
+				view*: Views.View; w*, h*: integer // IN, valid if op  = paste
+				// OUT, valid if op IN {cut, copy}
+				isSingle*: boolean // dito
+				clipboard*: boolean  // IN, valid if op IN {cut, copy, paste}
+			end 
+		
+		ReplaceViewMsg* = record (RequestMessage) 
+				old*, new_*: Views.View  // IN
+			end 
+		
+		
+		CursorMessage* = (* abstract *) record (RequestMessage) 
+				x*, y*: integer  // IN, needs translation when passed on
+			end 
+		
+		PollCursorMsg* = record (CursorMessage) 
+				cursor*: integer // OUT, preset to Ports.arrowCursor
+				modifiers*: set  // IN
+			end 
+		
+		TrackMsg* = record (CursorMessage) 
+				modifiers*: set  // IN
+			end 
+		
+		WheelMsg* = record (CursorMessage) 
+				done*: boolean // must be set if the message is handled
+				op*, nofLines*: integer 
+			end 
+		
+		
+		TransferMessage* = (* abstract *) record (CursorMessage) 
+				source*: Views.Frame // IN, home frame of transfer originator, may be NIL if unknown
+				sourceX*, sourceY*: integer  // IN, reference point in source frame, defined if source # NIL
+			end 
+		
+		PollDropMsg* = record (TransferMessage) 
+				mark*: boolean // IN, request to mark drop target
+				show*: boolean // IN, if mark then show/hide target mark
+				type_*: Stores.TypeName // IN, type of view to drop
+				isSingle*: boolean // IN, view to drop is singleton
+				w*, h*: integer // IN, size of view to drop, may be 0, 0
+				rx*, ry*: integer // IN, reference point in view
+				dest*: Views.Frame  // OUT, preset to NIL, set if DropMsg is acceptable
+			end 
+		
+		DropMsg* = record (TransferMessage) 
+				view*: Views.View // * IN, drop this
+				isSingle*: boolean // IN, view to drop is singleton
+				w*, h*: integer // * IN, proposed size
+				rx*, ry*: integer  // IN, reference point in view
+			end 
+		
+		
+		// controllers
+		
+		Controller* = pointer to (* abstract *) record (Stores.Store) end 
+		
+		
+		// forwarders
+		
+		Forwarder* = pointer to (* abstract *) record 
+				next: Forwarder 
+			end 
+		
+		TrapCleaner = pointer to record (Kernel.TrapCleaner) end 
+		PathInfo = pointer to record 
+				path: boolean; prev: PathInfo 
+			end 
+		
+		BalanceCheckAction = pointer to record (Services.Action) 
+				wait: WaitAction 
+			end 
+		WaitAction = pointer to record (Services.Action) 
+				check: BalanceCheckAction 
+			end 
+	
+	var 
+		path-: boolean
+		
+		list: Forwarder
+		
+		cleaner: TrapCleaner
+		prevPath, cache: PathInfo
+	
+	
+	
+	// BalanceCheckAction
+	
+	proc (a: BalanceCheckAction) Do
+	begin 
+		Services.DoLater(a.wait, Services.resolution)
+		assert(prevPath = nil, 100)
+	end Do
+	
+	proc (a: WaitAction) Do
+	begin 
+		Services.DoLater(a.check, Services.immediately)
+	end Do
+	
+	// Cleaner
+	
+	proc (c: TrapCleaner) Cleanup
+	begin 
+		path := frontPath
+		prevPath := nil
+	end Cleanup
+	
+	proc NewPathInfo(): PathInfo 
+		var 
+			c: PathInfo
+	begin 
+		if cache = nil then
+			new(c) 
+		else 
+			c := cache
+			cache := cache.prev 
+		end 
+		return c
+	end NewPathInfo
+	
+	proc DisposePathInfo(c: PathInfo) 
+	begin 
+		c.prev := cache
+		cache := c
+	end DisposePathInfo
+	
+	
+	// Controller
+	
+	proc (c: Controller) Internalize-(var rd: Stores.Reader)  // extensible
+		// pre: ~c.init
+		// post: c.init
+		var 
+			thisVersion: integer
+	begin 
+		c.Internalize^(rd)
+		rd.ReadVersion(minVersion, maxVersion, thisVersion)
+	end Internalize
+	
+	proc (c: Controller) Externalize-(var wr: Stores.Writer)  // extensible
+	// pre: c.init
+	begin 
+		c.Externalize^(wr)
+		wr.WriteVersion(maxVersion)
+	end Externalize
+	
+	
+	// Forwarder
+	
+	proc (f: Forwarder) Forward*(target: boolean; var msg: Message)  end // new abstract
+	proc (f: Forwarder) Transfer*(var msg: TransferMessage)  end // new abstract
+	
+	proc Register*(f: Forwarder) 
+		var 
+			t: Forwarder
+	begin 
+		assert(f # nil, 20)
+		t := list
+		while (t # nil) & (t # f) do 
+			t := t.next 
+		end 
+		if t = nil then
+			f.next := list
+			list := f 
+		end 
+	end Register
+	
+	proc Delete*(f: Forwarder) 
+		var 
+			t: Forwarder
+	begin 
+		assert(f # nil, 20)
+		if f = list then
+			list := list.next 
+		else 
+			t := list
+			while (t # nil) & (t.next # f) do 
+				t := t.next 
+			end 
+			if t # nil then
+				t.next := f.next 
+			end  
+		end 
+		f.next := nil
+	end Delete
+	
+	
+	proc ForwardVia*(target: boolean; var msg: Message) 
+		var 
+			t: Forwarder
+	begin 
+		t := list
+		while t # nil do 
+			t.Forward(target, msg)
+			t := t.next 
+		end 
+	end ForwardVia
+	
+	proc SetCurrentPath*(target: boolean) 
+		var 
+			p: PathInfo
+	begin 
+		if prevPath = nil then
+			Kernel.PushTrapCleaner(cleaner) 
+		end 
+		p := NewPathInfo()
+		p.prev := prevPath
+		prevPath := p
+		p.path := path
+		path := target
+	end SetCurrentPath
+	
+	proc ResetCurrentPath*
+		var 
+			p: PathInfo
+	begin 
+		if prevPath # nil then // otherwise trap cleaner may have already removed prefPath objects
+			p := prevPath
+			prevPath := p.prev
+			path := p.path
+			if prevPath = nil then
+				Kernel.PopTrapCleaner(cleaner) 
+			end 
+			DisposePathInfo(p) 
+		end 
+	end ResetCurrentPath
+	
+	proc Forward*(var msg: Message) 
+	begin 
+		ForwardVia(path, msg)
+	end Forward
+	
+	proc PollOps*(var msg: PollOpsMsg) 
+	begin 
+		msg.type_ := ""
+		msg.pasteType := ""
+		msg.singleton := nil
+		msg.selectable := false
+		msg.valid := {}
+		Forward(msg)
+	end PollOps
+	
+	proc PollCursor*(x, y: integer; modifiers: set; var cursor: integer) 
+		var 
+			msg: PollCursorMsg
+	begin 
+		msg.x := x
+		msg.y := y
+		msg.cursor := Ports.arrowCursor
+		msg.modifiers := modifiers
+		Forward(msg)
+		cursor := msg.cursor
+	end PollCursor
+	
+	proc Transfer*(x, y: integer; source: Views.Frame; sourceX, sourceY: integer; var msg: TransferMessage) 
+		var 
+			t: Forwarder
+	begin 
+		assert(source # nil, 20)
+		msg.x := x
+		msg.y := y
+		msg.source := source
+		msg.sourceX := sourceX
+		msg.sourceY := sourceY
+		t := list
+		while t # nil do 
+			t.Transfer(msg)
+			t := t.next 
+		end 
+	end Transfer
+	
+	proc PollDrop*(x, y: integer
+		source: Views.Frame; sourceX, sourceY: integer
+		mark, show: boolean
+		type_: Stores.TypeName
+		isSingle: boolean
+		w, h, rx, ry: integer
+		var dest: Views.Frame; var destX, destY: integer) 
+		var 
+			msg: PollDropMsg
+	begin 
+		assert(source # nil, 20)
+		msg.mark := mark
+		msg.show := show
+		msg.type_ := type_
+		msg.isSingle := isSingle
+		msg.w := w
+		msg.h := h
+		msg.rx := rx
+		msg.ry := ry
+		msg.dest := nil
+		Transfer(x, y, source, sourceX, sourceY, msg)
+		dest := msg.dest
+		destX := msg.x
+		destY := msg.y
+	end PollDrop
+	
+	proc Drop*(x, y: integer; source: Views.Frame; sourceX, sourceY: integer
+		view: Views.View; isSingle: boolean; w, h, rx, ry: integer) 
+		var 
+			msg: DropMsg
+	begin 
+		assert(source # nil, 20)
+		assert(view # nil, 21)
+		msg.view := view
+		msg.isSingle := isSingle
+		msg.w := w
+		msg.h := h
+		msg.rx := rx
+		msg.ry := ry
+		Transfer(x, y, source, sourceX, sourceY, msg)
+	end Drop
+	
+	proc PasteView*(view: Views.View; w, h: integer; clipboard: boolean) 
+		var 
+			msg: EditMsg
+	begin 
+		assert(view # nil, 20)
+		msg.op := paste
+		msg.isSingle := true
+		msg.clipboard := clipboard
+		msg.view := view
+		msg.w := w
+		msg.h := h
+		Forward(msg)
+	end PasteView
+	
+	
+	proc FocusFrame*(): Views.Frame 
+		var 
+			msg: PollFocusMsg
+	begin 
+		msg.focus := nil
+		Forward(msg)
+		return msg.focus
+	end FocusFrame
+	
+	proc FocusView*(): Views.View 
+		var 
+			focus: Views.Frame
+	begin 
+		focus := FocusFrame()
+		if focus # nil then
+			return focus.view 
+		else 
+			return nil 
+		end 
+	end FocusView
+	
+	proc FocusModel*(): Models.Model 
+		var 
+			focus: Views.Frame
+	begin 
+		focus := FocusFrame()
+		if focus # nil then
+			return focus.view.ThisModel() 
+		else 
+			return nil 
+		end 
+	end FocusModel
+	
+	
+	proc HandleCtrlMsgs(op: integer; f, g: Views.Frame; var msg: Message; var mark, front, req: boolean) 
+		// g = f.up OR g = NIL
+		const 
+			pre = 0
+			translate = 1
+			backoff = 2
+			final = 3
+	begin 
+		case op of 
+			pre: 
+				with msg: MarkMsg do 
+					if msg.show & (g # nil) then
+						mark := true
+						front := g.front 
+					end  
+				| msg: RequestMessage do 
+					msg.requestFocus := false 
+				else  
+				end  
+			| translate: 
+				with msg: CursorMessage do 
+					msg.x := msg.x + f.gx - g.gx
+					msg.y := msg.y + f.gy - g.gy 
+				else  
+				end  
+			| backoff: 
+				with msg: MarkMsg do 
+					if ~msg.show then
+						mark := false
+						front := false 
+					end  
+				| msg: RequestMessage do 
+					req := msg.requestFocus 
+				else  
+				end  
+			| final: 
+				with msg: PollFocusMsg do 
+					if msg.focus = nil then
+						msg.focus := f 
+					end  
+				| msg: MarkMsg do 
+					if ~msg.show then
+						mark := false
+						front := false 
+					end  
+				| msg: RequestMessage do 
+					req := msg.requestFocus 
+				else  
+				end  
+		end 
+	end HandleCtrlMsgs
+	
+	
+	proc Init
+		var 
+			action: BalanceCheckAction
+			w: WaitAction
+	begin 
+		Views.InitCtrl(HandleCtrlMsgs)
+		new(cleaner)
+		new(action)
+		new(w)
+		action.wait := w
+		w.check := action
+		Services.DoLater(action, Services.immediately)
+	end Init
+
+begin
+	Init
+end Controllers

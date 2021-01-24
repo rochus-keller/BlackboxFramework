@@ -1,0 +1,2286 @@
+module TextControllers
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20141213, center #21, Fixing Controllers.TickMsg.tick overflow bug.
+	   - 20160802, center #127, ShowRange does not clear the auto-scroll range
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		Services, Stores, Ports, Models, Views, Dialog, Controllers, Properties, Containers, 
+		TextModels, TextRulers, TextSetters, TextViews
+	
+	const 
+		noAutoScroll* = 16
+		noAutoIndent* = 17
+		
+		// Controller.SetCaret pos; Controller.SetSelection beg, end
+		none* = -1
+		
+		// Track mode
+		chars = 0 // plus "none", defined above
+		words = 1
+		lines = 2
+		
+		enter = 3x
+		rdel = 7x
+		ldel = 8x
+		aL = 1cx
+		aR = 1dx
+		aU = 1ex
+		aD = 1fx
+		pL = 10x
+		pR = 11x
+		pU = 12x
+		pD = 13x
+		dL = 14x
+		dR = 15x
+		dU = 16x
+		dD = 17x
+		
+		viewcode = TextModels.viewcode
+		tab = TextModels.tab
+		line = TextModels.line
+		para = TextModels.para
+		
+		point = Ports.point
+		mm = Ports.mm
+		inch16 = Ports.inch div 16
+		
+		boundCaret = true
+		lenCutoff = 2000 // max run length inspected to fetch properties
+		
+		attrChangeKey = "#Text:AttributeChange"
+		resizingKey = "#System:Resizing"
+		insertingKey = "#System:Inserting"
+		deletingKey = "#System:Deleting"
+		movingKey = "#System:Moving"
+		copyingKey = "#System:Copying"
+		linkingKey = "#System:Linking"
+		replacingKey = "#System:Replacing"
+		
+		minVersion = 0
+		maxVersion = 0
+		maxStdVersion = 0
+	
+	
+	type 
+		Controller* = pointer to (* abstract *) record (Containers.Controller) 
+				view-: TextViews.View
+				text-: TextModels.Model  // view # NIL => text = view.ThisText()
+			end 
+		
+		Directory* = pointer to (* abstract *) record (Containers.Directory) end 
+		
+		
+		FilterPref* = record (Properties.Preference) 
+				controller*: Controller // IN, set to text controller asking for filter
+				frame*: Views.Frame // IN, set to frame of controlled text view
+				x*, y*: integer // IN, set to coordinates of cursor in frame space
+				filter*: boolean  // preset to FALSE
+			end 
+		
+		FilterPollCursorMsg* = record (Controllers.Message) 
+				controller*: Controller // IN, set to text controller asking for filter
+				x*, y*: integer
+				cursor*: integer // as for Controllers.PollCursorMsg
+				done*: boolean  // OUT; initialized to FALSE
+			end 
+		
+		FilterTrackMsg* = record (Controllers.Message) 
+				controller*: Controller // IN, set to text controller asking for filter
+				x*, y*: integer
+				modifiers*: set // as for Controllers.TrackMsg
+				done*: boolean  // OUT; initialized to FALSE
+			end 
+		
+		
+		StdCtrl = pointer to record (Controller) 
+				// general state
+				cachedRd: TextModels.Reader
+				cachedWr: TextModels.Writer
+				insAttr: TextModels.Attributes // preset attrs for next typed char
+				autoBeg, autoEnd: integer (* lazy auto-scrolling;
+				   invalid if (-1, .); initially (MAX(LONGINT), 0) *)
+				
+				// caret
+				carPos: integer // HasCaret()  iff  0 <= carPos <= text.Length()
+				carLast: integer // used to recover caret at meaningful position
+				carX, lastX: integer // arrow up/down anti-aliasing
+				carTick: longint // next tick to invert flashing caret mark
+				carVisible: boolean // caret currently visible - used for flashing caret
+				// selection
+				selBeg, selEnd: integer // HasSel()  iff  0 <= selBeg < selEnd <= text.Length()
+				aliasSelBeg, aliasSelEnd: integer // need lazy synchronization?
+				selPin0, selPin1: integer // anchor points of selection
+				// most recent scroll-while-tracking step
+				lastStep: longint 
+			end 
+		
+		StdDirectory = pointer to record (Directory) end 
+		
+		
+		// messages
+		
+		ModelMessage* = (* abstract *) record (Models.Message) end 
+		// messages to control virtual model extensions, such as marks
+		
+		SetCaretMsg* = (* extensible *) record (ModelMessage) 
+				pos*: integer 
+			end 
+		
+		SetSelectionMsg* = (* extensible *) record (ModelMessage) 
+				beg*, end_*: integer 
+			end 
+		
+		
+		ViewMessage = (* abstract *) record (Views.Message) end 
+		
+		CaretMsg = record (ViewMessage) 
+				show: boolean 
+			end 
+		
+		SelectionMsg = record (ViewMessage) 
+				beg, end_: integer
+				show: boolean 
+			end 
+		
+		
+		// miscellaneous
+		
+		TrackState = record 
+				x, y: integer
+				toggle: boolean 
+			end 
+	
+	
+	var 
+		dir-, stdDir-: Directory
+	
+	
+	proc CachedReader(c: StdCtrl): TextModels.Reader 
+		var 
+			rd: TextModels.Reader
+	begin 
+		rd := c.text.NewReader(c.cachedRd)
+		c.cachedRd := nil
+		return rd
+	end CachedReader
+	
+	proc CacheReader(c: StdCtrl; rd: TextModels.Reader) 
+	begin 
+		c.cachedRd := rd
+	end CacheReader
+	
+	
+	proc CachedWriter(c: StdCtrl; attr: TextModels.Attributes): TextModels.Writer 
+		var 
+			wr: TextModels.Writer
+	begin 
+		wr := c.text.NewWriter(c.cachedWr)
+		wr.SetAttr(attr)
+		c.cachedRd := nil
+		return wr
+	end CachedWriter
+	
+	proc CacheWriter(c: StdCtrl; wr: TextModels.Writer) 
+	begin 
+		c.cachedWr := wr
+	end CacheWriter
+	
+	
+	// Controller
+	
+	proc (c: Controller) Internalize2-(var rd: Stores.Reader)  // extensible
+		var 
+			v: integer
+	begin 
+		// c.Internalize^(rd);
+		rd.ReadVersion(minVersion, maxVersion, v)
+	end Internalize2
+	
+	proc (c: Controller) Externalize2-(var wr: Stores.Writer)  // extensible
+	begin 
+		// c.Externalize^(wr);
+		wr.WriteVersion(maxVersion)
+	end Externalize2
+	
+	proc (c: Controller) InitView2*(v: Views.View)  // extensible
+	begin 
+		assert((v = nil) # (c.view = nil), 21)
+		if c.view = nil then
+			assert(v is TextViews.View, 22) 
+		end 
+		// c.InitView^(v);
+		if v # nil then
+			c.view := v(TextViews.View)
+			c.text := c.view.ThisModel() 
+		else 
+			c.view := nil
+			c.text := nil 
+		end 
+	end InitView2
+	
+	proc (c: Controller) ThisView*(): TextViews.View  // extensible
+	begin 
+		return c.view
+	end ThisView
+	
+	
+	// caret
+	
+	proc (c: Controller) CaretPos*(): integer  end // new abstract
+	proc (c: Controller) SetCaret*(pos: integer)  end // new abstract
+	// pre: pos = none  OR  0 <= pos <= c.text.Length()
+	// post: c.carPos = pos
+	
+	
+	// selection
+	
+	proc (c: Controller) GetSelection*(var beg, end_: integer)  end // new abstract
+	// post: beg = end  OR  0 <= beg <= end <= c.text.Length()
+	
+	proc (c: Controller) SetSelection*(beg, end_: integer)  end // new abstract
+	// pre: beg = end  OR  0 <= beg < end <= c.text.Length()
+	// post: c.selBeg = beg, c.selEnd = end
+	
+	
+	// Directory
+	
+	proc (d: Directory) NewController*(opts: set): Controller  end // abstract
+	
+	proc (d: Directory) New*(): Controller  // extensible
+	begin 
+		return d.NewController({})
+	end New
+	
+	
+	// miscellaneous
+	
+	proc SetDir*(d: Directory) 
+	begin 
+		assert(d # nil, 20)
+		dir := d
+	end SetDir
+	
+	proc Install*
+	begin 
+		TextViews.SetCtrlDir(dir)
+	end Install
+	
+	
+	proc Focus*(): Controller 
+		var 
+			v: Views.View
+			c: Containers.Controller
+	begin 
+		v := Controllers.FocusView()
+		if (v # nil) & (v is TextViews.View) then
+			c := v(TextViews.View).ThisController()
+			if (c # nil) & (c is Controller) then
+				return c(Controller) 
+			else 
+				return nil 
+			end  
+		else 
+			return nil 
+		end 
+	end Focus
+	
+	
+	proc SetCaret*(text: TextModels.Model; pos: integer) 
+		// pre: text # NIL,  pos = none  OR  0 <= pos <= text.Length()
+		var 
+			cm: SetCaretMsg
+	begin 
+		assert(text # nil, 20)
+		assert(none <= pos, 21)
+		assert(pos <= text.Length(), 22)
+		cm.pos := pos
+		Models.Broadcast(text, cm)
+	end SetCaret
+	
+	proc SetSelection*(text: TextModels.Model; beg, end_: integer) 
+		// pre: text # NIL,  beg = end  OR  0 <= beg < end <= text.Length()
+		var 
+			sm: SetSelectionMsg
+	begin 
+		assert(text # nil, 20)
+		if beg # end_ then
+			assert(0 <= beg, 21)
+			assert(beg < end_, 22)
+			assert(end_ <= text.Length(), 23) 
+		end 
+		sm.beg := beg
+		sm.end_ := end_
+		Models.Broadcast(text, sm)
+	end SetSelection
+	
+	
+	// support for cursor/selection/focus marking
+	
+	proc BlinkCaret(c: StdCtrl; f: Views.Frame; tick: longint) 
+		var 
+			vis: boolean
+	begin 
+		if (c.carPos # none) & f.front & (tick >= c.carTick) then
+			if c.carVisible then
+				c.MarkCaret(f, Containers.hide)
+				c.carVisible := false 
+			else 
+				c.carVisible := true
+				c.MarkCaret(f, Containers.show) 
+			end 
+			c.carTick := tick + Dialog.caretPeriod 
+		end 
+	end BlinkCaret
+	
+	proc FlipCaret(c: StdCtrl; show: boolean) 
+		var 
+			msg: CaretMsg
+	begin 
+		msg.show := show
+		Views.Broadcast(c.view, msg)
+	end FlipCaret
+	
+	proc CheckCaret(c: StdCtrl) 
+		var 
+			text: TextModels.Model
+			len_, pos: integer
+	begin 
+		if ~(Containers.noCaret in c.opts) then
+			if (c.carPos = none) & ~(boundCaret & (c.selBeg # c.selEnd)) & (c.ThisFocus() = nil) then
+				text := c.text
+				len_ := text.Length()
+				pos := c.carLast
+				if pos < 0 then
+					pos := 0 
+				elsif pos > len_ then 
+					pos := len_ 
+				end 
+				// c.carVisible := FALSE; c.carTick := 0;	(* force visible mark *)
+				SetCaret(text, pos) 
+			end  
+		else 
+			c.carPos := none 
+		end 
+	end CheckCaret
+	
+	
+	
+	proc HiliteRect(f: Views.Frame; l, t, r, b, s: integer; show: boolean) 
+	begin 
+		if s = Ports.fill then
+			f.MarkRect(l, t, r, b, Ports.fill, Ports.hilite, show) 
+		else 
+			f.MarkRect(l, t, r - s, t + s, s, Ports.hilite, show)
+			f.MarkRect(l, t + s, l + s, b - s, s, Ports.hilite, show)
+			f.MarkRect(l + s, b - s, r, b, s, Ports.hilite, show)
+			f.MarkRect(r - s, t + s, r, b - s, s, Ports.hilite, show) 
+		end 
+	end HiliteRect
+	
+	proc MarkSelRange(c: StdCtrl; f: Views.Frame; b, e: TextViews.Location
+		front, show: boolean
+		) 
+		var 
+			fw, ff, r, t: integer
+	begin 
+		if front then
+			fw := 0
+			ff := Ports.fill 
+		else 
+			fw := f.dot
+			ff := fw 
+		end 
+		if b.start # e.start then
+			r := f.r
+			t := b.y + b.asc + b.dsc
+			HiliteRect(f, b.x, b.y, r + fw, t + fw, ff, show)
+			if t < e.y then
+				HiliteRect(f, 0, t, r + fw, e.y + fw, ff, show) 
+			end 
+			b.x := f.l
+			b.y := e.y 
+		end 
+		HiliteRect(f, b.x, b.y, e.x + fw, e.y + e.asc + e.dsc + fw, ff, show)
+	end MarkSelRange
+	
+	proc MarkSelection(c: StdCtrl; f: Views.Frame; beg, end_: integer; show: boolean) 
+		var 
+			b, e: TextViews.Location
+			s: Views.View
+	begin 
+		if (beg # end_) & f.mark then
+			assert(beg < end_, 20)
+			s := c.Singleton()
+			if s # nil then
+				if beg + 1 = end_ then
+					Containers.MarkSingleton(c, f, show) 
+				end  
+			else 
+				c.view.GetThisLocation(f, beg, b)
+				c.view.GetThisLocation(f, end_, e)
+				if (b.pos < e.pos) or (b.pos = e.pos) & (b.x < e.x) then
+					MarkSelRange(c, f, b, e, f.front, show) 
+				end  
+			end  
+		end 
+	end MarkSelection
+	
+	proc FlipSelection(c: StdCtrl; beg, end_: integer; show: boolean) 
+		var 
+			msg: SelectionMsg
+	begin 
+		msg.beg := beg
+		msg.end_ := end_
+		msg.show := show
+		Views.Broadcast(c.view, msg)
+	end FlipSelection
+	
+	
+	proc InitMarks(c: StdCtrl) 
+	begin 
+		c.autoBeg := max(integer)
+		c.autoEnd := 0
+		c.carPos := none
+		c.carVisible := false
+		c.carLast := none
+		c.carTick := 0
+		c.carX := -1
+		c.selBeg := none
+		c.selEnd := none
+		c.lastStep := 0
+	end InitMarks
+	
+	proc AutoShowRange(c: StdCtrl; beg, end_: integer) 
+	begin 
+		if (beg <= c.autoBeg) & (c.autoEnd <= end_) then
+			c.autoBeg := beg // new range includes old range: expand
+			c.autoEnd := end_ 
+		else 
+			c.autoBeg := -1  // schizopheric scroll request -> don't scroll at all
+		end 
+	end AutoShowRange
+	
+	proc UpdateMarks(c: StdCtrl; op: integer; beg, end_, delta: integer) 
+	// ensure that marks are valid after updates
+	begin 
+		case op of 
+			TextModels.insert: 
+				c.carLast := end_
+				c.selBeg := end_
+				c.selEnd := end_
+				beg := end_ 
+			| TextModels.delete: 
+				c.carLast := beg
+				c.selBeg := beg
+				c.selEnd := beg
+				end_ := beg 
+			| TextModels.replace:  
+		else 
+			halt(100) 
+		end 
+		AutoShowRange(c, beg, end_)
+	end UpdateMarks
+	
+	
+	// support for smart cut/copy/paste and attributing
+	
+	proc LegalChar(ch: char): boolean 
+	begin 
+		if ch < 100x then
+			case ord(ch) of 
+				ord(viewcode), 
+				ord(tab), ord(line), ord(para), 
+				ord(" ") .. 7eh, 80h .. 0ffh: 
+					return true 
+			else 
+				return false 
+			end  
+		else 
+			return true 
+		end 
+	end LegalChar
+	
+	proc LeftTerminator(ch: char): boolean 
+	begin 
+		if ch < 100x then
+			case ch of 
+				viewcode, tab, line, para, '"', "'", "(", "[", "{": 
+					return true 
+			else 
+				return false 
+			end  
+		else 
+			return true 
+		end 
+	end LeftTerminator
+	
+	proc RightTerminator(ch, ch1: char): boolean 
+	begin 
+		if ch < 100x then
+			case ch of 
+				0x, viewcode, tab, line, para, 
+				"!", '"', "'", "(", ")", ",", ";", "?", "[", "]", "{", "}": 
+					return true 
+				| ".", ":": 
+					case ch1 of 
+						0x, viewcode, tab, line, para, " ": 
+							return true 
+					else 
+						return false 
+					end  
+			else 
+				return false 
+			end  
+		else 
+			return true 
+		end 
+	end RightTerminator
+	
+	proc ReadLeft(rd: TextModels.Reader; pos: integer; var ch: char) 
+	begin 
+		if pos > 0 then
+			rd.SetPos(pos - 1)
+			rd.ReadChar(ch) 
+		else 
+			rd.SetPos(pos)
+			ch := " " 
+		end 
+	end ReadLeft
+	
+	proc SmartRange(c: StdCtrl; var beg, end_: integer) 
+		(* if possible and whole words are covered,
+		   extend [beg, end) to encompass either a leading or a trailing blank *)
+		var 
+			rd: TextModels.Reader
+			we, be: integer
+			ch, ch0, ch1: char
+			rightTerm: boolean
+	begin 
+	(* disable intelligent delete/cut/move for now
+	   rd := CachedReader(c); ReadLeft(rd, beg, ch0); rd.ReadChar(ch);
+	   IF ((ch0 <= " ") OR LeftTerminator(ch0)) & (ch # " ") THEN
+	   (* range covers beg of word *)
+	   we := beg; be := beg;
+	   WHILE (ch # 0X) & (be <= end) DO
+	   ch1 := ch; rd.ReadChar(ch); INC(be);
+	   IF (ch1 # " ") & ((be <= end) OR ~RightTerminator(ch1, ch)) THEN we := be END
+	   END;
+	   rightTerm := RightTerminator(ch1, ch);
+	   IF (beg < we) & (we = end) & ((we < be) OR rightTerm) THEN
+	   (* range covers end of word *)
+	   IF (we < be) & (ch1 = " ") THEN
+	   INC(end)	(* include trailing blank *)
+	   ELSIF (beg > 0) & rightTerm & (ch0 = " ") THEN
+	   DEC(beg)	(* include leading blank *)
+	   END
+	   END
+	   END;
+	   CacheReader(c, rd) *)
+	
+	
+	end SmartRange
+	
+	proc OnlyWords(c: StdCtrl; beg, end_: integer): boolean 
+		var 
+			rd: TextModels.Reader
+			we, be: integer
+			ch, ch0, ch1: char
+			rightTerm, words: boolean
+	begin 
+		words := false
+		rd := CachedReader(c)
+		ReadLeft(rd, beg, ch0)
+		rd.ReadChar(ch)
+		if ((ch0 <= " ") or LeftTerminator(ch0)) & (ch # " ") then // range covers beg of word
+			we := beg
+			be := beg
+			while (ch # 0x) & (be <= end_) do 
+				ch1 := ch
+				rd.ReadChar(ch)
+				inc(be)
+				if (ch1 # " ") & ((be <= end_) or ~RightTerminator(ch1, ch)) then
+					we := be 
+				end  
+			end 
+			rightTerm := RightTerminator(ch1, ch)
+			if (beg < we) & (we = end_) & ((we < be) or rightTerm) then // range covers end of word
+				words := true 
+			end  
+		end 
+		CacheReader(c, rd)
+		return words
+	end OnlyWords
+	
+	proc GetTargetField(t: TextModels.Model; pos: integer
+		var touchL, touchM, touchR: boolean
+		) 
+		var 
+			rd: TextModels.Reader
+			ch0, ch1: char
+			leftTerm, rightTerm: boolean
+	begin 
+		rd := t.NewReader(nil)
+		ReadLeft(rd, pos, ch0)
+		rd.ReadChar(ch1)
+		leftTerm := (ch0 <= " ") or LeftTerminator(ch0)
+		rightTerm := (ch1 <= " ") or RightTerminator(ch1, 0x)
+		touchL := ~leftTerm & rightTerm
+		touchM := ~leftTerm & ~rightTerm
+		touchR := leftTerm & ~rightTerm
+	end GetTargetField
+	
+	proc LeftExtend(t: TextModels.Model; attr: TextModels.Attributes) 
+		var 
+			wr: TextModels.Writer
+	begin 
+		wr := t.NewWriter(nil)
+		wr.SetAttr(attr)
+		wr.SetPos(0)
+		wr.WriteChar(" ")
+	end LeftExtend
+	
+	proc RightExtend(t: TextModels.Model; attr: TextModels.Attributes) 
+		var 
+			wr: TextModels.Writer
+	begin 
+		wr := t.NewWriter(nil)
+		wr.SetPos(t.Length())
+		wr.SetAttr(attr)
+		wr.WriteChar(" ")
+	end RightExtend
+	
+	proc MergeAdjust(target, inset: TextModels.Model; pos: integer; var start: integer) 
+		var 
+			rd: TextModels.Reader
+			a: TextModels.Attributes
+			ch, ch1: char
+			touchL, touchM, touchR: boolean
+	begin 
+		start := pos
+	(* disable intelligent paste for now
+	   GetTargetField(target, pos, touchL, touchM, touchR);
+	   IF touchL THEN
+	   rd := inset.NewReader(NIL); rd.SetPos(0);
+	   rd.ReadChar(ch); a := rd.attr; rd.ReadChar(ch1);
+	   IF (ch > " ") & ~RightTerminator(ch, ch1) THEN LeftExtend(inset, a); INC(start) END
+	   END;
+	   IF touchR & (inset.Length() > 0) THEN
+	   rd := inset.NewReader(rd); rd.SetPos(inset.Length() - 1); rd.ReadChar(ch);
+	   IF (ch > " ") & ~LeftTerminator(ch) THEN RightExtend(inset, rd.attr) END
+	   END *)
+	
+	
+	end MergeAdjust
+	
+	
+	proc InsertionAttr(c: StdCtrl): TextModels.Attributes 
+		var 
+			rd: TextModels.Reader
+			r: TextRulers.Ruler
+			a: TextModels.Attributes
+			ch: char
+	begin 
+		a := c.insAttr
+		if a = nil then
+			rd := CachedReader(c)
+			a := nil
+			if c.carPos # none then
+				ReadLeft(rd, c.carPos, ch)
+				a := rd.attr
+				if ((ch <= " ") or (ch = TextModels.nbspace)) & (c.carPos < c.text.Length()) then
+					rd.ReadChar(ch)
+					if ch > " " then
+						a := rd.attr 
+					end  
+				end  
+			elsif boundCaret & (c.selBeg # c.selEnd) then 
+				rd.SetPos(c.selBeg)
+				rd.ReadChar(ch)
+				a := rd.attr
+				c.insAttr := a 
+			end 
+			if a = nil then
+				c.view.PollDefaults(r, a) 
+			end 
+			CacheReader(c, rd) 
+		end 
+		return a
+	end InsertionAttr
+	
+	
+	proc GetTargetRange(c: StdCtrl; var beg, end_: integer) 
+	begin 
+		if boundCaret & (c.selBeg # c.selEnd) then
+			beg := c.selBeg
+			end_ := c.selEnd 
+		else 
+			beg := c.carPos
+			end_ := beg 
+		end 
+	end GetTargetRange
+	
+	
+	proc DoEdit(name: Stores.OpName
+		c: StdCtrl; beg, end_: integer
+		attr: TextModels.Attributes; ch: char; view: Views.View; w, h: integer
+		buf: TextModels.Model; bufbeg, bufend: integer // buf # NIL & bufend < 0: bufend = buf.Length()
+		pos: integer
+		) 
+		var 
+			script: Stores.Operation
+			wr: TextModels.Writer
+			cluster: boolean
+	begin 
+		if (beg < end_)  // something to delete
+			or (attr # nil)  // something new to write
+			or (buf # nil)  // something new to insert
+		then
+			cluster := (beg < end_) or (attr = nil) or (view # nil)
+			// don't script when typing a single character -> TextModels will bunch if possible
+			// ~cluster => name is reverted to #System.Inserting by TextModels
+			if cluster then
+				Models.BeginScript(c.text, name, script) 
+			end 
+			if beg < end_ then
+				c.text.Delete(beg, end_)
+				if pos > beg then
+					dec(pos, end_ - beg) 
+				end  
+			end 
+			if attr # nil then
+				assert(buf = nil, 20)
+				wr := CachedWriter(c, attr)
+				wr.SetPos(pos)
+				if view # nil then
+					wr.WriteView(view, w, h) 
+				else 
+					wr.WriteChar(ch) 
+				end 
+				CacheWriter(c, wr) 
+			elsif buf # nil then 
+				if bufend < 0 then
+					bufend := buf.Length() 
+				end 
+				c.text.Insert(pos, buf, bufbeg, bufend) 
+			end 
+			if cluster then
+				Models.EndScript(c.text, script) 
+			end 
+			CheckCaret(c) 
+		end 
+	end DoEdit
+	
+	
+	// editing
+	
+	proc ThisPos(v: TextViews.View; f: Views.Frame; x, y: integer): integer 
+		var 
+			loc: TextViews.Location
+			pos: integer
+	begin 
+		pos := v.ThisPos(f, x, y)
+		v.GetThisLocation(f, pos, loc)
+		if (loc.view # nil) & (x > (loc.l + loc.r) div 2) then
+			inc(pos) 
+		end 
+		return pos
+	end ThisPos
+	
+	proc ShowPos(c: StdCtrl; beg, end_: integer) 
+	begin 
+		if ~(noAutoScroll in c.opts) then
+			c.view.ShowRange(beg, end_, TextViews.focusOnly) 
+		end 
+	end ShowPos
+	
+	
+	proc Indentation(c: StdCtrl; pos: integer): TextModels.Model 
+		// pre: c.carPos # none
+		var 
+			st: TextSetters.Setter
+			buf: TextModels.Model
+			rd: TextModels.Reader
+			wr: TextModels.Writer
+			ch: char
+			spos: integer
+	begin 
+		buf := nil
+		rd := CachedReader(c)
+		st := c.view.ThisSetter()
+		spos := st.ThisSequence(pos)
+		rd.SetPos(spos)
+		rd.ReadChar(ch)
+		if (ch = tab) & (spos < pos) then
+			buf := TextModels.CloneOf(c.text)
+			wr := buf.NewWriter(nil)
+			wr.SetPos(buf.Length())
+			wr.SetAttr(InsertionAttr(c))
+			wr.WriteChar(line)
+			repeat 
+				wr.WriteChar(tab)
+				rd.ReadChar(ch) 
+			until (ch # tab) or (rd.Pos() > pos)  
+		end 
+		CacheReader(c, rd)
+		return buf
+	end Indentation
+	
+	proc InsertChar(c: StdCtrl; ch: char) 
+		var 
+			buf: TextModels.Model
+			attr: TextModels.Attributes
+			beg, end_: integer
+			legal: boolean
+			name: Stores.OpName
+	begin 
+		attr := nil
+		buf := nil
+		if ch < 100x then // should check Unicode
+			legal := LegalChar(ch) 
+		else 
+			legal := true 
+		end 
+		if (ch = ldel) or (ch = rdel) then
+			name := deletingKey 
+		else 
+			name := replacingKey 
+		end 
+		if boundCaret & (c.selBeg # c.selEnd) & (legal or (ch = ldel) or (ch = rdel) or (ch = enter)) then
+			beg := c.selBeg
+			end_ := c.selEnd
+			if (ch = ldel) or (ch = rdel) then
+				SmartRange(c, beg, end_)
+				ch := 0x 
+			end  
+		else 
+			beg := c.carPos
+			end_ := beg 
+		end 
+		if (c.carPos # none) or boundCaret & (c.selBeg # c.selEnd) then
+			if (ch = line) or (ch = enter) then
+				if noAutoIndent in c.opts then
+					buf := nil 
+				else 
+					buf := Indentation(c, beg) 
+				end 
+				if buf = nil then
+					ch := line
+					legal := true 
+				else 
+					ch := 0x
+					legal := false 
+				end  
+			end 
+			if legal then
+				attr := InsertionAttr(c) 
+			elsif (ch = ldel) & (c.carPos > 0) then 
+				beg := c.carPos - 1
+				end_ := c.carPos 
+			elsif (ch = rdel) & (c.carPos < c.text.Length()) then 
+				beg := c.carPos
+				end_ := c.carPos + 1 
+			end  
+		end 
+		DoEdit(name, c, beg, end_, attr, ch, nil, 0, 0, buf, 0, -1, beg)
+	end InsertChar
+	
+	proc InsertText(c: StdCtrl; beg, end_: integer; text: TextModels.Model; var start: integer) 
+		var 
+			buf: TextModels.Model
+	begin 
+		buf := TextModels.CloneOf(text)
+		buf.InsertCopy(0, text, 0, text.Length())
+		if beg = end_ then
+			MergeAdjust(c.text, buf, beg, start) 
+		else 
+			start := beg 
+		end 
+		DoEdit(insertingKey, c, beg, end_, nil, 0x, nil, 0, 0, buf, 0, -1, beg)
+	end InsertText
+	
+	proc InsertView(c: StdCtrl; beg, end_: integer; v: Views.View; w, h: integer) 
+	begin 
+		DoEdit(insertingKey, c, beg, end_, InsertionAttr(c), 0x, v, w, h, nil, 0, 0, beg)
+	end InsertView
+	
+	
+	proc InSubFrame(f, f1: Views.Frame; x, y: integer): boolean 
+	begin 
+		inc(x, f.gx - f1.gx)
+		inc(y, f.gy - f1.gy)
+		return (f1.l <= x) & (x < f1.r) & (f1.t <= y) & (y < f1.b)
+	end InSubFrame
+	
+	proc InFrame(f: Views.Frame; x, y: integer): boolean 
+	begin 
+		return (f.l <= x) & (x < f.r) & (f.t <= y) & (y < f.b)
+	end InFrame
+	
+	
+	// filtered tracking
+	
+	proc IsFilter(v: Views.View; c: StdCtrl; f: Views.Frame; x, y: integer): boolean 
+		var 
+			pref: FilterPref
+	begin 
+		pref.controller := c
+		pref.frame := f
+		pref.x := x
+		pref.y := y
+		pref.filter := false
+		Views.HandlePropMsg(v, pref)
+		return pref.filter
+	end IsFilter
+	
+	proc FindFilter(c: StdCtrl; f: Views.Frame; x, y: integer; var filter: Views.View) 
+		const 
+			catchRange = 1000
+		var 
+			rd: TextModels.Reader
+			pos, beg, end_: integer
+			isF: boolean
+	begin 
+		c.view.GetRange(f, beg, end_)
+		dec(beg, catchRange)
+		pos := c.view.ThisPos(f, x, y)
+		if pos < c.text.Length() then // let filter handle itself
+			inc(pos) 
+		end 
+		rd := CachedReader(c)
+		rd.SetPos(pos)
+		repeat 
+			rd.ReadPrevView(filter)
+			isF := (filter # nil) & IsFilter(filter, c, f, x, y) 
+		until isF or rd.eot or (rd.Pos() < beg) 
+		if ~isF then
+			filter := nil 
+		end 
+		CacheReader(c, rd)
+	end FindFilter
+	
+	proc FilteredPollCursor(c: StdCtrl; f: Views.Frame
+		var msg: Controllers.PollCursorMsg; var done: boolean
+		) 
+		var 
+			filter, focus: Views.View
+			x, y: integer
+			modifiers: set
+			isDown: boolean
+			fmsg: FilterPollCursorMsg
+	begin 
+		FindFilter(c, f, msg.x, msg.y, filter)
+		if filter # nil then
+			// f.Input(x, y, modifiers, isDown);
+			fmsg.x := msg.x
+			fmsg.y := msg.y
+			fmsg.cursor := msg.cursor
+			fmsg.controller := c
+			fmsg.done := false
+			// Views.ForwardCtrlMsg(f, fmsg) - does not work f.view # filter !!
+			focus := nil
+			filter.HandleCtrlMsg(f, fmsg, focus)
+			if fmsg.done then
+				msg.cursor := fmsg.cursor 
+			end 
+			done := fmsg.done 
+		end 
+	end FilteredPollCursor
+	
+	proc FilteredTrack(c: StdCtrl; f: Views.Frame
+		var msg: Controllers.TrackMsg; var done: boolean
+		) 
+		var 
+			filter, focus: Views.View
+			fmsg: FilterTrackMsg
+	begin 
+		FindFilter(c, f, msg.x, msg.y, filter)
+		if filter # nil then
+			fmsg.x := msg.x
+			fmsg.y := msg.y
+			fmsg.modifiers := msg.modifiers
+			fmsg.controller := c
+			fmsg.done := false
+			// Views.ForwardCtrlMsg(f, fmsg) - does not work f.view # filter !!
+			focus := nil
+			filter.HandleCtrlMsg(f, fmsg, focus)
+			done := fmsg.done 
+		end 
+	end FilteredTrack
+	
+	
+	// StdCtrl
+	
+	proc (c: StdCtrl) Internalize2(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+	begin 
+		c.Internalize2^(rd)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minVersion, maxStdVersion, thisVersion)
+		if rd.cancelled then
+			return  
+		end 
+		InitMarks(c)
+	end Internalize2
+	
+	proc (c: StdCtrl) Externalize2(var wr: Stores.Writer) 
+	begin 
+		c.Externalize2^(wr)
+		wr.WriteVersion(maxStdVersion)
+	end Externalize2
+	
+	proc (c: StdCtrl) CopyFrom(source: Stores.Store) 
+	begin 
+		c.CopyFrom^(source)
+		InitMarks(c)
+	end CopyFrom
+	
+	proc (c: StdCtrl) Neutralize2
+	begin 
+		// c.Neutralize^;
+		c.SetCaret(none)
+	end Neutralize2
+	
+	proc (c: StdCtrl) GetContextType(var type_: Stores.TypeName) 
+	begin 
+		type_ := "TextViews.View"
+	end GetContextType
+	
+	proc (c: StdCtrl) GetValidOps(var valid: set) 
+	begin 
+		valid := {}
+		if (c.carPos # none) or (boundCaret & (c.selBeg # c.selEnd)) then
+			valid := valid + {Controllers.pasteChar, Controllers.paste} 
+		end 
+		if c.selBeg # c.selEnd then
+			valid := valid + {Controllers.cut, Controllers.copy_} 
+		end 
+	end GetValidOps
+	
+	proc (c: StdCtrl) NativeModel(m: Models.Model): boolean 
+	begin 
+		assert(m # nil, 20)
+		return m is TextModels.Model
+	end NativeModel
+	
+	proc (c: StdCtrl) NativeView(v: Views.View): boolean 
+	begin 
+		assert(v # nil, 20)
+		return v is TextViews.View
+	end NativeView
+	
+	proc (c: StdCtrl) NativeCursorAt(f: Views.Frame; x, y: integer): integer 
+	begin 
+		return Ports.textCursor
+	end NativeCursorAt
+	
+	proc (c: StdCtrl) PollNativeProp(selection: boolean
+		var p: Properties.Property; var truncated: boolean
+		) 
+		var 
+			beg, end_: integer
+	begin 
+		if selection & (c.selBeg = c.selEnd) then
+			p := InsertionAttr(c).Prop()
+			truncated := false 
+		else 
+			if selection then
+				beg := c.selBeg
+				end_ := c.selEnd 
+			else 
+				beg := 0
+				end_ := c.text.Length() 
+			end 
+			(* truncated := (end - beg > lenCutoff);
+			   IF truncated THEN end := beg + lenCutoff END; *)
+			
+			
+			p := c.text.Prop(beg, end_) 
+		end 
+	end PollNativeProp
+	
+	proc (c: StdCtrl) SetNativeProp(selection: boolean; old, p: Properties.Property) 
+		var 
+			t: TextModels.Model
+			beg, end_: integer
+	begin 
+		t := c.text
+		if selection then
+			beg := c.selBeg
+			end_ := c.selEnd 
+		else 
+			beg := 0
+			end_ := t.Length() 
+		end 
+		if beg < end_ then
+			t.Modify(beg, end_, old, p)
+			if selection then
+				c.SetSelection(beg, end_) 
+			end  
+		elsif selection then 
+			c.insAttr := TextModels.ModifiedAttr(InsertionAttr(c), p) 
+		end 
+	end SetNativeProp
+	
+	proc (c: StdCtrl) MakeViewVisible(v: Views.View) 
+		var 
+			pos: integer
+	begin 
+		assert(v # nil, 20)
+		assert(v.context # nil, 21)
+		assert(v.context.ThisModel() = c.text, 22)
+		pos := v.context(TextModels.Context).Pos()
+		ShowPos(c, pos, pos + 1)
+	end MakeViewVisible
+	
+	proc (c: StdCtrl) GetFirstView(selection: boolean; var v: Views.View) 
+		var 
+			rd: TextModels.Reader
+			beg, end_: integer
+	begin 
+		if selection then
+			beg := c.selBeg
+			end_ := c.selEnd 
+		else 
+			beg := 0
+			end_ := c.text.Length() 
+		end 
+		if beg < end_ then
+			rd := CachedReader(c)
+			rd.SetPos(beg)
+			rd.ReadView(v)
+			if rd.Pos() > end_ then
+				v := nil 
+			end 
+			CacheReader(c, rd) 
+		else 
+			v := nil 
+		end 
+	end GetFirstView
+	
+	proc (c: StdCtrl) GetNextView(selection: boolean; var v: Views.View) 
+		var 
+			con: Models.Context
+			rd: TextModels.Reader
+			beg, end_, pos: integer
+	begin 
+		assert(v # nil, 20)
+		con := v.context
+		assert(con # nil, 21)
+		assert(con.ThisModel() = c.text, 22)
+		if selection then
+			beg := c.selBeg
+			end_ := c.selEnd 
+		else 
+			beg := 0
+			end_ := c.text.Length() 
+		end 
+		pos := con(TextModels.Context).Pos()
+		if (beg <= pos) & (pos < end_) then
+			rd := CachedReader(c)
+			rd.SetPos(pos + 1)
+			rd.ReadView(v)
+			if rd.Pos() > end_ then
+				v := nil 
+			end 
+			CacheReader(c, rd) 
+		else 
+			v := nil 
+		end 
+	end GetNextView
+	
+	proc (c: StdCtrl) GetPrevView(selection: boolean; var v: Views.View) 
+		var 
+			con: Models.Context
+			rd: TextModels.Reader
+			beg, end_, pos: integer
+	begin 
+		assert(v # nil, 20)
+		con := v.context
+		assert(con # nil, 21)
+		assert(con.ThisModel() = c.text, 22)
+		if selection then
+			beg := c.selBeg
+			end_ := c.selEnd 
+		else 
+			beg := 0
+			end_ := c.text.Length() 
+		end 
+		pos := con(TextModels.Context).Pos()
+		if (beg < pos) & (pos <= end_) then
+			rd := CachedReader(c)
+			rd.SetPos(pos)
+			rd.ReadPrevView(v)
+			if rd.Pos() < beg then
+				v := nil 
+			end 
+			CacheReader(c, rd) 
+		else 
+			v := nil 
+		end 
+	end GetPrevView
+	
+	proc (c: StdCtrl) GetSelectionBounds(f: Views.Frame; var x, y, w, h: integer) 
+		var 
+			b, e: TextViews.Location
+	begin 
+		c.GetSelectionBounds^(f, x, y, w, h)
+		if w = Views.undefined then
+			c.view.GetThisLocation(f, c.selBeg, b)
+			c.view.GetThisLocation(f, c.selEnd, e)
+			if b.start = e.start then
+				x := b.x
+				w := e.x - b.x 
+			else 
+				x := f.l
+				w := f.r - f.l 
+			end 
+			y := b.y
+			h := e.y + e.asc + e.dsc - b.y 
+		end 
+	end GetSelectionBounds
+	
+	proc (c: StdCtrl) MarkPickTarget(source, f: Views.Frame
+		sx, sy, x, y: integer; show: boolean
+		) 
+		var 
+			b, e: TextViews.Location
+			pos: integer
+	begin 
+		pos := c.view.ThisPos(f, x, y)
+		if pos < c.text.Length() then
+			c.view.GetThisLocation(f, pos, b)
+			c.view.GetThisLocation(f, pos + 1, e)
+			if (b.pos < e.pos) or (b.pos = e.pos) & (b.x < e.x) then
+				MarkSelRange(c, f, b, e, true, show) 
+			end  
+		end 
+	end MarkPickTarget
+	
+	proc (c: StdCtrl) MarkDropTarget(source, f: Views.Frame
+		sx, sy, dx, dy, w, h, rx, ry: integer; type_: Stores.TypeName; isSingle, show: boolean
+		) 
+		var 
+			loc: TextViews.Location
+			pos: integer
+	begin 
+		pos := c.view.ThisPos(f, dx, dy)
+		if (source # nil) & ((source.view = f.view) or (source.view.ThisModel() = f.view.ThisModel())) 
+			& (c.selBeg < pos) & (pos < c.selEnd) then
+			pos := c.selBeg 
+		end 
+		c.view.GetThisLocation(f, pos, loc)
+		f.MarkRect(loc.x, loc.y, loc.x + f.unit, loc.y + loc.asc + loc.dsc, Ports.fill, Ports.invert, show)
+		if (isSingle or ~Services.Extends(type_, "TextViews.View")) & (w > 0) & (h > 0) then
+			dec(dx, rx)
+			dec(dy, ry)
+			f.MarkRect(dx, dy, dx + w, dy + h, 0, Ports.dim25, show) 
+		end 
+	end MarkDropTarget
+	
+	
+	proc GetThisLine(c: StdCtrl; pos: integer; var beg, end_: integer) 
+		var 
+			st: TextSetters.Setter
+	begin 
+		st := c.view.ThisSetter()
+		beg := st.ThisLine(pos)
+		end_ := st.NextLine(beg)
+		if end_ = beg then
+			end_ := c.text.Length() 
+		end 
+	end GetThisLine
+	
+	proc GetThisChunk(c: StdCtrl; f: Views.Frame
+		var s: TrackState; var beg, end_: integer; var mode: integer
+		) 
+		var 
+			v: TextViews.View
+			b, e: TextViews.Location
+			st: TextSetters.Setter
+			ruler: TextRulers.Ruler
+			ra: TextRulers.Attributes
+			pos, r: integer
+	begin 
+		v := c.view
+		st := v.ThisSetter()
+		pos := ThisPos(v, f, s.x, s.y)
+		ruler := TextViews.ThisRuler(v, pos)
+		ra := ruler.style.attr
+		r := ra.right
+		if ~(TextRulers.rightFixed in ra.opts) or (r > f.r) then
+			r := f.r 
+		end 
+		st.GetWord(pos, beg, end_)
+		v.GetThisLocation(f, beg, b)
+		v.GetThisLocation(f, end_, e)
+		if (s.x < f.l) or (s.x >= r) then // outside of line box: whole line
+			GetThisLine(c, pos, beg, end_)
+			mode := lines 
+		elsif (s.y < b.y) or (s.y < b.y + b.asc + b.dsc) & (s.x < b.x) 
+			or (s.y >= e.y) & (s.x >= e.x) or (s.y >= e.y + e.asc + e.dsc) then 
+			// outside of word: single char
+			beg := ThisPos(v, f, s.x, s.y)
+			v.GetThisLocation(f, beg, b)
+			if (b.x > s.x) & (beg > 0) then
+				dec(beg) 
+			end 
+			if beg < c.text.Length() then
+				end_ := beg + 1 
+			else 
+				end_ := beg 
+			end 
+			mode := words 
+		else  // whole word
+			mode := words 
+		end 
+	end GetThisChunk
+	
+	proc SetSel(c: StdCtrl; beg, end_: integer) 
+	// pre: ~(Containers.noSelection IN c.opts)
+	begin 
+		if beg >= end_ then
+			c.SetCaret(beg) 
+		else 
+			c.SetSelection(beg, end_) 
+		end 
+	end SetSel
+	
+	proc PrepareToTrack(c: StdCtrl; f: Views.Frame
+		var s: TrackState; mode: integer
+		var pin0, pin1, pos: integer
+		) 
+		var 
+			loc: TextViews.Location
+			beg, end_: integer
+			m: integer
+	begin 
+		pos := ThisPos(c.view, f, s.x, s.y)
+		if mode in {chars, words, lines} then
+			GetThisChunk(c, f, s, pin0, pin1, m) 
+		else 
+			pin0 := pos
+			pin1 := pos 
+		end 
+		if s.toggle & ((c.selBeg # c.selEnd) or boundCaret & (c.carPos # none)) 
+			& ~(Containers.noSelection in c.opts) then // modify existing selection
+			if c.selBeg # c.selEnd then
+				beg := c.selBeg
+				end_ := c.selEnd 
+			else 
+				beg := c.carPos
+				end_ := beg
+				c.selPin0 := beg
+				c.selPin1 := beg 
+			end 
+			if pin1 > c.selPin0 then
+				end_ := pin1
+				pin0 := beg 
+			elsif pin0 < c.selPin1 then 
+				beg := pin0
+				pin0 := end_ 
+			end 
+			SetSel(c, beg, end_)
+			pin1 := pin0 
+		elsif mode in {chars, words, lines} then 
+			SetSel(c, pin0, pin1)
+			pos := pin1 
+		else 
+			SetCaret(c.text, pos) 
+		end 
+		c.lastStep := Services.Ticks()
+	end PrepareToTrack
+	
+	proc ScrollDelay(d: integer): integer 
+		var 
+			second, delay: integer
+	begin 
+		second := Services.resolution
+		if d < 2 * mm then
+			delay := second div 2 
+		elsif d < 4 * mm then 
+			delay := second div 3 
+		elsif d < 6 * mm then 
+			delay := second div 5 
+		elsif d < 8 * mm then 
+			delay := second div 10 
+		else 
+			delay := second div 20 
+		end 
+		return delay
+	end ScrollDelay
+	
+	proc ScrollWhileTracking(c: StdCtrl; f: Views.Frame; var x0, y0, x, y: integer) 
+		// currently, there are no provisions to scroll while tracking inside an embedded view
+		var  // normalize: BOOLEAN;
+			now: longint
+			scr: Controllers.ScrollMsg
+	begin 
+		// normalize := c.view.context.Normalize();
+		now := Services.Ticks()
+		if x < f.l then
+			x0 := x
+			x := f.l 
+		elsif x > f.r then 
+			x0 := x
+			x := f.r 
+		end 
+		if (y < f.t) (* & normalize *)then
+			if c.lastStep + ScrollDelay(f.t - y) <= now then
+				c.lastStep := now
+				scr.focus := true
+				scr.vertical := true
+				scr.op := Controllers.decLine
+				scr.done := false
+				Controllers.ForwardVia(Controllers.frontPath, scr) 
+			end  
+		elsif (y > f.b) (* & normalize *)then 
+			if c.lastStep + ScrollDelay(y - f.b) <= now then
+				c.lastStep := now
+				scr.focus := true
+				scr.vertical := true
+				scr.op := Controllers.incLine
+				scr.done := false
+				Controllers.ForwardVia(Controllers.frontPath, scr) 
+			end  
+		else 
+			y0 := y 
+		end 
+	end ScrollWhileTracking
+	
+	proc (c: StdCtrl) TrackMarks(f: Views.Frame; x, y: integer; units, extend, add: boolean) 
+		var 
+			s: TrackState
+			pos, beg, end_, pin0, pin1, p, p1: integer
+			modifiers: set
+			mode, m: integer
+			isDown, noSel: boolean
+	begin 
+		if c.opts * Containers.mask # Containers.mask then // track caret or selection
+			s.x := x
+			s.y := y
+			s.toggle := extend
+			noSel := Containers.noSelection in c.opts
+			if units & ~noSel then // select units, i.e. words or lines
+				GetThisChunk(c, f, s, beg, end_, mode) 
+			else  // set caret or selection
+				mode := none 
+			end 
+			PrepareToTrack(c, f, s, mode, pin0, pin1, p)
+			x := s.x
+			y := s.y
+			beg := pin0
+			end_ := pin1
+			if p < pin0 then
+				beg := p 
+			elsif p > pin1 then 
+				end_ := p 
+			end 
+			p := -1
+			f.Input(s.x, s.y, modifiers, isDown)
+			while isDown do 
+				(* REPEAT
+				   f.Input(s.x, s.y, modifiers, isDown); *)
+				
+				
+				if (s.x # x) or (s.y # y) then
+					ScrollWhileTracking(c, f, x, y, s.x, s.y)
+					p1 := ThisPos(c.view, f, s.x, s.y)
+					if p1 # p then
+						p := p1
+						if mode in {words, lines} then
+							if mode = words then
+								GetThisChunk(c, f, s, beg, end_, m) 
+							else 
+								GetThisLine(c, p, beg, end_) 
+							end 
+							if p > pin0 then
+								pos := end_ 
+							else 
+								pos := beg 
+							end  
+						else 
+							pos := p 
+						end 
+						beg := pin0
+						end_ := pin1
+						if noSel then
+							c.SetCaret(pos) 
+						else 
+							if pos < pin0 then
+								beg := pos 
+							elsif pos > pin1 then 
+								end_ := pos 
+							end 
+							SetSel(c, beg, end_)
+							if c.selPin0 = c.selPin1 then
+								if pos < pin0 then
+									c.selPin0 := pos
+									c.selPin1 := pin1 
+								elsif pos > pin1 then 
+									c.selPin0 := pin0
+									c.selPin1 := pos 
+								end  
+							end  
+						end  
+					end  
+				end 
+				f.Input(s.x, s.y, modifiers, isDown) 
+			end  
+		// UNTIL ~isDown
+		
+		
+		end 
+	end TrackMarks
+	
+	proc (c: StdCtrl) Resize(v: Views.View; l, t, r, b: integer) 
+		var 
+			con: Models.Context
+	begin 
+		assert(v # nil, 20)
+		con := v.context
+		assert(con # nil, 21)
+		assert(con.ThisModel() = c.text, 22)
+		con.SetSize(r - l, b - t)
+	end Resize
+	
+	proc (c: StdCtrl) DeleteSelection
+		var 
+			beg, end_: integer
+	begin 
+		beg := c.selBeg
+		end_ := c.selEnd
+		if beg # end_ then
+			SmartRange(c, beg, end_)
+			DoEdit(deletingKey, c, beg, end_, nil, 0x, nil, 0, 0, nil, 0, 0, 0) 
+		end 
+	end DeleteSelection
+	
+	proc (c: StdCtrl) MoveLocalSelection(f, dest: Views.Frame; x, y, dx, dy: integer) 
+		var 
+			buf: TextModels.Model
+			pos, beg0, end0, beg, end_, start, len_: integer
+	begin 
+		pos := dest.view(TextViews.View).ThisPos(dest, dx, dy)
+		(* smart move disabled for now --> use true move instead of copy
+		   beg0 := c.selBeg; end0 := c.selEnd; beg := beg0; end := end0;
+		   SmartRange(c, beg, end);
+		   IF (beg < pos) & (pos < end) THEN pos := beg END;
+		   buf := TextModels.CloneOf(c.text); buf.CopyFrom(0, c.text, beg0, end0);
+		   IF OnlyWords(c, beg0, end0) THEN MergeAdjust(c.text, buf, pos, start) ELSE start := pos END;
+		   len := end0 - beg0;
+		   IF start >= end THEN DEC(start, end - beg) END;
+		   IF pos # beg THEN
+		   DoEdit(movingKey, c, beg, end, NIL, 0X, NIL, 0, 0, buf, pos);
+		   SetSelection(c.text, start, start + len);
+		   AutoShowRange(c, start, start + len)
+		   END *)
+		
+		beg := c.selBeg
+		end_ := c.selEnd
+		if (pos < beg) or (pos > end_) then
+			len_ := end_ - beg
+			start := pos
+			if start >= end_ then
+				dec(start, len_) 
+			end 
+			DoEdit(movingKey, c, 0, 0, nil, 0x, nil, 0, 0, c.text, beg, end_, pos)
+			SetSelection(c.text, start, start + len_)
+			AutoShowRange(c, start, start + len_) 
+		end 
+	end MoveLocalSelection
+	
+	proc (c: StdCtrl) CopyLocalSelection(f, dest: Views.Frame; x, y, dx, dy: integer) 
+		var 
+			buf: TextModels.Model
+			pos, beg, end_, start, len_: integer
+	begin 
+		pos := dest.view(TextViews.View).ThisPos(dest, dx, dy)
+		beg := c.selBeg
+		end_ := c.selEnd
+		if (beg < pos) & (pos < end_) then
+			pos := beg 
+		end 
+		buf := TextModels.CloneOf(c.text)
+		buf.InsertCopy(0, c.text, beg, end_)
+		if OnlyWords(c, beg, end_) then
+			MergeAdjust(c.text, buf, pos, start) 
+		else 
+			start := pos 
+		end 
+		len_ := end_ - beg
+		DoEdit(copyingKey, c, 0, 0, nil, 0x, nil, 0, 0, buf, 0, -1, pos)
+		SetSelection(c.text, start, start + len_)
+		AutoShowRange(c, start, start + len_)
+	end CopyLocalSelection
+	
+	proc (c: StdCtrl) SelectionCopy(): Containers.Model 
+		var 
+			t: TextModels.Model
+	begin 
+		if c.selBeg # c.selEnd then
+			t := TextModels.CloneOf(c.text)
+			t.InsertCopy(0, c.text, c.selBeg, c.selEnd) 
+		else 
+			t := nil 
+		end 
+		return t
+	end SelectionCopy
+	
+	proc (c: StdCtrl) NativePaste(m: Models.Model; f: Views.Frame) 
+		var 
+			beg, end_, start: integer
+	begin 
+		with m: TextModels.Model do 
+			GetTargetRange(c, beg, end_)
+			if beg # none then
+				InsertText(c, beg, end_, m, start) 
+			end  
+		end 
+	end NativePaste
+	
+	proc (c: StdCtrl) ArrowChar(f: Views.Frame; ch: char; units, select: boolean) 
+		var 
+			st: TextSetters.Setter
+			v: TextViews.View
+			loc: TextViews.Location
+			org, len_, p, pos, b, e, beg, end_, d, d0, edge, x, dy: integer
+			change, rightEdge, rightDir: boolean
+			scroll: Controllers.ScrollMsg
+	begin 
+		c.insAttr := nil
+		Models.StopBunching(c.text)
+		v := c.view
+		st := v.ThisSetter()
+		change := select or (c.selBeg = c.selEnd)
+		if c.selBeg # c.selEnd then
+			beg := c.selBeg
+			end_ := c.selEnd 
+		else 
+			beg := c.carPos
+			end_ := beg
+			c.carLast := beg 
+		end 
+		len_ := c.text.Length()
+		rightDir := (ch = aR) or (ch = pR) or (ch = dR) or (ch = aD) or (ch = pD) or (ch = dD)
+		rightEdge := change & (c.carLast < end_) 
+			or rightDir & (~change or (beg = end_) & (c.carLast = end_))
+		if rightEdge then
+			edge := end_ 
+		else 
+			edge := beg 
+		end 
+		ShowPos(c, edge, edge)
+		b := beg
+		e := end_
+		d := edge
+		d0 := edge
+		case ch of 
+			| aL: 
+				if units then
+					p := d
+					e := d
+					while (p > 0) & ((edge = d) or (edge = e)) do 
+						dec(p)
+						st.GetWord(p, edge, e) 
+					end  
+				elsif change then 
+					dec(edge) 
+				end  
+			| pL, dL: 
+				v.GetThisLocation(f, edge, loc)
+				edge := loc.start 
+			| aR: 
+				if units then
+					p := d
+					e := edge
+					while (p < len_) & ((edge <= d) or (edge = e)) do 
+						inc(p)
+						st.GetWord(p, edge, e) 
+					end  
+				elsif change then 
+					inc(edge) 
+				end  
+			| pR, dR: 
+				v.GetThisLocation(f, edge, loc)
+				p := st.NextLine(loc.start)
+				if p = loc.start then
+					p := len_ 
+				else 
+					dec(p) 
+				end 
+				if p > edge then
+					edge := p 
+				end  
+			| aU: 
+				if units then
+					p := st.ThisSequence(edge)
+					if p < edge then
+						edge := p 
+					else 
+						edge := st.PreviousSequence(edge) 
+					end  
+				else 
+					v.PollOrigin(org, dy)
+					v.GetThisLocation(f, edge, loc)
+					if c.lastX >= 0 then
+						x := c.lastX 
+					else 
+						x := loc.x 
+					end 
+					c.carX := x
+					if loc.start > 0 then
+						edge := v.ThisPos(f, x, loc.y - 1)
+						if (edge >= loc.start) & (org > 0) then
+							v.SetOrigin(org - 1, 0)
+							v.GetThisLocation(f, edge, loc)
+							edge := v.ThisPos(f, x, loc.y - 1) 
+						end  
+					end  
+				end  
+			| pU: 
+				v.PollOrigin(org, dy)
+				if edge > org then
+					edge := org 
+				elsif org > 0 then 
+					scroll.focus := true
+					scroll.vertical := true
+					scroll.op := Controllers.decPage
+					scroll.done := false
+					Views.ForwardCtrlMsg(f, scroll)
+					v.PollOrigin(edge, dy) 
+				end  
+			| dU: 
+				edge := 0 
+			| aD: 
+				if units then
+					p := st.NextSequence(st.ThisSequence(edge))
+					if p > edge then
+						edge := p 
+					else 
+						edge := st.NextSequence(p) 
+					end  
+				else 
+					v.GetThisLocation(f, edge, loc)
+					if c.lastX >= 0 then
+						x := c.lastX 
+					else 
+						x := loc.x 
+					end 
+					c.carX := x
+					edge := v.ThisPos(f, x, loc.y + loc.asc + loc.dsc + 1) 
+				end  
+			| pD: 
+				v.GetRange(f, b, e)
+				if e < len_ then
+					scroll.focus := true
+					scroll.vertical := true
+					scroll.op := Controllers.incPage
+					scroll.done := false
+					Views.ForwardCtrlMsg(f, scroll)
+					v.GetRange(f, edge, e) 
+				else 
+					edge := len_ 
+				end  
+			| dD: 
+				edge := len_ 
+		end 
+		if rightEdge then
+			end_ := edge 
+		else 
+			beg := edge 
+		end 
+		if ~select then
+			if rightDir then
+				beg := edge 
+			else 
+				end_ := edge 
+			end  
+		end 
+		if beg < 0 then
+			beg := 0 
+		elsif beg > len_ then 
+			beg := len_ 
+		end 
+		if end_ < beg then
+			end_ := beg 
+		elsif end_ > len_ then 
+			end_ := len_ 
+		end 
+		if beg = end_ then
+			ShowPos(c, beg, end_) 
+		else 
+			if rightEdge then
+				ShowPos(c, end_ - 1, end_) 
+			else 
+				ShowPos(c, beg, beg + 1) 
+			end  
+		end 
+		SetSel(c, beg, end_)
+	end ArrowChar
+	
+	proc (c: StdCtrl) ControlChar(f: Views.Frame; ch: char) 
+	begin 
+		InsertChar(c, ch)
+	end ControlChar
+	
+	proc (c: StdCtrl) PasteChar(ch: char) 
+	begin 
+		InsertChar(c, ch)
+	end PasteChar
+	
+	proc (c: StdCtrl) PasteView(f: Views.Frame; v: Views.View; w, h: integer) 
+		var 
+			t: TextModels.Model
+			pos, start, beg, end_, len_: integer
+	begin 
+		GetTargetRange(c, beg, end_)
+		if beg # none then
+			InsertView(c, beg, end_, v, w, h) 
+		end 
+	end PasteView
+	
+	proc (c: StdCtrl) Drop(src, f: Views.Frame; sx, sy, x, y, w, h, rx, ry: integer
+		v: Views.View; isSingle: boolean
+		) 
+		var 
+			t: TextModels.Model
+			pos, start, beg, end_, len_: integer
+	begin 
+		pos := ThisPos(c.view, f, x, y)
+		with v: TextViews.View do 
+			t := v.ThisModel() 
+		else 
+			t := nil 
+		end 
+		if (t # nil) & ~isSingle then
+			InsertText(c, pos, pos, t, start)
+			len_ := t.Length() 
+		else 
+			InsertView(c, pos, pos, v, w, h)
+			start := pos
+			len_ := 1 
+		end 
+		SetSelection(c.text, start, start + len_)
+		AutoShowRange(c, start, start + len_)
+	end Drop
+	
+	proc (c: StdCtrl) PickNativeProp(f: Views.Frame; x, y: integer; var p: Properties.Property) 
+		var 
+			rd: TextModels.Reader
+	begin 
+		rd := CachedReader(c)
+		rd.SetPos(ThisPos(c.view, f, x, y))
+		rd.Read
+		if ~rd.eot then
+			p := rd.attr.Prop() 
+		else 
+			p := nil 
+		end 
+		CacheReader(c, rd)
+	end PickNativeProp
+	
+	proc (c: StdCtrl) HandleModelMsg(var msg: Models.Message) 
+		var 
+			done: boolean
+	begin 
+		c.HandleModelMsg^(msg)
+		if msg.model = c.text then
+			with msg: Models.UpdateMsg do 
+				with msg: TextModels.UpdateMsg do 
+					case msg.op of 
+						TextModels.insert, TextModels.delete, TextModels.replace: 
+							UpdateMarks(c, msg.op, msg.beg, msg.end_, msg.delta) 
+					else  // unknown text op happened
+						c.view.Neutralize 
+					end  
+				else  // unknown text update happened
+					c.view.Neutralize 
+				end  
+			| msg: ModelMessage do 
+				with msg: SetCaretMsg do 
+					c.SetCaret(msg.pos) 
+				| msg: SetSelectionMsg do 
+					c.SetSelection(msg.beg, msg.end_) 
+				else  
+				end  
+			| msg: TextViews.PositionMsg do 
+				if ~msg.focusOnly or (c = Focus()) then
+					c.autoBeg := -1 
+				end  
+			else  
+			end  
+		end 
+	end HandleModelMsg
+	
+	proc (c: StdCtrl) HandleViewMsg(f: Views.Frame; var msg: Views.Message) 
+	begin 
+		c.HandleViewMsg^(f, msg)
+		if msg.view = c.view then
+			with msg: ViewMessage do 
+				with msg: CaretMsg do 
+					c.MarkCaret(f, msg.show) 
+				| msg: SelectionMsg do 
+					MarkSelection(c, f, msg.beg, msg.end_, msg.show) 
+				end  
+			else  
+			end  
+		end 
+	end HandleViewMsg
+	
+	proc (c: StdCtrl) HandleCtrlMsg(f: Views.Frame
+		var msg: Controllers.Message; var focus: Views.View
+		) 
+		var 
+			g: Views.Frame
+			beg, end_: integer
+			done: boolean
+	begin 
+		if (msg is Controllers.MarkMsg) or (msg is Controllers.TickMsg) then
+			beg := c.autoBeg
+			end_ := c.autoEnd
+			c.autoBeg := max(integer)
+			c.autoEnd := 0 
+		end 
+		with msg: Controllers.TickMsg do 
+			if ~(noAutoScroll in c.opts) 
+				& (0 <= beg) & (beg <= end_) & (end_ <= c.text.Length()) 
+				& c.view.context.Normalize() 
+			then
+				c.view.ShowRange(beg, end_, TextViews.focusOnly) 
+			end 
+			if focus = nil then
+				CheckCaret(c)
+				BlinkCaret(c, f, msg.tick)
+				if (c.selBeg # c.aliasSelBeg) or (c.selEnd # c.aliasSelEnd) then
+					// lazy update of text-synchronous alias marks
+					c.aliasSelBeg := c.selBeg
+					c.aliasSelEnd := c.selEnd
+					SetSelection(c.text, c.selBeg, c.selEnd) 
+				end  
+			end  
+		| msg: Controllers.MarkMsg do 
+			c.carX := -1
+			if msg.show then
+				c.carVisible := true
+				c.carTick := 0 
+			end  
+		| msg: Controllers.TrackMsg do 
+			c.insAttr := nil
+			c.carX := -1
+			Models.StopBunching(c.text) 
+		| msg: Controllers.EditMsg do 
+			c.lastX := c.carX
+			c.carX := -1
+			if focus = nil then
+				CheckCaret(c) 
+			end  
+		| msg: Controllers.ReplaceViewMsg do 
+			c.carX := -1 
+		| msg: Controllers.TransferMessage do 
+			c.carX := -1 
+		| msg: Properties.EmitMsg do 
+			c.carX := -1 
+		else  
+		end 
+		done := false
+		with msg: Controllers.CursorMessage do 
+			if true (* Containers.noCaret IN c.opts *)then // mask or browser mode
+				g := Views.FrameAt(f, msg.x, msg.y)
+				if (g = nil) or IsFilter(g.view, c, f, msg.x, msg.y) then
+					with msg: Controllers.PollCursorMsg do 
+						FilteredPollCursor(c, f, msg, done) 
+					| msg: Controllers.TrackMsg do 
+						FilteredTrack(c, f, msg, done) 
+					else  
+					end  
+				end  
+			end  
+		else  
+		end 
+		if ~done then
+			c.HandleCtrlMsg^(f, msg, focus) 
+		end 
+	end HandleCtrlMsg
+	
+	
+	// caret
+	
+	proc (c: StdCtrl) HasCaret(): boolean 
+	begin 
+		return c.carPos # none
+	end HasCaret
+	
+	proc (c: StdCtrl) MarkCaret(f: Views.Frame; show: boolean) 
+		const  // in frame dots
+			carW = 1
+			carMinH = 7
+		var 
+			loc: TextViews.Location
+			pos, beg, end_, u, x, y, w, h: integer
+			fm: integer
+	begin 
+		pos := c.carPos
+		if (pos # none) & f.mark & (f.front & c.carVisible or ~f.front) then
+			c.view.GetRange(f, beg, end_)
+			if (beg <= pos) & (pos <= end_) then
+				u := f.dot
+				c.view.GetThisLocation(f, pos, loc)
+				if f.front then
+					fm := Ports.invert 
+				else 
+					fm := Ports.dim50 
+				end 
+				x := loc.x
+				y := loc.y
+				h := loc.asc + loc.dsc
+				if Dialog.thickCaret then
+					w := 2 * carW * u 
+				else 
+					w := carW * u 
+				end 
+				if x >= f.r - w then
+					dec(x, w) 
+				end 
+				if h < carMinH * u then // special caret in lines of (almost) zero height
+					h := carMinH * u 
+				end 
+				f.MarkRect(x, y, x + w, y + h, Ports.fill, fm, show) 
+			end  
+		end 
+	end MarkCaret
+	
+	proc (c: StdCtrl) CaretPos(): integer 
+	begin 
+		return c.carPos
+	end CaretPos
+	
+	proc (c: StdCtrl) SetCaret(pos: integer) 
+	begin 
+		assert(none <= pos, 20)
+		assert(pos <= c.text.Length(), 21)
+		c.insAttr := nil
+		if pos # c.carPos then
+			if (pos # none) & (c.carPos = none) then
+				if boundCaret then
+					c.SetSelection(none, none) 
+				end 
+				c.SetFocus(nil) 
+			end 
+			
+			if Containers.noCaret in c.opts then
+				pos := none 
+			end 
+			if c.carPos # none then
+				c.carLast := c.carPos
+				FlipCaret(c, Containers.hide) 
+			end 
+			c.carPos := pos
+			if pos # none then
+				c.carVisible := true
+				c.carTick := Services.Ticks() + Dialog.caretPeriod
+				FlipCaret(c, Containers.show) 
+			end  
+		end 
+	end SetCaret
+	
+	
+	// selection
+	
+	proc (c: StdCtrl) HasSelection(): boolean 
+	begin 
+		return c.selBeg # c.selEnd
+	end HasSelection
+	
+	proc (c: StdCtrl) Selectable(): boolean 
+	begin 
+		return c.text.Length() > 0
+	end Selectable
+	
+	proc (c: StdCtrl) SetSingleton(s: Views.View) 
+		var 
+			s0: Views.View
+	begin 
+		s0 := c.Singleton()
+		c.SetSingleton^(s)
+		s := c.Singleton()
+		if s # s0 then
+			c.insAttr := nil
+			if s # nil then
+				c.selBeg := s.context(TextModels.Context).Pos()
+				c.selEnd := c.selBeg + 1
+				c.selPin0 := c.selBeg
+				c.selPin1 := c.selEnd 
+			else 
+				c.selBeg := none
+				c.selEnd := none 
+			end  
+		end 
+	end SetSingleton
+	
+	proc (c: StdCtrl) SelectAll(select: boolean) 
+	// extended by subclass to include intrinsic selections
+	begin 
+		if select then
+			c.SetSelection(0, c.text.Length()) 
+		else 
+			c.SetSelection(none, none) 
+		end 
+	end SelectAll
+	
+	proc (c: StdCtrl) InSelection(f: Views.Frame; x, y: integer): boolean 
+		// pre: c.selBeg # c.selEnd
+		// post: (x, y) in c.selection
+		var 
+			b, e: TextViews.Location
+			y0, y1, y2, y3: integer
+	begin 
+		c.view.GetThisLocation(f, c.selBeg, b)
+		y0 := b.y
+		y1 := y0 + b.asc + b.dsc
+		c.view.GetThisLocation(f, c.selEnd, e)
+		y2 := e.y
+		y3 := y2 + e.asc + e.dsc
+		return ((y >= y0) & (x >= b.x) or (y >= y1)) & ((y < y2) or (y < y3) & (x < e.x))
+	end InSelection
+	
+	proc (c: StdCtrl) MarkSelection(f: Views.Frame; show: boolean) 
+	begin 
+		MarkSelection(c, f, c.selBeg, c.selEnd, show)
+	end MarkSelection
+	
+	proc (c: StdCtrl) GetSelection(var beg, end_: integer) 
+	begin 
+		beg := c.selBeg
+		end_ := c.selEnd
+	end GetSelection
+	
+	proc (c: StdCtrl) SetSelection(beg, end_: integer) 
+		var 
+			t: TextModels.Model
+			rd: TextModels.Reader
+			beg0, end0, p: integer
+			singleton: boolean
+	begin 
+		t := c.text
+		assert(t # nil, 20)
+		if Containers.noSelection in c.opts then
+			end_ := beg 
+		elsif beg # end_ then 
+			assert(0 <= beg, 21)
+			assert(beg < end_, 22)
+			assert(end_ <= t.Length(), 23) 
+		end 
+		beg0 := c.selBeg
+		end0 := c.selEnd
+		c.insAttr := nil
+		if (beg # beg0) or (end_ # end0) then
+			if (beg # end_) & (c.selBeg = c.selEnd) then
+				if boundCaret then
+					if c.carPos = end_ then
+						p := c.carPos 
+					else 
+						p := beg 
+					end 
+					c.SetCaret(none)
+					c.carLast := p 
+				end 
+				c.SetFocus(nil)
+				c.selPin0 := beg
+				c.selPin1 := end_ 
+			elsif boundCaret & (beg = end_) then 
+				c.selPin1 := c.selPin0  // clear selection anchors
+			end 
+			if beg + 1 = end_ then
+				rd := CachedReader(c)
+				rd.SetPos(beg)
+				rd.Read
+				singleton := rd.view # nil
+				CacheReader(c, rd) 
+			else 
+				singleton := false 
+			end 
+			if singleton then // native or singleton -> singleton
+				if rd.view # c.Singleton() then
+					c.SetSingleton(rd.view) 
+				end  
+			elsif c.Singleton() # nil then  // singleton -> native
+				c.SetSingleton(nil)
+				c.selBeg := beg
+				c.selEnd := end_
+				FlipSelection(c, beg, end_, Containers.show) 
+			else  // native -> native
+				c.selBeg := beg
+				c.selEnd := end_
+				if (beg0 <= beg) & (end_ <= end0) then // reduce
+					p := end0
+					end0 := beg
+					beg := end_
+					end_ := p 
+				elsif (beg <= beg0) & (end0 <= end_) then  // extend
+					p := end_
+					end_ := beg0
+					beg0 := end0
+					end0 := p 
+				elsif (beg <= beg0) & (beg0 <= end_) then  // shift left
+					p := end_
+					end_ := beg0
+					beg0 := p 
+				elsif (end_ >= end0) & (beg <= end0) then  // shift right
+					p := end0
+					end0 := beg
+					beg := p 
+				end 
+				if beg0 < end0 then
+					FlipSelection(c, beg0, end0, Containers.show) 
+				end 
+				if beg < end_ then
+					FlipSelection(c, beg, end_, Containers.show) 
+				end  
+			end  
+		end 
+	end SetSelection
+	
+	
+	// StdDirectory
+	
+	proc (d: StdDirectory) NewController(opts: set): Controller 
+		var 
+			c: StdCtrl
+	begin 
+		new(c)
+		c.SetOpts(opts)
+		InitMarks(c)
+		return c
+	end NewController
+	
+	
+	proc Init
+		var 
+			d: StdDirectory
+	begin 
+		new(d)
+		dir := d
+		stdDir := d
+	end Init
+
+begin
+	Init
+end TextControllers

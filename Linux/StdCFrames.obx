@@ -1,0 +1,269 @@
+module StdCFrames
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Fonts, Ports, Views, Dates, Dialog
+	
+	const 
+		lineUp* = 0
+		lineDown* = 1
+		pageUp* = 2
+		pageDown* = 3
+	
+	type 
+		Frame* = pointer to (* abstract *) record (Views.Frame) 
+				disabled*, undef*, readOnly*, noRedraw*: boolean
+				font*: Fonts.Font 
+			end 
+		
+		PushButton* = pointer to (* abstract *) record (Frame) 
+				label*: array 256 of char
+				default*, cancel*: boolean
+				Do*: proc (f: PushButton) 
+			end 
+		
+		CheckBox* = pointer to (* abstract *) record (Frame) 
+				label*: array 256 of char
+				Get*: proc (f: CheckBox; var on: boolean)
+				Set*: proc (f: CheckBox; on: boolean) 
+			end 
+		
+		RadioButton* = pointer to (* abstract *) record (Frame) 
+				label*: array 256 of char
+				Get*: proc (f: RadioButton; var on: boolean)
+				Set*: proc (f: RadioButton; on: boolean) 
+			end 
+		
+		ScrollBar* = pointer to (* abstract *) record (Frame) 
+				Track*: proc (f: ScrollBar; dir: integer; var pos: integer)
+				Get*: proc (f: ScrollBar; var size_, sect, pos: integer)
+				Set*: proc (f: ScrollBar; pos: integer) 
+			end 
+		
+		Field* = pointer to (* abstract *) record (Frame) 
+				maxLen*: integer // max num of characters in field (w/o 0X)
+				left*, right*, multiLine*, password*: boolean
+				Get*: proc (f: Field; var string: array of char)
+				Set*: proc (f: Field; in string: array of char)
+				Equal*: proc (f: Field; in s1, s2: array of char): boolean 
+			end 
+		
+		UpDownField* = pointer to (* abstract *) record (Frame) 
+				min_*, max_*, inc_*: integer
+				Get*: proc (f: UpDownField; var val_: integer)
+				Set*: proc (f: UpDownField; val_: integer) 
+			end 
+		
+		DateField* = pointer to (* abstract *) record (Frame) 
+				Get*: proc (f: DateField; var date: Dates.Date)
+				Set*: proc (f: DateField; in date: Dates.Date)
+				GetSel*: proc (f: DateField; var sel: integer)
+				SetSel*: proc (f: DateField; sel: integer) 
+			end 
+		
+		TimeField* = pointer to (* abstract *) record (Frame) 
+				Get*: proc (f: TimeField; var date: Dates.Time)
+				Set*: proc (f: TimeField; in date: Dates.Time)
+				GetSel*: proc (f: TimeField; var sel: integer)
+				SetSel*: proc (f: TimeField; sel: integer) 
+			end 
+		
+		ColorField* = pointer to (* abstract *) record (Frame) 
+				Get*: proc (f: ColorField; var col: integer)
+				Set*: proc (f: ColorField; col: integer) 
+			end 
+		
+		ListBox* = pointer to (* abstract *) record (Frame) 
+				sorted*: boolean
+				Get*: proc (f: ListBox; var i: integer)
+				Set*: proc (f: ListBox; i: integer)
+				GetName*: proc (f: ListBox; i: integer; var name: array of char) 
+			end 
+		
+		SelectionBox* = pointer to (* abstract *) record (Frame) 
+				sorted*: boolean
+				Get*: proc (f: SelectionBox; i: integer; var in_: boolean)
+				Incl*: proc (f: SelectionBox; from, to_: integer)
+				Excl*: proc (f: SelectionBox; from, to_: integer)
+				Set*: proc (f: SelectionBox; from, to_: integer)
+				GetName*: proc (f: SelectionBox; i: integer; var name: array of char) 
+			end 
+		
+		ComboBox* = pointer to (* abstract *) record (Frame) 
+				sorted*: boolean
+				Get*: proc (f: ComboBox; var string: array of char)
+				Set*: proc (f: ComboBox; in string: array of char)
+				GetName*: proc (f: ComboBox; i: integer; var name: array of char) 
+			end 
+		
+		Caption* = pointer to (* abstract *) record (Frame) 
+				label*: array 256 of char
+				left*, right*: boolean 
+			end 
+		
+		Group* = pointer to (* abstract *) record (Frame) 
+				label*: array 256 of char 
+			end 
+		
+		TreeFrame* = pointer to (* abstract *) record (Frame) 
+				sorted*, haslines*, hasbuttons*, atroot*, foldericons*: boolean
+				NofNodes*: proc (f: TreeFrame): integer
+				Child*: proc (f: TreeFrame; node: Dialog.TreeNode): Dialog.TreeNode
+				Parent*: proc (f: TreeFrame; node: Dialog.TreeNode): Dialog.TreeNode
+				Next*: proc (f: TreeFrame; node: Dialog.TreeNode): Dialog.TreeNode
+				Select*: proc (f: TreeFrame; node: Dialog.TreeNode)
+				Selected*: proc (f: TreeFrame): Dialog.TreeNode
+				SetExpansion*: proc (f: TreeFrame; tn: Dialog.TreeNode; expanded: boolean) 
+			end 
+		
+		Directory* = pointer to (* abstract *) record end 
+	
+	
+	var 
+		setFocus*: boolean
+		defaultFont*, defaultLightFont*: Fonts.Font
+		dir-, stdDir-: Directory
+	
+	
+	// Frame
+	
+	
+	proc (f: Frame) MouseDown*(x, y: integer; buttons: set)  end // new empty
+	proc (f: Frame) WheelMove*(x, y: integer; op, nofLines: integer
+		var done: boolean)  end // new empty
+	proc (f: Frame) KeyDown*(ch: char)  end // new empty
+	proc (f: Frame) Restore*(l, t, r, b: integer)  end // new abstract
+	proc (f: Frame) UpdateList* end // new empty
+	proc (f: Frame) Mark*(on, focus: boolean)  end // new empty
+	proc (f: Frame) Edit*(op: integer; var v: Views.View; var w, h: integer
+		var singleton, clipboard: boolean)  end // new empty
+	proc (f: Frame) GetCursor*(x, y: integer; modifiers: set; var cursor: integer)  end // new empty
+	
+	proc (f: Frame) Update* // new extensible
+		var 
+			l, t, r, b: integer
+			root: Views.RootFrame
+	begin 
+		l := f.l + f.gx
+		t := f.t + f.gy
+		r := f.r + f.gx
+		b := f.b + f.gy
+		root := Views.RootOf(f)
+		Views.UpdateRoot(root, l, t, r, b, Views.keepFrames)
+		Views.ValidateRoot(root)
+	end Update
+	
+	proc (f: Frame) DblClickOk*(x, y: integer): boolean  // new extensible
+	begin 
+		return true
+	end DblClickOk
+	
+	
+	// Field
+	
+	proc (f: Field) Idle*()  end // new abstract
+	proc (f: Field) Select*(from, to_: integer)  end // new abstract
+	proc (f: Field) GetSelection*(var from, to_: integer)  end // new abstract
+	proc (f: Field) Length*(): integer  end // new abstract
+	
+	proc (f: Field) GetCursor*(x, y: integer; modifiers: set; var cursor: integer)  // extensible
+	begin 
+		cursor := Ports.textCursor
+	end GetCursor
+	
+	
+	// UpDownField
+	
+	proc (f: UpDownField) Idle* end // new abstract
+	proc (f: UpDownField) Select*(from, to_: integer)  end // new abstract
+	proc (f: UpDownField) GetSelection*(var from, to_: integer)  end // new abstract
+	
+	proc (f: UpDownField) GetCursor*(x, y: integer; modifiers: set
+		var cursor: integer)  // extensible
+	begin 
+		cursor := Ports.textCursor
+	end GetCursor
+	
+	
+	// SelectionBox
+	
+	proc (f: SelectionBox) Select*(from, to_: integer)  end // new abstract
+	proc (f: SelectionBox) GetSelection*(var from, to_: integer)  end // new abstract
+	
+	proc (f: SelectionBox) UpdateRange*(op, from, to_: integer)  // new extensible
+	begin 
+		f.Update
+	end UpdateRange
+	
+	
+	// ComboBox
+	
+	proc (f: ComboBox) Idle*()  end // new abstract
+	proc (f: ComboBox) Select*(from, to_: integer)  end // new abstract
+	proc (f: ComboBox) GetSelection*(var from, to_: integer)  end // new abstract
+	proc (f: ComboBox) Length*(): integer  end // new abstract
+	
+	// TreeFrame *
+	proc (f: TreeFrame) GetSize*(var w, h: integer)  end // new abstract
+	
+	// Directory
+	
+	proc (d: Directory) GetPushButtonSize*(var w, h: integer)  end // new abstract
+	proc (d: Directory) GetCheckBoxSize*(var w, h: integer)  end // new abstract
+	proc (d: Directory) GetRadioButtonSize*(var w, h: integer)  end // new abstract
+	proc (d: Directory) GetScrollBarSize*(var w, h: integer)  end // new abstract
+	proc (d: Directory) GetFieldSize*(max_: integer; var w, h: integer)  end // new abstract
+	proc (d: Directory) GetUpDownFieldSize*(max_: integer; var w, h: integer)  end // new abstract
+	proc (d: Directory) GetDateFieldSize*(var w, h: integer)  end // new abstract
+	proc (d: Directory) GetTimeFieldSize*(var w, h: integer)  end // new abstract
+	proc (d: Directory) GetColorFieldSize*(var w, h: integer)  end // new abstract
+	proc (d: Directory) GetListBoxSize*(var w, h: integer)  end // new abstract
+	proc (d: Directory) GetSelectionBoxSize*(var w, h: integer)  end // new abstract
+	proc (d: Directory) GetComboBoxSize*(var w, h: integer)  end // new abstract
+	proc (d: Directory) GetCaptionSize*(var w, h: integer)  end // new abstract
+	proc (d: Directory) GetGroupSize*(var w, h: integer)  end // new abstract
+	proc (d: Directory) GetTreeFrameSize*(var w, h: integer)  end // new abstract
+	proc (d: Directory) NewPushButton*(): PushButton  end // new abstract
+	proc (d: Directory) NewCheckBox*(): CheckBox  end // new abstract
+	proc (d: Directory) NewRadioButton*(): RadioButton  end // new abstract
+	proc (d: Directory) NewScrollBar*(): ScrollBar  end // new abstract
+	proc (d: Directory) NewField*(): Field  end // new abstract
+	proc (d: Directory) NewUpDownField*(): UpDownField  end // new abstract
+	proc (d: Directory) NewDateField*(): DateField  end // new abstract
+	proc (d: Directory) NewTimeField*(): TimeField  end // new abstract
+	proc (d: Directory) NewColorField*(): ColorField  end // new abstract
+	proc (d: Directory) NewListBox*(): ListBox  end // new abstract
+	proc (d: Directory) NewSelectionBox*(): SelectionBox  end // new abstract
+	proc (d: Directory) NewComboBox*(): ComboBox  end // new abstract
+	proc (d: Directory) NewCaption*(): Caption  end // new abstract
+	proc (d: Directory) NewGroup*(): Group  end // new abstract
+	proc (d: Directory) NewTreeFrame*(): TreeFrame  end // new abstract
+	
+	
+	proc SetDir*(d: Directory) 
+	begin 
+		assert(d # nil, 20)
+		dir := d
+		if stdDir = nil then
+			stdDir := d 
+		end 
+	end SetDir
+
+begin
+	setFocus := false
+end StdCFrames

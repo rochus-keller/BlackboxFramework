@@ -1,0 +1,22 @@
+definition LinIconv
+
+	import Libc:= LinLibc
+	
+	type 
+		PtrVoid = Libc.PtrVoid
+		PtrSTR = Libc.PtrSTR
+		PtrLSTR = unsafe pointer to carray of char
+		size_t = Libc.size_t
+		
+		iconv_t = PtrVoid
+	
+	proc iconv_open(tocode, fromcode: PtrSTR): iconv_t 
+	proc iconv_close(cd: iconv_t): integer 
+	
+	proc iconv(cd: iconv_t; var inbuf: PtrSTR; var inbytesleft: size_t; var outbuf: PtrSTR; var outbytesleft: size_t): size_t 
+	
+	proc iconv_encode(cd: iconv_t; var inbuf: PtrLSTR; var inbytesleft: size_t; var outbuf: PtrSTR; var outbytesleft: size_t): size_t 
+	
+	proc iconv_decode(cd: iconv_t; var inbuf: PtrSTR; var inbytesleft: size_t; var outbuf: PtrLSTR; var outbytesleft: size_t): size_t 
+
+end LinIconv

@@ -1,0 +1,1474 @@
+module Integers
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Files, Math
+	
+	const 
+		B = 10000
+		DecPerDig = 4
+		BinBase = 16 * 1024
+		KaratsubaBreak = 41
+	
+	type 
+		Index = integer
+		Digit = shortint
+		DoubleDigit = integer
+		
+		IntegerDesc = array of Digit // to hide internal structure from interface
+		Integer* = pointer to IntegerDesc
+		Buffer = record 
+				digit: Integer
+				beg, len_: Index 
+			end 
+	
+	var 
+		zero, one, two, buf6: Integer
+	
+	proc CopyOf(x: Integer; len_: Index): Integer 
+		var 
+			buf: Integer
+	begin 
+		assert(len_ > 0, 20)
+		new(buf, len_)
+		repeat 
+			dec(len_)
+			buf[len_] := x[len_] 
+		until len_ = 0 
+		return buf
+	end CopyOf
+	
+	// Operations on Digits
+	
+	proc Add(x, y, sum: Integer; xL, yL: Index; var sumL: Index) 
+		var 
+			i, l: Index
+			c: Digit
+	begin 
+		l := min(xL, yL)
+		i := 0
+		c := 0
+		while i < l do 
+			c := short(c div B + x[i] + y[i])
+			sum[i] := short(c mod B)
+			inc(i) 
+		end 
+		while i < xL do 
+			c := short(c div B + x[i])
+			sum[i] := short(c mod B)
+			inc(i) 
+		end 
+		while i < yL do 
+			c := short(c div B + y[i])
+			sum[i] := short(c mod B)
+			inc(i) 
+		end 
+		if c >= B then
+			sum[i] := short(c div B)
+			inc(i) 
+		end 
+		sumL := i
+	end Add
+	
+	proc Subtract(x, y, dif: Integer; xL, yL: Index; var difL: Index) 
+		var 
+			i: Index
+			c, d: Digit
+	begin 
+		assert(xL >= yL, 20)
+		i := 0
+		difL := 0
+		c := 0
+		while i < yL do 
+			c := short(c div B + x[i] - y[i])
+			d := short(c mod B)
+			if d # 0 then
+				while difL # i do 
+					dif[difL] := 0
+					inc(difL) 
+				end 
+				dif[i] := d
+				inc(difL) 
+			end 
+			inc(i) 
+		end 
+		while i < xL do 
+			c := short(c div B + x[i])
+			d := short(c mod B)
+			if d # 0 then
+				while difL # i do 
+					dif[difL] := 0
+					inc(difL) 
+				end 
+				dif[i] := d
+				inc(difL) 
+			end 
+			inc(i) 
+		end 
+		assert(c div B = 0, 100)
+	end Subtract
+	
+	proc OneDigitMult(a, b: Buffer; var c: Buffer) 
+		var 
+			i: Index
+			carry, factor: DoubleDigit
+	begin 
+		assert(a.len_ = 1, 20)
+		factor := a.digit[a.beg]
+		i := 0
+		carry := 0
+		while i # b.len_ do 
+			carry := carry div B + factor * b.digit[b.beg + i]
+			c.digit[c.beg + i] := short(carry mod B)
+			inc(i) 
+		end 
+		if carry >= B then
+			c.digit[c.beg + i] := short(carry div B)
+			inc(i) 
+		end 
+		c.len_ := i
+	end OneDigitMult
+	
+	proc SimpleMult(a, b: Buffer; var c: Buffer) 
+		var 
+			i, j, k: Index
+			c0, c1: DoubleDigit
+	begin 
+		assert(a.len_ <= b.len_, 20)
+		c.len_ := a.len_ + b.len_ - 1
+		i := 0
+		c0 := 0
+		c1 := 0
+		repeat 
+			if i < b.len_ then
+				if i < a.len_ then
+					j := i
+					k := 0 
+				else 
+					j := a.len_ - 1
+					k := i - a.len_ + 1 
+				end 
+				repeat 
+					c0 := c0 + a.digit[a.beg + j] * b.digit[b.beg + k]
+					if c0 > max(DoubleDigit) - BinBase * (B - 1) then
+						c1 := c1 + c0 div BinBase
+						c0 := c0 mod BinBase 
+					end 
+					dec(j)
+					inc(k) 
+				until j < 0  
+			else 
+				j := a.len_ - 1
+				k := i - a.len_ + 1
+				repeat 
+					c0 := c0 + a.digit[a.beg + j] * b.digit[b.beg + k]
+					if c0 > max(DoubleDigit) - BinBase * (B - 1) then
+						c1 := c1 + c0 div BinBase
+						c0 := c0 mod BinBase 
+					end 
+					dec(j)
+					inc(k) 
+				until k = b.len_  
+			end 
+			if c1 = 0 then
+				c.digit[c.beg + i] := short(c0 mod B)
+				c0 := c0 div B 
+			else 
+				c0 := c0 + BinBase * (c1 mod B)
+				c.digit[c.beg + i] := short(c0 mod B)
+				c0 := c0 div B
+				c1 := c1 div B 
+			end 
+			inc(i) 
+		until i = c.len_ 
+		if c0 # 0 then
+			c.digit[c.beg + c.len_] := short(c0)
+			inc(c.len_) 
+		end 
+	end SimpleMult
+	
+	proc AddBuf(a, b: Buffer; var c: Buffer)  // c := a + b
+		var 
+			i: Index
+			carry: Digit
+	begin 
+		assert(a.len_ <= b.len_, 20)
+		i := 0
+		carry := 0
+		while i # a.len_ do 
+			carry := short(carry div B + a.digit[a.beg + i] + b.digit[b.beg + i])
+			c.digit[c.beg + i] := short(carry mod B)
+			inc(i) 
+		end 
+		while (i # b.len_) & (carry >= B) do 
+			carry := short(carry div B + b.digit[b.beg + i])
+			c.digit[c.beg + i] := short(carry mod B)
+			inc(i) 
+		end 
+		if carry >= B then
+			c.digit[c.beg + i] := short(carry div B)
+			inc(i) 
+		else 
+			while i # b.len_ do 
+				c.digit[c.beg + i] := b.digit[b.beg + i]
+				inc(i) 
+			end  
+		end 
+		c.len_ := i
+	end AddBuf
+	
+	proc AddToBuf(var a: Buffer; b: Buffer; shift: Index)  // a := a + b * B^shift
+		var 
+			i, n: Index
+			carry: Digit
+	begin 
+		b.beg := b.beg - shift
+		b.len_ := b.len_ + shift
+		i := shift
+		n := min(a.len_, b.len_)
+		carry := 0
+		while i # n do 
+			carry := short(carry div B + a.digit[a.beg + i] + b.digit[b.beg + i])
+			a.digit[a.beg + i] := short(carry mod B)
+			inc(i) 
+		end 
+		if i # a.len_ then
+			while (i # a.len_) & (carry >= B) do 
+				carry := short(carry div B + a.digit[a.beg + i])
+				a.digit[a.beg + i] := short(carry mod B)
+				inc(i) 
+			end 
+			if carry >= B then
+				a.digit[a.beg + i] := short(carry div B)
+				inc(i) 
+			end  
+		else 
+			while (i # b.len_) & (carry >= B) do 
+				carry := short(carry div B + b.digit[b.beg + i])
+				a.digit[a.beg + i] := short(carry mod B)
+				inc(i) 
+			end 
+			if carry >= B then
+				a.digit[a.beg + i] := short(carry div B)
+				inc(i) 
+			else 
+				while i # b.len_ do 
+					a.digit[a.beg + i] := b.digit[b.beg + i]
+					inc(i) 
+				end  
+			end  
+		end 
+		a.len_ := max(i, a.len_)
+	end AddToBuf
+	
+	proc SubtractFromBuf(var a: Buffer; b, c: Buffer)  // a := a - b - c
+		var 
+			i: Index
+			carry: Digit
+	begin 
+		assert(b.len_ <= c.len_, 20)
+		i := 0
+		carry := 0
+		while i # b.len_ do 
+			carry := short(carry div B + a.digit[a.beg + i] - b.digit[b.beg + i] - c.digit[c.beg + i])
+			a.digit[a.beg + i] := short(carry mod B)
+			inc(i) 
+		end 
+		while i # c.len_ do 
+			carry := short(carry div B + a.digit[a.beg + i] - c.digit[c.beg + i])
+			a.digit[a.beg + i] := short(carry mod B)
+			inc(i) 
+		end 
+		while carry < 0 do 
+			carry := short(carry div B + a.digit[a.beg + i])
+			a.digit[a.beg + i] := short(carry mod B)
+			inc(i) 
+		end 
+		assert(i <= a.len_, 100)
+		while (a.len_ # 0) & (a.digit[a.beg + a.len_ - 1] = 0) do 
+			dec(a.len_) 
+		end 
+	end SubtractFromBuf
+	
+	proc KStep(a, b: Buffer; var c: Buffer; stack: Buffer) 
+		var 
+			n2, i: Index
+			a0, a1, b0, b1, c0, c1, h: Buffer
+	begin 
+		assert(a.len_ <= b.len_, 20)
+		if a.len_ = 0 then
+			c.len_ := 0 
+		elsif a.len_ = 1 then 
+			OneDigitMult(a, b, c) 
+		elsif a.len_ <= KaratsubaBreak then 
+			SimpleMult(a, b, c) 
+		else 
+			n2 := b.len_ div 2
+			c0.digit := c.digit
+			c0.beg := c.beg
+			c1.digit := c.digit
+			c1.beg := c.beg + 2 * n2
+			a0.digit := a.digit
+			a0.beg := a.beg
+			a0.len_ := min(a.len_, n2)
+			a1.digit := a.digit
+			a1.beg := a.beg + n2
+			a1.len_ := max(0, a.len_ - n2)
+			while (a0.len_ # 0) & (a0.digit[a0.beg + a0.len_ - 1] = 0) do 
+				dec(a0.len_) 
+			end 
+			b0.digit := b.digit
+			b0.beg := b.beg
+			b0.len_ := min(b.len_, n2)
+			b1.digit := b.digit
+			b1.beg := b.beg + n2
+			b1.len_ := max(0, b.len_ - n2)
+			while (b0.len_ # 0) & (b0.digit[b0.beg + b0.len_ - 1] = 0) do 
+				dec(b0.len_) 
+			end 
+			if (a0.len_ # 0) or (b0.len_ # 0) then
+				if a0.len_ <= a1.len_ then
+					AddBuf(a0, a1, c1) 
+				else 
+					AddBuf(a1, a0, c1) 
+				end 
+				if b0.len_ <= b1.len_ then
+					AddBuf(b0, b1, c0) 
+				else 
+					AddBuf(b1, b0, c0) 
+				end 
+				h.digit := stack.digit
+				h.beg := stack.beg
+				stack.beg := stack.beg + c0.len_ + c1.len_
+				if c0.len_ <= c1.len_ then
+					KStep(c0, c1, h, stack) 
+				else 
+					KStep(c1, c0, h, stack) 
+				end 
+				if a0.len_ <= b0.len_ then
+					KStep(a0, b0, c0, stack) 
+				else 
+					KStep(b0, a0, c0, stack) 
+				end 
+				KStep(a1, b1, c1, stack)
+				if c0.len_ <= c1.len_ then
+					SubtractFromBuf(h, c0, c1) 
+				else 
+					SubtractFromBuf(h, c1, c0) 
+				end 
+				if c1.len_ # 0 then
+					i := c0.beg + c0.len_
+					while i < c1.beg do 
+						c.digit[i] := 0
+						inc(i) 
+					end 
+					c.len_ := c1.beg + c1.len_ - c.beg 
+				else 
+					while c0.len_ < n2 do 
+						c0.digit[c0.beg + c0.len_] := 0
+						inc(c0.len_) 
+					end 
+					c.len_ := c0.len_ 
+				end 
+				assert(h.len_ # 0, 100)
+				AddToBuf(c, h, n2) 
+			else 
+				KStep(a1, b1, c1, stack)
+				c.len_ := c1.beg + c1.len_ - c.beg
+				i := c.beg
+				while i # c1.beg do 
+					c.digit[i] := 0
+					inc(i) 
+				end  
+			end  
+		end 
+	end KStep
+	
+	proc Karatsuba(x, y, pro: Integer; xL, yL: Index; var proL: Index) 
+		var 
+			a, b, c, stack: Buffer
+	begin 
+		assert(xL <= yL, 20)
+		a.digit := x
+		a.beg := 0
+		a.len_ := xL
+		b.digit := y
+		b.beg := 0
+		b.len_ := yL
+		c.digit := pro
+		c.beg := 0
+		new(stack.digit, 2 * b.len_)
+		stack.beg := 0
+		KStep(a, b, c, stack)
+		proL := c.len_
+	end Karatsuba
+	
+	proc Multiply(x, y, pro: Integer; xL, yL: Index; var proL: Index) 
+		var 
+			i, j, k: Index
+			c0, c1: DoubleDigit
+	begin 
+		assert(xL <= yL, 20)
+		if xL > KaratsubaBreak then
+			Karatsuba(x, y, pro, xL, yL, proL) 
+		elsif xL = 1 then 
+			proL := 0
+			c1 := x[0]
+			c0 := 0
+			while proL < yL do 
+				c0 := c1 * y[proL] + c0
+				pro[proL] := short(c0 mod B)
+				c0 := c0 div B
+				inc(proL) 
+			end 
+			if c0 # 0 then
+				pro[proL] := short(c0)
+				inc(proL) 
+			end  
+		else 
+			proL := xL + yL - 1
+			i := 0
+			c0 := 0
+			c1 := 0
+			repeat 
+				if i < yL then
+					if i < xL then
+						j := i
+						k := 0 
+					else 
+						j := xL - 1
+						k := i - xL + 1 
+					end 
+					repeat 
+						c0 := c0 + x[j] * y[k]
+						if c0 > max(DoubleDigit) - BinBase * (B - 1) then
+							c1 := c1 + c0 div BinBase
+							c0 := c0 mod BinBase 
+						end 
+						dec(j)
+						inc(k) 
+					until j < 0  
+				else 
+					j := xL - 1
+					k := i - xL + 1
+					repeat 
+						c0 := c0 + x[j] * y[k]
+						if c0 > max(DoubleDigit) - BinBase * (B - 1) then
+							c1 := c1 + c0 div BinBase
+							c0 := c0 mod BinBase 
+						end 
+						dec(j)
+						inc(k) 
+					until k = yL  
+				end 
+				if c1 = 0 then
+					pro[i] := short(c0 mod B)
+					c0 := c0 div B 
+				else 
+					c0 := c0 + BinBase * (c1 mod B)
+					pro[i] := short(c0 mod B)
+					c0 := c0 div B
+					c1 := c1 div B 
+				end 
+				inc(i) 
+			until i = proL 
+			if c0 # 0 then
+				pro[proL] := short(c0)
+				inc(proL) 
+			end  
+		end 
+	end Multiply
+	
+	proc DecomposeQuoRem(x, y: Integer; xL, yL: Index) 
+		var 
+			ix, iy, j: Index
+			d, q, h, yLead, ySecond: DoubleDigit
+			yBuf: Integer
+	begin 
+		assert((yL # 0) & (y[yL - 1] # 0), 20)
+		if yL = 1 then
+			j := xL - 1
+			h := 0
+			d := y[0]
+			while j >= 0 do 
+				h := x[j] + h * B
+				x[j + 1] := short(h div d)
+				h := h mod d
+				dec(j) 
+			end 
+			x[0] := short(h) 
+		elsif xL >= yL then 
+			x[xL] := 0
+			d := (B div 2 - 1) div y[yL - 1] + 1
+			yBuf := CopyOf(y, yL)
+			if d # 1 then
+				j := 0
+				h := 0
+				while j < xL do 
+					h := d * x[j] + h div B
+					x[j] := short(h mod B)
+					inc(j) 
+				end 
+				x[xL] := short(h div B)
+				j := 0
+				h := 0
+				while j < yL do 
+					h := d * yBuf[j] + h div B
+					yBuf[j] := short(h mod B)
+					inc(j) 
+				end 
+				assert(h div B = 0, 100) 
+			end 
+			yLead := yBuf[yL - 1]
+			ySecond := yBuf[yL - 2]
+			j := xL
+			while j >= yL do 
+				if x[j] # yLead then
+					q := (x[j] * B + x[j - 1]) div yLead 
+				else 
+					q := B - 1 
+				end 
+				while ySecond * q > (x[j] * B + x[j - 1] - yLead * q) * B + x[j - 2] do 
+					dec(q) 
+				end 
+				ix := j - yL
+				iy := 0
+				h := 0
+				while iy < yL do 
+					h := x[ix] - q * yBuf[iy] + h div B
+					x[ix] := short(h mod B)
+					inc(ix)
+					inc(iy) 
+				end 
+				if (-x[j]) # (h div B) then
+					ix := j - yL
+					iy := 0
+					h := 0
+					while iy < yL do 
+						h := h div B + x[ix] + yBuf[iy]
+						x[ix] := short(h mod B)
+						inc(ix)
+						inc(iy) 
+					end 
+					x[j] := short(q - 1) 
+				else 
+					x[j] := short(q) 
+				end 
+				dec(j) 
+			end 
+			if d # 1 then
+				j := yL
+				h := 0
+				while j # 0 do 
+					dec(j)
+					h := h + x[j]
+					x[j] := short(h div d)
+					h := (h mod d) * B 
+				end  
+			end  
+		end 
+	end DecomposeQuoRem
+	
+	proc GetQuoRem(x, y: Integer; xL, yL: Index; xNeg, yNeg: boolean
+		quo, rem: Integer; var quoL, remL: Index; var quoNeg, remNeg: boolean
+		doQuo, doRem: boolean) 
+		var 
+			i: Index
+			c: Digit
+			xBuf: Integer
+	begin 
+		assert(xL >= yL, 20)
+		xBuf := CopyOf(x, xL + 1)
+		DecomposeQuoRem(xBuf, y, xL, yL)
+		i := xL
+		while (i >= yL) & (xBuf[i] = 0) do 
+			dec(i) 
+		end 
+		quoL := i - yL + 1
+		i := yL - 1
+		while (i >= 0) & (xBuf[i] = 0) do 
+			dec(i) 
+		end 
+		remL := i + 1
+		if doQuo then
+			quoNeg := xNeg # yNeg
+			if quoNeg & (remL # 0) then
+				i := 0
+				c := 1
+				while (i # quoL) & (c # 0) do 
+					c := short(c + xBuf[i + yL])
+					quo[i] := short(c mod B)
+					c := short(c div B)
+					inc(i) 
+				end 
+				if c = 0 then
+					while i # quoL do 
+						quo[i] := xBuf[i + yL]
+						inc(i) 
+					end  
+				else 
+					quo[i] := c
+					inc(quoL) 
+				end  
+			else 
+				i := 0
+				while i # quoL do 
+					quo[i] := xBuf[i + yL]
+					inc(i) 
+				end  
+			end  
+		end 
+		if doRem then
+			remNeg := yNeg & (remL # 0)
+			if (xNeg # yNeg) & (remL # 0) then
+				Subtract(y, xBuf, rem, yL, remL, remL) 
+			else 
+				i := 0
+				while i # remL do 
+					rem[i] := xBuf[i]
+					inc(i) 
+				end  
+			end  
+		end 
+	end GetQuoRem
+	
+	proc BinPower(x: Integer; exp: integer; y: Integer; xL: Index; var yL: Index) 
+		var 
+			zL: Index
+			b: integer
+			z: Integer
+	begin 
+		assert(exp > 0, 20)
+		assert(xL # 0, 21)
+		b := 1
+		while 2 * b <= exp do 
+			b := 2 * b 
+		end 
+		y[0] := 1
+		yL := 1
+		new(z, len(y^))
+		// y^b * x^exp = const.) & (2 * b > exp)
+		while (exp # 0) or (b # 1) do 
+			if exp >= b then
+				exp := exp - b
+				if xL <= yL then
+					Multiply(x, y, z, xL, yL, zL) 
+				else 
+					Multiply(y, x, z, yL, xL, zL) 
+				end  
+			else 
+				b := b div 2
+				Multiply(y, y, z, yL, yL, zL) 
+			end 
+			yL := zL
+			repeat 
+				dec(zL)
+				y[zL] := z[zL] 
+			until zL = 0  
+		end 
+	end BinPower
+	
+	// Data Format Support
+	
+	proc New(nofDigits: Index): Integer 
+		var 
+			x: Integer
+	begin 
+		new(x, nofDigits + 2)
+		return x
+	end New
+	
+	proc SetLength(x: Integer; len_: Index; negative: boolean) 
+		var 
+			low, high: Digit
+	begin 
+		assert(len_ >= 0, 20)
+		assert(~negative or (len_ # 0), 21)
+		if negative then
+			len_ := -len_ 
+		end 
+		low := short(len_ mod 10000h - 8000h)
+		high := short(len_ div 10000h)
+		x[len(x^) - 1] := low
+		x[len(x^) - 2] := high
+	end SetLength
+	
+	proc GetLength(x: Integer; var len_: Index; var negative: boolean) 
+		var 
+			low, high: Digit
+	begin 
+		low := x[len(x^) - 1]
+		high := x[len(x^) - 2]
+		len_ := low + 8000h + high * 10000h
+		negative := len_ < 0
+		len_ := abs(len_)
+	end GetLength
+	
+	// Exported Services
+	
+	proc Long*(x: longint): Integer 
+		var 
+			i: Index
+			negative: boolean
+			int_: Integer
+	begin 
+		if x # 0 then
+			negative := x < 0
+			x := abs(x)
+			int_ := New(5)
+			i := 0
+			repeat 
+				int_[i] := short(short(x mod B))
+				x := x div B
+				inc(i) 
+			until x = 0 
+			SetLength(int_, i, negative) 
+		else 
+			int_ := zero 
+		end 
+		return int_
+	end Long
+	
+	proc Short*(x: Integer): longint 
+		var 
+			i: Index
+			res: longint
+			negative: boolean
+	begin 
+		res := 0
+		GetLength(x, i, negative)
+		while i # 0 do 
+			dec(i)
+			res := res * B + x[i] 
+		end 
+		if negative then
+			res := -res 
+		end 
+		return res
+	end Short
+	
+	proc Entier*(x: real): Integer 
+		var 
+			mL, yL, i: Index
+			mx: real
+			ex: integer
+			neg: boolean
+			y, z: Integer
+		
+		proc Inc(m: Integer; var mL: Index) 
+			var 
+				i: Index
+		begin 
+			i := 0
+			while m[i] = B - 1 do 
+				m[i] := 0
+				inc(i) 
+			end 
+			inc(m[i])
+			if i = mL then
+				inc(mL)
+				m[mL] := 0 
+			end 
+		end Inc
+		
+		proc Double(m: Integer; var mL: Index) 
+			var 
+				i: Index
+				c: Digit
+		begin 
+			i := 0
+			c := 0
+			while i < mL do 
+				c := short(c + m[i] * 2)
+				m[i] := short(c mod B)
+				c := short(c div B)
+				inc(i) 
+			end 
+			if c # 0 then
+				inc(mL)
+				m[mL] := 0
+				m[i] := c 
+			end 
+		end Double
+	
+	begin 
+		if (x >= 1) or (x < 0) then
+			neg := x < 0
+			x := abs(x)
+			mL := 0
+			buf6[0] := 0
+			mx := Math.Mantissa(x)
+			ex := Math.Exponent(x)
+			while (mx # 0) & (ex > 0) do  // mx * 2^ex + m * 2^ex = const.
+				if entier(mx) = 1 then
+					Inc(buf6, mL)
+					mx := mx - 1 
+				else 
+					assert(entier(mx) = 0, 100) 
+				end 
+				Double(buf6, mL)
+				mx := 2 * mx
+				dec(ex) 
+			end 
+			if (entier(mx) = 1) & (ex = 0) then
+				Inc(buf6, mL)
+				mx := mx - 1 
+			end 
+			if ex > 0 then
+				y := New(mL + short(entier(Math.Ln(2) * ex / Math.Ln(B)) + 1))
+				z := New(short(entier(Math.Ln(2) * ex / Math.Ln(B)) + 1))
+				BinPower(two, ex, z, 1, yL)
+				if mL <= yL then
+					Multiply(buf6, z, y, mL, yL, yL) 
+				else 
+					Multiply(z, buf6, y, yL, mL, yL) 
+				end  
+			else 
+				y := New(mL + 1)
+				yL := mL
+				i := 0
+				while i # mL do 
+					y[i] := buf6[i]
+					inc(i) 
+				end  
+			end 
+			if neg & (mx # 0) then
+				Inc(y, yL) 
+			end 
+			SetLength(y, yL, neg) 
+		else 
+			y := zero 
+		end 
+		return y
+	end Entier
+	
+	proc Float*(x: Integer): real 
+		var 
+			i: Index
+			y: real
+			negative: boolean
+	begin 
+		y := 0
+		GetLength(x, i, negative)
+		while i # 0 do 
+			dec(i)
+			y := y * B + x[i] 
+		end 
+		if negative then
+			y := -y 
+		end 
+		return y
+	end Float
+	
+	proc Sign*(x: Integer): integer 
+		var 
+			len_: Index
+			negative: boolean
+	begin 
+		GetLength(x, len_, negative)
+		if len_ = 0 then
+			return 0 
+		elsif negative then 
+			return -1 
+		else 
+			return 1 
+		end 
+	end Sign
+	
+	proc Abs*(x: Integer): Integer 
+		var 
+			len_: Index
+			negative: boolean
+			y: Integer
+	begin 
+		GetLength(x, len_, negative)
+		if negative then
+			y := New(len_)
+			SetLength(y, len_, false)
+			repeat 
+				dec(len_)
+				y[len_] := x[len_] 
+			until len_ = 0  
+		else 
+			y := x 
+		end 
+		return y
+	end Abs
+	
+	proc Digits10Of*(x: Integer): integer 
+		var 
+			i, n: Index
+			d: Digit
+			negative: boolean
+	begin 
+		GetLength(x, n, negative)
+		if n # 0 then
+			d := x[n - 1]
+			i := 0
+			repeat 
+				inc(i)
+				d := short(d div 10) 
+			until d = 0 
+			n := DecPerDig * (n - 1) + i 
+		end 
+		return n
+	end Digits10Of
+	
+	proc ThisDigit10*(x: Integer; exp10: integer): char 
+		var 
+			i, n: Index
+			d: Digit
+			negative: boolean
+	begin 
+		assert(exp10 >= 0, 20)
+		GetLength(x, n, negative)
+		i := exp10 div DecPerDig
+		if n > i then
+			d := x[i]
+			i := exp10 mod DecPerDig
+			while i # 0 do 
+				d := short(d div 10)
+				dec(i) 
+			end 
+			d := short(d mod 10) 
+		else 
+			d := 0 
+		end 
+		return chr(ord("0") + d)
+	end ThisDigit10
+	
+	proc Compare*(x, y: Integer): integer 
+		var 
+			xL, yL: Index
+			res: integer
+			xNeg, yNeg: boolean
+	begin 
+		GetLength(x, xL, xNeg)
+		GetLength(y, yL, yNeg)
+		if xNeg = yNeg then
+			if (xL = yL) & (xL # 0) then
+				dec(xL)
+				while (xL # 0) & (x[xL] = y[xL]) do 
+					dec(xL) 
+				end 
+				if x[xL] = y[xL] then
+					res := 0 
+				elsif (x[xL] < y[xL]) = xNeg then 
+					res := 1 
+				else 
+					res := -1 
+				end  
+			else 
+				if xL = yL then
+					res := 0 
+				elsif (xL < yL) = xNeg then 
+					res := 1 
+				else 
+					res := -1 
+				end  
+			end  
+		elsif xNeg then 
+			res := -1 
+		else 
+			res := 1 
+		end 
+		return res
+	end Compare
+	
+	proc AddOp(x, y: Integer; subtract: boolean): Integer 
+		var 
+			i, d, xL, yL, intL: Index
+			xNeg, yNeg: boolean
+			int_: Integer
+	begin 
+		GetLength(x, xL, xNeg)
+		GetLength(y, yL, yNeg)
+		if yL = 0 then
+			int_ := x 
+		elsif xL = 0 then 
+			if subtract then
+				int_ := New(yL)
+				SetLength(int_, yL, ~yNeg)
+				repeat 
+					dec(yL)
+					int_[yL] := y[yL] 
+				until yL = 0  
+			else 
+				int_ := y 
+			end  
+		elsif (xNeg = yNeg) # subtract then 
+			int_ := New(max(xL, yL) + 1)
+			Add(x, y, int_, xL, yL, intL)
+			SetLength(int_, intL, xNeg) 
+		else 
+			d := xL - yL
+			if d # 0 then
+				i := max(xL, yL) - 1 
+			else 
+				i := xL
+				repeat 
+					dec(i)
+					d := x[i] - y[i] 
+				until (i = 0) or (d # 0)  
+			end 
+			if d > 0 then
+				int_ := New(i + 1)
+				Subtract(x, y, int_, xL, yL, intL)
+				SetLength(int_, intL, xNeg) 
+			elsif d < 0 then 
+				int_ := New(i + 1)
+				Subtract(y, x, int_, yL, xL, intL)
+				SetLength(int_, intL, yNeg # subtract) 
+			else 
+				int_ := zero 
+			end  
+		end 
+		return int_
+	end AddOp
+	
+	proc Sum*(x, y: Integer): Integer 
+	begin 
+		return AddOp(x, y, false)
+	end Sum
+	
+	proc Difference*(x, y: Integer): Integer 
+	begin 
+		return AddOp(x, y, true)
+	end Difference
+	
+	proc Product*(x, y: Integer): Integer 
+		var 
+			xL, yL, intL: Index
+			neg, xNeg, yNeg: boolean
+			int_: Integer
+	begin 
+		GetLength(x, xL, xNeg)
+		GetLength(y, yL, yNeg)
+		neg := xNeg # yNeg
+		if xL > yL then
+			int_ := x
+			x := y
+			y := int_
+			intL := xL
+			xL := yL
+			yL := intL
+			xNeg := yNeg 
+		end 
+		// x.nofDigits <= y.nofDigits - yNeg no more valid!
+		if xL = 0 then
+			int_ := zero 
+		elsif (xL = 1) & (x[0] = 1) then 
+			if xNeg then
+				int_ := New(yL)
+				SetLength(int_, yL, neg)
+				repeat 
+					dec(yL)
+					int_[yL] := y[yL] 
+				until yL = 0  
+			else 
+				int_ := y 
+			end  
+		else 
+			int_ := New(xL + yL)
+			Multiply(x, y, int_, xL, yL, intL)
+			SetLength(int_, intL, neg) 
+		end 
+		return int_
+	end Product
+	
+	proc Quotient*(x, y: Integer): Integer 
+		var 
+			xL, yL, intL, remL: Index
+			xNeg, yNeg, qNeg, rNeg: boolean
+			int_: Integer
+	begin 
+		GetLength(x, xL, xNeg)
+		GetLength(y, yL, yNeg)
+		assert(yL # 0, 20)
+		if xL < yL then
+			int_ := zero 
+		elsif (yL = 1) & (y[0] = 1) then 
+			if yNeg then
+				int_ := New(xL)
+				SetLength(int_, xL, ~xNeg)
+				repeat 
+					dec(xL)
+					int_[xL] := x[xL] 
+				until xL = 0  
+			else 
+				int_ := x 
+			end  
+		else 
+			int_ := New(xL - yL + 2)
+			GetQuoRem(x, y, xL, yL, xNeg, yNeg, int_, nil, intL, remL, qNeg, rNeg, true, false)
+			SetLength(int_, intL, qNeg) 
+		end 
+		return int_
+	end Quotient
+	
+	proc Remainder*(x, y: Integer): Integer 
+		var 
+			xL, yL, intL, quoL: Index
+			xNeg, yNeg, qNeg, rNeg: boolean
+			int_: Integer
+	begin 
+		GetLength(x, xL, xNeg)
+		GetLength(y, yL, yNeg)
+		assert(yL # 0, 20)
+		if xL < yL then
+			int_ := x 
+		elsif (yL = 1) & (y[0] = 1) then 
+			int_ := zero 
+		else 
+			int_ := New(yL)
+			GetQuoRem(x, y, xL, yL, xNeg, yNeg, nil, int_, quoL, intL, qNeg, rNeg, false, true)
+			SetLength(int_, intL, rNeg) 
+		end 
+		return int_
+	end Remainder
+	
+	proc QuoRem*(x, y: Integer; var quo, rem: Integer) 
+		var 
+			xL, yL, quoL, remL: Index
+			xNeg, yNeg, qNeg, rNeg: boolean
+	begin 
+		GetLength(x, xL, xNeg)
+		GetLength(y, yL, yNeg)
+		assert(yL # 0, 20)
+		if xL < yL then
+			quo := zero
+			rem := x 
+		elsif (yL = 1) & (y[0] = 1) then 
+			rem := zero
+			if yNeg then
+				quo := New(xL)
+				SetLength(quo, xL, ~xNeg)
+				repeat 
+					dec(xL)
+					quo[xL] := x[xL] 
+				until xL = 0  
+			else 
+				quo := x 
+			end  
+		else 
+			quo := New(xL - yL + 2)
+			rem := New(yL)
+			GetQuoRem(x, y, xL, yL, xNeg, yNeg, quo, rem, quoL, remL, qNeg, rNeg, true, true)
+			SetLength(quo, quoL, qNeg)
+			SetLength(rem, remL, rNeg) 
+		end 
+	end QuoRem
+	
+	proc GCD*(x, y: Integer): Integer 
+		var 
+			xL, yL, i: Index
+			h: Digit
+			negative: boolean
+			xBuf, yBuf, int_: Integer
+	begin 
+		GetLength(x, xL, negative)
+		GetLength(y, yL, negative)
+		if xL = 0 then
+			int_ := y 
+		elsif yL = 0 then 
+			int_ := x 
+		else 
+			if xL >= yL then
+				xBuf := CopyOf(x, xL + 1)
+				yBuf := CopyOf(y, yL + 1) 
+			else 
+				xBuf := CopyOf(y, yL + 1)
+				yBuf := CopyOf(x, xL + 1)
+				i := xL
+				xL := yL
+				yL := i 
+			end 
+			while yL # 0 do 
+				DecomposeQuoRem(xBuf, yBuf, xL, yL)
+				xL := yL
+				while (xL # 0) & (xBuf[xL - 1] = 0) do 
+					dec(xL) 
+				end 
+				i := yL
+				while i # 0 do 
+					dec(i)
+					h := xBuf[i]
+					xBuf[i] := yBuf[i]
+					yBuf[i] := h 
+				end 
+				i := xL
+				xL := yL
+				yL := i 
+			end 
+			int_ := New(xL)
+			SetLength(int_, xL, false)
+			while xL # 0 do 
+				dec(xL)
+				int_[xL] := xBuf[xL] 
+			end  
+		end 
+		return int_
+	end GCD
+	
+	proc Power*(x: Integer; exp: integer): Integer 
+		var 
+			xL, intL: Index
+			negative: boolean
+			int_: Integer
+	begin 
+		assert(exp >= 0, 20)
+		GetLength(x, xL, negative)
+		if xL = 0 then
+			int_ := zero 
+		elsif (xL = 1) & (x[0] = 1) then 
+			if negative & ~odd(exp) then
+				int_ := New(xL)
+				SetLength(int_, xL, false)
+				repeat 
+					dec(xL)
+					int_[xL] := x[xL] 
+				until xL = 0  
+			else 
+				int_ := x 
+			end  
+		elsif exp = 0 then 
+			int_ := one 
+		elsif exp = 1 then 
+			int_ := x 
+		else 
+			int_ := New(short((xL - 1) * exp + entier(Math.Ln(x[xL - 1] + 1) * exp / Math.Ln(B)) + 1))
+			BinPower(x, exp, int_, xL, intL)
+			SetLength(int_, intL, negative & odd(exp)) 
+		end 
+		return int_
+	end Power
+	
+	// Read from and Write to String and File
+	
+	proc ConvertFromString*(in s: array of char; var x: Integer) 
+		var 
+			i, j, k: integer
+			dig, b: Digit
+			ch: char
+			negative: boolean
+			new_: Integer
+	begin 
+		i := 0
+		ch := s[0]
+		while (ch # 0x) & (ch <= " ") do 
+			inc(i)
+			ch := s[i] 
+		end 
+		negative := ch = "-"
+		if negative then
+			inc(i)
+			ch := s[i] 
+		end 
+		if ch = "+" then
+			inc(i)
+			ch := s[i] 
+		end 
+		while (ch # 0x) & (ch <= " ") do 
+			inc(i)
+			ch := s[i] 
+		end 
+		assert((ch >= "0") & (ch <= "9"), 20)
+		while ch = "0" do 
+			inc(i)
+			ch := s[i] 
+		end 
+		if (ch > "0") & (ch <= "9") then
+			j := i
+			repeat 
+				inc(j)
+				ch := s[j] 
+			until (ch < "0") or (ch > "9") 
+			k := (j - i - 1) div DecPerDig + 2
+			new_ := New(k)
+			SetLength(new_, k - 1, negative)
+			k := (j - i) mod DecPerDig
+			if k # 0 then
+				b := 1
+				dec(k)
+				while k # 0 do 
+					dec(k)
+					b := short(b * 10) 
+				end  
+			else 
+				b := B div 10 
+			end 
+			repeat 
+				dig := 0
+				while b # 0 do 
+					dig := short(dig + b * (ord(s[i]) - ord("0")))
+					b := short(b div 10)
+					inc(i) 
+				end 
+				new_[(j - i) div DecPerDig] := dig
+				b := B div 10 
+			until i = j 
+			x := new_ 
+		else 
+			x := zero 
+		end 
+	end ConvertFromString
+	
+	proc ConvertToString*(x: Integer; var s: array of char) 
+		var 
+			j: Index
+			i: integer
+			d, b: Digit
+			negative: boolean
+	begin 
+		GetLength(x, j, negative)
+		if negative then
+			s[0] := "-"
+			i := 1 
+		else 
+			i := 0 
+		end 
+		if j # 0 then
+			dec(j)
+			d := x[j]
+			b := B div 10
+			while d div b = 0 do 
+				b := short(b div 10) 
+			end 
+			repeat 
+				s[i] := chr(d div b + ord("0"))
+				inc(i)
+				d := short(d mod b)
+				b := short(b div 10) 
+			until b = 0 
+			while j # 0 do 
+				dec(j)
+				d := x[j]
+				b := B div 10
+				repeat 
+					s[i] := chr(d div b + ord("0"))
+					inc(i)
+					d := short(d mod b)
+					b := short(b div 10) 
+				until b = 0  
+			end  
+		else 
+			s[i] := "0"
+			inc(i) 
+		end 
+		s[i] := 0x
+	end ConvertToString
+	
+	proc Internalize*(r: Files.Reader; var x: Integer) 
+		var 
+			len_: Index
+			n, version: integer
+			negative: boolean
+			new_: Integer
+			buf: array 4 of byte
+	begin 
+		r.ReadByte(buf[0])
+		version := buf[0]
+		assert((version = 0) or (version >= 128), 20)
+		if version = 0 then
+			r.ReadBytes(buf, 0, 4)
+			len_ := (((buf[0] mod 128) * 256 + buf[1] mod 256) * 256 
+				+ buf[2] mod 256) * 256 + buf[3] mod 256
+			new_ := New(len_)
+			SetLength(new_, len_, buf[0] < 0)
+			while len_ # 0 do 
+				dec(len_)
+				r.ReadBytes(buf, 0, 2)
+				new_[len_] := short((buf[0] mod 256) * 256 + buf[1] mod 256) 
+			end 
+			x := new_ 
+		else  // version >= 128
+			r.ReadByte(buf[1])
+			n := (buf[0] mod 256) * 256 + buf[1] mod 256 - 32768
+			r.ReadBytes(buf, 0, 2)
+			dec(n)
+			len_ := (buf[0] mod 256) * 256 + buf[1] mod 256
+			negative := len_ < 0
+			len_ := abs(len_)
+			new_ := New(len_)
+			SetLength(new_, len_, negative)
+			while n # len_ do 
+				dec(n)
+				r.ReadBytes(buf, 0, 2) 
+			end 
+			while len_ # 0 do 
+				dec(len_)
+				r.ReadBytes(buf, 0, 2)
+				new_[len_] := short((buf[0] mod 256) * 256 + buf[1] mod 256) 
+			end 
+			x := new_ 
+		end 
+	end Internalize
+	
+	proc Externalize*(w: Files.Writer; x: Integer) 
+		var 
+			len_, l: Index
+			d: Digit
+			i: integer
+			negative: boolean
+			buf: array 4 of byte
+		
+		proc Byte(x: integer): byte 
+		begin 
+			assert((x >= min(byte)) & (x <= max(byte) - min(byte)), 20)
+			if x > max(byte) then
+				return short(short(x - 256)) 
+			else 
+				return short(short(x)) 
+			end 
+		end Byte
+	
+	begin 
+		GetLength(x, len_, negative)
+		l := len_
+		i := 4
+		repeat 
+			dec(i)
+			buf[i] := Byte(l mod 256)
+			l := l div 256 
+		until i = 0 
+		if negative then
+			buf[0] := Byte(128 + buf[0] mod 256) 
+		end 
+		w.WriteByte(0)
+		w.WriteBytes(buf, 0, 4)
+		while len_ # 0 do 
+			dec(len_)
+			d := x[len_]
+			buf[0] := Byte(d div 256)
+			buf[1] := Byte(d mod 256)
+			w.WriteBytes(buf, 0, 2) 
+		end 
+	end Externalize
+
+begin
+	assert(B <= BinBase, 20)
+	zero := New(0)
+	SetLength(zero, 0, false)
+	one := New(1)
+	one[0] := 1
+	SetLength(one, 1, false)
+	two := New(1)
+	two[0] := 2
+	SetLength(two, 1, false)
+	new(buf6, 6)
+end Integers

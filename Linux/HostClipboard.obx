@@ -1,0 +1,288 @@
+module HostClipboard
+	
+	// TODO: Add converters, memory files and other stuff to support multiple BlackBoxes and more formats
+	
+	import 
+		SYSTEM, Kernel, 
+		Gdk:= Gtk2Gdk, Gtk:= Gtk2Gtk, 
+		HostWindows, Log, 
+		Strings, Dialog, Views, Controllers, 
+		TextModels, TextViews, TextControllers, Services
+	
+	const 
+		string* = 0 // types for the clipboard
+		view* = 1
+	
+	type 
+		Clip = pointer to record 
+				view: Views.View
+				w, h: integer
+				isSingle: boolean
+				type_: array 256 of char 
+			end 
+	
+	var 
+		bbAtom-: integer
+		curClip: Clip
+	
+	proc Register*(v: Views.View; w, h: integer; isSingle: boolean) 
+		var 
+			c: Gtk.GtkClipboard
+			ustr: pointer to array of char
+			res, i, len_: integer
+			rd: TextModels.Reader
+			ch: char
+			str: pointer to array of char
+	begin 
+		// text view can be converted to global clipboard
+		with v: TextViews.View do 
+			rd := v.ThisModel().NewReader(nil)
+			len_ := v.ThisModel().Length()
+			new(str, len_ + 1)
+			i := 0
+			rd.SetPos(0)
+			repeat 
+				rd.Read
+				if rd.view = nil then
+					if (rd.char_ = TextModels.line) or (rd.char_ = TextModels.para) then
+						str[i] := 0ax 
+					else 
+						str[i] := rd.char_ 
+					end 
+					inc(i) 
+				end  
+			until rd.eot or (i >= len_) 
+			str[i] := 0x
+			new(ustr, 2 * len_ + 2)
+			Kernel.StringToUtf8(str, ustr, res)
+			if res = 0 then
+				c := Gtk.gtk_clipboard_get(Gdk.GDK_SELECTION_CLIPBOARD)
+				Gtk.gtk_clipboard_set_text(c, ustr^, len(ustr))
+				Gtk.gtk_clipboard_store(c) 
+			else 
+				Dialog.ShowMsg("utf8 conversion failed: " + str) 
+			end  
+		else  
+		end 
+		
+		// local clipboard
+		new(curClip)
+		curClip.view := Views.CopyOf(v, Views.deep)
+		curClip.w := w
+		curClip.h := h
+		curClip.isSingle := isSingle
+		Services.GetTypeName(v, curClip.type_)
+		if Gtk.gtk_selection_owner_set(HostWindows.main, Gdk.GDK_SELECTION_PRIMARY, Gdk.GDK_CURRENT_TIME) = 0 
+		then
+			Dialog.ShowMsg("HostClipboard.Register failed") 
+		end 
+	end Register
+	
+	// "selection-clear-event"
+	proc Clear*(w: Gtk.GtkWidget; event, user_data: integer) 
+	begin 
+		curClip := nil
+	end Clear
+	
+	// "selection-get"
+	proc ConvertCopy*(widget: Gtk.GtkWidget; var selection_data: Gtk.GtkSelectionData; info, time: integer; data: integer) 
+		var 
+			s: array 256 of char
+			v: Views.View
+			beg, end_, i, res: integer
+			rd: TextModels.Reader
+			uni: array 7 of char
+			ss: pointer to array of char
+			ch: char
+	begin 
+		if curClip # nil then
+			s := "BlackBox View: " + short(curClip.type_)
+			if info = Gdk.GDK_SELECTION_TYPE_STRING then
+				// TODO: Current implementation always does this.
+				v := curClip.view
+				with v: TextViews.View do 
+					rd := v.ThisModel().NewReader(nil)
+					rd.SetPos(0)
+					i := 0
+					rd.ReadChar(ch)
+					while ~rd.eot do 
+						if ord(ch) < 256 then
+							inc(i) 
+						else 
+							inc(i, 6) 
+						end 
+						rd.ReadChar(ch) 
+					end 
+					new(ss, i + 1)
+					
+					rd.SetPos(0)
+					i := 0
+					rd.ReadChar(ch)
+					while ~rd.eot do 
+						if ord(ch) < 256 then
+							ss[i] := short(ch)
+							inc(i) 
+						else 
+							ss[i] := "\"
+							ss[i + 1] := "u"
+							Strings.IntToStringForm(ord(ch), Strings.hexadecimal, 4, "0", false, uni)
+							ss[i + 2] := short(Kernel.Lower(uni[0]))
+							ss[i + 3] := short(Kernel.Lower(uni[1]))
+							ss[i + 4] := short(Kernel.Lower(uni[2]))
+							ss[i + 5] := short(Kernel.Lower(uni[3]))
+							inc(i, 6) 
+						end 
+						rd.ReadChar(ch) 
+					end 
+					ss[i] := 0x
+					Gtk.gtk_selection_data_set(selection_data, Gdk.GDK_SELECTION_TYPE_STRING, 8, ss^, len(ss)) 
+				else 
+					Gtk.gtk_selection_data_set(selection_data, Gdk.GDK_SELECTION_TYPE_STRING, 8, s, len(s)) 
+				end  
+			
+			elsif info = bbAtom then 
+				// TODO: This is where memory files and stuff are needed to make it work between two different BB-processes
+				Gtk.gtk_selection_data_set(selection_data, bbAtom, 8, s, len(s)) 
+			else 
+				Dialog.ShowMsg("HostClipboard.ConvertCopy: Unknown type") 
+			end  
+		end 
+	end ConvertCopy
+	
+	
+	type StrPtr = pointer to array of char
+	proc AtoD(in ss: array of char): StrPtr 
+		var 
+			s: pointer to array of char
+			letter: array 6 of char
+			int_, res, i, j, len_: integer
+			ch: char
+		
+		proc ReadUnicode(p: integer; var ch: char): boolean 
+			var 
+				int_: integer
+		begin 
+			if (len_ - i > 5) & (ss[i] = "\") & (ss[i + 1] = "u") & 
+				(((ss[i + 2] >= "0") & (ss[i + 2] <= "9")) or ((ss[i + 2] >= "a") & (ss[i + 2] <= "f"))) & 
+				(((ss[i + 3] >= "0") & (ss[i + 3] <= "9")) or ((ss[i + 3] >= "a") & (ss[i + 3] <= "f"))) & 
+				(((ss[i + 4] >= "0") & (ss[i + 4] <= "9")) or ((ss[i + 4] >= "a") & (ss[i + 4] <= "f"))) & 
+				(((ss[i + 5] >= "0") & (ss[i + 5] <= "9")) or ((ss[i + 5] >= "a") & (ss[i + 5] <= "f"))) then
+				letter[0] := Strings.Upper(ss[i + 2])
+				letter[1] := Strings.Upper(ss[i + 3])
+				letter[2] := Strings.Upper(ss[i + 4])
+				letter[3] := Strings.Upper(ss[i + 5])
+				letter[4] := "H"
+				letter[5] := 0x
+				Strings.StringToInt(letter, int_, res)
+				if res = 0 then
+					ch := chr(int_) 
+				else 
+					ch := "?" 
+				end 
+				return true 
+			else 
+				ch := ss[i]
+				return false 
+			end 
+		end ReadUnicode
+	
+	begin 
+		// count unicode symbols
+		len_ := len(ss)
+		i := 0
+		j := 0
+		while ss[i] # 0x do 
+			if ReadUnicode(i, ch) then
+				inc(i, 6)
+				inc(j) 
+			else 
+				inc(i)
+				inc(j) 
+			end  
+		end 
+		// create new string and convert
+		new(s, j + 1)
+		i := 0
+		j := 0
+		while ss[i] # 0x do 
+			if ss[i] = 0ax then
+				s[j] := 0dx 
+			else 
+				if ReadUnicode(i, ch) then
+					inc(i, 5)
+					s[j] := ch 
+				else 
+					s[j] := ss[i] 
+				end  
+			end 
+			inc(i)
+			inc(j) 
+		end 
+		s[j] := 0x
+		
+		return s
+	end AtoD
+	
+	// Must be connected to signal "selection-received" for HostWindows.main. This is done in HostMenus.
+	
+	proc DoPaste*(widget: Gtk.GtkWidget
+		var selection_data: Gtk.GtkSelectionData
+		time: integer
+		data: integer) 
+		var 
+			ops: Controllers.PollOpsMsg
+			msg: Controllers.EditMsg
+	begin 
+		if selection_data.length < 0 then
+			Dialog.ShowMsg("HostClipboard.DoPaste: Selection retrieval failed.") 
+		end 
+		
+		if (selection_data.type_ = bbAtom) 
+			or (selection_data.type_ = Gdk.GDK_SELECTION_TYPE_STRING) 
+		then
+			Controllers.PollOps(ops)
+			if Controllers.paste in ops.valid then
+				msg.clipboard := true
+				if curClip = nil then
+					// TODO: Is this a valid way to figure out if the current copy is a BB view or not?
+					// TODO: Convert 0AX to 0DX to get linefeeds?
+					msg.view := TextViews.dir.New(
+						TextModels.dir.NewFromString(
+						AtoD(selection_data.data)))
+					msg.isSingle := false
+					msg.w := 0
+					msg.h := 0 
+				else 
+					msg.view := Views.CopyOf(curClip.view, Views.deep)
+					msg.isSingle := curClip.isSingle
+					msg.w := curClip.w
+					msg.h := curClip.h 
+				end 
+				if msg.view # nil then
+					msg.op := Controllers.paste
+					Controllers.Forward(msg) 
+				end  
+			end  
+		else 
+			Dialog.ShowMsg("unknown selection type") 
+		end 
+	end DoPaste
+	
+	proc InitPaste*
+	begin 
+		if ~Gtk.gtk_selection_convert(HostWindows.main, 
+			Gdk.GDK_SELECTION_PRIMARY, 
+			Gdk.GDK_TARGET_STRING, Gdk.GDK_CURRENT_TIME) 
+		then
+			Dialog.ShowMsg("gtk_selection_convert failed") 
+		end 
+	end InitPaste
+	
+	proc Init
+	begin 
+		bbAtom := Gdk.gdk_atom_intern("BBView", 0)
+	end Init
+
+begin
+	Init
+end HostClipboard

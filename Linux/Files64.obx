@@ -1,0 +1,126 @@
+module Files64
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20161022, center #138, Support for files larger than 2GB
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Kernel, Files
+	
+	const 
+		shared* = true
+		exclusive* = false
+		dontAsk* = false // File.Register, Directory.New and Directory.Rename
+		ask* = true
+	
+	const 
+		readOnly* = 0
+		hidden* = 1
+		system* = 2
+		archive* = 3
+		stationery* = 4
+	
+	type 
+		Name* = Files.Name
+		Type* = Files.Type
+		
+		FileInfo* = pointer to record 
+				next*: FileInfo
+				name*: Name
+				length*: longint
+				type_*: Type
+				modified*: record year*, month*, day*, hour*, minute*, second*: integer end 
+				attr*: set 
+			end 
+		
+		LocInfo* = Files.LocInfo
+		
+		Locator* = Files.Locator
+		
+		File* = pointer to (* abstract *) record 
+				type_-: Type
+				init: boolean 
+			end 
+		
+		Reader* = pointer to (* abstract *) record 
+				eof*: boolean 
+			end 
+		
+		Writer* = pointer to (* abstract *) record end 
+		
+		Directory* = pointer to (* abstract *) record end 
+	
+	var 
+		dir-, stdDir-: Directory
+		objType-, symType-, docType-: Type // file types
+	
+	
+	proc (f: File) InitType*(type_: Type)  // new
+	begin 
+		assert(~f.init, 20)
+		f.type_ := type_
+		f.init := true
+	end InitType
+	
+	proc (f: File) Length*(): longint  end // new abstract
+	proc (f: File) NewReader*(old: Reader): Reader  end // new abstract
+	proc (f: File) NewWriter*(old: Writer): Writer  end // new abstract
+	proc (f: File) Flush*()  end // new abstract
+	proc (f: File) Register*(name: Name; type_: Type; ask: boolean
+		var res: integer)  end // new abstract
+	proc (f: File) Close*()  end // new abstract
+	proc (f: File) Closed*(): boolean  end // new abstract
+	proc (f: File) Shared*(): boolean  end // new abstract
+	
+	
+	proc (r: Reader) Base*(): File  end // new abstract
+	proc (r: Reader) Pos*(): longint  end // new abstract
+	proc (r: Reader) SetPos*(pos: longint)  end // new abstract
+	proc (r: Reader) ReadByte*(var x: byte)  end // new abstract
+	proc (r: Reader) ReadBytes*(var x: array of byte; beg, len_: integer)  end // new abstract
+	
+	proc (w: Writer) Base*(): File  end // new abstract
+	proc (w: Writer) Pos*(): longint  end // new abstract
+	proc (w: Writer) SetPos*(pos: longint)  end // new abstract
+	proc (w: Writer) WriteByte*(x: byte)  end // new abstract
+	proc (w: Writer) WriteBytes*(in x: array of byte; beg, len_: integer)  end // new abstract
+	
+	proc (d: Directory) This*(in path: array of char): Locator  end // new abstract
+	proc (d: Directory) New*(loc: Locator; ask: boolean): File  end // new abstract
+	proc (d: Directory) Old*(loc: Locator; name: Name; shared: boolean): File  end // new abstract
+	proc (d: Directory) Temp*(): File  end // new abstract
+	proc (d: Directory) Delete*(loc: Locator; name: Name)  end // new abstract
+	proc (d: Directory) Rename*(loc: Locator; old, new_: Name; ask: boolean)  end // new abstract
+	proc (d: Directory) SameFile*(loc0: Locator; name0: Name; loc1: Locator
+		name1: Name): boolean  end // new abstract
+	proc (d: Directory) FileList*(loc: Locator): FileInfo  end // new abstract
+	proc (d: Directory) LocList*(loc: Locator): LocInfo  end // new abstract
+	proc (d: Directory) GetFileName*(name: Name; type_: Type; var filename: Name)  end // new abstract
+	
+	proc SetDir*(d: Directory) 
+	begin 
+		assert(d # nil, 20)
+		dir := d
+		if stdDir = nil then
+			stdDir := d 
+		end 
+	end SetDir
+
+begin
+	objType := Kernel.objType
+	symType := Kernel.symType
+	docType := Kernel.docType
+	Kernel.LoadMod("HostFiles64")
+end Files64

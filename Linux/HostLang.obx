@@ -1,0 +1,130 @@
+module HostLang
+	
+	(* A. V. Shiryaev, 2012.10
+	   
+	   LANG environment variable support
+	   Dialog.LanguageHook implementation *)
+	
+	
+	
+	import Dialog, Libc:= LinLibc, HostRegistry
+	
+	const 
+		defLang = ""
+		defCountry = ""
+		defEnc = "ASCII"
+	
+	type 
+		LanguageHook = pointer to record (Dialog.LanguageHook) end 
+		
+		Country = array 3 of char
+		Encoding = array 32 of char
+	
+	var 
+		lang-: Dialog.Language
+		enc-: Encoding
+	
+	proc ParseLang(var lang: Dialog.Language; var country: Country; var enc: Encoding) 
+		var 
+			env: Libc.PtrSTR
+			i, j: integer
+		
+		proc Default
+		begin 
+			lang := defLang
+			country := defCountry
+			enc := defEnc
+		end Default
+		
+		proc IsValidEncChar(x: char): boolean 
+		begin 
+			return ((x >= 'A') & (x <= 'Z')) or ((x >= '0') & (x <= '9')) or (x = '-') or (x = '_') 
+				or ((x >= 'a') & (x <= 'z'))
+		end IsValidEncChar
+	
+	begin 
+		env := Libc.getenv("LANG")
+		if env # nil then
+			if env = "C" then
+				lang := ""
+				country := ""
+				enc := "ASCII" 
+			else 
+				i := 0
+				while (i < 2) & (env[i] >= 'a') & (env[i] <= 'z') & (i < len(lang) - 1) do 
+					lang[i] := env[i]
+					inc(i) 
+				end 
+				if (i = 2) & (env[i] = '_') & (i < len(lang)) then
+					lang[i] := 0x
+					inc(i)
+					j := 0
+					while (i < 5) & (env[i] >= 'A') & (env[i] <= 'Z') & (j < len(country) - 1) do 
+						country[j] := env[i]
+						inc(j)
+						inc(i) 
+					end 
+					if (i = 5) & (env[i] = '.') & (j < len(country)) then
+						country[j] := 0x
+						inc(i)
+						j := 0
+						while IsValidEncChar(env[i]) & (j < len(enc) - 1) do 
+							enc[j] := env[i]
+							inc(j)
+							inc(i) 
+						end 
+						if (env[i] = 0x) & (j < len(enc)) then
+							enc[j] := 0x 
+						else 
+							Default 
+						end  
+					else 
+						Default 
+					end  
+				else 
+					Default 
+				end  
+			end  
+		else 
+			Default 
+		end 
+	end ParseLang
+	
+	proc (hook: LanguageHook) SetLanguage(
+		lang: Dialog.Language; persistent: boolean; var ok: boolean
+		) 
+	begin 
+		ok := (lang = "") or (len(lang) = 2)
+		if ok & persistent then
+			HostRegistry.WriteString("language", lang) 
+		end 
+	end SetLanguage
+	
+	proc (hook: LanguageHook) GetPersistentLanguage(var l: Dialog.Language) 
+		var 
+			res: integer
+			s: array 32 of char
+	begin 
+		HostRegistry.ReadString("language", s, res)
+		if res = 0 then
+			assert((s = "") or (len(s) = 2), 100)
+			l := s 
+		else 
+			l := lang 
+		end 
+	end GetPersistentLanguage
+	
+	proc Init
+		var 
+			languageHook: LanguageHook
+			country: Country
+	begin 
+		ParseLang(lang, country, enc)
+		new(languageHook)
+		Dialog.SetLanguageHook(languageHook)
+		Dialog.ResetLanguage
+	end Init
+
+begin
+	Init
+end HostLang

@@ -1,0 +1,105 @@
+definition Gtk2Pango
+
+	import GLib:= Gtk2GLib, GObject:= Gtk2GObject
+	
+	type 
+		gboolean = GLib.gboolean
+		String = carray of char
+		PString = unsafe pointer to String
+	
+	const 
+		SCALE = 1024
+		
+	type 
+		PangoRectangle = cstruct 
+				x, y, width, height: integer 
+			end 
+		
+		PangoLanguage = PString
+		
+	type 
+		PangoDirection = integer
+	
+	// PangoFontDescription
+	type 
+		PangoFontDescription = unsafe pointer to (* limited *) cstruct end 
+	type 
+		PangoStyle = integer
+	const 
+		STYLE_NORMAL = 0
+		STYLE_OBLIQUE = 1
+		STYLE_ITALIC = 2
+	
+	type 
+		PangoWeight = integer
+			
+	type 
+		PangoFontMetrics = unsafe pointer to (* limited *) cstruct (* .. *)end 
+		PangoFont = pointer to (* limited *) record (GObject.GObject) end 
+		PangoContext = unsafe pointer to (* limited *) cstruct end 
+	
+	type 
+		PangoUnderline = integer
+	
+	type 		
+		PangoAttribute = unsafe pointer to (* abstract *) cstruct 
+				start_index: integer // in bytes
+				end_index: integer  // in bytes. The character at this index is not included
+			end 
+				
+		PangoAttrList = unsafe pointer to (* limited *) cstruct end 
+						
+		PangoGlyphString = unsafe pointer to (* limited *) cstruct end 	
+				
+	type 
+		PangoLayout = pointer to (* limited *) record (GObject.GObject) end 
+		PangoLayoutLine = unsafe pointer to (* limited *) cstruct 	end 
+		
+
+		
+	// PangoFontDescription
+	proc font_description_new(): PangoFontDescription 
+	proc font_description_from_string(in str: String): PangoFontDescription 
+	proc font_description_free(desc: PangoFontDescription) 
+	
+	proc font_description_get_family(desc: PangoFontDescription): PString 
+	proc font_description_get_size(desc: PangoFontDescription): integer 
+	proc font_description_get_weight(desc: PangoFontDescription): PangoWeight 
+	proc font_description_get_style(desc: PangoFontDescription): PangoStyle 
+	
+	proc font_description_set_family(desc: PangoFontDescription; in family: String) 
+	proc font_description_set_style(desc: PangoFontDescription; style: PangoStyle) 
+	proc font_description_set_weight(desc: PangoFontDescription; weight: PangoWeight) 
+	proc font_description_set_size(desc: PangoFontDescription; size_: integer) 
+	
+	// PangoFontMetrics
+	
+	proc font_metrics_unref(metrics: PangoFontMetrics) 
+	proc font_metrics_get_ascent(metrics: PangoFontMetrics): integer 
+	proc font_metrics_get_descent(metrics: PangoFontMetrics): integer 
+	proc font_metrics_get_approximate_char_width(metrics: PangoFontMetrics): integer 
+		
+	// PangoFont
+			
+	proc context_get_language(context: PangoContext): PangoLanguage 	
+	proc context_get_metrics(context: PangoContext; desc: PangoFontDescription; language: PangoLanguage): PangoFontMetrics 
+	
+	
+	// Attributes
+	proc attr_underline_new(underline: PangoUnderline): PangoAttribute 
+	proc attr_list_new(): PangoAttrList 
+	proc attr_list_unref(list: PangoAttrList) 
+	proc attr_list_insert(list: PangoAttrList; attr: PangoAttribute) 			
+			
+	// PangoLayout
+	proc layout_new(context: PangoContext): PangoLayout 	
+	proc layout_set_attributes(layout: PangoLayout; attrs: PangoAttrList) 
+	proc layout_set_text(layout: PangoLayout; text: PString; length: integer) 
+	proc layout_set_font_description(layout: PangoLayout; desc: PangoFontDescription) 	
+	proc layout_get_line(layout: PangoLayout; line: integer): PangoLayoutLine 	
+	proc layout_line_x_to_index(line: PangoLayoutLine; x_pos: integer; var index, trailing: integer): boolean 
+	proc layout_line_index_to_x(line: PangoLayoutLine; index: integer; trailing: gboolean; var x_pos: integer) 
+	proc layout_line_get_pixel_extents(layout_line: PangoLayoutLine; var ink_rect, logical_rect: PangoRectangle) 
+		
+
+end Gtk2Pango

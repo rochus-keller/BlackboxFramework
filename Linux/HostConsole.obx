@@ -1,0 +1,100 @@
+module HostConsole
+	
+	(* A. V. Shiryaev, 2012.10, 2016.11
+	   Console implementation for Linux, OpenBSD and FreeBSD
+	   I. A. Denisov, 2020.01
+	   Change iconv to Strings UTF-8 *)
+	
+	
+	
+	import Console, Strings, Libc:= LinLibc
+	
+	type 
+		Cons = pointer to record (Console.Console) end 
+	
+	var 
+		cons: Cons
+		input: Libc.PtrFILE
+	
+	proc (cons: Cons) ReadLn(var s: array of char) 
+		const 
+			maxLineLen = 2048 - 1 // without null terminating shortchar
+		var 
+			str: Libc.PtrSTR
+			ss: array maxLineLen + 1 of char
+			res: integer
+	begin 
+		ss[len(ss) - 1] := 0x
+		str := Libc.fgets(ss, len(ss), input)
+		if (str # nil) & (ss[len(ss) - 1] = 0x) then
+			assert(len(ss) < len(s), 20)
+			Strings.Utf8ToString(ss, s, res)
+			assert(res = 0, 60) 
+		else 
+			s[0] := 0x 
+		end 
+	end ReadLn
+	
+	proc Printf(in s: array of char; len_: integer) 
+		var 
+			res, i, n: integer
+			tmp: array 64 of char
+			ss: array 128 of char
+	begin 
+		i := 0
+		while i < len_ do 
+			n := 0
+			while (i < len_) & (n < len(tmp) - 1) do 
+				tmp[n] := s[i]
+				inc(n)
+				inc(i) 
+			end 
+			tmp[n] := 0x
+			Strings.StringToUtf8(tmp, ss, res)
+			if res # 0 then
+				// fallback ascii conversion
+				ss := short(tmp) 
+			end 
+			res := Libc.printf(ss)
+			res := Libc.fflush(Libc.NULL) 
+		end 
+	end Printf
+	
+	proc (cons: Cons) WriteChar(c: char) 
+		var 
+			s: array 1 of char
+	begin 
+		s[0] := c
+		Printf(s, 1)
+	end WriteChar
+	
+	proc (cons: Cons) WriteStr(in text: array of char) 
+	begin 
+		Printf(text, len(text))
+	end WriteStr
+	
+	proc (cons: Cons) WriteLn
+	begin 
+		Printf(0ax, 1)
+	end WriteLn
+	
+	proc Init
+	begin 
+		input := Libc.fdopen(Libc.STDIN_FILENO, "rb")
+		assert(input # Libc.NULL, 100)
+		new(cons)
+		Console.SetConsole(cons)
+	end Init
+	
+	proc Close
+		var 
+			res: integer
+	begin 
+		res := Libc.fclose(input)
+	end Close
+
+begin
+	Init
+(* CLOSE
+	Close *) 
+end HostConsole

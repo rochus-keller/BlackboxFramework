@@ -1,0 +1,1549 @@
+module HostWindows
+	
+	import 
+		SYSTEM, Kernel, 
+		GLib:= Gtk2GLib, Gdk:= Gtk2Gdk, Gtk:= Gtk2Gtk, GtkU:= Gtk2Util, Key:= Gtk2Keysyms, 
+		Log, 
+		HostFiles, HostPorts, 
+		Dialog, Windows, Controllers, Properties, Ports, 
+		Views, Containers, Models, Services, Documents, Files, 
+		Converters, Strings
+	
+	const 
+		inPlace* = 31 // flag for in place windows
+		untitledKey = "#System:untitled"
+		allocKey = "#Host:AllocatedMemory"
+		totalKey = "#Host:Total"
+		byteKey = "#Host:Bytes"
+		useSeparators = true // parameters to be used with AppendInt
+		noSeparators = false
+		borderW = 5 * Ports.point
+		
+		scrollRange = 16384
+		lineInc = 1
+		pageInc = 100
+		defThumbSize = scrollRange div 20
+		
+		guardCheck = 4
+		
+		ENTER = 0dx
+		ESC = 1bx
+		TAB = 09x
+		LTAB = 0ax
+		RDEL = 07x
+		LDEL = 08x
+		PL = 10x
+		PR = 11x
+		PU = 12x
+		PD = 13x
+		DL = 14x
+		DR = 15x
+		DU = 16x
+		DD = 17x
+		AL = 1cx
+		AR = 1dx
+		AU = 1ex
+		AD = 1fx
+		
+		// values for the type parameter for HandleMouse
+		press = 0
+		move = 1
+	
+	type 
+		Directory* = pointer to record (Windows.Directory) 
+			end 
+		
+		Window* = pointer to record (Windows.Window) 
+				wnd-: Gtk.GtkWindow // gtk window
+				da: Gtk.GtkDrawingArea // gtk drawing area
+				dlg: boolean // if window has a 3d dialog border
+				fix: boolean // window is opened with fix coordinates
+				next: Window // window ring, to prevent garbage collection of windows
+				trapped: boolean // if window caused trap, it won't get idle messages anymore
+				used: boolean // window received at least on message
+				destroyed: boolean
+				title: Views.Title
+				vBar: Gtk.GtkVScrollbar
+				hBar: Gtk.GtkHScrollbar // scrollbars of the window, may be NIL
+				fixed: Gtk.GtkFixed
+				vBarSize, hBarSize: integer // width of the vertical scrollbar,  height of the horizontal scrollbar
+				oldScrollVPos, oldScrollHPos: integer // used to determine wheather page or line increments should be scrolled
+				open: boolean 
+			end 
+	
+	var 
+		dir: Directory
+		unit: integer
+		newNumber: integer // number for next untitled document
+		main-: Gtk.GtkWindow
+		mainVBox: Gtk.GtkContainer // container to hold the menu and the statusbar
+		menuBar: Gtk.GtkWidget
+		statusBar, infoBar: Gtk.GtkStatusbar
+		winAnchor: Window // list of all windows, from top to bottom, first is dumy header
+		
+		tWindow, fWindow: Window // target and front focus windows
+		aWindow: Window // activated child window
+		statusId: integer // used for statusbar
+		infoId: integer // used for info bar
+		
+		scW-, scH-: integer // screen width and height
+		
+		alloc, total: integer
+		allocStr, totalStr, byteStr: array 256 of char
+		idleTraped: boolean
+		
+		modifiers-: set // last actual modifiers state
+	
+	proc AppendInt(var s: array of char; n: integer; useSeparators: boolean) 
+		var 
+			len_: integer
+			i, j: integer
+			d: array 32 of char
+	begin 
+		assert(n >= 0, 20)
+		i := 0
+		repeat 
+			d[i] := chr(30h + n mod 10)
+			inc(i)
+			n := n div 10
+			if useSeparators & (i mod 4 = 3) & (n # 0) then
+				d[i] := "'"
+				inc(i) 
+			end  
+		until n = 0 
+		len_ := len(s) - 1
+		j := 0
+		while s[j] # 0x do 
+			inc(j) 
+		end 
+		if j + i < len_ then
+			repeat 
+				dec(i)
+				s[j] := d[i]
+				inc(j) 
+			until i = 0 
+			s[j] := 0x 
+		end 
+	end AppendInt
+	
+	proc Append(var s: array of char; t: array of char) 
+		var 
+			len_: integer
+			i, j: integer
+			ch: char
+	begin 
+		len_ := len(s)
+		i := 0
+		while s[i] # 0x do 
+			inc(i) 
+		end 
+		j := 0
+		repeat 
+			ch := t[j]
+			s[i] := ch
+			inc(j)
+			inc(i) 
+		until (ch = 0x) or (i = len_) 
+		s[len_ - 1] := 0x
+	end Append
+	
+	proc StripTitle(var s: Views.Title) 
+		var 
+			i: integer
+	begin 
+		if s[0] = "<" then
+			i := 1
+			while (s[i] # ">") & (s[i] # 0x) do 
+				s[i - 1] := s[i]
+				inc(i) 
+			end 
+			dec(i)
+			s[i] := 0x 
+		end 
+	end StripTitle
+	
+	proc GenTitle(w: Window; name: array of char; var title: array of char) 
+		// generate window title for a document
+		var 
+			newName: array 64 of char
+			i: integer
+	begin 
+		if w.sub then
+			title[0] := "<"
+			title[1] := 0x 
+		else 
+			title[0] := 0x 
+		end 
+		if name # "" then
+			i := 0
+			while name[i] # 0x do 
+				inc(i) 
+			end 
+			if (i > 4) & (name[i - 4] = ".") & 
+				(cap(name[i - 3]) = "O") & (cap(name[i - 2]) = "D") & (cap(name[i - 1]) = "C") 
+			then
+				name[i - 4] := 0x 
+			end 
+			Append(title, name) 
+		else 
+			Dialog.MapString(untitledKey, newName)
+			Append(title, newName)
+			AppendInt(title, newNumber, noSeparators)
+			inc(newNumber) 
+		end 
+		if w.sub then
+			Append(title, ">") 
+		end 
+	end GenTitle
+	
+	proc GenPathTitle(w: Window; var title: array of char) 
+		var 
+			loc: Files.Locator
+			ch: char
+			s1, s2: Views.Title
+			i, j: integer
+	begin 
+		loc := w.loc
+		title := ""
+		with loc: HostFiles.Locator do 
+			i := 0
+			ch := loc.path[0]
+			j := 0
+			s2 := ""
+			while ch # 0x do 
+				if (ch = "/") then
+					s1[j] := 0x
+					s2 := s1
+					j := 0 
+				else 
+					s1[j] := ch
+					inc(j) 
+				end 
+				inc(i)
+				ch := loc.path[i] 
+			end 
+			s1[j] := 0x
+			if ((cap(s1[0]) = "M") & (cap(s1[1]) = "O") & (cap(s1[2]) = "D") & (s1[3] = 0x) or 
+				(cap(s1[0]) = "D") & (cap(s1[1]) = "O") & (cap(s1[2]) = "C") & (cap(s1[3]) = "U") & (s1[4] = 0x) or 
+				(cap(s1[0]) = "R") & (cap(s1[1]) = "S") & (cap(s1[2]) = "R") & (cap(s1[3]) = "C") & (s1[4] = 0x)) 
+				& (s2 # "") then
+				title := "("
+				Append(title, s2)
+				Append(title, ")") 
+			end  
+		else  
+		end 
+		Append(title, w.name)
+	end GenPathTitle
+	
+	// auxiliary portable prcedures (scrolling)
+	
+	proc GetSection(w: Window; focus, vertical: boolean
+		var size_, sect, pos: integer; var valid: boolean) 
+		var 
+			msg: Controllers.PollSectionMsg
+	begin  // portable
+		msg.focus := focus
+		msg.vertical := vertical
+		msg.wholeSize := 1
+		msg.partSize := 0
+		msg.partPos := 0
+		msg.valid := false
+		msg.done := false
+		w.ForwardCtrlMsg(msg)
+		if msg.done then
+			size_ := msg.wholeSize
+			sect := msg.partSize
+			pos := msg.partPos
+			if size_ < 0 then
+				size_ := 0 
+			end 
+			if sect < 0 then
+				sect := 0 
+			elsif sect > size_ then 
+				sect := size_ 
+			end 
+			if pos > size_ - sect then
+				pos := size_ - sect 
+			end 
+			if pos < 0 then
+				pos := 0 
+			end  
+		else 
+			size_ := 1
+			sect := 0
+			pos := 0 
+		end 
+		valid := msg.valid
+	end GetSection
+	
+	proc SetOrigin(w: Window; focus, vertical: boolean; pos: integer) 
+		// set origin of window's view
+		var 
+			msg: Controllers.ScrollMsg
+	begin  // portable
+		msg.focus := focus
+		msg.vertical := vertical
+		msg.op := Controllers.gotoPos
+		msg.pos := pos
+		msg.done := false
+		w.ForwardCtrlMsg(msg)
+	end SetOrigin
+	
+	proc Scroll(w: Window; focus, vertical: boolean; dir: integer) 
+		// scroll relative, by line or page increment or decrement
+		var 
+			msg: Controllers.ScrollMsg
+			c: Containers.Controller
+			v: Views.View
+	begin  // portable
+		c := w.doc.ThisController()
+		v := c.ThisFocus()
+		if (v # nil) & (v is Containers.View) then
+			Containers.FadeMarks(v(Containers.View).ThisController(), false) 
+		end 
+		msg.focus := focus
+		msg.vertical := vertical
+		msg.op := dir
+		msg.done := false
+		w.ForwardCtrlMsg(msg)
+	end Scroll
+	
+	// Window
+	
+	proc (w: Window) ForwardCtrlMsg*(var msg: Controllers.Message)  // extensible
+		var 
+			d: boolean
+			res: integer
+	begin 
+		if w.frame # nil then
+			Views.SetRoot(w.frame, w.frame.view, w = fWindow, w.flags)
+			w.ForwardCtrlMsg^(msg)
+			with msg: Controllers.ScrollMsg do 
+				w.UpdateScrollbars(false, false) 
+			else  
+			end  
+		end 
+	end ForwardCtrlMsg
+	
+	proc (w: Window) SetSpec*(loc: Files.Locator; name: Files.Name; conv: Converters.Converter) 
+		var 
+			title: Views.Title
+	begin 
+		if name # "" then
+			Kernel.MakeFileName(name, "") 
+		end 
+		w.SetSpec^(loc, name, conv)
+		if (loc # nil) & (w.wnd # nil) then
+			GenPathTitle(w, title)
+			w.SetTitle(title) 
+		end 
+	end SetSpec
+	
+	proc (w: Window) UpdateCursor(x, y: integer; modifiers: set)  // new
+		var 
+			pw, ph: integer
+			msg: Controllers.PollCursorMsg
+			cur: integer
+	begin 
+		w.port.GetSize(pw, ph)
+		if ((w = fWindow) or (w = tWindow)(* TODO: OR ~w.child *)) 
+			& (x >= 0) & (x < pw) & (y >= 0) & (y < ph) then
+			msg.x := x * w.frame.unit
+			msg.y := y * w.frame.unit
+			msg.cursor := Ports.arrowCursor
+			msg.modifiers := modifiers
+			w.ForwardCtrlMsg(msg)
+			cur := msg.cursor 
+		else 
+			cur := Ports.arrowCursor 
+		end 
+		if cur >= 0 then
+			w.frame.SetCursor(cur) 
+		end 
+	end UpdateCursor
+	
+	proc (w: Window) PutOnTop // new
+		var 
+			v: Window
+	begin 
+		v := winAnchor
+		while (v # nil) & (v.next # w) do 
+			v := v.next 
+		end 
+		if v # nil then
+			v.next := w.next
+			w.next := winAnchor.next
+			winAnchor.next := w 
+		end 
+	end PutOnTop
+	
+	proc (w: Window) SetSize*(width, height: integer) 
+		var 
+			res, x, y, dw, dh: integer
+	begin 
+		if w.port # nil then
+			w.SetSize^(width, height)
+			dw := width - w.da.allocation.width
+			dh := height - w.da.allocation.height
+			if ~(inPlace in w.flags) & ((dw # 0) or (dh # 0)) then
+				Gtk.gtk_widget_set_usize(w.wnd, width + w.vBarSize, height + w.hBarSize)
+				if w.fixed # nil then
+					Gtk.gtk_widget_set_usize(w.fixed, width + w.vBarSize, height + w.hBarSize)
+					if w.vBarSize > 0 then
+						Gtk.gtk_fixed_move(w.fixed, w.vBar, short(width), 0)
+						Gtk.gtk_widget_set_usize(w.vBar, w.vBarSize, height) 
+					end 
+					if w.hBarSize > 0 then
+						Gtk.gtk_fixed_move(w.fixed, w.hBar, 0, short(height))
+						Gtk.gtk_widget_set_usize(w.hBar, width, w.hBarSize) 
+					end  
+				end 
+				Gtk.gtk_drawing_area_size(w.da, width, height) 
+			end  
+		end 
+	end SetSize
+	
+	proc (w: Window) SetTitle2(title: Views.Title)  // new
+		// assign name of window, generate title out of name, and update window title bar
+		var 
+			res: integer
+			h: Window
+			t: array 256 of char
+			us: GLib.PString
+	begin 
+		assert(w.wnd # nil, 20)
+		StripTitle(title)
+		h := w
+		repeat 
+			GenTitle(h, title, t)
+			us := GLib.g_utf16_to_utf8(t, -1, nil, nil, nil)
+			Gtk.gtk_window_set_title(h.wnd, us)
+			GLib.g_free(SYSTEM.VAL(GLib.gpointer, us))
+			h := h.link(Window) 
+		until h = w 
+	end SetTitle2
+	
+	proc (w: Window) KeyDown*(ch: char; buttons: set) 
+	begin 
+		w.KeyDown^(ch, buttons)
+		Properties.IncEra
+	end KeyDown
+	
+	proc (w: Window) SetTitle*(title: Views.Title) 
+	begin 
+		assert(w.wnd # nil, 20)
+		w.title := title
+		Dialog.MapString(w.title, title)
+		w.SetTitle2(title)
+	end SetTitle
+	
+	proc (w: Window) RefreshTitle*
+		var 
+			title: Views.Title
+	begin 
+		assert(w.wnd # nil, 20)
+		Dialog.MapString(w.title, title)
+		w.SetTitle2(title)
+	end RefreshTitle
+	
+	proc (w: Window) GetTitle*(var title: Views.Title) 
+		var 
+			us: GLib.PString
+			res: integer
+	begin 
+		assert(w.wnd # nil, 20)
+		title := w.title
+		if title = "" then
+			us := Gtk.gtk_window_get_title(w.wnd)
+			Strings.Utf8ToString(us, title, res)
+			StripTitle(title) 
+		end 
+	end GetTitle
+	
+	proc (w: Window) Mark(do_, wk: boolean)  // new
+		var 
+			mark: Controllers.MarkMsg
+	begin 
+		mark.show := do_
+		mark.focus := ~wk
+		w.ForwardCtrlMsg(mark)
+		Properties.IncEra
+	end Mark
+	
+	proc (w: Window) ScrollDir(sdir: integer; value: real; focus, vertical: boolean)  // new
+		var 
+			size_, sect, pos, type_: integer
+			valid: boolean
+	begin 
+		GetSection(w, focus, vertical, size_, sect, pos, valid)
+		if valid then
+			if sdir = Controllers.gotoPos then
+				value := short(entier((value * (size_ - sect)) / scrollRange))
+				assert(value >= 0, 100)
+				SetOrigin(w, focus, vertical, short(entier(value))) 
+			else 
+				Scroll(w, focus, vertical, sdir) 
+			end 
+			dir.Update(w) 
+		end 
+	end ScrollDir
+	
+	proc (w: Window) Scroll(adj: Gtk.GtkAdjustment; focus, vertical: boolean)  // new
+		var 
+			sdir, osp: integer
+	begin 
+		if vertical then
+			osp := w.oldScrollVPos 
+		else 
+			osp := w.oldScrollHPos 
+		end 
+		if adj.value = osp - lineInc then
+			sdir := Controllers.decLine 
+		elsif adj.value = osp + lineInc then 
+			sdir := Controllers.incLine 
+		elsif adj.value = osp - pageInc then 
+			sdir := Controllers.decPage 
+		elsif adj.value = osp + pageInc then 
+			sdir := Controllers.incPage 
+		else 
+			sdir := Controllers.gotoPos 
+		end 
+		if sdir = Controllers.gotoPos then
+			w.ScrollDir(sdir, adj.value, focus, vertical) 
+		else 
+			w.ScrollDir(sdir, 0, focus, vertical) 
+		end 
+	end Scroll
+	
+	proc UpdateScrollbar(w: Window; vertical, focus: boolean) 
+		var 
+			res, size_, sect, pos: integer
+			valid: boolean
+			msg: Controllers.PollSectionMsg
+			f: Views.Frame
+			adj: Gtk.GtkAdjustment
+			trans: real
+	begin 
+		if w.frame = nil then
+			return  
+		end 
+		GetSection(w, focus, vertical, size_, sect, pos, valid)
+		if valid then
+			if size_ = 0 then
+				size_ := 1 
+			end 
+			if vertical then
+				adj := Gtk.gtk_range_get_adjustment(w.vBar)
+				Gtk.gtk_widget_show(w.vBar)
+				w.vBarSize := w.vBar.requisition.width 
+			else 
+				adj := Gtk.gtk_range_get_adjustment(w.hBar)
+				Gtk.gtk_widget_show(w.hBar)
+				w.hBarSize := w.hBar.requisition.height 
+			end 
+			trans := scrollRange / (size_ - sect)
+			adj.value := short(entier(pos * trans))
+			if sect > 0 then
+				adj.page_size := short(entier(sect * trans)) 
+			else 
+				adj.page_size := defThumbSize 
+			end 
+			adj.lower := 0
+			adj.upper := scrollRange + adj.page_size
+			Gtk.gtk_adjustment_changed(adj)
+			if vertical then
+				w.oldScrollVPos := short(entier(adj.value)) 
+			else 
+				w.oldScrollHPos := short(entier(adj.value)) 
+			end  
+		elsif ~focus then 
+			msg.focus := false
+			msg.vertical := vertical
+			msg.done := false
+			f := Views.ThisFrame(w.frame, w.doc.ThisView())
+			if f # nil then
+				Views.ForwardCtrlMsg(f, msg)
+				if msg.done then
+					if vertical then
+						adj := Gtk.gtk_range_get_adjustment(w.vBar)
+						Gtk.gtk_widget_show(w.vBar)
+						w.vBarSize := w.vBar.requisition.width 
+					else 
+						adj := Gtk.gtk_range_get_adjustment(w.hBar)
+						Gtk.gtk_widget_show(w.hBar)
+						w.hBarSize := w.hBar.requisition.height 
+					end 
+					adj.page_size := adj.upper
+					Gtk.gtk_adjustment_changed(adj) 
+				else 
+					if vertical then
+						w.vBarSize := 0
+						Gtk.gtk_widget_hide(w.vBar) 
+					else 
+						w.hBarSize := 0
+						Gtk.gtk_widget_hide(w.hBar) 
+					end  
+				end  
+			else 
+				if vertical then
+					w.vBarSize := 0
+					Gtk.gtk_widget_hide(w.vBar) 
+				else 
+					w.hBarSize := 0
+					Gtk.gtk_widget_hide(w.hBar) 
+				end  
+			end  
+		end 
+	end UpdateScrollbar
+	
+	proc (w: Window) UpdateScrollbars(focus, grow: boolean)  // new
+		var 
+			v, h, width, height: integer
+	begin 
+		v := w.vBarSize
+		h := w.hBarSize
+		if ~(Windows.noHScroll in w.flags) then
+			UpdateScrollbar(w, false, focus) 
+		end 
+		if ~(Windows.noVScroll in w.flags) then
+			UpdateScrollbar(w, true, focus) 
+		end 
+		if (v # w.vBarSize) or (h # w.hBarSize) then
+			if grow then
+				w.GetSize(width, height)
+				w.SetSize(width + w.vBarSize, height + w.hBarSize) 
+			else 
+				w.GetSize(width, height)
+				width := width - (w.vBarSize - v)
+				height := height - (w.hBarSize - h)
+				w.SetSize(width, height) 
+			end  
+		end 
+	end UpdateScrollbars
+	
+	proc (w: Window) Close*
+		var 
+			res: integer
+			h: Window
+	begin 
+		assert(w.frame # nil, 20)
+		if fWindow = w then
+			fWindow := nil
+			if tWindow = w then
+				tWindow := nil 
+			end  
+		elsif tWindow = w then 
+			tWindow := nil 
+		end 
+		h := winAnchor
+		while (h.next # nil) & (h.next # w) do 
+			h := h.next 
+		end 
+		assert(h.next = w, 21)
+		h.next := w.next
+		w.next := nil
+		// HostMechanisms.RemoveDropTarget(w.wnd);
+		w.Close^
+		if ~w.destroyed then
+			w.destroyed := true
+			Gtk.gtk_container_remove(w.wnd, w.fixed)
+			Gtk.gtk_widget_destroy(w.wnd) 
+		end 
+		assert(w.frame = nil, 60)
+	end Close
+	
+	proc (w: Window) MouseDown*(x, y, time: integer; modifiers: set) 
+		// handle a mouse down event in window
+		var 
+			pw, ph: integer
+			track: Controllers.TrackMsg
+	begin 
+		track.modifiers := modifiers
+		w.port.GetSize(pw, ph)
+		track.x := x * w.port.unit
+		track.y := y * w.port.unit
+		w.ForwardCtrlMsg(track)
+		Properties.IncEra
+	end MouseDown
+	
+	proc HandleChar(w: Window; key: integer; mod_: set) 
+		var 
+			ch: char
+	begin 
+		if (key >= 20h) & (key # 7fh) then
+			w.KeyDown(chr(key), mod_) 
+		end 
+	end HandleChar
+	
+	proc HandleKey(wndHandle, eventHandle, null: integer) 
+		var 
+			w: Window
+			c: Containers.Controller
+			pmsg: Controllers.PollFocusMsg
+			scroll: boolean
+			event: Gdk.GdkEventKey
+			code: integer
+			b: set
+	begin 
+		w := SYSTEM.VAL(Window, wndHandle)
+		event := SYSTEM.VAL(Gdk.GdkEventKey, eventHandle)
+		b := {}
+		if Gdk.GDK_SHIFT_BIT in event.state then
+			b := b + {HostPorts.shift, Controllers.extend} 
+		end 
+		if Gdk.GDK_CONTROL_BIT in event.state then
+			b := b + {HostPorts.ctrl, Controllers.modify} 
+		end 
+		if Gdk.GDK_MOD1_BIT in event.state then
+			incl(b, HostPorts.alt)
+			incl(b, Controllers.pick) 
+		end 
+		scroll := Gdk.GDK_MOD5_BIT in event.state // scroll lock
+		
+		// this global variable is used in HostCFrames
+		modifiers := b
+		
+		w.used := true
+		pmsg.focus := nil
+		w.ForwardCtrlMsg(pmsg)
+		if (pmsg.focus # nil) & (pmsg.focus.view is Containers.View) then
+			c := pmsg.focus.view(Containers.View).ThisController()
+			if (c # nil) & (Containers.noCaret in c.opts) then
+				scroll := true 
+			end  
+		end 
+		
+		code := event.keyval
+		case code of 
+			| Key.GDK_Pause:  
+			| Key.GDK_Shift_L .. Key.GDK_Caps_Lock:  
+			| Key.GDK_F1 .. Key.GDK_F12:  
+			| Key.GDK_Delete:  // delete -> right delete
+				w.KeyDown(RDEL, b) 
+			| Key.GDK_BackSpace:  // backspace -> left delete
+				w.KeyDown(LDEL, b) 
+			| Key.GDK_Tab: 
+				if Controllers.extend in b then // left tab
+					w.KeyDown(LTAB, b) 
+				else  // right tab
+					w.KeyDown(TAB, b) 
+				end  
+			| Key.GDK_Return: 
+				w.KeyDown(ENTER, b) 
+			| Key.GDK_Escape: 
+				w.KeyDown(ESC, b) 
+			| Key.GDK_Page_Up: 
+				if scroll then
+					w.ScrollDir(Controllers.decPage, 0, true, ~(Controllers.modify in b)) 
+				elsif Controllers.modify in b then  // move caret left one page
+					w.KeyDown(PL, b - {Controllers.modify}) 
+				else  // move caret up one page
+					w.KeyDown(PU, b) 
+				end  
+			| Key.GDK_Page_Down: 
+				if scroll then
+					w.ScrollDir(Controllers.incPage, 0, true, ~(Controllers.modify in b)) 
+				elsif Controllers.modify in b then  // move caret right one page
+					w.KeyDown(PR, b - {Controllers.modify}) 
+				else  // move caret down one page
+					w.KeyDown(PD, b) 
+				end  
+			| Key.GDK_End: 
+				if scroll then
+					w.ScrollDir(Controllers.gotoPos, scrollRange, true, Controllers.modify in b) 
+				elsif Controllers.modify in b then  // move caret to doc end
+					w.KeyDown(DD, b - {Controllers.modify}) 
+				else  // move caret to line end
+					w.KeyDown(DR, b) 
+				end  
+			| Key.GDK_Home: 
+				if scroll then
+					w.ScrollDir(Controllers.gotoPos, 0, true, Controllers.modify in b) 
+				elsif Controllers.modify in b then  // move caret to doc start
+					w.KeyDown(DU, b - {Controllers.modify}) 
+				else  // move caret to line start
+					w.KeyDown(DL, b) 
+				end  
+			| Key.GDK_Left: 
+				if scroll then
+					w.ScrollDir(Controllers.decLine, 0, true, false) 
+				else 
+					w.KeyDown(AL, b) 
+				end  
+			| Key.GDK_Up: 
+				if scroll then
+					w.ScrollDir(Controllers.decLine, 0, true, true) 
+				else 
+					w.KeyDown(AU, b) 
+				end  
+			| Key.GDK_Right: 
+				if scroll then
+					w.ScrollDir(Controllers.incLine, 0, true, false) 
+				else 
+					w.KeyDown(AR, b) 
+				end  
+			| Key.GDK_Down: 
+				if scroll then
+					w.ScrollDir(Controllers.incLine, 0, true, true) 
+				else 
+					w.KeyDown(AD, b) 
+				end  
+		else 
+			code := Gdk.gdk_keyval_to_unicode(code) // =ORD(event.string[0]);
+			if code # 0 then
+				HandleChar(w, code, b) 
+			end  
+		end 
+		Properties.IncEra
+	end HandleKey
+	
+	proc HandleScroll(wndHandle, eventHandle, null: integer) 
+		var 
+			w: Window
+			c: Containers.Controller
+			pmsg: Controllers.PollFocusMsg
+			event: Gdk.GdkEventScroll
+			a: integer
+	begin 
+		w := SYSTEM.VAL(Window, wndHandle)
+		
+		event := SYSTEM.VAL(Gdk.GdkEventScroll, eventHandle)
+		
+		if event.direction = 1 then
+			w.ScrollDir(Controllers.incLine, 0, true, true) 
+		else 
+			w.ScrollDir(Controllers.decLine, 0, true, true) 
+		end 
+		
+		Properties.IncEra
+	end HandleScroll
+	
+	proc HandleMouse(wndHandle, eventHandle, type_: integer) 
+		var 
+			w: Window
+			isDown: boolean
+			x, y: integer
+			b: set
+			f, g: Views.Frame
+			eventB: Gdk.GdkEventButton
+			eventM: Gdk.GdkEventMotion
+			e: Gdk.GdkEvent
+			ex, ey: real
+			button: integer
+			state: set
+	begin 
+		b := {}
+		w := SYSTEM.VAL(Window, wndHandle)
+		if type_ = press then
+			eventB := SYSTEM.VAL(Gdk.GdkEventButton, eventHandle)
+			assert(~(eventB.type_ in {Gdk.GDK_2BUTTON_PRESS, Gdk.GDK_3BUTTON_PRESS}), 100)
+			button := eventB.button
+			state := eventB.state
+			ex := eventB.x
+			ey := eventB.y 
+		else 
+			eventM := SYSTEM.VAL(Gdk.GdkEventMotion, eventHandle)
+			button := 0
+			state := eventM.state
+			ex := eventM.x
+			ey := eventM.y 
+		end 
+		w.used := true
+		if button = 1 then
+			incl(b, HostPorts.left) 
+		end 
+		if button = 2 then
+			incl(b, HostPorts.middle)
+			incl(b, Controllers.pick) 
+		end 
+		if button = 3 then
+			incl(b, HostPorts.right)
+			incl(b, Controllers.popup) 
+		end 
+		isDown := b # {}
+		if Gdk.GDK_SHIFT_BIT in state then
+			incl(b, HostPorts.shift)
+			incl(b, Controllers.extend) 
+		end 
+		if Gdk.GDK_CONTROL_BIT in state then
+			incl(b, HostPorts.ctrl)
+			incl(b, Controllers.modify) 
+		end 
+		if Gdk.GDK_MOD1_BIT in state then
+			incl(b, HostPorts.alt)
+			incl(b, Controllers.pick) 
+		end 
+		e := Gdk.gdk_event_peek()
+		if (e # nil) & (e.type_ = Gdk.GDK_2BUTTON_PRESS) then
+			incl(b, Controllers.doubleClick)
+			Gdk.gdk_event_free(e) 
+		// e := Gdk.gdk_event_get()
+		end 
+		// IF e # NIL THEN Gdk.gdk_event_free(e) END;
+		x := short(entier(ex))
+		y := short(entier(ey))
+		HostPorts.SetMouseState(x, y, b, isDown)
+		
+		(* ##=>
+		   
+		   IF wParam DIV 256 = 1 THEN
+		   IF {HostPorts.middle, HostPorts.shift, HostPorts.ctrl} - b = {} THEN
+		   CallHeapShow(SYSTEM.VAL(INTEGER, w))
+		   ELSIF {HostPorts.middle, HostPorts.shift, HostPorts.alt} - b = {} THEN
+		   f := w.frame; x := x * f.unit; y := y * f.unit;
+		   REPEAT g := f; f := Views.FrameAt(g, x - g.gx, y - g.gy) UNTIL f = NIL;
+		   CallHeapShow(SYSTEM.VAL(INTEGER, g))
+		   ELSIF ~activating THEN
+		   w.MouseDown(x, y, 0, b)
+		   END
+		   ELSIF wParam DIV 256 = 2 THEN
+		   w.UpdateCursor(x, y, b)
+		   END;##<= *)
+		if type_ = press then
+			w.MouseDown(x, y, 0, b) 
+		end 
+		if w.port # nil then // window could have been closed by MouseDown
+			w.UpdateCursor(x, y, b) 
+		end 
+		
+		// IF ~isDown THEN activating := FALSE END;
+		Properties.IncEra
+	end HandleMouse
+	
+	// Signal handlers
+	
+	
+	// window signals
+	// retrun 0 -> close ok. return 1 -> don't close
+	
+	proc DeleteHandler(widget: Gtk.GtkWidget; event: Gdk.GdkEvent; user_data: integer): integer 
+		var 
+			res: integer
+			w: Window
+	begin 
+		w := SYSTEM.VAL(Window, user_data)
+		if w.destroyed then
+			return 0 
+		else 
+			w.PutOnTop
+			Dialog.Call("HostCmds.Close", "", res)
+			return 1 
+		end 
+	end DeleteHandler
+	
+	proc DeactivateWin(w: Window) 
+	begin 
+		if fWindow = w then
+			w.Mark(false, true)
+			fWindow := nil
+			if (inPlace in w.flags) or ~(Windows.isTool in w.flags) then
+				w.Mark(true, true)
+				if (w # aWindow) & ~(inPlace in w.flags) then
+					tWindow := nil 
+				end  
+			end  
+		end 
+	end DeactivateWin
+	
+	proc ChildActivateHandler(window: Gtk.GtkWindow; event: Gdk.GdkEventFocus; user_data: integer) 
+		var 
+			w: Window
+	begin 
+		w := SYSTEM.VAL(Window, user_data)
+		if fWindow # w then
+			if fWindow # nil then
+				DeactivateWin(fWindow) 
+			end 
+			w.PutOnTop
+			if (inPlace in w.flags) or ~(Windows.isTool in w.flags) then
+				w.Mark(false, true)
+				tWindow := w
+				aWindow := w 
+			end 
+			fWindow := w
+			w.Mark(true, true)
+			Properties.IncEra
+			Dialog.Notify(0, 0, {guardCheck}) 
+		end 
+	end ChildActivateHandler
+	
+	proc ScrollHandler(widget: Gtk.GtkWidget; event: Gdk.GdkEventKey; user_data: integer): integer 
+	begin 
+		Kernel.Try(HandleScroll, user_data, SYSTEM.VAL(integer, event), 0)
+		return 1
+	end ScrollHandler
+	
+	proc KeyHandler(widget: Gtk.GtkWidget; event: Gdk.GdkEventKey; user_data: integer): integer 
+	begin 
+		Controllers.SetCurrentPath(Controllers.targetPath)
+		Kernel.Try(HandleKey, user_data, SYSTEM.VAL(integer, event), 0)
+		Controllers.ResetCurrentPath()
+		return 1
+	end KeyHandler
+	
+	proc MouseHandler(widget: Gtk.GtkWidget; event: Gdk.GdkEventButton; user_data: integer): integer 
+		var 
+			w: Window
+	begin 
+		if event.type_ = Gdk.GDK_BUTTON_PRESS then
+			w := SYSTEM.VAL(Window, user_data)
+			Controllers.SetCurrentPath(Controllers.targetPath)
+			Gtk.gtk_grab_add(w.da)
+			Kernel.Try(HandleMouse, user_data, SYSTEM.VAL(integer, event), press)
+			// IF Gtk.gtk_grab_get_current() = w.da THEN Gtk.gtk_grab_remove(w.da) END;
+			if Gtk.gtk_grab_get_current() # nil then
+				Gtk.gtk_grab_remove(Gtk.gtk_grab_get_current()) 
+			end 
+			Controllers.ResetCurrentPath() 
+		end 
+		return 1
+	end MouseHandler
+	
+	proc MouseMove(widget: Gtk.GtkWidget; event: Gdk.GdkEventMotion; user_data: integer): integer 
+		var 
+			pw, ph, x, y: integer
+			w: Window
+	begin 
+		w := SYSTEM.VAL(Window, user_data)
+		w.port.GetSize(pw, ph)
+		Gdk.gdk_window_get_position(w.wnd.window, x, y)
+		if (event.x_root < x + pw) & (event.y_root < y + ph) then
+			Controllers.SetCurrentPath(Controllers.targetPath)
+			Gtk.gtk_grab_add(widget)
+			Kernel.Try(HandleMouse, user_data, SYSTEM.VAL(integer, event), move)
+			if Gtk.gtk_grab_get_current() = widget then
+				Gtk.gtk_grab_remove(widget) 
+			end 
+			Controllers.ResetCurrentPath() 
+		end 
+		return 1
+	end MouseMove
+	
+	
+	proc WinMouseHandler(widget: Gtk.GtkWidget; event: Gdk.GdkEventButton; user_data: integer): integer 
+		var 
+			w: Window
+			wx, wy: integer
+	begin 
+		w := SYSTEM.VAL(Window, user_data)
+		Gdk.gdk_window_get_position(w.wnd.window, wx, wy)
+		event.x := event.x_root - wx
+		event.y := event.y_root - wy
+		return MouseHandler(w.da, event, user_data)
+		return 1
+	end WinMouseHandler
+	
+	proc ConfigureHandler(widget: Gtk.GtkWidget; event: Gdk.GdkEventConfigure; user_data: integer): integer 
+		var 
+			w, h, nw, nh: integer
+			win: Window
+	begin 
+		win := SYSTEM.VAL(Window, user_data)
+		if win.open then
+			win.GetSize(w, h)
+			nw := event.width - win.vBarSize
+			nh := event.height - win.hBarSize
+			if (w # nw) or (h # nh) then
+				win.SetSize(nw, nh) 
+			end 
+			Gtk.gtk_grab_add(win.da)
+			Gtk.gtk_grab_remove(win.da) 
+		end 
+		return 1
+	end ConfigureHandler
+	
+	proc DestroyHandler(object: Gtk.GtkObject; func_data: integer) 
+		var 
+			w: Window
+	begin 
+		w := SYSTEM.VAL(Window, func_data)
+		if ~w.destroyed then
+			w.destroyed := true
+			w.Close 
+		end 
+	end DestroyHandler
+	
+	proc ExposeEvent(widget: Gtk.GtkWidget; event: Gdk.GdkEventExpose; user_data: integer): integer 
+		var 
+			w: Window
+			p: HostPorts.Port
+	begin 
+		w := SYSTEM.VAL(Window, user_data)
+		w.open := true
+		w.Restore(event.area.x, event.area.y, event.area.x + event.area.width, event.area.y + event.area.height)
+		if event.count = 0 then
+			w.Update 
+		end 
+		return 1
+	end ExposeEvent
+	
+	proc ShowHandler(object: Gtk.GtkObject; func_data: integer) 
+		var 
+			w: Window
+	begin 
+		w := SYSTEM.VAL(Window, func_data)
+		w.Restore(0, 0, w.wnd.allocation.width, w.wnd.allocation.height)
+		w.Update
+	end ShowHandler
+	
+	// Scrollbars "value_changed"
+	
+	proc VScrollChanged(adjustment: Gtk.GtkAdjustment; user_data: integer) 
+		var 
+			w: Window
+	begin 
+		w := SYSTEM.VAL(Window, user_data)
+		w.Scroll(adjustment, false, true) // TODO: If ctrl is pressed TRUE should be passed for focus.
+	end VScrollChanged
+	
+	proc HScrollChanged(adjustment: Gtk.GtkAdjustment; user_data: integer) 
+		var 
+			w: Window
+	begin 
+		w := SYSTEM.VAL(Window, user_data)
+		w.Scroll(adjustment, false, false) // TODO: If ctrl is pressed TRUE should be passed for focus.
+	end HScrollChanged
+	
+	proc ConnectSignals(w: Window) 
+		var 
+			res, wval: integer
+	begin 
+		wval := SYSTEM.VAL(integer, w)
+		// window signals
+		res := GtkU.gtk_signal_connect(w.wnd, "delete-event", SYSTEM.ADR(DeleteHandler), wval)
+		res := GtkU.gtk_signal_connect(w.wnd, "focus-in-event", SYSTEM.ADR(ChildActivateHandler), wval)
+		res := GtkU.gtk_signal_connect(w.wnd, "key-press-event", SYSTEM.ADR(KeyHandler), wval)
+		res := GtkU.gtk_signal_connect(w.wnd, "scroll-event", SYSTEM.ADR(ScrollHandler), wval)
+		// ?_after?
+		res := GtkU.gtk_signal_connect(w.wnd, "button-press-event", SYSTEM.ADR(WinMouseHandler), wval)
+		res := GtkU.gtk_signal_connect(w.wnd, "configure-event", SYSTEM.ADR(ConfigureHandler), wval)
+		
+		res := GtkU.gtk_signal_connect(w.fixed, "button-press-event", SYSTEM.ADR(WinMouseHandler), wval)
+		// drawing area signals
+		res := GtkU.gtk_signal_connect(w.da, "destroy", SYSTEM.ADR(DestroyHandler), wval)
+		res := GtkU.gtk_signal_connect(w.da, "button-press-event", SYSTEM.ADR(MouseHandler), wval)
+		res := GtkU.gtk_signal_connect(w.da, "motion-notify-event", SYSTEM.ADR(MouseMove), wval)
+		res := GtkU.gtk_signal_connect(w.da, "expose_event", SYSTEM.ADR(ExposeEvent), wval)
+		res := GtkU.gtk_signal_connect(w.da, "show", SYSTEM.ADR(ShowHandler), wval)
+		
+		// set the event masks ???
+		Gtk.gtk_widget_set_events(w.da, 
+		Gdk.GDK_EXPOSURE_MASK + Gdk.GDK_BUTTON_PRESS_MASK + 
+		Gdk.GDK_BUTTON_RELEASE_MASK + Gdk.GDK_BUTTON_MOTION_MASK + 
+		Gdk.GDK_KEY_PRESS_MASK + Gdk.GDK_KEY_RELEASE_MASK + 
+		Gdk.GDK_POINTER_MOTION_MASK + Gdk.GDK_SCROLL_MASK)
+		Gtk.gtk_widget_set_events(w.wnd, Gdk.GDK_BUTTON_PRESS_MASK + Gdk.GDK_BUTTON_RELEASE_MASK + Gdk.GDK_SCROLL_MASK)
+		Gtk.gtk_widget_set_events(w.fixed, Gdk.GDK_BUTTON_PRESS_MASK + Gdk.GDK_BUTTON_RELEASE_MASK + Gdk.GDK_SCROLL_MASK)
+	end ConnectSignals
+	
+	// Directory
+	
+	proc (d: Directory) Close*(w: Windows.Window) 
+		var 
+			v, u: Windows.Window
+			h: Window
+	begin 
+		h := winAnchor
+		while (h.next # nil) & (h.next # w) do 
+			h := h.next 
+		end 
+		if h.next = w then
+			if ~w.sub then
+				v := w.link
+				while v # w do 
+					u := v.link
+					v.Close
+					v := u 
+				end  
+			end 
+			w.Close 
+		end 
+	end Close
+	
+	proc (d: Directory) Focus*(target: boolean): Window 
+	begin 
+		if target then
+			return tWindow 
+		else 
+			return fWindow 
+		end 
+	end Focus
+	
+	proc (d: Directory) GetBounds*(var w, h: integer) 
+	begin 
+		w := scW
+		h := scH
+	end GetBounds
+	
+	proc (d: Directory) GetThisWindow*(p: Ports.Port; px, py: integer; var x, y: integer; var w: Windows.Window) 
+	begin 
+		Kernel.Beep
+	
+	// TODO: Implement this when implementing drag and drop. Use: Gdk.gdk_window_at_pointer
+	
+	end GetThisWindow
+	
+	proc (d: Directory) New*(): Windows.Window 
+		var 
+			w: Window
+	begin 
+		new(w)
+		return w
+	end New
+	
+	proc (d: Directory) First*(): Window 
+	begin 
+		return winAnchor.next
+	end First
+	
+	proc (d: Directory) Next*(w: Windows.Window): Window 
+	begin 
+		if w # nil then
+			return w(Window).next 
+		else 
+			return nil 
+		end 
+	end Next
+	
+	proc (d: Directory) Select*(w: Windows.Window; lazy: boolean) 
+	begin 
+		with w: Window do 
+			Gdk.gdk_window_raise(w.wnd.window)
+			Gtk.gtk_widget_grab_focus(w.wnd) 
+		// On windows the raised window gets focus, but under X this is left to the Window manager to decide.
+		end 
+	end Select
+	
+	
+	proc (d: Directory) Open*(w: Windows.Window; doc: Documents.Document; flags: set; name: Views.Title; loc: Files.Locator; fname: Files.Name; conv: Converters.Converter) 
+		var 
+			p: HostPorts.Port
+			c: Containers.Controller
+			cw, ch: integer
+		
+		
+		proc AddScrollbars(w: Window) 
+			var 
+				vadj, hadj: Gtk.GtkAdjustment
+				res: integer
+				req: Gtk.GtkRequisition
+		begin 
+			w.fixed := Gtk.gtk_fixed_new()
+			Gtk.gtk_fixed_put(w.fixed, w.da, 0, 0)
+			
+			if (Windows.noHScroll in w.flags) & (Windows.noVScroll in w.flags) then
+				w.vBarSize := 0
+				w.hBarSize := 0 
+			else 
+				vadj := Gtk.gtk_adjustment_new(0, 0, scrollRange, lineInc, pageInc, defThumbSize)
+				res := GtkU.gtk_signal_connect(vadj, "value_changed", SYSTEM.ADR(VScrollChanged), SYSTEM.VAL(integer, w))
+				hadj := Gtk.gtk_adjustment_new(0, 0, scrollRange, lineInc, pageInc, defThumbSize)
+				res := GtkU.gtk_signal_connect(hadj, "value_changed", SYSTEM.ADR(HScrollChanged), SYSTEM.VAL(integer, w))
+				
+				w.vBar := Gtk.gtk_vscrollbar_new(vadj)
+				excl(w.vBar.flags, 11)
+				w.hBar := Gtk.gtk_hscrollbar_new(hadj)
+				excl(w.hBar.flags, 11)
+				
+				Gtk.gtk_fixed_put(w.fixed, w.vBar, 100, 0)
+				Gtk.gtk_fixed_put(w.fixed, w.hBar, 0, w.wnd.allocation.height - w.hBarSize)
+				
+				Gtk.gtk_widget_size_request(w.vBar, req)
+				w.vBarSize := req.width
+				Gtk.gtk_widget_size_request(w.hBar, req)
+				w.hBarSize := req.height 
+			end 
+			Gtk.gtk_container_add(w.wnd, w.fixed)
+		end AddScrollbars
+		
+		proc IsDialog(w: Window; c: Containers.Controller): boolean 
+			var 
+				dlg: boolean
+				v: Views.View
+				f: set
+				col: Ports.Color
+		begin 
+			if Windows.isTool in w.flags then
+				dlg := true 
+			else 
+				v := w.doc.ThisView()
+				f := {}
+				with v: Containers.View do 
+					c := v.ThisController()
+					if c # nil then
+						f := c.opts 
+					end  
+				else  
+				end 
+				col := Views.transparent
+				v.GetBackground(col)
+				dlg := ({Containers.noCaret, Containers.noSelection} - f = {})  // mask mode
+					& (col = Ports.dialogBackground)  // dialog background
+			end 
+			return dlg
+		end IsDialog
+		
+		proc SetSizePos(p: HostPorts.Port; w: Window) 
+			var 
+				res, size_, sect, pos: integer
+				u, dl, dt, dr, db: integer
+		begin 
+			if (d.l >= 0) & (d.t >= 0) & ~((d.l = 0) & (d.t = 0) & (d.r = 0) & (d.b = 0)) then
+				if (d.r > d.l) & (d.b > d.t) then
+					cw := d.r - d.l
+					ch := d.b - d.t
+					w.fix := true 
+				end  
+			else 
+				cw := w.wnd.allocation.width
+				ch := w.wnd.allocation.height 
+			end 
+			u := w.frame.unit
+			w.port.SetSize(0, 0)
+			w.doc.PollRect(dl, dt, dr, db)
+			if w.fix then
+				if w.dlg then
+					w.doc.SetRect(0, 0, cw * u, ch * u) 
+				else 
+					w.doc.SetRect(borderW, borderW, cw * u - borderW, ch * u - borderW) 
+				end  
+			elsif w.dlg then 
+				cw := (dr - dl) div u
+				ch := (db - dt) div u
+				w.doc.SetRect(0, 0, dr - dl, db - dt) 
+			else 
+				cw := (dr - dl + 2 * borderW) div u + 1
+				ch := (db - dt + 2 * borderW) div u + 1
+				if ~(Windows.noHScroll in w.flags) & (cw > scW - 40) then
+					cw := scW - 80 
+				end 
+				if ~(Windows.noVScroll in w.flags) & (ch > scH - 40) then
+					ch := scH - 160 
+				end 
+				w.doc.SetRect(borderW, borderW, borderW + dr - dl, borderW + db - dt) 
+			end 
+			if cw < 0 then
+				cw := 0 
+			end 
+			if ch < 0 then
+				ch := 0 
+			end 
+			
+			Gtk.gtk_drawing_area_size(w.da, cw, ch)
+			
+			w.SetSize(cw, ch)
+		end SetSizePos
+		
+		proc ShowWindow(w: Window) 
+		begin 
+			Gtk.gtk_widget_show(w.wnd)
+			if w.fixed # nil then
+				Gtk.gtk_widget_show(w.fixed) 
+			end 
+			if w.vBar # nil then
+				Gtk.gtk_widget_show(w.vBar) 
+			end 
+			if w.hBar # nil then
+				Gtk.gtk_widget_show(w.hBar) 
+			end 
+			Gtk.gtk_widget_show(w.da)
+			(* w.Restore(0, 0, cw, ch);
+			   w.Update; *)
+			
+			
+			w.UpdateScrollbars(false, true)
+		end ShowWindow
+	
+	begin 
+		with w: Window do 
+			w.open := false
+			new(p)
+			p.Init(unit, false)
+			w.Init(p)
+			w.wnd := Gtk.gtk_window_new(Gtk.GTK_WINDOW_TOPLEVEL)
+			if w.wnd = nil then
+				Log.String("Could not create window")
+				Log.Ln 
+			else 
+				d.Open^(w, doc, flags, name, loc, fname, conv)
+				w.next := winAnchor.next // new top window
+				winAnchor.next := w
+				w.da := Gtk.gtk_drawing_area_new()
+				AddScrollbars(w)
+				ConnectSignals(w)
+				c := w.doc.ThisController()
+				c.SetFocus(w.doc.ThisView())
+				w.dlg := IsDialog(w, c)
+				
+				// для журнала указываем предопределенные координаты
+				if name = "#Dev:Log" then
+					d.l := 0
+					d.t := 120
+					d.r := 320
+					d.b := 700 
+				end 
+				
+				SetSizePos(p, w)
+				p.SetDA(w.da)
+				p.SetFW(w.fixed)
+				if (loc # nil) & (name = fname) then
+					GenPathTitle(w, name) 
+				end 
+				w.SetTitle(name)
+				
+				if (Windows.isTool in w.flags) then
+					Gtk.gtk_window_set_position(w.wnd, Gtk.GTK_WIN_POS_CENTER) 
+				end 
+				ShowWindow(w)
+				if (d.l >= 0) & (d.t >= 0) & ~((d.l = 0) & (d.t = 0) & (d.r = 0) & (d.b = 0)) then
+					Gtk.gtk_window_move(w.wnd, d.l, d.t) 
+				end 
+				d.l := -1
+				d.t := -1
+				d.r := -1
+				d.b := -1
+				if w.dlg then
+					Gtk.gtk_window_set_policy(w.wnd, 0, 0, 1) 
+				else 
+					Gtk.gtk_window_set_policy(w.wnd, 1, 1, 1) 
+				end 
+				w.SetSize(cw, ch) 
+			end  
+		end 
+	end Open
+	
+	proc UpdateInfo
+		var 
+			msgId: integer
+			str: array 256 of char
+			us: GLib.PString
+	begin 
+		if (alloc # Kernel.Allocated()) or (total # Kernel.Used()) then
+			alloc := Kernel.Allocated()
+			total := Kernel.Used()
+			str := allocStr
+			AppendInt(str, alloc, useSeparators)
+			Append(str, byteStr)
+			us := GLib.g_utf16_to_utf8(str, -1, nil, nil, nil)
+			Gtk.gtk_statusbar_pop(infoBar, infoId)
+			msgId := Gtk.gtk_statusbar_push(infoBar, infoId, us)
+			GLib.g_free(SYSTEM.VAL(GLib.gpointer, us)) 
+		end 
+	end UpdateInfo
+	
+	proc Idle*
+		var 
+			w: Window
+			tick: Controllers.TickMsg
+			focus: boolean
+	begin 
+		w := dir.Focus(false)
+		if (w # nil) & ~w.trapped then
+			w.trapped := true
+			if w.frame # nil then
+				tick.tick := Services.Ticks()
+				w.ForwardCtrlMsg(tick) 
+			end 
+			w.trapped := false 
+		end 
+		// focus := ScrollModPressed(); TODO: Should check if control key is pressed
+		focus := false
+		w := dir.First()
+		while w # nil do 
+			if ~w.trapped then
+				w.trapped := true
+				w.UpdateScrollbars(focus & (w = fWindow), false)
+				w.trapped := false 
+			end 
+			w := dir.Next(w) 
+		end 
+		if ~idleTraped then
+			idleTraped := true
+			UpdateInfo
+			idleTraped := false 
+		end 
+		Services.actionHook.Step
+	end Idle
+	
+	proc ShowMain*
+	begin 
+		Gtk.gtk_widget_show_all(main)
+		HostPorts.ResetColors(main)
+	end ShowMain
+	
+	proc RaiseMain*
+	begin 
+		Gdk.gdk_window_raise(main.window)
+	end RaiseMain
+	
+	proc CreateMainWindows*
+		var 
+			msgId: integer
+			hBox: Gtk.GtkContainer
+	begin 
+		main := Gtk.gtk_window_new(Gtk.GTK_WINDOW_TOPLEVEL)
+		Gtk.gtk_window_set_title(main, "BlackBox")
+		Gtk.gtk_window_move(main, 1, 1)
+		(* depricated
+		   Gtk.gtk_widget_set_uposition(main, 1, 1); *)
+		
+		
+		mainVBox := Gtk.gtk_vbox_new(0, 0)
+		Gtk.gtk_container_add(main, mainVBox)
+		
+		statusBar := Gtk.gtk_statusbar_new()
+		statusId := Gtk.gtk_statusbar_get_context_id(statusBar, "BlackBoxStatus")
+		
+		infoBar := Gtk.gtk_statusbar_new()
+		infoId := Gtk.gtk_statusbar_get_context_id(infoBar, "BlackBoxInfo")
+		
+		hBox := Gtk.gtk_hbox_new(1, 0)
+		Gtk.gtk_container_add(hBox, statusBar)
+		Gtk.gtk_container_add(hBox, infoBar)
+		Gtk.gtk_container_add(mainVBox, hBox)
+		
+		Dialog.MapString(allocKey, allocStr)
+		Dialog.MapString(totalKey, totalStr)
+		Dialog.MapString(byteKey, byteStr)
+	
+	end CreateMainWindows
+	
+	proc SetMenu*(newMenuBar: Gtk.GtkWidget) 
+	begin 
+		if menuBar # nil then
+			Gtk.gtk_container_remove(mainVBox, menuBar) 
+		end 
+		menuBar := newMenuBar
+		Gtk.gtk_container_add(mainVBox, menuBar)
+		Gtk.gtk_box_reorder_child(mainVBox, menuBar, 0)
+	end SetMenu
+	
+	proc SetStatusText*(in str: array of char) 
+		var 
+			msgId: integer
+			us: GLib.PString
+	begin 
+		Gtk.gtk_statusbar_pop(statusBar, statusId)
+		us := GLib.g_utf16_to_utf8(str, -1, nil, nil, nil)
+		msgId := Gtk.gtk_statusbar_push(statusBar, statusId, us)
+		GLib.g_free(SYSTEM.VAL(GLib.gpointer, us))
+	end SetStatusText
+	
+	proc Init
+	begin 
+		scW := Gdk.gdk_screen_width()
+		scH := Gdk.gdk_screen_height()
+		unit := (Ports.mm * Gdk.gdk_screen_height_mm()) div scH
+		new(winAnchor)
+		winAnchor.next := nil // dummy header
+		tWindow := nil
+		fWindow := nil
+		aWindow := nil
+		new(dir)
+		Windows.SetDir(dir)
+	end Init
+
+begin
+	Init
+end HostWindows

@@ -1,0 +1,415 @@
+module Ports
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20150610, center #60, DrawSpace added for underlined white space
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Fonts
+	
+	const 
+		// colors
+		black* = 00000000h
+		white* = 00ffffffh
+		grey6* = 00f0f0f0h
+		grey12* = 00e0e0e0h
+		grey25* = 00c0c0c0h
+		grey50* = 00808080h
+		grey75* = 00404040h
+		red* = 000000ffh
+		green* = 0000ff00h
+		blue* = 00ff0000h
+		defaultColor* = 01000000h
+		
+		// measures
+		mm* = 36000
+		point* = 12700
+		inch* = 914400
+		
+		// size parameter for the procedures DrawRect, DrawOval, DrawLine, DrawPath, and MarkRect
+		fill* = -1
+		
+		// path parameter for DrawPath
+		openPoly* = 0
+		closedPoly* = 1
+		openBezier* = 2
+		closedBezier* = 3
+		
+		// modes for MarkRect
+		invert* = 0
+		hilite* = 1
+		dim25* = 2
+		dim50* = 3
+		dim75* = 4
+		
+		hide* = false
+		show* = true
+		
+		// cursors
+		arrowCursor* = 0
+		textCursor* = 1
+		graphicsCursor* = 2
+		tableCursor* = 3
+		bitmapCursor* = 4
+		refCursor* = 5
+		
+		// RestoreRect
+		keepBuffer* = false
+		disposeBuffer* = true
+		
+		
+		// PageMode
+		printer* = true
+		screen* = false
+	
+	
+	type 
+		Color* = integer
+		
+		Point* = record 
+				x*, y*: integer 
+			end 
+		
+		Port* = pointer to (* abstract *) record 
+				unit-: integer
+				printerMode: boolean 
+			end 
+		
+		Rider* = pointer to (* abstract *) record end 
+		
+		Frame* = pointer to (* abstract *) record 
+				unit-, dot-: integer // inv: dot = point - point MOD unit
+				rider-: Rider
+				gx-, gy-: integer 
+			end 
+	
+	
+	var 
+		background*: Color
+		dialogBackground*: Color
+	
+	
+	// Port
+	
+	proc (p: Port) Init*(unit: integer; printerMode: boolean)  // new
+	begin (* ASSERT((p.unit = 0) OR (p.unit = unit), 20); *)
+		assert(unit > 0, 21)
+		assert((p.unit = 0) or (p.printerMode = printerMode), 22)
+		p.unit := unit
+		p.printerMode := printerMode
+	end Init
+	
+	proc (p: Port) GetSize*(var w, h: integer)  end // new abstract
+	proc (p: Port) SetSize*(w, h: integer)  end // new abstract
+	proc (p: Port) NewRider*(): Rider  end // new abstract
+	proc (p: Port) OpenBuffer*(l, t, r, b: integer)  end // new abstract
+	proc (p: Port) CloseBuffer*()  end // new abstract
+	
+	
+	// Rider
+	
+	proc (rd: Rider) SetRect*(l, t, r, b: integer)  end // new abstract
+	proc (rd: Rider) GetRect*(var l, t, r, b: integer)  end // new abstract
+	proc (rd: Rider) Base*(): Port  end // new abstract
+	proc (rd: Rider) Move*(dx, dy: integer)  end // new abstract
+	proc (rd: Rider) SaveRect*(l, t, r, b: integer; var res: integer)  end // new abstract
+	proc (rd: Rider) RestoreRect*(l, t, r, b: integer; dispose: boolean)  end // new abstract
+	proc (rd: Rider) DrawRect*(l, t, r, b, s: integer; col: Color)  end // new abstract
+	proc (rd: Rider) DrawOval*(l, t, r, b, s: integer; col: Color)  end // new abstract
+	proc (rd: Rider) DrawLine*(x0, y0, x1, y1, s: integer; col: Color)  end // new abstract
+	proc (rd: Rider) DrawPath*(in p: array of Point; n, s: integer; col: Color
+		path: integer)  end // new abstract
+	proc (rd: Rider) MarkRect*(l, t, r, b, s, mode: integer; show: boolean)  end // new abstract
+	proc (rd: Rider) Scroll*(dx, dy: integer)  end // new abstract
+	proc (rd: Rider) SetCursor*(cursor: integer)  end // new abstract
+	proc (rd: Rider) Input*(var x, y: integer; var modifiers: set
+		var isDown: boolean)  end // new abstract
+	proc (rd: Rider) DrawString*(x, y: integer; col: Color; in s: array of char
+		font: Fonts.Font)  end // new abstract
+	proc (rd: Rider) DrawSpace*(x, y, w: integer; col: Color
+		font: Fonts.Font)  end // new abstract
+	proc (rd: Rider) CharIndex*(x, pos: integer; in s: array of char
+		font: Fonts.Font): integer  end // new abstract
+	proc (rd: Rider) CharPos*(x, index: integer; in s: array of char
+		font: Fonts.Font): integer  end // new abstract
+	proc (rd: Rider) DrawSString*(x, y: integer; col: Color; in s: array of char
+		font: Fonts.Font)  end // new abstract
+	proc (rd: Rider) SCharIndex*(x, pos: integer; in s: array of char
+		font: Fonts.Font): integer  end // new abstract
+	proc (rd: Rider) SCharPos*(x, index: integer; in s: array of char
+		font: Fonts.Font): integer  end // new abstract
+	
+	
+	// Frame
+	
+	proc (f: Frame) ConnectTo*(p: Port)  // new extensible
+		var 
+			w, h: integer
+	begin 
+		if p # nil then
+			f.rider := p.NewRider()
+			f.unit := p.unit
+			p.GetSize(w, h)
+			f.dot := point - point mod f.unit 
+		else 
+			f.rider := nil
+			f.unit := 0 
+		end 
+	end ConnectTo
+	
+	proc (f: Frame) SetOffset*(gx, gy: integer)  // new extensible
+		var 
+			u: integer
+	begin 
+		u := f.unit
+		if ((gx - f.gx) mod u = 0) & ((gy - f.gy) mod u = 0) then
+			f.rider.Move((gx - f.gx) div u, (gy - f.gy) div u) 
+		end 
+		f.gx := gx
+		f.gy := gy
+	end SetOffset
+	
+	proc (f: Frame) SaveRect*(l, t, r, b: integer; var res: integer)  // new
+		var 
+			u: integer
+	begin 
+		assert((l <= r) & (t <= b), 20)
+		u := f.unit
+		l := (f.gx + l) div u
+		t := (f.gy + t) div u
+		r := (f.gx + r) div u
+		b := (f.gy + b) div u
+		f.rider.SaveRect(l, t, r, b, res)
+	end SaveRect
+	
+	proc (f: Frame) RestoreRect*(l, t, r, b: integer; dispose: boolean)  // new
+		var 
+			u: integer
+	begin 
+		assert((l <= r) & (t <= b), 20)
+		u := f.unit
+		l := (f.gx + l) div u
+		t := (f.gy + t) div u
+		r := (f.gx + r) div u
+		b := (f.gy + b) div u
+		f.rider.RestoreRect(l, t, r, b, dispose)
+	end RestoreRect
+	
+	proc (f: Frame) DrawRect*(l, t, r, b, s: integer; col: Color)  // new
+		var 
+			u: integer
+	begin 
+		assert((l <= r) & (t <= b), 20)
+		assert(s >= fill, 21)
+		u := f.unit
+		l := (f.gx + l) div u
+		t := (f.gy + t) div u
+		r := (f.gx + r) div u
+		b := (f.gy + b) div u
+		s := s div u
+		f.rider.DrawRect(l, t, r, b, s, col)
+	end DrawRect
+	
+	proc (f: Frame) DrawOval*(l, t, r, b, s: integer; col: Color)  // new
+		var 
+			u: integer
+	begin 
+		assert((l <= r) & (t <= b), 20)
+		assert(s >= fill, 21)
+		u := f.unit
+		l := (f.gx + l) div u
+		t := (f.gy + t) div u
+		r := (f.gx + r) div u
+		b := (f.gy + b) div u
+		s := s div u
+		f.rider.DrawOval(l, t, r, b, s, col)
+	end DrawOval
+	
+	proc (f: Frame) DrawLine*(x0, y0, x1, y1, s: integer; col: Color)  // new
+		var 
+			u: integer
+	begin 
+		assert(s >= fill, 20)
+		u := f.unit
+		x0 := (f.gx + x0) div u
+		y0 := (f.gy + y0) div u
+		x1 := (f.gx + x1) div u
+		y1 := (f.gy + y1) div u
+		s := s div u
+		f.rider.DrawLine(x0, y0, x1, y1, s, col)
+	end DrawLine
+	
+	proc (f: Frame) DrawPath*(in p: array of Point; n, s: integer; col: Color; path: integer)  // new
+		
+		proc Draw(p: array of Point) 
+			var 
+				i, u: integer
+		begin 
+			u := f.unit
+			s := s div u
+			i := 0
+			while i # n do 
+				p[i].x := (f.gx + p[i].x) div u
+				p[i].y := (f.gy + p[i].y) div u
+				inc(i) 
+			end 
+			f.rider.DrawPath(p, n, s, col, path)
+		end Draw
+	
+	begin 
+		assert(n >= 0, 20)
+		assert(n <= len(p), 21)
+		assert((s # fill) or (path = closedPoly) or (path = closedBezier), 22)
+		assert(s >= fill, 23)
+		Draw(p)
+	end DrawPath
+	
+	proc (f: Frame) MarkRect*(l, t, r, b, s: integer; mode: integer; show: boolean)  // new
+		var 
+			u: integer
+	begin (* ASSERT((l <= r) & (t <= b), 20); *)
+		assert(s >= fill, 21)
+		u := f.unit
+		l := (f.gx + l) div u
+		t := (f.gy + t) div u
+		r := (f.gx + r) div u
+		b := (f.gy + b) div u
+		s := s div u
+		f.rider.MarkRect(l, t, r, b, s, mode, show)
+	end MarkRect
+	
+	proc (f: Frame) Scroll*(dx, dy: integer)  // new
+		var 
+			u: integer
+	begin 
+		u := f.unit
+		assert(dx mod u = 0, 20)
+		assert(dy mod u = 0, 20)
+		f.rider.Scroll(dx div u, dy div u)
+	end Scroll
+	
+	proc (f: Frame) SetCursor*(cursor: integer)  // new
+	begin 
+		f.rider.SetCursor(cursor)
+	end SetCursor
+	
+	proc (f: Frame) Input*(var x, y: integer; var modifiers: set; var isDown: boolean)  // new
+		var 
+			u: integer
+	begin 
+		f.rider.Input(x, y, modifiers, isDown)
+		u := f.unit
+		x := x * u - f.gx
+		y := y * u - f.gy
+	end Input
+	
+	proc (f: Frame) DrawString*(x, y: integer; col: Color; in s: array of char
+		font: Fonts.Font)  // new
+		var 
+			u: integer
+	begin 
+		u := f.unit
+		x := (f.gx + x) div u
+		y := (f.gy + y) div u
+		f.rider.DrawString(x, y, col, s, font)
+	end DrawString
+	
+	proc (f: Frame) DrawSpace*(x, y, w: integer; col: Color; font: Fonts.Font)  // new
+		var 
+			right, u: integer
+	begin 
+		u := f.unit
+		right := f.gx + x + w
+		x := (f.gx + x) div u
+		y := (f.gy + y) div u
+		w := (right + u - 1) div u - x // round up; x may be truncated
+		(* seems no longer required, Josef Templ
+		   IF f.rider.Base().printerMode THEN
+		   (* avoid gaps in the underline by extending it one pixel to the left and right *)
+		   IF x > 0 THEN DEC(x); INC(w, 2) ELSE INC(w) END ;
+		   END ; *)
+		f.rider.DrawSpace(x, y, w, col, font)
+	end DrawSpace
+	
+	proc (f: Frame) CharIndex*(x, pos: integer; in s: array of char
+		font: Fonts.Font): integer  // new
+		var 
+			u: integer
+	begin 
+		u := f.unit
+		x := (f.gx + x) div u
+		pos := (f.gx + pos) div u
+		return f.rider.CharIndex(x, pos, s, font)
+	end CharIndex
+	
+	proc (f: Frame) CharPos*(x, index: integer; in s: array of char
+		font: Fonts.Font): integer  // new
+		var 
+			u: integer
+	begin 
+		u := f.unit
+		x := (f.gx + x) div u
+		return f.rider.CharPos(x, index, s, font) * u - f.gx
+	end CharPos
+	
+	proc (f: Frame) DrawSString*(x, y: integer; col: Color; in s: array of char
+		font: Fonts.Font)  // new
+		var 
+			u: integer
+	begin 
+		u := f.unit
+		x := (f.gx + x) div u
+		y := (f.gy + y) div u
+		f.rider.DrawSString(x, y, col, s, font)
+	end DrawSString
+	
+	proc (f: Frame) SCharIndex*(x, pos: integer; in s: array of char
+		font: Fonts.Font): integer  // new
+		var 
+			u: integer
+	begin 
+		u := f.unit
+		x := (f.gx + x) div u
+		pos := (f.gx + pos) div u
+		return f.rider.SCharIndex(x, pos, s, font)
+	end SCharIndex
+	
+	proc (f: Frame) SCharPos*(x, index: integer; in s: array of char
+		font: Fonts.Font): integer  // new
+		var 
+			u: integer
+	begin 
+		u := f.unit
+		x := (f.gx + x) div u
+		return f.rider.SCharPos(x, index, s, font) * u - f.gx
+	end SCharPos
+	
+	proc RGBColor*(red, green, blue: integer): Color 
+	begin 
+		assert((red >= 0) & (red < 256), 20)
+		assert((green >= 0) & (green < 256), 21)
+		assert((blue >= 0) & (blue < 256), 22)
+		return (blue * 65536) + (green * 256) + red
+	end RGBColor
+	
+	proc IsPrinterPort*(p: Port): boolean 
+	begin 
+		return p.printerMode
+	end IsPrinterPort
+
+begin
+	background := white
+	dialogBackground := white
+end Ports

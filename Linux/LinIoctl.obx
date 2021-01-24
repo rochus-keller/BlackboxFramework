@@ -1,0 +1,12 @@
+definition LinIoctl
+
+	(* GNU/Linux
+	   i386 *)
+	
+	const 		
+		FIONREAD = 21531
+		FIONBIO = 21537
+	
+	proc ioctl1(d: integer; req: integer; var arg: integer): integer 
+
+end LinIoctl

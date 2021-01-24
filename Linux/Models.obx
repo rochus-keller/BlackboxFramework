@@ -1,0 +1,335 @@
+module Models
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Kernel, Stores, Sequencers
+	
+	const 
+		minVersion = 0
+		maxVersion = 0
+		
+		clean* = Sequencers.clean
+		notUndoable* = Sequencers.notUndoable
+		invisible* = Sequencers.invisible
+	
+	type 
+		Model* = pointer to (* abstract *) record (Stores.Store) 
+				//era: integer // stable era >= x
+				guard: integer  // = TrapCount()+1 if model is addressee of ongoing broadcast
+			end 
+		
+		Context* = pointer to (* abstract *) record end 
+		
+		Proposal* = (* abstract *) record end 
+		
+		
+		Message* = (* abstract *) record 
+				model-: Model
+				era-: integer 
+			end 
+		
+		NeutralizeMsg* = record (Message) end 
+		
+		UpdateMsg* = (* extensible *) record (Message) end 
+	
+	
+	var  // = TrapCount()+1 if domain is addressee of ongoing domaincast
+		domainGuard: integer
+	
+	
+	// Model
+	
+	proc (m: Model) Internalize-(var rd: Stores.Reader)  // extensible
+		var 
+			thisVersion: integer
+	begin 
+		m.Internalize^(rd)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minVersion, maxVersion, thisVersion)
+	end Internalize
+	
+	proc (m: Model) Externalize-(var wr: Stores.Writer)  // extensible
+	begin 
+		m.Externalize^(wr)
+		wr.WriteVersion(maxVersion)
+	end Externalize
+	
+	
+	// Context
+	
+	proc (c: Context) ThisModel*(): Model  end // new abstract
+	proc (c: Context) Normalize*(): boolean  end // new abstract
+	proc (c: Context) GetSize*(var w, h: integer)  end // new abstract
+	proc (c: Context) SetSize*(w, h: integer)  end // new empty
+	proc (c: Context) MakeVisible*(l, t, r, b: integer)  end // new empty
+	proc (c: Context) Consider*(var p: Proposal)  end // new empty
+	
+	
+	// miscellaneous
+	
+	proc Era*(m: Model): integer 
+	begin 
+		assert(m # nil, 20)
+		return m.era
+	end Era
+	
+	
+	proc CopyOf*(m: Model): Model 
+	begin 
+		assert(m # nil, 20)
+		return Stores.CopyOf(m)(Model)
+	end CopyOf
+	
+	proc BeginScript*(m: Model; name: Stores.OpName; var script: Stores.Operation) 
+		// post: (script # NIL) iff (m.domain # NIL)
+		var 
+			seq: ANYPTR
+	begin 
+		assert(m # nil, 20)
+		if m.Domain() # nil then
+			seq := m.Domain().GetSequencer() 
+		else 
+			seq := nil 
+		end 
+		if seq # nil then
+			with seq: Sequencers.Sequencer do 
+				seq.BeginScript(name, script) 
+			else  
+			end  
+		else 
+			script := nil 
+		end 
+	end BeginScript
+	
+	proc Do*(m: Model; name: Stores.OpName; op: Stores.Operation) 
+		// pre: m # NIL, op # NIL, ~op.inUse
+		var 
+			seq: ANYPTR
+	begin 
+		assert(m # nil, 20) // ASSERT(~op.inUse, 22);
+		assert(op # nil, 21)
+		if m.Domain() # nil then
+			seq := m.Domain().GetSequencer() 
+		else 
+			seq := nil 
+		end 
+		if seq # nil then
+			with seq: Sequencers.Sequencer do 
+				seq.Do(m, name, op) 
+			else 
+				op.Do 
+			end  
+		else 
+			op.Do 
+		end 
+	end Do
+	
+	proc LastOp*(m: Model): Stores.Operation 
+		// pre: m # NIL
+		var 
+			seq: ANYPTR
+	begin 
+		assert(m # nil, 20)
+		if m.Domain() # nil then
+			seq := m.Domain().GetSequencer() 
+		else 
+			seq := nil 
+		end 
+		if seq # nil then
+			with seq: Sequencers.Sequencer do 
+				return seq.LastOp(m) 
+			else 
+				return nil 
+			end  
+		else 
+			return nil 
+		end 
+	end LastOp
+	
+	proc Bunch*(m: Model) 
+		// pre: m # NIL, m.Domain() # NIL
+		var 
+			seq: ANYPTR
+	begin 
+		assert(m # nil, 20)
+		assert(m.Domain() # nil, 21)
+		seq := m.Domain().GetSequencer()
+		assert(seq # nil, 22)
+		with seq: Sequencers.Sequencer do 
+			seq.Bunch(m) 
+		else  
+		end 
+	end Bunch
+	
+	proc StopBunching*(m: Model) 
+		// pre: m # NIL
+		var 
+			seq: ANYPTR
+	begin 
+		assert(m # nil, 20)
+		if m.Domain() # nil then
+			seq := m.Domain().GetSequencer() 
+		else 
+			seq := nil 
+		end 
+		if seq # nil then
+			with seq: Sequencers.Sequencer do 
+				seq.StopBunching 
+			else  
+			end  
+		end 
+	end StopBunching
+	
+	proc EndScript*(m: Model; script: Stores.Operation) 
+		// pre: (script # NIL) iff (m.seq # NIL)
+		var 
+			seq: ANYPTR
+	begin 
+		assert(m # nil, 20)
+		if m.Domain() # nil then
+			seq := m.Domain().GetSequencer() 
+		else 
+			seq := nil 
+		end 
+		if seq # nil then
+			assert(script # nil, 21)
+			with seq: Sequencers.Sequencer do 
+				seq.EndScript(script) 
+			else 
+				assert(script = nil, 21) 
+			end  
+		else 
+			assert(script = nil, 21) 
+		end 
+	end EndScript
+	
+	
+	proc BeginModification*(type_: integer; m: Model) 
+		// pre: m # NIL
+		var 
+			seq: ANYPTR
+	begin 
+		assert(m # nil, 20)
+		if m.Domain() # nil then
+			seq := m.Domain().GetSequencer() 
+		else 
+			seq := nil 
+		end 
+		if seq # nil then
+			with seq: Sequencers.Sequencer do 
+				seq.BeginModification(type_, m) 
+			else  
+			end  
+		end 
+	end BeginModification
+	
+	proc EndModification*(type_: integer; m: Model) 
+		// pre: m # NIL
+		var 
+			seq: ANYPTR
+	begin 
+		assert(m # nil, 20)
+		if m.Domain() # nil then
+			seq := m.Domain().GetSequencer() 
+		else 
+			seq := nil 
+		end 
+		if seq # nil then
+			with seq: Sequencers.Sequencer do 
+				seq.EndModification(type_, m) 
+			else  
+			end  
+		end 
+	end EndModification
+	
+	proc SetDirty*(m: Model) 
+		// pre: m # NIL
+		var 
+			seq: ANYPTR
+	begin 
+		assert(m # nil, 20)
+		if m.Domain() # nil then
+			seq := m.Domain().GetSequencer() 
+		else 
+			seq := nil 
+		end 
+		if seq # nil then
+			with seq: Sequencers.Sequencer do 
+				seq.SetDirty(true) 
+			else  
+			end  
+		end 
+	end SetDirty
+	
+	proc Domaincast*(d: Stores.Domain; var msg: Message) 
+		var 
+			g: integer
+			seq: ANYPTR
+	begin 
+		if d # nil then
+			seq := d.GetSequencer()
+			if (seq # nil) & (seq is Sequencers.Sequencer) then
+				msg.model := nil
+				msg.era := -1
+				g := Kernel.trapCount + 1
+				if domainGuard > 0 then
+					assert(domainGuard # g, 20) 
+				end 
+				domainGuard := g
+				seq(Sequencers.Sequencer).Handle(msg)
+				domainGuard := 0 
+			end  
+		end 
+	end Domaincast
+	
+	proc Broadcast*(m: Model; var msg: Message) 
+		// pre: model # NIL
+		(* post: model.era > model.era', msg.model = model, msg.era = model.era' + 1,
+		   model.seq # NIL => msg sent to seq *)
+		var 
+			seq: ANYPTR
+			g: integer
+	begin 
+		assert(m # nil, 20)
+		msg.model := m
+		if m.Domain() # nil then
+			seq := m.Domain().GetSequencer() 
+		else 
+			seq := nil 
+		end 
+		if seq # nil then
+			with seq: Sequencers.Sequencer do 
+				inc(m.era)
+				msg.era := m.era
+				g := Kernel.trapCount + 1
+				if m.guard > 0 then
+					assert(m.guard # g, 21) 
+				end 
+				m.guard := g
+				seq.Handle(msg)
+				m.guard := 0 
+			else  
+			end  
+		end 
+	end Broadcast
+
+begin
+	domainGuard := 0
+end Models

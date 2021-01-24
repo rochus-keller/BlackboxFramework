@@ -1,0 +1,25 @@
+module Gtk2Util
+	
+	(* DONE:
+	   ShiryaevAV: reinstall signal handlers after Gtk init *)
+	
+	
+	
+	import Gtk:= Gtk2Gtk // , Kernel
+	type 
+		String = carray of char
+	
+	
+	proc gtk_signal_connect*(object: Gtk.GtkObject; in name: String
+		func: Gtk.GtkSignalFunc; func_data: integer): integer 
+	begin 
+		return Gtk.gtk_signal_connect_full(object, name, func, 0, func_data, 0, 0, 0)
+	end gtk_signal_connect
+	
+
+begin
+(* уже есть в HostGnome
+   Gtk.gtk_init(NIL,NIL);
+   Kernel.InstallSignals *)
+
+end Gtk2Util

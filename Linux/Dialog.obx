@@ -1,0 +1,1819 @@
+module Dialog
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20050718, mf, additional Update procedures
+	   - 20070129, bh, Unicode string mapping
+	   - 20070130, bh, new windows versions
+	   - 20141008, center #15, appVersion added
+	   - 20150326, center #33, adding platform detection for wine, Windows 7, and Windows 8
+	   - 20150903, center #68, option for suppressing Dialog.Beep
+	   - 20151027, center #80, localizable menus
+	   - 20160306, center #104, add OpenExternal and RunExternal procedures
+	   - 20160307, center #105, serverMode added
+	   - 20160306, center #38, use IN for methods to avoid incompatibilities with 1.6
+	   - 20170505 center #161, fixing Dialog.MapString with empty message
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import SYSTEM, Kernel, Files, Log
+	
+	const 
+		pressed* = 1 // notify ops
+		released* = 2
+		changed* = 3
+		included* = 5
+		excluded* = 6
+		set_* = 7
+		ok* = 1 // GetOK forms & results
+		yes* = 2
+		no* = 3
+		cancel* = 4
+		persistent* = true // constants for SetLanguage
+		nonPersistent* = false
+		
+		stringLen = 256
+		bufLen = 252
+		
+		rsrcDir = "Rsrc"
+		stringFile = "Strings"
+		TAB = 09x
+		CR = 0dx
+		update = 2 // notify options
+		listUpdate = 3
+		guardCheck = 4
+		
+		windows32s* = 11
+		windows95* = 12
+		windowsNT3* = 13
+		windowsNT4* = 14
+		windows2000* = 15
+		windows98* = 16
+		windowsXP* = 17
+		windowsVista* = 18
+		windows7* = 19
+		windows8* = 10
+		macOS* = 21
+		macOSX* = 22
+		linux* = 30
+		tru64* = 40
+		
+		firstPos* = 0
+		lastPos* = -1
+		
+		logDuplicateKeys = false // log duplicate keys in Strings resources
+		logMissingSimpleKeys = false // log missing keys not containing "."  in Strings resources
+		logAllMissingKeys = false // log all missing keys in Strings resources
+		logMissingFile = logMissingSimpleKeys or logAllMissingKeys // log missing Strings file
+	
+	type 
+		String* = array stringLen of char
+		
+		Buf = pointer to record 
+				next: Buf
+				s: array bufLen of char 
+			end 
+		
+		StrList = record 
+				len_, max_: integer // number of items, max number of items
+				strings: Buf // string buffer list. strings[0] = 0X -> uninitialized items appear as empty
+				end_: integer // next free position in string buffer list
+				scnt: integer // number of strings in list, including unused entries
+				items: pointer to array of integer  // indices into string buffer list
+			end 
+		
+		List* = record 
+				index*: integer // val IN [0, n-1]
+				len_-: integer
+				l: StrList 
+			end 
+		
+		Combo* = record 
+				item*: String
+				len_-: integer
+				l: StrList 
+			end 
+		
+		Selection* = record 
+				len_-: integer
+				sel: pointer to array of set
+				l: StrList 
+			end 
+		
+		Currency* = record  // number = val * 10^-scale
+				val_*: longint
+				scale*: integer 
+			end 
+		
+		Color* = record 
+				val_*: integer 
+			end 
+		
+		TreeNode* = pointer to (* limited *) record 
+				nofChildren: integer
+				name: String
+				parent, next, prev, firstChild: TreeNode
+				viewAsFolder, expanded: boolean
+				data: ANYPTR
+				tree: integer 
+			end 
+		
+		Tree* = record 
+				nofRoots, nofNodes: integer
+				firstRoot, selected: TreeNode 
+			end 
+		
+		// command procedure types
+		
+		Par* = record  // parameter for guard procedures
+				disabled*: boolean // OUT, preset to FALSE
+				checked*: boolean // OUT, preset to default
+				undef*: boolean // OUT, preset to default
+				readOnly*: boolean // OUT, preset to default
+				label*: String  // OUT, preset to ""
+			end 
+		
+		GuardProc* = proc (var par: Par)
+		NotifierProc* = proc (op, from, to_: integer)
+		
+		StringPtr = unsafe pointer to carray of char
+		StringTab = pointer to record 
+				next: StringTab
+				name: Files.Name
+				key: pointer to array of StringPtr
+				str: pointer to array of StringPtr
+				data: pointer to array of char 
+			end 
+		
+		LangNotifier* = pointer to (* abstract *) record next: LangNotifier end 
+		Language* = array 3 of char
+		
+		LangTrapCleaner = pointer to record (Kernel.TrapCleaner) end 
+		
+		GetHook* = pointer to (* abstract *) record (Kernel.Hook) end 
+		ShowHook* = pointer to (* abstract *) record (Kernel.Hook) end 
+		CallHook* = pointer to (* abstract *) record (Kernel.Hook) end 
+		NotifyHook* = pointer to (* abstract *) record (Kernel.Hook) end 
+		LanguageHook* = pointer to (* abstract *) record (Kernel.Hook) end 
+		WineHook* = pointer to (* abstract *) record (Kernel.Hook) end 
+		ExtCallHook* = pointer to (* abstract *) record (Kernel.Hook) end 
+	
+	var 
+		metricSystem*: boolean
+		showsStatus*, memInStatus*: boolean
+		platform*: integer
+		commandLinePars*: String
+		version*: integer
+		appName*: array 32 of char
+		appVersion*: array 32 of char
+		language-: Language
+		user*: array 32 of char
+		caretPeriod*: integer
+		thickCaret*: boolean
+		beep*: boolean
+		serverMode*: boolean
+		
+		tabList: StringTab
+		langNotifiers: LangNotifier
+		currentNotifier: LangNotifier
+		
+		gethook: GetHook
+		showHook: ShowHook
+		callHook: CallHook
+		notifyHook: NotifyHook
+		languageHook: LanguageHook
+		wineHook: WineHook
+		extCallHook: ExtCallHook
+	
+	proc (h: GetHook) GetOK*(in str, p0, p1, p2: array of char; form: set
+		var res: integer)  end // new abstract
+	proc (h: GetHook) GetColor*(in_: integer; var out: integer
+		var set_: boolean)  end // new abstract
+	proc (h: GetHook) GetIntSpec*(in defType: Files.Type; var loc: Files.Locator
+		var name: Files.Name)  end // new abstract
+	proc (h: GetHook) GetExtSpec*(in defName: Files.Name; in defType: Files.Type
+		var loc: Files.Locator; var name: Files.Name)  end // new abstract
+	
+	proc SetGetHook*(h: GetHook) 
+	begin 
+		gethook := h
+	end SetGetHook
+	
+	proc (h: ShowHook) ShowParamMsg*(in str, p0, p1, p2: array of char)  end // new abstract
+	proc (h: ShowHook) ShowParamStatus*(in str, p0, p1, p2: array of char)  end // new abstract
+	
+	proc SetShowHook*(h: ShowHook) 
+	begin 
+		showHook := h
+	end SetShowHook
+	
+	proc (h: CallHook) Call*(in proc_, errorMsg: array of char; var res: integer)  end // new abstract
+	
+	proc (h: ExtCallHook) RunExternal*(in exeName: array of char)  end // new abstract
+	
+	proc (h: ExtCallHook) OpenExternal*(in fileName: array of char)  end // new abstract
+	
+	proc SetCallHook*(h: CallHook) 
+	begin 
+		callHook := h
+	end SetCallHook
+	
+	proc (h: NotifyHook) Notify*(id0, id1: integer; opts: set)  end // new abstract
+	
+	proc SetNotifyHook*(h: NotifyHook) 
+	begin 
+		notifyHook := h
+	end SetNotifyHook
+	
+	proc (h: LanguageHook) SetLanguage*(lang: Language; persistent: boolean
+		var ok: boolean)  end // new abstract
+	proc (h: LanguageHook) GetPersistentLanguage*(var lang: Language)  end // new abstract
+	
+	proc SetLanguageHook*(h: LanguageHook) 
+	begin 
+		languageHook := h
+	end SetLanguageHook
+	
+	proc (h: WineHook) IsWine*(): boolean  end // new abstract
+	
+	proc SetWineHook*(h: WineHook) 
+	begin 
+		wineHook := h
+	end SetWineHook
+	
+	proc IsWine*(): boolean 
+	begin 
+		return (wineHook # nil) & wineHook.IsWine()
+	end IsWine
+	
+	proc IsWindows*(): boolean 
+	begin 
+		case platform of 
+			windows32s .. windows7, windows8: 
+				return true 
+		else 
+			return false 
+		end 
+	end IsWindows
+	
+	proc IsMac*(): boolean 
+	begin 
+		case platform of 
+			macOS, macOSX: 
+				return true 
+		else 
+			return false 
+		end 
+	end IsMac
+	
+	proc IsLinux*(): boolean 
+	begin 
+		return platform = linux
+	end IsLinux
+	
+	proc ReadStringFile(subsys: Files.Name; f: Files.File; var tab: StringTab) 
+		var 
+			i, j, h, n, s, x, len_, next, down, end_: integer
+			in_, in1: Files.Reader
+			ch: char
+			b: byte
+			p, q: StringPtr
+		
+		proc ReadInt(var x: integer) 
+			var 
+				b: byte
+		begin 
+			in_.ReadByte(b)
+			x := b mod 256
+			in_.ReadByte(b)
+			x := x + (b mod 256) * 100h
+			in_.ReadByte(b)
+			x := x + (b mod 256) * 10000h
+			in_.ReadByte(b)
+			x := x + b * 1000000h
+		end ReadInt
+		
+		proc ReadHead(var next, down, end_: integer) 
+			var 
+				b, t: byte
+				n: integer
+		begin 
+			in_.ReadByte(b)
+			repeat 
+				in_.ReadByte(t)
+				if t = -14 then
+					ReadInt(n) 
+				else 
+					repeat 
+						in_.ReadByte(b) 
+					until b = 0  
+				end  
+			until t # -15 
+			ReadInt(n)
+			ReadInt(next)
+			next := next + in_.Pos()
+			ReadInt(down)
+			down := down + in_.Pos()
+			ReadInt(end_)
+			end_ := end_ + in_.Pos()
+		end ReadHead
+		
+		proc CheckDuplicateKeys
+			var 
+				i: integer
+		begin 
+			for i:= 0 to n - 2 do 
+				if tab.key[i]^ = tab.key[i + 1]^ then
+					Log.String('key not unique: "#' + subsys + ":" + tab.key[i] + '"')
+					Log.Ln 
+				end  
+			end 
+		end CheckDuplicateKeys
+	
+	begin 
+		tab := nil
+		if f # nil then // read text file
+			in_ := f.NewReader(nil)
+			in1 := f.NewReader(nil)
+			if (in_ # nil) & (in1 # nil) then
+				in_.SetPos(8) // document view
+				ReadHead(next, down, end_)
+				in_.SetPos(down) // document model
+				ReadHead(next, down, end_)
+				in_.SetPos(down) // text view
+				ReadHead(next, down, end_)
+				in_.SetPos(down) // text model
+				ReadHead(next, down, end_)
+				in_.ReadByte(b) // versions
+				in_.ReadByte(b)
+				in_.ReadByte(b)
+				in_.ReadByte(b)
+				in_.ReadByte(b)
+				in_.ReadByte(b)
+				ReadInt(x) // text offset
+				in1.SetPos(in_.Pos() + x)
+				next := down
+				new(tab)
+				tab.name := subsys
+				new(tab.data, f.Length())
+				n := 0
+				i := 0
+				s := 0
+				in_.ReadByte(b)
+				while b # -1 do 
+					if next = in_.Pos() then // skip attributes
+						ReadHead(next, down, end_)
+						in_.SetPos(end_) 
+					end 
+					ReadInt(len_)
+					if len_ > 0 then // shortchar run
+						while len_ > 0 do 
+							in1.ReadByte(b)
+							ch := chr(b mod 256)
+							if ch >= " " then
+								if s = 0 then // start of left part
+									j := i
+									s := 1 
+								end 
+								tab.data[j] := ch
+								inc(j) 
+							elsif (s = 1) & (ch = TAB) then 
+								tab.data[j] := 0x
+								inc(j)
+								s := 2  // start of right part
+							elsif (s = 2) & (ch = TAB) then 
+								tab.data[j] := TAB
+								inc(j) 
+							elsif (s = 2) & (ch = CR) then 
+								tab.data[j] := 0x
+								inc(j)
+								inc(n) // end of line
+								i := j
+								s := 0 
+							else 
+								s := 0  // reset
+							end 
+							dec(len_) 
+						end  
+					elsif len_ < 0 then  // longchar run
+						while len_ < 0 do 
+							in1.ReadByte(b)
+							x := b mod 256
+							in1.ReadByte(b)
+							ch := chr(x + 256 * (b + 128))
+							if s = 0 then // start of left part
+								j := i
+								s := 1 
+							end 
+							tab.data[j] := ch
+							inc(j)
+							inc(len_, 2) 
+						end  
+					else  // view
+						ReadInt(x) // ignore
+						ReadInt(x)
+						in1.ReadByte(b) 
+					end 
+					if next = in_.Pos() then // skip view data
+						ReadHead(next, down, end_)
+						in_.SetPos(end_) 
+					end 
+					in_.ReadByte(b) 
+				end 
+				if n > 0 then
+					new(tab.key, n)
+					new(tab.str, n)
+					i := 0
+					j := 0
+					while j < n do 
+						tab.key[j] := SYSTEM.VAL(StringPtr, SYSTEM.ADR(tab.data[i]))
+						while tab.data[i] # 0x do 
+							inc(i) 
+						end 
+						inc(i)
+						tab.str[j] := SYSTEM.VAL(StringPtr, SYSTEM.ADR(tab.data[i]))
+						while tab.data[i] # 0x do 
+							inc(i) 
+						end 
+						inc(i)
+						inc(j) 
+					end 
+					// sort keys (shellsort)
+					h := 1
+					repeat 
+						h := h * 3 + 1 
+					until h > n 
+					repeat 
+						h := h div 3
+						i := h
+						while i < n do 
+							p := tab.key[i]
+							q := tab.str[i]
+							j := i
+							while (j >= h) & (tab.key[j - h]^ > p^) do 
+								tab.key[j] := tab.key[j - h]
+								tab.str[j] := tab.str[j - h]
+								j := j - h 
+							end 
+							tab.key[j] := p
+							tab.str[j] := q
+							inc(i) 
+						end  
+					until h = 1 
+					if logDuplicateKeys then
+						CheckDuplicateKeys 
+					end  
+				end  
+			end  
+		end 
+	end ReadStringFile
+	
+	proc MergeTabs(var master, extra: StringTab): StringTab 
+		var 
+			tab: StringTab
+			nofKeys, datalength, di, mi, ei, ml, el, ti, i: integer
+	begin 
+		if (extra = nil) or (extra.key = nil) then
+			return master 
+		end 
+		if (master = nil) or (master.key = nil) then
+			return extra 
+		end 
+		ml := len(master.key)
+		el := len(extra.key)
+		mi := 0
+		ei := 0
+		datalength := 0
+		nofKeys := 0
+		// find out how big the resulting table will be
+		while (mi < ml) or (ei < el) do 
+			inc(nofKeys)
+			if (mi < ml) & (ei < el) & (master.key[mi] = extra.key[ei]) then
+				datalength := datalength + len(master.key[mi]) + len(master.str[mi]) + 2
+				inc(mi)
+				inc(ei) 
+			elsif (ei < el) & ((mi >= ml) or (master.key[mi] > extra.key[ei])) then 
+				datalength := datalength + len(extra.key[ei]) + len(extra.str[ei]) + 2
+				inc(ei) 
+			else 
+				datalength := datalength + len(master.key[mi]) + len(master.str[mi]) + 2
+				inc(mi) 
+			end  
+		end 
+		new(tab)
+		tab.name := master.name
+		new(tab.key, nofKeys)
+		new(tab.str, nofKeys)
+		new(tab.data, datalength)
+		mi := 0
+		ei := 0
+		di := 0
+		ti := 0
+		// do the merge
+		while (mi < ml) or (ei < el) do 
+			if (mi < ml) & (ei < el) & (master.key[mi] = extra.key[ei]) then
+				i := 0
+				tab.key[ti] := SYSTEM.VAL(StringPtr, SYSTEM.ADR(tab.data[di]))
+				while master.key[mi][i] # 0x do 
+					tab.data[di] := master.key[mi][i]
+					inc(di)
+					inc(i) 
+				end 
+				tab.data[di] := 0x
+				inc(di)
+				i := 0
+				tab.str[ti] := SYSTEM.VAL(StringPtr, SYSTEM.ADR(tab.data[di]))
+				while master.str[mi][i] # 0x do 
+					tab.data[di] := master.str[mi][i]
+					inc(di)
+					inc(i) 
+				end 
+				tab.data[di] := 0x
+				inc(di)
+				inc(mi)
+				inc(ei) 
+			elsif (ei < el) & ((mi >= ml) or (master.key[mi] > extra.key[ei])) then 
+				i := 0
+				tab.key[ti] := SYSTEM.VAL(StringPtr, SYSTEM.ADR(tab.data[di]))
+				while extra.key[ei][i] # 0x do 
+					tab.data[di] := extra.key[ei][i]
+					inc(di)
+					inc(i) 
+				end 
+				tab.data[di] := 0x
+				inc(di)
+				i := 0
+				tab.str[ti] := SYSTEM.VAL(StringPtr, SYSTEM.ADR(tab.data[di]))
+				while extra.str[ei][i] # 0x do 
+					tab.data[di] := extra.str[ei][i]
+					inc(di)
+					inc(i) 
+				end 
+				tab.data[di] := 0x
+				inc(di)
+				inc(ei) 
+			else 
+				i := 0
+				tab.key[ti] := SYSTEM.VAL(StringPtr, SYSTEM.ADR(tab.data[di]))
+				while master.key[mi][i] # 0x do 
+					tab.data[di] := master.key[mi][i]
+					inc(di)
+					inc(i) 
+				end 
+				tab.data[di] := 0x
+				inc(di)
+				i := 0
+				tab.str[ti] := SYSTEM.VAL(StringPtr, SYSTEM.ADR(tab.data[di]))
+				while master.str[mi][i] # 0x do 
+					tab.data[di] := master.str[mi][i]
+					inc(di)
+					inc(i) 
+				end 
+				tab.data[di] := 0x
+				inc(di)
+				inc(mi) 
+			end 
+			inc(ti) 
+		end 
+		return tab
+	end MergeTabs
+	
+	proc LoadStringTab(subsys: Files.Name; var tab: StringTab) 
+		var 
+			loc: Files.Locator
+			f: Files.File
+			name: Files.Name
+			ltab: StringTab
+	begin 
+		tab := nil
+		name := stringFile
+		Kernel.MakeFileName(name, "")
+		loc := Files.dir.This(subsys)
+		loc := loc.This(rsrcDir)
+		if loc.res = 0 then
+			f := Files.dir.Old(loc, name, Files.shared)
+			ReadStringFile(subsys, f, tab)
+			if language # "" then
+				loc := loc.This(language)
+				if loc.res = 0 then
+					f := Files.dir.Old(loc, name, Files.shared)
+					ReadStringFile(subsys, f, ltab)
+					tab := MergeTabs(ltab, tab) 
+				end  
+			end 
+			if tab # nil then
+				tab.next := tabList
+				tabList := tab 
+			end  
+		end 
+	end LoadStringTab
+	
+	proc SearchString(var in_: array of char; var out: array of char) 
+		var 
+			i, j, k, len_: integer
+			ch: char
+			subsys: Files.Name
+			tab: StringTab
+			hasDot: boolean
+	begin 
+		out := ""
+		if in_[0] = "#" then
+			i := 0
+			ch := in_[1]
+			while (ch # 0x) & (ch # ":") do 
+				subsys[i] := ch
+				inc(i)
+				ch := in_[i + 1] 
+			end 
+			subsys[i] := 0x
+			if subsys = "" then // no Subsystem
+				return  
+			end 
+			if ch = ":" then
+				inc(i)
+				ch := in_[i + 1] 
+			end 
+			if ch = 0x then // no message
+				return  
+			end 
+			inc(i)
+			ch := in_[i]
+			j := 0
+			while (ch # 0x) do  // in := message
+				in_[j] := ch
+				inc(i)
+				inc(j)
+				ch := in_[i] 
+			end 
+			in_[j] := 0x
+			tab := tabList
+			while (tab # nil) & (tab.name # subsys) do 
+				tab := tab.next 
+			end 
+			if tab = nil then
+				LoadStringTab(subsys, tab) 
+			end 
+			if tab # nil then
+				i := 0
+				if tab.key = nil then
+					j := 0 
+				else 
+					j := len(tab.key^) 
+				end 
+				while i < j do  // binary search
+					k := (i + j) div 2
+					if tab.key[k]^ < in_ then
+						i := k + 1 
+					else 
+						j := k 
+					end  
+				end 
+				if (tab.key # nil) & (j < len(tab.key^)) & (tab.key[j]^ = in_) then
+					k := 0
+					len_ := len(out) - 1
+					while (k < len_) & (tab.str[j][k] # 0x) do 
+						out[k] := tab.str[j][k]
+						inc(k) 
+					end 
+					out[k] := 0x 
+				elsif logAllMissingKeys then 
+					Log.String('key not found: "#' + subsys + ":" + in_ + '"')
+					Log.Ln 
+				elsif logMissingSimpleKeys then 
+					hasDot := false
+					for i:= 0 to len(in_) - 1 do 
+						if in_[i] = "." then
+							hasDot := true 
+						end  
+					end 
+					if ~hasDot then
+						Log.String('key not found: "#' + subsys + ":" + in_ + '"')
+						Log.Ln 
+					end  
+				end  
+			elsif logMissingFile then 
+				Log.String('resource file not found: "#' + subsys + ":" + in_ + '"')
+				Log.Ln 
+			end  
+		end 
+	end SearchString
+	
+	
+	proc Init(var l: StrList) 
+	begin 
+		l.len_ := 0
+		l.max_ := 0
+		l.end_ := 0
+		l.scnt := 0
+	end Init
+	
+	proc Compact(var l: StrList) 
+		var 
+			i, j, k: integer
+			ibuf, jbuf: Buf
+			ch: char
+	begin 
+		i := 1
+		ibuf := l.strings
+		j := 1
+		jbuf := l.strings
+		while j < l.end_ do 
+			// find index entry k pointing to position j
+			k := 0
+			while (k < l.len_) & (l.items[k] # j) do 
+				inc(k) 
+			end 
+			if k < l.len_ then // copy string
+				l.items[k] := i
+				repeat 
+					ch := jbuf.s[j mod bufLen]
+					inc(j)
+					if j mod bufLen = 0 then
+						jbuf := jbuf.next 
+					end 
+					ibuf.s[i mod bufLen] := ch
+					inc(i)
+					if i mod bufLen = 0 then
+						ibuf := ibuf.next 
+					end  
+				until ch = 0x  
+			else  // skip next string
+				repeat 
+					ch := jbuf.s[j mod bufLen]
+					inc(j)
+					if j mod bufLen = 0 then
+						jbuf := jbuf.next 
+					end  
+				until ch = 0x  
+			end  
+		end 
+		ibuf.next := nil // release superfluous buffers
+		l.end_ := i
+		l.scnt := l.len_
+	end Compact
+	
+	proc SetLen(var l: StrList; len_: integer) 
+		const 
+			D = 32
+		var 
+			i, newmax: integer
+			items: pointer to array of integer
+	begin 
+		if l.items = nil then
+			Init(l) 
+		end 
+		if (l.max_ - D < len_) & (len_ <= l.max_) then 
+		// we do not reallocate anything
+		else 
+			newmax := (len_ + D - 1) div D * D
+			if newmax > 0 then
+				if l.strings = nil then // l.strings[0] := 0X;
+					new(l.strings)
+					l.end_ := 1 
+				end 
+				new(items, newmax)
+				if len_ < l.len_ then
+					i := len_ 
+				else 
+					i := l.len_ 
+				end 
+				while i > 0 do 
+					dec(i)
+					items[i] := l.items[i] 
+				end 
+				l.items := items 
+			end 
+			l.max_ := newmax 
+		end 
+		l.len_ := len_
+		if (l.scnt > 32) & (l.scnt > 2 * l.len_) then
+			Compact(l) 
+		end 
+	end SetLen
+	
+	proc GetItem(in l: StrList; index: integer; var item: String) 
+		var 
+			i, j, k: integer
+			b: Buf
+			ch: char
+	begin 
+		if (l.items # nil) & (index >= 0) & (index < l.len_) then
+			i := l.items[index]
+			j := i mod bufLen
+			i := i div bufLen
+			b := l.strings
+			while i # 0 do 
+				b := b.next
+				dec(i) 
+			end 
+			k := 0
+			repeat 
+				ch := b.s[j]
+				inc(j)
+				if j = bufLen then
+					j := 0
+					b := b.next 
+				end 
+				item[k] := ch
+				inc(k) 
+			until ch = 0x  
+		else 
+			item := "" 
+		end 
+	end GetItem
+	
+	proc SetItem(var l: StrList; index: integer; item: array of char) 
+		var 
+			len_, i, j, k: integer
+			b: Buf
+			ch: char
+	begin 
+		if l.items = nil then
+			Init(l) 
+		end 
+		if index >= l.len_ then
+			SetLen(l, index + 1) 
+		end 
+		if (l.scnt > 32) & (l.scnt > 2 * l.len_) then
+			Compact(l) 
+		end 
+		len_ := 0
+		while item[len_] # 0x do 
+			inc(len_) 
+		end 
+		if len_ >= stringLen then // clip long strings
+			len_ := stringLen - 1
+			item[len_] := 0x 
+		end 
+		l.items[index] := l.end_
+		i := l.end_
+		j := i mod bufLen
+		i := i div bufLen
+		b := l.strings
+		while i # 0 do 
+			b := b.next
+			dec(i) 
+		end 
+		k := 0
+		repeat 
+			ch := item[k]
+			inc(k)
+			inc(l.end_)
+			b.s[j] := ch
+			inc(j)
+			if j = bufLen then
+				j := 0
+				new(b.next)
+				b := b.next 
+			end  
+		until ch = 0x 
+		inc(l.scnt)
+	end SetItem
+	
+	proc SetResources(var l: StrList; in key: array of char) 
+		var 
+			i, k, j, x: integer
+			ch: char
+			s, a: array 16 of char
+			h, item: array 256 of char
+	begin 
+		if l.items = nil then
+			Init(l) 
+		end 
+		i := 0
+		repeat 
+			x := i
+			j := 0
+			repeat 
+				a[j] := chr(x mod 10 + ord("0"))
+				x := x div 10
+				inc(j) 
+			until x = 0 
+			k := 0
+			repeat 
+				dec(j)
+				ch := a[j]
+				s[k] := ch
+				inc(k) 
+			until j = 0 
+			s[k] := 0x
+			h := key + "[" + s + "]"
+			SearchString(h, item)
+			if item # "" then
+				SetItem(l, i, item) 
+			end 
+			inc(i) 
+		until item = "" 
+	end SetResources
+	
+	
+	// List
+	
+	proc (var l: List) SetLen*(len_: integer)  // new
+	begin 
+		assert(len_ >= 0, 20)
+		SetLen(l.l, len_)
+		l.len_ := l.l.len_
+	end SetLen
+	
+	proc (in l: List) GetItem*(index: integer; var item: String)  // new
+	begin 
+		GetItem(l.l, index, item)
+	end GetItem
+	
+	proc (var l: List) SetItem*(index: integer; in item: array of char)  // new
+	begin 
+		assert(index >= 0, 20)
+		assert(item # "", 21)
+		SetItem(l.l, index, item)
+		l.len_ := l.l.len_
+	end SetItem
+	
+	proc (var l: List) SetResources*(in key: array of char)  // new
+	begin 
+		assert(key # "", 20)
+		SetResources(l.l, key)
+		l.len_ := l.l.len_
+	end SetResources
+	
+	
+	// Selection
+	
+	proc (var s: Selection) SetLen*(len_: integer)  // new
+		var 
+			sel: pointer to array of set
+			i: integer
+	begin 
+		assert(len_ >= 0, 20)
+		SetLen(s.l, len_)
+		len_ := len_ + (max(set) - 1) div max(set)
+		if len_ = 0 then
+			s.sel := nil 
+		elsif s.sel = nil then 
+			new(s.sel, len_) 
+		elsif len(s.sel^) # len_ then 
+			new(sel, len_)
+			if len(s.sel^) < len_ then
+				len_ := len(s.sel^) 
+			end 
+			i := 0
+			while i < len_ do 
+				sel[i] := s.sel[i]
+				inc(i) 
+			end 
+			s.sel := sel 
+		end 
+		s.len_ := s.l.len_
+	end SetLen
+	
+	proc (in s: Selection) GetItem*(index: integer; var item: String)  // new
+	begin 
+		GetItem(s.l, index, item)
+	end GetItem
+	
+	proc (var s: Selection) SetItem*(index: integer; in item: array of char)  // new
+	begin 
+		assert(index >= 0, 20) // ASSERT(index < s.l.len, 21);
+		assert(item # "", 21)
+		SetItem(s.l, index, item)
+		if s.l.len_ > s.len_ then
+			s.SetLen(s.l.len_) 
+		end 
+	end SetItem
+	
+	proc (var s: Selection) SetResources*(in key: array of char)  // new
+	begin 
+		assert(key # "", 20)
+		SetResources(s.l, key)
+		if s.l.len_ > s.len_ then
+			s.SetLen(s.l.len_) 
+		end 
+	end SetResources
+	
+	proc (in s: Selection) In*(index: integer): boolean  // new
+	begin 
+		if (s.l.items # nil) & (s.sel # nil) then
+			return (index mod 32) in (s.sel[index div 32]) 
+		else 
+			return false 
+		end 
+	end In
+	
+	proc (var s: Selection) Excl*(from, to_: integer)  // new
+	begin 
+		if s.l.items = nil then
+			Init(s.l)
+			s.len_ := s.l.len_ 
+		end 
+		if from < 0 then
+			from := 0 
+		end 
+		if to_ >= s.l.len_ then
+			to_ := s.l.len_ - 1 
+		end 
+		while from <= to_ do 
+			excl(s.sel[from div 32], from mod 32)
+			inc(from) 
+		end 
+	end Excl
+	
+	proc (var s: Selection) Incl*(from, to_: integer)  // new
+	begin 
+		if s.l.items = nil then
+			Init(s.l)
+			s.len_ := s.l.len_ 
+		end 
+		if from < 0 then
+			from := 0 
+		end 
+		if to_ >= s.l.len_ then
+			to_ := s.l.len_ - 1 
+		end 
+		while from <= to_ do 
+			incl(s.sel[from div 32], from mod 32)
+			inc(from) 
+		end 
+	end Incl
+	
+	
+	// Combo
+	
+	proc (var c: Combo) SetLen*(len_: integer)  // new
+	begin 
+		assert(len_ >= 0, 20)
+		SetLen(c.l, len_)
+		c.len_ := c.l.len_
+	end SetLen
+	
+	proc (in c: Combo) GetItem*(index: integer; var item: String)  // new
+	begin 
+		GetItem(c.l, index, item)
+	end GetItem
+	
+	proc (var c: Combo) SetItem*(index: integer; in item: array of char)  // new
+	begin 
+		assert(index >= 0, 20)
+		assert(item # "", 21)
+		SetItem(c.l, index, item)
+		c.len_ := c.l.len_
+	end SetItem
+	
+	proc (var c: Combo) SetResources*(in key: array of char)  // new
+	begin 
+		assert(key # "", 20)
+		SetResources(c.l, key)
+		c.len_ := c.l.len_
+	end SetResources
+	
+	
+	// Tree and TreeNode
+	
+	proc (tn: TreeNode) SetName*(name: String)  // new
+	begin 
+		tn.name := name
+	end SetName
+	
+	proc (tn: TreeNode) GetName*(var name: String)  // new
+	begin 
+		name := tn.name
+	end GetName
+	
+	proc (tn: TreeNode) SetData*(data: ANYPTR)  // new
+	begin 
+		tn.data := data
+	end SetData
+	
+	proc (tn: TreeNode) Data*(): ANYPTR  // new
+	begin 
+		return tn.data
+	end Data
+	
+	proc (tn: TreeNode) NofChildren*(): integer  // new
+	begin 
+		return tn.nofChildren
+	end NofChildren
+	
+	proc (tn: TreeNode) SetExpansion*(expanded: boolean)  // new
+	begin 
+		tn.expanded := expanded
+	end SetExpansion
+	
+	proc (tn: TreeNode) IsExpanded*(): boolean  // new
+	begin 
+		return tn.expanded
+	end IsExpanded
+	
+	proc (tn: TreeNode) IsFolder*(): boolean  // new
+	begin 
+		if (~tn.viewAsFolder) & (tn.firstChild = nil) then
+			return false 
+		else 
+			return true 
+		end 
+	end IsFolder
+	
+	proc (tn: TreeNode) ViewAsFolder*(isFolder: boolean)  // new
+	begin 
+		tn.viewAsFolder := isFolder
+	end ViewAsFolder
+	
+	proc (in t: Tree) NofNodes*(): integer  // new
+	begin 
+		if t.firstRoot = nil then
+			return 0 
+		else 
+			return max(0, t.nofNodes) 
+		end 
+	end NofNodes
+	
+	proc (in t: Tree) NofRoots*(): integer  // new
+	begin 
+		if t.firstRoot = nil then
+			return 0 
+		else 
+			return max(0, t.nofRoots) 
+		end 
+	end NofRoots
+	
+	proc (in t: Tree) Parent*(node: TreeNode): TreeNode  // new
+	begin 
+		assert(node # nil, 20)
+		assert(node.tree = SYSTEM.ADR(t), 21)
+		return node.parent
+	end Parent
+	
+	proc (in t: Tree) Next*(node: TreeNode): TreeNode  // new
+	begin 
+		assert(node # nil, 20)
+		assert(node.tree = SYSTEM.ADR(t), 21)
+		return node.next
+	end Next
+	
+	proc (in t: Tree) Prev*(node: TreeNode): TreeNode  // new
+	begin 
+		assert(node # nil, 20)
+		assert(node.tree = SYSTEM.ADR(t), 21)
+		return node.prev
+	end Prev
+	
+	proc (in t: Tree) Child*(node: TreeNode; pos: integer): TreeNode  // new
+		var 
+			cur: TreeNode
+	begin 
+		assert(pos >= lastPos, 20)
+		assert((node = nil) or (node.tree = SYSTEM.ADR(t)), 21)
+		if node = nil then
+			cur := t.firstRoot 
+		else 
+			cur := node.firstChild 
+		end 
+		if pos = lastPos then
+			while (cur # nil) & (cur.next # nil) do 
+				cur := cur.next 
+			end  
+		else 
+			while (cur # nil) & (pos > 0) do 
+				cur := cur.next
+				dec(pos) 
+			end  
+		end 
+		return cur
+	end Child
+	
+	proc (in t: Tree) Selected*(): TreeNode  // new
+	begin 
+		return t.selected
+	end Selected
+	
+	proc (var t: Tree) Select*(node: TreeNode)  // new
+	begin 
+		assert((node = nil) or (node.tree = SYSTEM.ADR(t)), 20)
+		if (node # nil) or (t.nofRoots = 0) then
+			t.selected := node 
+		else 
+			t.selected := t.Child(nil, 0) 
+		end 
+	end Select
+	
+	proc Include(in t: Tree; node: TreeNode) 
+		var 
+			c: TreeNode
+	begin 
+		assert(node # nil, 20)
+		assert(node.tree = 0, 100)
+		node.tree := SYSTEM.ADR(t)
+		c := node.firstChild
+		while c # nil do 
+			Include(t, c)
+			c := c.next 
+		end 
+	end Include
+	
+	proc (var t: Tree) InsertAt(parent: TreeNode; pos: integer; node: TreeNode)  // new
+		var 
+			cur, prev: TreeNode
+	begin 
+		assert(node # nil, 20)
+		assert(pos >= lastPos, 21)
+		assert((parent = nil) or (parent.tree = SYSTEM.ADR(t)), 22)
+		assert(node.tree = 0, 23)
+		Include(t, node)
+		if parent = nil then // Add new root
+			if (t.firstRoot = nil) or (pos = 0) then
+				node.next := t.firstRoot
+				node.prev := nil
+				if t.firstRoot # nil then
+					t.firstRoot.prev := node 
+				end 
+				t.firstRoot := node 
+			else 
+				cur := t.firstRoot
+				if pos = lastPos then
+					pos := t.nofRoots 
+				end 
+				while (cur # nil) & (pos > 0) do 
+					prev := cur
+					cur := t.Next(cur)
+					dec(pos) 
+				end 
+				if cur = nil then
+					prev.next := node
+					node.prev := prev 
+				else 
+					node.next := cur
+					node.prev := cur.prev
+					cur.prev := node
+					prev.next := node 
+				end  
+			end 
+			inc(t.nofRoots) 
+		else  // Add child
+			if pos = lastPos then
+				pos := parent.nofChildren 
+			end 
+			if (parent.firstChild = nil) or (pos = 0) then
+				if parent.firstChild # nil then
+					parent.firstChild.prev := node 
+				end 
+				node.prev := nil
+				node.next := parent.firstChild
+				parent.firstChild := node 
+			else 
+				cur := parent.firstChild
+				while (cur # nil) & (pos > 0) do 
+					prev := cur
+					cur := t.Next(cur)
+					dec(pos) 
+				end 
+				if cur = nil then
+					prev.next := node
+					node.prev := prev 
+				else 
+					node.next := cur
+					node.prev := cur.prev
+					cur.prev := node
+					prev.next := node 
+				end  
+			end 
+			inc(parent.nofChildren) 
+		end 
+		node.parent := parent
+		inc(t.nofNodes)
+	end InsertAt
+	
+	proc (var t: Tree) NewChild*(parent: TreeNode; pos: integer; name: String): TreeNode  // new
+		var 
+			new_: TreeNode
+	begin 
+		new(new_)
+		new_.tree := 0
+		new_.SetName(name)
+		new_.expanded := false
+		new_.nofChildren := 0
+		new_.viewAsFolder := false
+		t.InsertAt(parent, pos, new_)
+		return new_
+	end NewChild
+	
+	proc (in t: Tree) CountChildren(node: TreeNode): integer  // new
+		var 
+			tot, nofc, i: integer
+	begin 
+		tot := 0
+		if node # nil then
+			nofc := node.nofChildren
+			tot := nofc
+			for i:= 0 to nofc - 1 do 
+				tot := tot + t.CountChildren(t.Child(node, i)) 
+			end  
+		end 
+		return tot
+	end CountChildren
+	
+	proc Exclude(var t: Tree; node: TreeNode) 
+		var 
+			c: TreeNode
+	begin 
+		assert(node # nil, 20)
+		assert(node.tree = SYSTEM.ADR(t), 100)
+		if t.Selected() = node then
+			t.Select(nil) 
+		end 
+		node.tree := 0
+		c := node.firstChild
+		while c # nil do 
+			Exclude(t, c)
+			c := c.next 
+		end 
+	end Exclude
+	
+	proc (var t: Tree) Delete*(node: TreeNode): integer  // new
+		var 
+			ndel: integer
+	begin 
+		assert(node # nil, 20)
+		assert(node.tree = SYSTEM.ADR(t), 21)
+		ndel := t.CountChildren(node)
+		if node.parent = nil then // root node
+			if node.prev = nil then
+				if node.next # nil then
+					t.firstRoot := node.next
+					node.next.prev := nil 
+				else 
+					t.firstRoot := nil 
+				end  
+			else 
+				node.prev.next := node.next
+				if node.next # nil then
+					node.next.prev := node.prev 
+				end  
+			end 
+			dec(t.nofRoots) 
+		else 
+			if node.prev = nil then
+				if node.next # nil then
+					node.parent.firstChild := node.next
+					node.next.prev := nil 
+				else 
+					node.parent.firstChild := nil 
+				end  
+			else 
+				node.prev.next := node.next
+				if node.next # nil then
+					node.next.prev := node.prev 
+				end  
+			end 
+			dec(node.parent.nofChildren) 
+		end 
+		node.parent := nil
+		node.next := nil
+		node.prev := nil
+		Exclude(t, node)
+		ndel := ndel + 1
+		t.nofNodes := t.nofNodes - ndel
+		return ndel
+	end Delete
+	
+	proc (var t: Tree) Move*(node, parent: TreeNode; pos: integer)  // new
+		var 
+			ndel, nofn: integer
+			s: TreeNode
+	begin 
+		assert(node # nil, 20)
+		assert(pos >= lastPos, 21)
+		assert(node.tree = SYSTEM.ADR(t), 22)
+		nofn := t.NofNodes()
+		s := t.Selected()
+		ndel := t.Delete(node)
+		t.InsertAt(parent, pos, node)
+		t.nofNodes := t.nofNodes + ndel - 1
+		if (s # nil) & (t.Selected() # s) then
+			t.Select(s) 
+		end 
+		assert(nofn = t.NofNodes(), 60)
+	end Move
+	
+	proc (var t: Tree) DeleteAll* // new
+	begin 
+		t.nofRoots := 0
+		t.nofNodes := 0
+		t.firstRoot := nil
+		t.selected := nil
+	end DeleteAll
+	
+	
+	proc Notify*(id0, id1: integer; opts: set) 
+	begin 
+		assert(notifyHook # nil, 100)
+		notifyHook.Notify(id0, id1, opts)
+	end Notify
+	
+	proc Update*(in x: ANYREC) 
+		var 
+			type_: Kernel.Type
+			adr, size_: integer
+	begin 
+		adr := SYSTEM.ADR(x)
+		type_ := Kernel.TypeOf(x)
+		size_ := type_.size_
+		if size_ = 0 then
+			size_ := 1 
+		end 
+		Notify(adr, adr + size_, {update, guardCheck})
+	end Update
+	
+	proc UpdateBool*(var x: boolean) 
+		var 
+			adr: integer
+	begin 
+		adr := SYSTEM.ADR(x)
+		Notify(adr, adr + size(boolean), {update, guardCheck})
+	end UpdateBool
+	
+	proc UpdateSChar*(var x: char) 
+		var 
+			adr: integer
+	begin 
+		adr := SYSTEM.ADR(x)
+		Notify(adr, adr + size(char), {update, guardCheck})
+	end UpdateSChar
+	
+	proc UpdateChar*(var x: char) 
+		var 
+			adr: integer
+	begin 
+		adr := SYSTEM.ADR(x)
+		Notify(adr, adr + size(char), {update, guardCheck})
+	end UpdateChar
+	
+	proc UpdateByte*(var x: byte) 
+		var 
+			adr: integer
+	begin 
+		adr := SYSTEM.ADR(x)
+		Notify(adr, adr + size(byte), {update, guardCheck})
+	end UpdateByte
+	
+	proc UpdateSInt*(var x: shortint) 
+		var 
+			adr: integer
+	begin 
+		adr := SYSTEM.ADR(x)
+		Notify(adr, adr + size(shortint), {update, guardCheck})
+	end UpdateSInt
+	
+	proc UpdateInt*(var x: integer) 
+		var 
+			adr: integer
+	begin 
+		adr := SYSTEM.ADR(x)
+		Notify(adr, adr + size(integer), {update, guardCheck})
+	end UpdateInt
+	
+	proc UpdateLInt*(var x: longint) 
+		var 
+			adr: integer
+	begin 
+		adr := SYSTEM.ADR(x)
+		Notify(adr, adr + size(longint), {update, guardCheck})
+	end UpdateLInt
+	
+	proc UpdateSReal*(var x: real) 
+		var 
+			adr: integer
+	begin 
+		adr := SYSTEM.ADR(x)
+		Notify(adr, adr + size(real), {update, guardCheck})
+	end UpdateSReal
+	
+	proc UpdateReal*(var x: real) 
+		var 
+			adr: integer
+	begin 
+		adr := SYSTEM.ADR(x)
+		Notify(adr, adr + size(real), {update, guardCheck})
+	end UpdateReal
+	
+	proc UpdateSet*(var x: set) 
+		var 
+			adr: integer
+	begin 
+		adr := SYSTEM.ADR(x)
+		Notify(adr, adr + size(set), {update, guardCheck})
+	end UpdateSet
+	
+	proc UpdateSString*(in x: array of char) 
+		var 
+			adr: integer
+	begin 
+		adr := SYSTEM.ADR(x)
+		Notify(adr, adr + len(x) * size(char), {update, guardCheck})
+	end UpdateSString
+	
+	proc UpdateString*(in x: array of char) 
+		var 
+			adr: integer
+	begin 
+		adr := SYSTEM.ADR(x)
+		Notify(adr, adr + len(x) * size(char), {update, guardCheck})
+	end UpdateString
+	
+	proc UpdateList*(in x: ANYREC) 
+		var 
+			type_: Kernel.Type
+			adr, size_: integer
+	begin 
+		adr := SYSTEM.ADR(x)
+		type_ := Kernel.TypeOf(x)
+		size_ := type_.size_
+		if size_ = 0 then
+			size_ := 1 
+		end 
+		Notify(adr, adr + size_, {listUpdate, guardCheck})
+	end UpdateList
+	
+	
+	proc GetOK*(in str, p0, p1, p2: array of char; form: set; var res: integer) 
+	begin 
+		assert(((yes in form) = (no in form)) & ((yes in form) # (ok in form)), 20)
+		assert(gethook # nil, 100)
+		gethook.GetOK(str, p0, p1, p2, form, res)
+	end GetOK
+	
+	proc GetIntSpec*(defType: Files.Type; var loc: Files.Locator; var name: Files.Name) 
+	begin 
+		assert(gethook # nil, 100)
+		gethook.GetIntSpec(defType, loc, name)
+	end GetIntSpec
+	
+	proc GetExtSpec*(defName: Files.Name; defType: Files.Type; var loc: Files.Locator
+		var name: Files.Name) 
+	begin 
+		assert(gethook # nil, 100)
+		gethook.GetExtSpec(defName, defType, loc, name)
+	end GetExtSpec
+	
+	proc GetColor*(in_: integer; var out: integer; var set_: boolean) 
+	begin 
+		assert(gethook # nil, 100)
+		gethook.GetColor(in_, out, set_)
+	end GetColor
+	
+	
+	proc Subst(in_: array of char; in p0, p1, p2: array of char; var out: array of char) 
+		var 
+			len_, i, j, k: integer
+			ch, c: char
+	begin 
+		i := 0
+		ch := in_[i]
+		j := 0
+		len_ := len(out) - 1
+		while (ch # 0x) & (j < len_) do 
+			if ch = "^" then
+				inc(i)
+				ch := in_[i]
+				if ch = "0" then
+					k := 0
+					c := p0[0]
+					while (c # 0x) & (j < len_) do 
+						out[j] := c
+						inc(j)
+						inc(k)
+						c := p0[k] 
+					end 
+					inc(i)
+					ch := in_[i] 
+				elsif ch = "1" then 
+					k := 0
+					c := p1[0]
+					while (c # 0x) & (j < len_) do 
+						out[j] := c
+						inc(j)
+						inc(k)
+						c := p1[k] 
+					end 
+					inc(i)
+					ch := in_[i] 
+				elsif ch = "2" then 
+					k := 0
+					c := p2[0]
+					while (c # 0x) & (j < len_) do 
+						out[j] := c
+						inc(j)
+						inc(k)
+						c := p2[k] 
+					end 
+					inc(i)
+					ch := in_[i] 
+				else 
+					out[j] := "^"
+					inc(j) 
+				end  
+			else 
+				out[j] := ch
+				inc(j)
+				inc(i)
+				ch := in_[i] 
+			end  
+		end 
+		out[j] := 0x
+	end Subst
+	
+	proc FlushMappings*
+	begin 
+		tabList := nil
+	end FlushMappings
+	
+	proc MapParamString*(in_, p0, p1, p2: array of char; var out: array of char) 
+	(* use in as key in string table file, and return corresponding string in out.
+	   If the resource lookup fails, return in in out *)
+	begin 
+		SearchString(in_, out)
+		if out # "" then
+			Subst(out, p0, p1, p2, out) 
+		else 
+			Subst(in_, p0, p1, p2, out) 
+		end 
+	end MapParamString
+	
+	proc MapString*(in_: array of char; var out: array of char) 
+		var 
+			len_, k: integer
+	begin 
+		SearchString(in_, out)
+		if out = "" then
+			k := 0
+			len_ := len(out) - 1
+			while (k < len_) & (in_[k] # 0x) do 
+				out[k] := in_[k]
+				inc(k) 
+			end 
+			out[k] := 0x 
+		end 
+	end MapString
+	
+	proc ShowMsg*(in str: array of char) 
+	begin 
+		assert(str # "", 20)
+		assert(showHook # nil, 100)
+		showHook.ShowParamMsg(str, "", "", "")
+	end ShowMsg
+	
+	proc ShowParamMsg*(in str, p0, p1, p2: array of char) 
+	begin 
+		assert(str # "", 20)
+		assert(showHook # nil, 100)
+		showHook.ShowParamMsg(str, p0, p1, p2)
+	end ShowParamMsg
+	
+	proc ShowStatus*(in str: array of char) 
+	begin 
+		assert(showHook # nil, 100)
+		showHook.ShowParamStatus(str, "", "", "")
+	end ShowStatus
+	
+	proc ShowParamStatus*(in str, p0, p1, p2: array of char) 
+	begin 
+		assert(showHook # nil, 100)
+		showHook.ShowParamStatus(str, p0, p1, p2)
+	end ShowParamStatus
+	
+	
+	proc Call*(in proc_, errorMsg: array of char; var res: integer) 
+	begin 
+		assert(callHook # nil, 100)
+		callHook.Call(proc_, errorMsg, res)
+	end Call
+	
+	proc Beep*
+	begin 
+		if beep then
+			Kernel.Beep 
+		end 
+	end Beep
+	
+	proc (n: LangNotifier) Notify-()  end // new abstract
+	
+	proc RegisterLangNotifier*(notifier: LangNotifier) 
+		var 
+			nl: LangNotifier
+	begin 
+		assert(notifier # nil, 20)
+		nl := langNotifiers
+		while (nl # nil) & (nl # notifier) do 
+			nl := nl.next 
+		end 
+		if nl = nil then
+			notifier.next := langNotifiers
+			langNotifiers := notifier 
+		end 
+	end RegisterLangNotifier
+	
+	proc RemoveLangNotifier*(notifier: LangNotifier) 
+		var 
+			nl, prev: LangNotifier
+	begin 
+		assert(notifier # nil, 20)
+		nl := langNotifiers
+		prev := nil
+		while (nl # nil) & (nl # notifier) do 
+			prev := nl
+			nl := nl.next 
+		end 
+		if nl # nil then
+			if prev = nil then
+				langNotifiers := langNotifiers.next 
+			else 
+				prev.next := nl.next 
+			end 
+			nl.next := nil 
+		end 
+	end RemoveLangNotifier
+	
+	proc Exec(a, b, c: integer) 
+		var 
+			nl: LangNotifier
+	begin 
+		nl := currentNotifier
+		currentNotifier := nil
+		nl.Notify
+		currentNotifier := nl
+	end Exec
+	
+	proc SetLanguage*(lang: Language; persistent: boolean) 
+		var 
+			nl, t: LangNotifier
+			ok: boolean
+	begin 
+		assert((lang = "") or (len(lang) = 2), 20)
+		assert(languageHook # nil, 100)
+		if lang # language then
+			languageHook.SetLanguage(lang, persistent, ok)
+			if ok then
+				language := lang
+				FlushMappings
+				nl := langNotifiers
+				while nl # nil do 
+					currentNotifier := nl
+					Kernel.Try(Exec, 0, 0, 0)
+					if currentNotifier = nil then
+						t := nl // Notifier trapped, remove it
+						nl := nl.next
+						RemoveLangNotifier(t) 
+					else 
+						nl := nl.next 
+					end  
+				end  
+			end 
+			currentNotifier := nil 
+		end 
+	end SetLanguage
+	
+	proc ResetLanguage*
+		var 
+			lang: Language
+	begin 
+		assert(languageHook # nil, 100)
+		languageHook.GetPersistentLanguage(lang)
+		SetLanguage(lang, nonPersistent)
+	end ResetLanguage
+	
+	proc SetExtCallHook*(h: ExtCallHook) 
+	begin 
+		extCallHook := h
+	end SetExtCallHook
+	
+	proc RunExternal*(in exeName: array of char) 
+	begin 
+		assert(extCallHook # nil, 100)
+		extCallHook.RunExternal(exeName)
+	end RunExternal
+	
+	proc OpenExternal*(in fileName: array of char) 
+	begin 
+		assert(extCallHook # nil, 100)
+		extCallHook.OpenExternal(fileName)
+	end OpenExternal
+
+begin
+	appName := "BlackBox"
+	showsStatus := false
+	memInStatus := false
+	caretPeriod := 500
+	thickCaret := false
+	user := ""
+	beep := true
+	serverMode := false
+end Dialog

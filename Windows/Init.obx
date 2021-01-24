@@ -1,0 +1,41 @@
+module Init
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Kernel, Dialog, Converters, HostMenus
+	
+	proc Init
+		var 
+			res: integer
+			m: Kernel.Module
+	begin 
+		HostMenus.OpenApp
+		m := Kernel.ThisMod("DevDebug")
+		if m = nil then
+			Kernel.LoadMod("StdDebug") 
+		end 
+		Converters.Register("Documents.ImportDocument", "Documents.ExportDocument", "", "odc", {})
+		Dialog.Call("StdMenuTool.UpdateAllMenus", "", res)
+		Kernel.LoadMod("OleServer")
+		Dialog.Call("Config.Setup", "", res)
+		HostMenus.Run
+	end Init
+
+begin
+	Init
+end Init

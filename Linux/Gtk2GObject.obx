@@ -1,0 +1,26 @@
+definition Gtk2GObject
+
+	// gtype.h
+			
+	type 				
+		GTypeInstance = unsafe pointer to (* abstract *) cstruct 
+			end 
+						
+	type 
+		
+		// gvalue.h
+		
+		GValue = unsafe pointer to GValueDesc
+		
+		GValueDesc = cstruct 
+			end 
+		
+			
+				
+	// gobject.h
+	type 
+		GObject = pointer to (* abstract *) record (GTypeInstance) 
+			end 
+
+		
+end Gtk2GObject

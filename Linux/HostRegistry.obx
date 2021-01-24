@@ -1,0 +1,306 @@
+module HostRegistry
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20070130, bh, Unicode support
+	   - 20070510, mf, WriteString: call to RegSetValueW corrected
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	// A. V. Shiryaev, 2012.11: simple "Unix-like" implementation
+	
+	
+	
+	import HostFiles, Dialog, Strings, Files, Stores, Libc:= LinLibc
+	
+	const 
+		minVersion = 1
+		maxVersion = 1
+	
+	type 
+		Key = array 32 of char
+		Val = array 256 of char
+	
+	var 
+		localeId*: integer
+		debug*: boolean
+	
+	proc Msg(in s: array of char) 
+		var 
+			res: integer
+	begin 
+		if debug then
+			res := Libc.printf(s)
+			res := Libc.printf(0ax) 
+		end 
+	end Msg
+	
+	proc LoadKV(in key: array of char; var str: array of char; var res: integer) 
+		var 
+			ss: Libc.PtrSTR
+			loc: Files.Locator
+			f: Files.File
+			rd: Stores.Reader
+			x: integer
+			k: Key
+			v: Val
+	begin 
+		ss := Libc.getenv("HOME")
+		if ss # nil then
+			// TODO: encoding translation
+			loc := Files.dir.This(ss + "/." + Dialog.appName)
+			if loc.res = 0 then
+				f := Files.dir.Old(loc, "registry", true)
+				if f # nil then
+					rd.ConnectTo(f)
+					rd.ReadVersion(minVersion, maxVersion, x)
+					if x = maxVersion then
+						rd.ReadString(k)
+						rd.ReadString(v)
+						while ~rd.rider.eof do 
+							if k = key then
+								f.Close
+								str := v
+								res := 0
+								Msg(("HostRegistry.LoadKV: found: " + key + ": " + v))
+								return  
+							end 
+							rd.ReadString(k)
+							rd.ReadString(v) 
+						end  
+					else 
+						Msg("HostRegistry.LoadKV: ~readVersion") 
+					end 
+					f.Close 
+				end  
+			end  
+		end 
+		Msg(("HostRegistry.LoadKV: ~found: " + key))
+	end LoadKV
+	
+	proc SaveKV(in key, val_: array of char) 
+		var 
+			ss: Libc.PtrSTR
+			of_, nf: Files.File
+			loc: Files.Locator
+			rd: Stores.Reader
+			wr: Stores.Writer
+			x, res: integer
+			k: Key
+			v: Val
+			found, register: boolean
+	begin 
+		ss := Libc.getenv("HOME")
+		if ss # nil then
+			// TODO: encoding translation
+			loc := Files.dir.This(ss + "/." + Dialog.appName)
+			if loc.res = 0 then
+				nf := Files.dir.New(loc, false)
+				if nf # nil then
+					wr.ConnectTo(nf)
+					register := true
+					wr.WriteVersion(maxVersion)
+					of_ := Files.dir.Old(loc, "registry", true)
+					if of_ # nil then
+						rd.ConnectTo(of_)
+						rd.ReadVersion(minVersion, maxVersion, x)
+						if x = maxVersion then
+							found := false
+							rd.ReadString(k)
+							rd.ReadString(v)
+							while ~rd.rider.eof do 
+								wr.WriteString(k)
+								if k = key then
+									found := true
+									if v = val_ then
+										register := false 
+									end 
+									wr.WriteString(val_) 
+								else 
+									wr.WriteString(v) 
+								end 
+								rd.ReadString(k)
+								rd.ReadString(v) 
+							end 
+							if ~found then
+								wr.WriteString(key)
+								wr.WriteString(val_) 
+							end  
+						else 
+							wr.WriteString(key)
+							wr.WriteString(val_) 
+						end 
+						of_.Close 
+					else 
+						wr.WriteString(key)
+						wr.WriteString(val_) 
+					end 
+					if register then
+						nf.Register("registry", "", false, res)
+						if res = 0 then
+							Msg(("HostRegistry: written: " + key + ": " + val_)) 
+						else 
+							Msg("HostRegistry: register failed!") 
+						end  
+					else 
+						Msg(("HostRegistry: ~modified: " + key + ": " + val_)) 
+					end 
+					nf.Close 
+				end  
+			end  
+		end 
+	end SaveKV
+	
+	proc ReadString*(
+		in key: array of char; var str: array of char; var res: integer
+		) 
+	begin 
+		str := ""
+		res := -1
+		LoadKV(key, str, res)
+	end ReadString
+	
+	proc ReadInt*(in key: array of char; var x: integer; var res: integer) 
+		var 
+			str: array 64 of char
+	begin 
+		ReadString(key, str, res)
+		if res = 0 then
+			Strings.StringToInt(str, x, res) 
+		end 
+	end ReadInt
+	
+	proc ReadBool*(in key: array of char; var x: boolean; var res: integer) 
+		var 
+			str: array 4 of char
+	begin 
+		ReadString(key, str, res)
+		if res = 0 then
+			x := str = "1" 
+		end 
+	end ReadBool
+	
+	proc ReadIntList*(in key: array of char; var x: array of integer; var res: integer) 
+		var 
+			i, n, val_, sig: integer
+			str: array 256 of char
+	begin 
+		ReadString(key, str, res)
+		if res = 0 then
+			n := 0
+			i := 0
+			while str[i] # 0x do 
+				if n >= len(x) then
+					res := 2
+					return  
+				end 
+				val_ := 0
+				sig := 1
+				if str[i] = "-" then
+					sig := -1
+					inc(i) 
+				end 
+				while (str[i] >= "0") & (str[i] <= "9") do 
+					val_ := 10 * val_ + ord(str[i]) - ord("0")
+					inc(i) 
+				end 
+				x[n] := sig * val_
+				if str[i] = "," then
+					inc(i) 
+				elsif str[i] # 0x then 
+					res := 1
+					return  
+				end 
+				inc(n) 
+			end  
+		end 
+	end ReadIntList
+	
+	proc WriteString*(in key: array of char; in str: array of char) 
+	begin 
+		SaveKV(key, str)
+	end WriteString
+	
+	proc WriteInt*(in key: array of char; x: integer) 
+		var 
+			str: array 64 of char
+	begin 
+		Strings.IntToString(x, str)
+		WriteString(key, str)
+	end WriteInt
+	
+	proc WriteBool*(in key: array of char; x: boolean) 
+	begin 
+		if x then
+			WriteString(key, "1") 
+		else 
+			WriteString(key, "0") 
+		end 
+	end WriteBool
+	
+	proc WriteIntList*(in key: array of char; in x: array of integer) 
+		var 
+			i, j, n: integer
+			str: array 256 of char
+			s: array 16 of char
+	begin 
+		n := 0
+		i := 0
+		while n < len(x) do 
+			if (n > 0) & (i < len(str)) then
+				str[i] := ","
+				inc(i) 
+			end 
+			Strings.IntToString(x[n], s)
+			j := 0
+			while (s[j] # 0x) & (i < len(str)) do 
+				str[i] := s[j]
+				inc(i)
+				inc(j) 
+			end 
+			inc(n) 
+		end 
+		if i < len(str) then
+			str[i] := 0x 
+		else 
+			str[len(str) - 1] := 0x 
+		end 
+		WriteString(key, str)
+	end WriteIntList
+	
+	
+	proc ReadMeasure
+	begin 
+		(* res := WinApi.GetProfileIntW("intl", "iMeasure", 1);
+		   Dialog.metricSystem := res = 0 *)
+		
+		
+		Dialog.metricSystem := true
+	end ReadMeasure
+	
+	proc Init
+		var 
+			name, bname: Dialog.String
+			res, i, v: integer
+	begin 
+		localeId := 1024 // user default
+		Dialog.version := 17
+		Dialog.Call("Startup.Setup", "", res)
+		ReadMeasure
+	end Init
+
+begin
+	debug := false
+	Init
+end HostRegistry

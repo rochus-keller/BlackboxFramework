@@ -1,0 +1,532 @@
+module StdLoader
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20141027, center #19, adding 16-bit Unicode support for Component Pascal identifiers
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import S:= SYSTEM, Kernel, Files
+	
+	const 
+		done = Kernel.done
+		fileNotFound = Kernel.fileNotFound
+		syntaxError = Kernel.syntaxError
+		objNotFound = Kernel.objNotFound
+		illegalFPrint = Kernel.illegalFPrint
+		cyclicImport = Kernel.cyclicImport
+		noMem = Kernel.noMem
+		descNotFound = -1
+		
+		OFdir = "Code"
+		SYSdir = "System"
+		initMod = "Init"
+		OFtag = 6f4f4346h
+		
+		// meta interface consts
+		mConst = 1
+		mTyp = 2
+		mVar = 3
+		mProc = 4
+		mField = 5
+		mBool = 1
+		mChar = 2
+		mLChar = 3
+		mSInt = 4
+		mInt = 5
+		mLInt = 6
+		mReal = 7
+		mLReal = 8
+		mSet = 9
+		mString = 10
+		mLString = 11
+		mRecord = 1
+		mArray = 2
+		mPointer = 3
+		mProctyp = 4
+		mInternal = 1
+		mReadonly = 2
+		mPrivate = 3
+		mExported = 4
+		
+		// fixup types
+		absolute = 100
+		relative = 101
+		copy_ = 102
+		table = 103
+		tableend = 104
+		deref = 105
+		halfword = 106
+	
+	type 
+		Name = Kernel.Name
+		ModSpec = pointer to record 
+				next, link, imp: ModSpec
+				name: Name
+				file: Files.File
+				mod_: Kernel.Module
+				hs, ms, ds, cs, vs: integer // headSize, metaSize, descSize, codeSize, dataSize
+				mad, dad: integer  // modAdr, descAdr
+			end 
+		
+		Hook = pointer to record (Kernel.LoaderHook) end 
+	
+	var 
+		res-: integer
+		importing-, imported-, object-: Name
+		inp: Files.Reader
+		m: Kernel.Module
+	
+	proc Error(r: integer; impd, impg: ModSpec) 
+	begin 
+		res := r
+		imported := impd.name
+		if impg # nil then
+			importing := impg.name 
+		end 
+	end Error
+	
+	proc Append(var s: array of char; t: array of char) 
+		var 
+			len_, i, j: integer
+			ch: char
+	begin 
+		len_ := len(s)
+		i := 0
+		while s[i] # 0x do 
+			inc(i) 
+		end 
+		j := 0
+		repeat 
+			ch := t[j]
+			s[i] := ch
+			inc(j)
+			inc(i) 
+		until (ch = 0x) or (i = len_) 
+		s[len_ - 1] := 0x
+	end Append
+	
+	proc ThisObjFile(var name: array of char): Files.File 
+		var 
+			f: Files.File
+			loc: Files.Locator
+			dir, fname: Files.Name
+	begin 
+		Kernel.SplitName(name, dir, fname)
+		Kernel.MakeFileName(fname, Kernel.objType)
+		loc := Files.dir.This(dir)
+		loc := loc.This(OFdir)
+		f := Files.dir.Old(loc, fname, true)
+		if (f = nil) & (dir = "") then
+			loc := Files.dir.This(SYSdir)
+			loc := loc.This(OFdir)
+			f := Files.dir.Old(loc, fname, true) 
+		end 
+		return f
+	end ThisObjFile
+	
+	proc RWord(var x: integer) 
+		var 
+			b: byte
+			y: integer
+	begin 
+		inp.ReadByte(b)
+		y := b mod 256
+		inp.ReadByte(b)
+		y := y + 100h * (b mod 256)
+		inp.ReadByte(b)
+		y := y + 10000h * (b mod 256)
+		inp.ReadByte(b)
+		x := y + 1000000h * b
+	end RWord
+	
+	proc RNum(var x: integer) 
+		var 
+			b: byte
+			s, y: integer
+	begin 
+		s := 0
+		y := 0
+		inp.ReadByte(b)
+		while b < 0 do 
+			inc(y, ash(b + 128, s))
+			inc(s, 7)
+			inp.ReadByte(b) 
+		end 
+		x := ash((b + 64) mod 128 - 64, s) + y
+	end RNum
+	
+	proc RName(var name: array of char) 
+		var 
+			b: byte
+			i, n, res: integer
+			s: Kernel.Utf8Name
+	begin 
+		i := 0
+		n := len(name) - 1
+		inp.ReadByte(b)
+		while (i < n) & (b # 0) do 
+			s[i] := short(chr(b mod 256))
+			inc(i)
+			inp.ReadByte(b) 
+		end 
+		while b # 0 do 
+			inp.ReadByte(b) 
+		end 
+		s[i] := 0x
+		Kernel.Utf8ToString(s, name, res)
+		assert(res = 0)
+	end RName
+	
+	proc Fixup(adr: integer; mod_: ModSpec) 
+		var 
+			link, offset, linkadr, t, n, x, low, hi: integer
+	begin 
+		RNum(link)
+		while link # 0 do 
+			RNum(offset)
+			while link # 0 do 
+				if link > 0 then
+					linkadr := mod_.mad + mod_.ms + link 
+				else 
+					link := -link
+					if link < mod_.ms then
+						linkadr := mod_.mad + link 
+					else 
+						linkadr := mod_.dad + link - mod_.ms 
+					end  
+				end 
+				S.GET(linkadr, x)
+				t := x div 1000000h
+				n := (x + 800000h) mod 1000000h - 800000h
+				if t = absolute then
+					x := adr + offset 
+				elsif t = relative then 
+					x := adr + offset - linkadr - 4 
+				elsif t = copy_ then 
+					S.GET(adr + offset, x) 
+				elsif t = table then 
+					x := adr + n
+					n := link + 4 
+				elsif t = tableend then 
+					x := adr + n
+					n := 0 
+				elsif t = deref then 
+					S.GET(adr + 2, x)
+					inc(x, offset) 
+				elsif t = halfword then 
+					x := adr + offset
+					low := (x + 8000h) mod 10000h - 8000h
+					hi := (x - low) div 10000h
+					S.GET(linkadr + 4, x)
+					S.PUT(linkadr + 4, x div 10000h * 10000h + low mod 10000h)
+					x := x * 10000h + hi mod 10000h 
+				else 
+					Error(syntaxError, mod_, nil) 
+				end 
+				S.PUT(linkadr, x)
+				link := n 
+			end 
+			RNum(link) 
+		end 
+	end Fixup
+	
+	proc ReadHeader(mod_: ModSpec) 
+		var 
+			n, p: integer
+			name: Name
+			imp, last: ModSpec
+	begin 
+		mod_.file := ThisObjFile(mod_.name)
+		if (mod_.file = nil) & (mod_.link # nil) then // try closing importing obj file
+			mod_.link.file.Close
+			mod_.link.file := nil
+			mod_.file := ThisObjFile(mod_.name) 
+		end 
+		if mod_.file # nil then
+			inp := mod_.file.NewReader(inp)
+			if inp # nil then
+				inp.SetPos(0)
+				RWord(n)
+				RWord(p)
+				if (n = OFtag) & (p = Kernel.processor) then
+					RWord(mod_.hs)
+					RWord(mod_.ms)
+					RWord(mod_.ds)
+					RWord(mod_.cs)
+					RWord(mod_.vs)
+					RNum(n)
+					RName(name)
+					if name = mod_.name then
+						mod_.imp := nil
+						last := nil
+						while n > 0 do 
+							new(imp)
+							RName(imp.name)
+							if last = nil then
+								mod_.imp := imp 
+							else 
+								last.next := imp 
+							end 
+							last := imp
+							imp.next := nil
+							dec(n) 
+						end  
+					else 
+						Error(fileNotFound, mod_, nil) 
+					end  
+				else 
+					Error(syntaxError, mod_, nil) 
+				end  
+			else 
+				Error(noMem, mod_, nil) 
+			end  
+		else 
+			Error(fileNotFound, mod_, nil) 
+		end 
+	end ReadHeader
+	
+	proc ReadModule(mod_: ModSpec) 
+		type 
+			BlockPtr = unsafe pointer to carray 1000000h of byte
+		var 
+			imptab, x, fp, ofp, opt, a: integer
+			name: Name
+			dp, mp: BlockPtr
+			imp: ModSpec
+			obj: Kernel.Object
+	begin 
+		if mod_.file = nil then
+			mod_.file := ThisObjFile(mod_.name) 
+		end 
+		inp := mod_.file.NewReader(inp)
+		if inp # nil then
+			inp.SetPos(mod_.hs)
+			Kernel.AllocModMem(mod_.ds, mod_.ms + mod_.cs + mod_.vs, mod_.dad, mod_.mad)
+			if (mod_.dad # 0) & (mod_.mad # 0) then
+				dp := S.VAL(BlockPtr, mod_.dad)
+				mp := S.VAL(BlockPtr, mod_.mad)
+				inp.ReadBytes(mp^, 0, mod_.ms)
+				inp.ReadBytes(dp^, 0, mod_.ds)
+				inp.ReadBytes(mp^, mod_.ms, mod_.cs)
+				mod_.mod_ := S.VAL(Kernel.Module, mod_.dad)
+				Fixup(S.ADR(Kernel.NewRec), mod_)
+				Fixup(S.ADR(Kernel.NewArr), mod_)
+				Fixup(mod_.mad, mod_)
+				Fixup(mod_.dad, mod_)
+				Fixup(mod_.mad + mod_.ms, mod_)
+				Fixup(mod_.mad + mod_.ms + mod_.cs, mod_)
+				imp := mod_.imp
+				imptab := S.VAL(integer, mod_.mod_.imports)
+				while (res = done) & (imp # nil) do 
+					RNum(x)
+					while (res <= done) & (x # 0) do 
+						RName(name)
+						RNum(fp)
+						opt := 0
+						if imp.mod_ # nil then
+							if name = "" then
+								obj := Kernel.ThisDesc(imp.mod_, fp) 
+							else 
+								obj := Kernel.ThisObject(imp.mod_, name) 
+							end 
+							if (obj # nil) & (obj.id mod 16 = x) then
+								ofp := obj.fprint
+								if x = mTyp then
+									RNum(opt)
+									if odd(opt) then
+										ofp := obj.offs 
+									end 
+									if (opt > 1) & (obj.id div 16 mod 16 # mExported) then
+										Error(objNotFound, imp, mod_)
+										object := name 
+									end 
+									Fixup(S.VAL(integer, obj.struct), mod_) 
+								elsif x = mVar then 
+									Fixup(imp.mod_.varBase + obj.offs, mod_) 
+								elsif x = mProc then 
+									Fixup(imp.mod_.procBase + obj.offs, mod_) 
+								end 
+								if ofp # fp then
+									Error(illegalFPrint, imp, mod_)
+									object := name 
+								end  
+							elsif name # "" then 
+								Error(objNotFound, imp, mod_)
+								object := name 
+							else 
+								Error(descNotFound, imp, mod_) // proceed to find failing named object
+								RNum(opt)
+								Fixup(0, mod_) 
+							end  
+						else  // imp is dll
+							if x in {mVar, mProc} then
+								a := Kernel.ThisDllObj(x, fp, imp.name, name)
+								if a # 0 then
+									Fixup(a, mod_) 
+								else 
+									Error(objNotFound, imp, mod_)
+									object := name 
+								end  
+							elsif x = mTyp then 
+								RNum(opt)
+								RNum(x)
+								if x # 0 then
+									Error(objNotFound, imp, mod_)
+									object := name 
+								end  
+							end  
+						end 
+						RNum(x) 
+					end 
+					S.PUT(imptab, imp.mod_)
+					inc(imptab, 4)
+					imp := imp.next 
+				end 
+				if res # done then
+					Kernel.DeallocModMem(mod_.ds, mod_.ms + mod_.cs + mod_.vs, mod_.dad, mod_.mad)
+					mod_.mod_ := nil 
+				end  
+			else 
+				Error(noMem, mod_, nil) 
+			end  
+		else 
+			Error(noMem, mod_, nil) 
+		end 
+		mod_.file.Close
+		mod_.file := nil
+	end ReadModule
+	
+	proc LoadMod(mod_: ModSpec) 
+		var 
+			i: ModSpec
+			ok: boolean
+			j: integer
+	begin 
+		importing := ""
+		imported := ""
+		object := ""
+		i := mod_
+		while (i.link # nil) & (i.link.name # mod_.name) do 
+			i := i.link 
+		end 
+		if i.link = nil then
+			ReadHeader(mod_) 
+		else 
+			Error(cyclicImport, i, i.link) 
+		end 
+		i := mod_.imp
+		while (res = done) & (i # nil) do  // get imported module
+			if i.name = "$$" then
+				i.name := "Kernel" 
+			end 
+			if i.name[0] = "$" then // dll
+				j := 1
+				while i.name[j] # 0x do 
+					i.name[j - 1] := i.name[j]
+					inc(j) 
+				end 
+				i.name[j - 1] := 0x
+				Kernel.LoadDll(i.name, ok)
+				if ~ok then
+					Error(fileNotFound, i, nil) 
+				end  
+			else 
+				i.mod_ := Kernel.ThisLoadedMod(i.name) // loaded module
+				if i.mod_ = nil then // new module
+					i.link := mod_
+					LoadMod(i) 
+				end  
+			end 
+			i := i.next 
+		end 
+		if res = done then
+			mod_.mod_ := Kernel.ThisLoadedMod(mod_.name) // guaranties uniqueness
+			if mod_.mod_ = nil then
+				ReadModule(mod_)
+				if res = done then
+					Kernel.RegisterMod(mod_.mod_)
+					res := done 
+				end  
+			end  
+		end 
+		if res = descNotFound then
+			res := objNotFound
+			object := "<TypeDesc>" 
+		end 
+		if object # "" then
+			Append(imported, ".")
+			Append(imported, object)
+			object := "" 
+		end 
+	end LoadMod
+	
+	proc (h: Hook) ThisMod(in name: array of char): Kernel.Module 
+		var 
+			m: Kernel.Module
+			ms: ModSpec
+	begin 
+		res := done
+		m := Kernel.ThisLoadedMod(name)
+		if m = nil then
+			new(ms)
+			ms.link := nil
+			ms.name := name
+			LoadMod(ms)
+			m := ms.mod_
+			inp := nil  // free last file
+		end 
+		h.res := res
+		h.importing := importing
+		h.imported := imported
+		h.object := object
+		return m
+	end ThisMod
+	
+	proc Init
+		var 
+			h: Hook
+	begin 
+		new(h)
+		Kernel.SetLoaderHook(h)
+	end Init
+
+begin
+	Init
+	m := Kernel.ThisMod("Init")
+	if res # 0 then
+		case res of 
+			| fileNotFound: 
+				Append(imported, ": code file not found") 
+			| syntaxError: 
+				Append(imported, ": corrupted code file") 
+			| objNotFound: 
+				Append(imported, " not found") 
+			| illegalFPrint: 
+				Append(imported, ": wrong fingerprint") 
+			| cyclicImport: 
+				Append(imported, ": cyclic import") 
+			| noMem: 
+				Append(imported, ": not enough memory") 
+		else 
+			Append(imported, ": loader error") 
+		end 
+		if res in {objNotFound, illegalFPrint, cyclicImport} then
+			Append(imported, " (imported from ")
+			Append(imported, importing)
+			Append(imported, ")") 
+		end 
+		Kernel.FatalError(res, imported) 
+	end 
+end StdLoader

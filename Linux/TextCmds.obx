@@ -1,0 +1,1445 @@
+module TextCmds
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20151012, center #75, fixig text search with 'Word Begins/Ends With' option
+	   - 20170309, center #150, improvements in DevSearch
+	   - 20170620, center #163, adding decimal tabs to TextRulers
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	// could eliminate ReplList/ReplOp and use Models.Begin/EndScript instead (as already done for shifting)
+	// move ListAlienViews to StdCmds and generalize accordingly?
+	
+	
+	import 
+		Strings, Ports, Stores, Models, Views, Controllers, Properties, Dialog, Containers, 
+		TextModels, TextMappers, TextRulers, TextSetters, TextViews, TextControllers, StdApi
+	
+	const 
+		// ShiftOp.left
+		left = true
+		right = false
+		
+		// PreparePat, FindPat
+		leftTerm = 3x
+		rightTerm = 4x
+		
+		// DoReplace mode
+		replace = 0
+		replaceAndFind = 1
+		replaceAll = 2
+		
+		// FindIn first
+		first = true
+		again = false
+		
+		mm = Ports.mm
+		point = Ports.point
+		maxPat = 256
+		viewcode = TextModels.viewcode
+		tab = TextModels.tab
+		line = TextModels.line
+		para = TextModels.para
+		nbspace = TextModels.nbspace
+		digitspace = TextModels.digitspace
+		hyphen = TextModels.hyphen
+		nbhyphen = TextModels.nbhyphen
+		softhyphen = TextModels.softhyphen
+		
+		posKey = "#Text:Position"
+		searchAliensKey = "#Text:SearchForAlienViews" // dormant code option
+		alienTypeKey = "#Text:AlienViewType"
+		noAliensKey = "#Text:NoAlienViewsFound"
+		noRulerKey = "#Text:NoRulerSelected"
+		noMatchKey = "#Text:SelectionDoesNotMatch"
+		noTargetKey = "#Text:NoTargetFound"
+		noSelectionKey = "#Text:NoSelectionFound"
+		noPatternKey = "#Text:PatternNotSpecified"
+		notFoundKey = "#Text:PatternNotFound" // not used
+		replacingKey = "#System:Replacing"
+		shiftingKey = "#Text:Shifting"
+		showMarksKey = "#Text:ShowMarks"
+		hideMarksKey = "#Text:HideMarks"
+		replaceSelectionKey = "#Text:ReplaceAllInSelection"
+		replaceAllKey = "#Text:ReplaceAll"
+	
+	
+	type 
+		FindSpec = record 
+				valid, ignoreCase, wordBeginsWith, wordEndsWith, reverse: boolean
+				start: integer
+				find: array maxPat of char 
+			end 
+		
+		ReplList = pointer to record 
+				next: ReplList
+				beg, end_: integer
+				buf: TextModels.Model 
+			end 
+		
+		ReplOp = pointer to record (Stores.Operation) 
+				text: TextModels.Model
+				list, last: ReplList
+				find: FindSpec 
+			end 
+		
+		TabDialogHook = pointer to record (TextRulers.TabDialogHook) end 
+	
+	
+	var 
+		find*: record 
+				find*: array maxPat of char
+				replace*: array maxPat of char
+				ignoreCase*, wordBeginsWith*, wordEndsWith*: boolean
+				reverseOrientation*: boolean 
+			end 
+		
+		ruler*: record 
+				pageBreaks*: record 
+						notInside*, joinPara*: boolean 
+					end  
+			end 
+		
+		tabulator*: record 
+				ruler: TextRulers.Ruler
+				tabIndex: integer
+				style*: integer
+				radixChar*: array 2 of char
+				pos*: array 7 of char
+				verticalBar*: boolean 
+			end 
+	
+	
+	proc Show(t: TextModels.Model; beg, end_: integer) 
+	begin 
+		TextViews.ShowRange(t, beg, end_, TextViews.focusOnly)
+		if beg = end_ then
+			TextControllers.SetCaret(t, beg) 
+		else 
+			TextControllers.SetSelection(t, beg, end_) 
+		end 
+	end Show
+	
+	proc NoShow(t: TextModels.Model; pos: integer) 
+	begin 
+		TextControllers.SetSelection(t, pos, pos)
+		TextControllers.SetCaret(t, pos)
+	end NoShow
+	
+	proc Ruler(): TextRulers.Ruler 
+		var 
+			r: TextRulers.Ruler
+	begin 
+		r := TextRulers.dir.New(nil)
+		TextRulers.AddTab(r, 4 * mm)
+		TextRulers.AddTab(r, 20 * mm)
+		return r
+	end Ruler
+	
+	
+	// search & replace
+	
+	proc LeftTerminator(ch: char): boolean 
+	begin 
+		return ~Strings.IsIdent(ch)
+	end LeftTerminator
+	
+	proc RightTerminator(ch: char): boolean 
+	begin 
+		return ~Strings.IsIdent(ch)
+	end RightTerminator
+	
+	proc PreparePat(spec: FindSpec
+		var pat: array of char; var n: integer
+		var wordBeg, wordEnd: boolean) 
+		var 
+			i: integer
+			ch: char
+	begin 
+		i := 0
+		ch := spec.find[0]
+		wordBeg := spec.wordBeginsWith & ~LeftTerminator(ch)
+		if wordBeg then
+			pat[0] := leftTerm
+			n := 1 
+		else 
+			n := 0 
+		end 
+		while ch # 0x do 
+			if ch # softhyphen then
+				if spec.ignoreCase then
+					pat[n] := Strings.Upper(ch) 
+				else 
+					pat[n] := ch 
+				end 
+				inc(n) 
+			end 
+			inc(i)
+			ch := spec.find[i] 
+		end 
+		wordEnd := spec.wordEndsWith & ~RightTerminator(pat[n - 1])
+		if wordEnd then
+			pat[n] := rightTerm
+			inc(n) 
+		end 
+	end PreparePat
+	
+	proc FindPat(t: TextModels.Model; spec: FindSpec; var beg, end_: integer) 
+		// post: beg < end => t[beg, end) = spec.find, start <= beg; else beg = end
+		var 
+			r: TextModels.Reader
+			start: integer
+			i, j, b, e, n: integer
+			ch0, ch, ch1: char
+			wordBeg, wordEnd, icase: boolean
+			pat, ref: array maxPat of char // ref [b..e) is readback buffer
+			pos0, pos1, absStart: integer
+			orientation: integer
+	begin 
+		if spec.reverse then
+			orientation := -1
+			absStart := t.Length()
+			PreparePat(spec, ref, n, wordEnd, wordBeg)
+			i := n // Just reverse the pattern...
+			j := 0
+			repeat 
+				dec(i)
+				pat[j] := ref[i]
+				inc(j) 
+			until i = 0  
+		else 
+			orientation := 1
+			absStart := 0
+			PreparePat(spec, pat, n, wordBeg, wordEnd) 
+		end 
+		start := spec.start
+		icase := spec.ignoreCase
+		r := t.NewReader(nil)
+		i := 0
+		if wordBeg then
+			if start # absStart then
+				dec(start, orientation) 
+			else 
+				r.SetPos(absStart)
+				if spec.reverse then
+					r.ReadPrevChar(ch) 
+				else 
+					r.ReadChar(ch) 
+				end 
+				if ~LeftTerminator(ch) then
+					i := 1 
+				end  
+			end  
+		end 
+		r.SetPos(start)
+		if spec.reverse then
+			r.ReadPrevChar(ch) 
+		else 
+			r.ReadChar(ch) 
+		end 
+		pos0 := start
+		pos1 := start
+		if icase then
+			ch := Strings.Upper(ch) 
+		end 
+		ref[0] := ch
+		ch0 := ch
+		j := 0
+		b := 0
+		e := 1
+		while ~r.eot & (i < n) do 
+			ch1 := pat[i]
+			if (ch1 = ch) 
+				or (ch1 = leftTerm) & LeftTerminator(ch) 
+				or (ch1 = rightTerm) & RightTerminator(ch) then
+				inc(i)
+				j := (j + 1) mod maxPat 
+			elsif ch = softhyphen then 
+				j := (j + 1) mod maxPat 
+			else 
+				i := 0
+				inc(pos0, orientation)
+				b := (b + 1) mod maxPat
+				j := b 
+			end 
+			if j # e then
+				ch := ref[j] 
+			else 
+				inc(pos1, orientation)
+				if spec.reverse then
+					r.ReadPrevChar(ch) 
+				else 
+					r.ReadChar(ch) 
+				end 
+				if icase then
+					ch := Strings.Upper(ch) 
+				end 
+				ref[j] := ch
+				e := (e + 1) mod maxPat 
+			end  
+		end 
+		if wordEnd & ~((i + 1 = n) & r.eot) then
+			dec(pos1, orientation) 
+		end 
+		if (n > 0) & ((i = n) or wordEnd & (i + 1 = n) & r.eot) then
+			if wordBeg & ((pos0 # absStart) or LeftTerminator(ch0)) then
+				inc(pos0, orientation) 
+			end  
+		else 
+			pos0 := pos1 
+		end 
+		if spec.reverse then
+			beg := pos1
+			end_ := pos0 
+		else 
+			beg := pos0
+			end_ := pos1 
+		end 
+	end FindPat
+	
+	proc OverrideSpecWithOption(var spec: FindSpec; option: array of char) 
+		var 
+			i: integer
+			choice: boolean
+			ch: char
+	begin 
+		choice := true
+		i := 0
+		ch := option[i]
+		while ch # 0x do 
+			case option[i] of 
+				'~': 
+					choice := ~choice 
+				| 'I', 'i': 
+					spec.ignoreCase := choice
+					choice := true 
+				| 'B', 'b': 
+					spec.wordBeginsWith := choice
+					choice := true 
+				| 'E', 'e': 
+					spec.wordEndsWith := choice
+					choice := true 
+				| 'R', 'r': 
+					spec.reverse := choice
+					choice := true 
+			else 
+				choice := true 
+			end 
+			inc(i)
+			ch := option[i] 
+		end 
+	end OverrideSpecWithOption
+	
+	proc SetSpec(var spec: FindSpec; pos0, pos1: integer; option: array of char) 
+	begin 
+		assert(find.find # "", 20)
+		spec.valid := true
+		spec.ignoreCase := find.ignoreCase
+		spec.wordBeginsWith := find.wordBeginsWith
+		spec.wordEndsWith := find.wordEndsWith
+		spec.reverse := find.reverseOrientation
+		OverrideSpecWithOption(spec, option)
+		if spec.reverse then
+			spec.start := pos1 
+		else 
+			spec.start := pos0 
+		end 
+		spec.find := find.find
+	end SetSpec
+	
+	proc SetFindSpec(c: TextControllers.Controller; first: boolean; option: array of char
+		var spec: FindSpec
+		) 
+		var  // start,
+			pos0, pos1, beg, end_: integer
+	begin 
+		if first then
+			pos0 := 0
+			pos1 := pos0 
+		elsif c.HasCaret() then 
+			pos0 := c.CaretPos()
+			pos1 := pos0 
+		elsif c.HasSelection() then 
+			c.GetSelection(beg, end_)
+			pos0 := beg + 1
+			pos1 := end_ - 1 
+		else 
+			pos0 := 0
+			pos1 := pos0 
+		end 
+		SetSpec(spec, pos0, pos1, option)
+		if spec.reverse then
+			if spec.start = 0 then
+				spec.start := c.text.Length() 
+			end  
+		else 
+			if spec.start = c.text.Length() then
+				spec.start := 0 
+			end  
+		end 
+	end SetFindSpec
+	
+	
+	proc ReplBuf(target: TextModels.Model; pos: integer): TextModels.Model 
+		var 
+			buf: TextModels.Model
+			attr: TextModels.Attributes
+			rd: TextModels.Reader
+			out: TextModels.Writer
+			i: integer
+	begin 
+		rd := target.NewReader(nil)
+		rd.SetPos(pos)
+		rd.ReadRun(attr)
+		buf := TextModels.CloneOf(target)
+		out := buf.NewWriter(nil)
+		out.SetPos(0)
+		if attr # nil then
+			out.SetAttr(attr) 
+		end 
+		i := 0
+		while find.replace[i] # 0x do 
+			out.WriteChar(find.replace[i])
+			inc(i) 
+		end 
+		return buf
+	end ReplBuf
+	
+	
+	// operations
+	
+	proc (op: ReplOp) Do
+		var 
+			u, v: ReplList
+			text, save: TextModels.Model
+			beg, end_, delta, len_: integer
+	begin 
+		text := op.text
+		u := op.list
+		v := nil
+		delta := 0
+		while u # nil do 
+			inc(u.beg, delta)
+			inc(u.end_, delta)
+			if u.end_ > u.beg then
+				save := TextModels.CloneOf(text)
+				save.Insert(0, text, u.beg, u.end_)
+				dec(delta, u.end_ - u.beg) 
+			else 
+				save := nil 
+			end 
+			if u.buf # nil then
+				len_ := u.buf.Length()
+				text.Insert(u.beg, u.buf, 0, len_)
+				u.end_ := u.beg + len_
+				inc(delta, len_) 
+			else 
+				u.end_ := u.beg 
+			end 
+			u.buf := save
+			v := u
+			u := u.next 
+		end 
+		if op.find.valid then
+			FindPat(text, op.find, beg, end_)
+			op.find.valid := false
+			if beg = end_ then
+				Dialog.Beep 
+			end  
+		elsif v # nil then 
+			beg := v.beg
+			end_ := v.end_ 
+		else 
+			beg := 0
+			end_ := 0 
+		end 
+		if end_ > beg then
+			Show(text, beg, end_) 
+		else 
+			NoShow(text, beg) 
+		end 
+	end Do
+	
+	proc AddRepl(op: ReplOp; beg, end_: integer; reverse: boolean) 
+		var 
+			u: ReplList
+	begin 
+		new(u)
+		u.beg := beg
+		u.end_ := end_
+		u.buf := ReplBuf(op.text, beg)
+		if reverse then // append
+			u.next := op.list
+			op.list := u 
+		else  // prepend
+			if op.list = nil then
+				op.list := u 
+			else 
+				op.last.next := u 
+			end 
+			op.last := u 
+		end 
+	end AddRepl
+	
+	proc DoReplaceThis(
+		t: TextModels.Model; mode: integer
+		firstBeg, firstEnd: integer
+		rngBeg, rngEnd: integer
+		option: array of char
+		) 
+		var 
+			op: ReplOp
+			spec: FindSpec
+			beg, end_, len_: integer
+	begin 
+		new(op)
+		op.text := t
+		op.list := nil
+		beg := firstBeg
+		end_ := firstEnd
+		if mode in {replace, replaceAndFind} then
+			AddRepl(op, firstBeg, firstEnd, spec.reverse) 
+		end 
+		if mode = replaceAndFind then
+			SetSpec(op.find, firstBeg + (* LEN(find.replace$) *)ReplBuf(t, 0).Length(), firstBeg, option) 
+		else 
+			op.find.valid := false 
+		end 
+		if mode = replaceAll then
+			len_ := len(find.find)
+			SetSpec(spec, 0, t.Length(), option)
+			while (rngBeg <= beg) & (beg < end_) & (end_ <= rngEnd) do 
+				AddRepl(op, beg, end_, spec.reverse)
+				if spec.reverse then
+					spec.start := beg 
+				else 
+					spec.start := beg + len_ 
+				end 
+				FindPat(t, spec, beg, end_) 
+			end  
+		end 
+		Models.Do(t, replacingKey, op)
+	end DoReplaceThis
+	
+	proc DoReplace(c: TextControllers.Controller; mode: integer; option: array of char) 
+		var 
+			t: TextModels.Model
+			spec: FindSpec
+			selBeg, selEnd, beg, end_, len0: integer
+			hasSel0: boolean
+	begin 
+		if c # nil then
+			t := c.text
+			len0 := t.Length()
+			hasSel0 := c.HasSelection()
+			if hasSel0 then
+				c.GetSelection(selBeg, selEnd)
+				if selEnd < len0 then
+					SetSpec(spec, selBeg, selEnd + 1, option) 
+				else 
+					SetSpec(spec, selBeg, selEnd, option) 
+				end  
+			else 
+				selBeg := 0
+				selEnd := len0
+				SetFindSpec(c, (* again *)mode = replaceAll, option, spec) 
+			end 
+			FindPat(t, spec, beg, end_)
+			if mode = replaceAll then
+				if (selBeg <= beg) & (beg < end_) & (end_ <= selEnd) then
+					DoReplaceThis(t, mode, beg, end_, selBeg, selEnd, option)
+					if hasSel0 then
+						Show(c.text, selBeg, selEnd + t.Length() - len0) 
+					end  
+				else 
+					NoShow(c.text, 0)
+					Dialog.Beep 
+				end  
+			elsif hasSel0 then 
+				if (beg = selBeg) & (end_ = selEnd) then
+					DoReplaceThis(t, mode, selBeg, selEnd, 0, len0, option) 
+				else 
+					Dialog.ShowParamMsg(noMatchKey, spec.find, "", "") 
+				end  
+			else 
+				Dialog.ShowMsg(noSelectionKey) 
+			end  
+		else 
+			Dialog.ShowMsg(noTargetKey) 
+		end 
+	end DoReplace
+	
+	proc DoShift(c: TextControllers.Controller; left: boolean) 
+		var 
+			script: Stores.Operation
+			t: TextModels.Model
+			st: TextSetters.Setter
+			rd: TextModels.Reader
+			wr: TextModels.Writer
+			box: TextSetters.LineBox
+			beg, pos, end_: integer
+			ch: char
+	begin 
+		if (c # nil) & (c.HasSelection() or c.HasCaret()) then
+			t := c.text
+			if c.HasSelection() then
+				c.GetSelection(beg, end_) 
+			else 
+				beg := c.CaretPos()
+				end_ := beg 
+			end 
+			st := c.view.ThisSetter()
+			beg := st.ThisSequence(beg)
+			pos := beg
+			rd := t.NewReader(nil)
+			rd.SetPos(pos)
+			if ~left then
+				wr := t.NewWriter(nil) 
+			end 
+			Models.BeginScript(t, shiftingKey, script)
+			repeat 
+				rd.ReadChar(ch)
+				if rd.view # nil then
+					st.GetLine(pos, box)
+					if box.rbox then
+						ch := para 
+					end  
+				end 
+				if left & ((ch = tab) or (ch = " ") or (ch = digitspace) or (ch = nbspace)) then
+					t.Delete(pos, pos + 1)
+					rd.SetPos(pos)
+					dec(end_) 
+				elsif ~left & (ch # line) & (ch # para) then 
+					wr.SetPos(pos)
+					if (ch = " ") or (ch = digitspace) or (ch = nbspace) then
+						wr.WriteChar(ch) 
+					else 
+						wr.WriteChar(tab) 
+					end 
+					inc(pos)
+					inc(end_) 
+				else 
+					inc(pos) 
+				end 
+				while ~rd.eot & (ch # line) & (ch # para) do 
+					inc(pos)
+					rd.ReadChar(ch) 
+				end  
+			until rd.eot or (pos >= end_) 
+			Models.EndScript(t, script)
+			if end_ > beg then
+				TextControllers.SetSelection(t, beg, end_) 
+			end  
+		end 
+	end DoShift
+	
+	// commands
+	
+	proc ListAlienViews*
+		var 
+			t: TextModels.Model
+			v: TextViews.View
+			wr: TextMappers.Formatter
+			rd: TextModels.Reader
+			view: Views.View
+			type_: Stores.TypeName
+			none: boolean
+	begin 
+		t := TextViews.FocusText()
+		if t # nil then
+			wr.ConnectTo(TextModels.dir.New())
+			rd := t.NewReader(nil)
+			rd.ReadView(view)
+			none := true
+			while view # nil do 
+				if view is Views.Alien then
+					if none then
+						wr.WriteTab
+						wr.WriteMsg(posKey)
+						wr.WriteTab
+						wr.WriteMsg(alienTypeKey)
+						wr.WriteLn 
+					end 
+					none := false
+					type_ := view(Views.Alien).store.path[0]
+					wr.WriteTab
+					wr.WriteIntForm(rd.Pos() - 1, 
+					TextMappers.decimal, 5, nbspace, TextMappers.hideBase)
+					wr.WriteTab
+					wr.WriteString(type_)
+					wr.WriteLn 
+				end 
+				rd.ReadView(view) 
+			end 
+			if none then
+				wr.WriteString(noAliensKey)
+				wr.WriteLn 
+			end 
+			v := TextViews.dir.New(wr.rider.Base())
+			v.SetDefaults(Ruler(), TextViews.dir.defAttr)
+			Views.OpenView(v) 
+		end 
+	end ListAlienViews
+	
+	
+	proc ToggleMarksGuard*(var par: Dialog.Par) 
+		var 
+			v: TextViews.View
+	begin 
+		v := TextViews.Focus()
+		if (v # nil) & v.HidesMarks() then
+			par.label := showMarksKey 
+		else 
+			par.label := hideMarksKey 
+		end 
+	end ToggleMarksGuard
+	
+	proc ToggleMarks*
+		var 
+			v: TextViews.View
+	begin 
+		v := TextViews.Focus()
+		if v # nil then
+			v.DisplayMarks(~v.HidesMarks()) 
+		end 
+	end ToggleMarks
+	
+	proc ShowMarks*
+		var 
+			v: TextViews.View
+	begin 
+		v := TextViews.Focus()
+		if (v # nil) & v.HidesMarks() then
+			v.DisplayMarks(TextViews.show) 
+		end 
+	end ShowMarks
+	
+	proc HideMarks*
+		var 
+			v: TextViews.View
+	begin 
+		v := TextViews.Focus()
+		if (v # nil) & ~v.HidesMarks() then
+			v.DisplayMarks(TextViews.hide) 
+		end 
+	end HideMarks
+	
+	proc MakeDefaultRulerGuard*(var par: Dialog.Par) 
+		var 
+			c: TextControllers.Controller
+			v: Views.View
+	begin 
+		c := TextControllers.Focus()
+		if c # nil then
+			v := c.Singleton()
+			if (v = nil) or ~(v is TextRulers.Ruler) then
+				par.disabled := true 
+			end  
+		else 
+			par.disabled := true 
+		end 
+	end MakeDefaultRulerGuard
+	
+	proc MakeDefaultRuler*
+		var 
+			c: TextControllers.Controller
+			rd: TextModels.Reader
+			r: TextRulers.Ruler
+			a: TextModels.Attributes
+			beg, end_: integer
+	begin 
+		c := TextControllers.Focus()
+		if c # nil then
+			if c.HasSelection() then
+				c.GetSelection(beg, end_)
+				rd := c.text.NewReader(nil)
+				rd.SetPos(beg)
+				rd.Read
+				if (rd.view # nil) & (rd.view is TextRulers.Ruler) then
+					c.view.PollDefaults(r, a)
+					c.view.SetDefaults(rd.view(TextRulers.Ruler), a) 
+				else 
+					Dialog.ShowMsg(noRulerKey) 
+				end  
+			else 
+				Dialog.ShowMsg(noSelectionKey) 
+			end  
+		else 
+			Dialog.ShowMsg(noTargetKey) 
+		end 
+	end MakeDefaultRuler
+	
+	proc MakeDefaultAttributes*
+		var 
+			c: TextControllers.Controller
+			rd: TextModels.Reader
+			r: TextRulers.Ruler
+			a: TextModels.Attributes
+			beg, end_: integer
+	begin 
+		c := TextControllers.Focus()
+		if c # nil then
+			if c.HasSelection() then
+				c.GetSelection(beg, end_)
+				rd := c.text.NewReader(nil)
+				rd.SetPos(beg)
+				rd.Read
+				c.view.PollDefaults(r, a)
+				c.view.SetDefaults(r, rd.attr) 
+			else 
+				Dialog.ShowMsg(noSelectionKey) 
+			end  
+		else 
+			Dialog.ShowMsg(noTargetKey) 
+		end 
+	end MakeDefaultAttributes
+	
+	proc ShiftLeft*
+	begin 
+		DoShift(TextControllers.Focus(), left)
+	end ShiftLeft
+	
+	proc ShiftRight*
+	begin 
+		DoShift(TextControllers.Focus(), right)
+	end ShiftRight
+	
+	
+	proc Subscript*
+		var 
+			q, p0: Properties.Property
+			p: TextModels.Prop
+	begin 
+		Properties.CollectProp(q)
+		p0 := q
+		while (p0 # nil) & ~(p0 is TextModels.Prop) do 
+			p0 := p0.next 
+		end 
+		new(p)
+		p.valid := {TextModels.offset}
+		if (p0 # nil) & (TextModels.offset in p0.valid) then
+			p.offset := p0(TextModels.Prop).offset - point 
+		else 
+			p.offset := -point 
+		end 
+		Properties.EmitProp(nil, p)
+	end Subscript
+	
+	proc Superscript*
+		var 
+			q, p0: Properties.Property
+			p: TextModels.Prop
+	begin 
+		Properties.CollectProp(q)
+		p0 := q
+		while (p0 # nil) & ~(p0 is TextModels.Prop) do 
+			p0 := p0.next 
+		end 
+		new(p)
+		p.valid := {TextModels.offset}
+		if (p0 # nil) & (TextModels.offset in p0.valid) then
+			p.offset := p0(TextModels.Prop).offset + point 
+		else 
+			p.offset := point 
+		end 
+		Properties.EmitProp(nil, p)
+	end Superscript
+	
+	
+	proc ForceToNewLine(c: TextControllers.Controller) 
+		var 
+			st: TextSetters.Setter
+			pos, start: integer
+			msg: Controllers.EditMsg
+	begin 
+		if c.HasCaret() then
+			pos := c.CaretPos()
+			st := c.view.ThisSetter()
+			start := st.ThisLine(pos)
+			if pos # start then
+				msg.op := Controllers.pasteChar
+				msg.char_ := line
+				Controllers.Forward(msg) 
+			end  
+		end 
+	end ForceToNewLine
+	
+	proc InsertParagraph*
+		var 
+			c: TextControllers.Controller
+			script: Stores.Operation
+			msg: Controllers.EditMsg
+	begin 
+		c := TextControllers.Focus()
+		if c # nil then
+			Models.BeginScript(c.text, "#Text:InsertParagraph", script)
+			ForceToNewLine(c)
+			msg.op := Controllers.pasteChar
+			msg.char_ := para
+			Controllers.Forward(msg)
+			Models.EndScript(c.text, script) 
+		end 
+	end InsertParagraph
+	
+	proc InsertRuler*
+		var 
+			c: TextControllers.Controller
+			script: Stores.Operation
+			rd: TextModels.Reader
+			r: TextRulers.Ruler
+			pos, end_: integer
+	begin 
+		c := TextControllers.Focus()
+		if c # nil then
+			r := nil
+			if c.HasSelection() then
+				c.GetSelection(pos, end_)
+				rd := c.text.NewReader(nil)
+				rd.SetPos(pos)
+				rd.Read
+				if (rd.view # nil) & (rd.view is TextRulers.Ruler) then
+					r := rd.view(TextRulers.Ruler) 
+				end  
+			else 
+				pos := c.CaretPos() 
+			end 
+			if r = nil then
+				r := TextViews.ThisRuler(c.view, pos) 
+			end 
+			r := TextRulers.CopyOf(r, Views.deep)
+			Models.BeginScript(c.text, "#Text:InsertRuler", script)
+			ForceToNewLine(c)
+			c.view.DisplayMarks(TextViews.show)
+			Controllers.PasteView(r, Views.undefined, Views.undefined, false)
+			Models.EndScript(c.text, script) 
+		end 
+	end InsertRuler
+	
+	proc InsertSoftHyphen*
+		var 
+			msg: Controllers.EditMsg
+	begin 
+		msg.op := Controllers.pasteChar
+		msg.char_ := softhyphen
+		Controllers.Forward(msg)
+	end InsertSoftHyphen
+	
+	proc InsertNBHyphen*
+		var 
+			msg: Controllers.EditMsg
+	begin 
+		msg.op := Controllers.pasteChar
+		msg.char_ := nbhyphen
+		Controllers.Forward(msg)
+	end InsertNBHyphen
+	
+	proc InsertNBSpace*
+		var 
+			msg: Controllers.EditMsg
+	begin 
+		msg.op := Controllers.pasteChar
+		msg.char_ := nbspace
+		Controllers.Forward(msg)
+	end InsertNBSpace
+	
+	proc InsertDigitSpace*
+		var 
+			msg: Controllers.EditMsg
+	begin 
+		msg.op := Controllers.pasteChar
+		msg.char_ := digitspace
+		Controllers.Forward(msg)
+	end InsertDigitSpace
+	
+	proc ResetFindDialog*
+	begin 
+		find.find := ""
+		find.ignoreCase := false
+		find.wordBeginsWith := false
+		find.wordEndsWith := false
+		find.reverseOrientation := false
+		Dialog.Update(find)
+	end ResetFindDialog
+	
+	proc GetFindPattern(c: TextControllers.Controller) 
+		var 
+			r: TextModels.Reader
+			beg, end_: integer
+			i: integer
+			ch: char
+			new_: array maxPat of char
+		
+		proc Equals(x, y: array of char; ignoreCase: boolean): boolean 
+		begin 
+			if ignoreCase then
+				Strings.ToUpper(x, x)
+				Strings.ToUpper(y, y) 
+			end 
+			return x = y
+		end Equals
+	
+	begin 
+		if (c # nil) & c.HasSelection() then
+			c.GetSelection(beg, end_)
+			r := c.text.NewReader(nil)
+			r.SetPos(beg)
+			r.ReadChar(ch)
+			i := 0
+			while (r.Pos() <= end_) & (i < maxPat - 1) do 
+				new_[i] := ch
+				inc(i)
+				r.ReadChar(ch) 
+			end 
+			new_[i] := 0x
+			if (new_ # "") & ~Equals(new_, find.find, find.ignoreCase) then
+				ResetFindDialog
+				find.find := new_
+				Dialog.Update(find) 
+			end  
+		end 
+	end GetFindPattern
+	
+	proc FindIn(c: TextControllers.Controller; first: boolean; option: array of char) 
+		var 
+			spec: FindSpec
+			beg, end_: integer
+	begin 
+		if c # nil then
+			if find.find # "" then
+				SetFindSpec(c, first, option, spec)
+				FindPat(c.text, spec, beg, end_)
+				if end_ > beg then
+					Show(c.text, beg, end_) 
+				else 
+					NoShow(c.text, 0)
+					Dialog.Beep 
+				end  
+			else 
+				Dialog.ShowMsg(noPatternKey) 
+			end  
+		else 
+			Dialog.ShowMsg(noTargetKey) 
+		end 
+	end FindIn
+	
+	
+	proc FindGuard*(var par: Dialog.Par) 
+		var 
+			c: TextControllers.Controller
+	begin 
+		c := TextControllers.Focus()
+		if (c = nil) or (find.find = "") then
+			par.disabled := true 
+		end 
+	end FindGuard
+	
+	proc FindFirst*(option: array of char) 
+	begin 
+		FindIn(TextControllers.Focus(), first, option)
+	end FindFirst
+	
+	proc FindAgainGuard*(var par: Dialog.Par) 
+		var 
+			c: TextControllers.Controller
+	begin 
+		c := TextControllers.Focus()
+		if (c = nil) or (~c.HasSelection() & (find.find = "")) then
+			par.disabled := true 
+		end 
+	end FindAgainGuard
+	
+	proc FindAgain*(option: array of char) 
+	begin 
+		FindIn(TextControllers.Focus(), again, option)
+	end FindAgain
+	
+	
+	proc ReplaceGuard*(var par: Dialog.Par) 
+		var 
+			c: TextControllers.Controller
+	begin 
+		c := TextControllers.Focus()
+		if (c = nil) or (Containers.noCaret in c.opts) or ~c.HasSelection() or (find.find = "") then
+			par.disabled := true 
+		end 
+	end ReplaceGuard
+	
+	proc Replace*(option: array of char) 
+	begin 
+		DoReplace(TextControllers.Focus(), replace, option)
+	end Replace
+	
+	proc ReplaceAndFindNext*(option: array of char) 
+	begin 
+		DoReplace(TextControllers.Focus(), replaceAndFind, option)
+	end ReplaceAndFindNext
+	
+	
+	proc ReplaceAllGuard*(var par: Dialog.Par) 
+		var 
+			c: TextControllers.Controller
+	begin 
+		c := TextControllers.Focus()
+		if (c = nil) or (Containers.noCaret in c.opts) or (find.find = "") then
+			par.disabled := true 
+		else 
+			if c.HasSelection() then
+				par.label := replaceSelectionKey 
+			else 
+				par.label := replaceAllKey 
+			end  
+		end 
+	end ReplaceAllGuard
+	
+	proc ReplaceAll*(option: array of char) 
+	begin 
+		DoReplace(TextControllers.Focus(), replaceAll, option)
+	end ReplaceAll
+	
+	
+	proc SetNormalOrientation*
+	begin 
+		find.reverseOrientation := false
+		Dialog.Update(find)
+	end SetNormalOrientation
+	
+	proc SetReverseOrientation*
+	begin 
+		find.reverseOrientation := true
+		Dialog.Update(find)
+	end SetReverseOrientation
+	
+	proc InitFindDialog*
+	begin 
+		GetFindPattern(TextControllers.Focus())
+	end InitFindDialog
+	
+	
+	// ruler dialog
+	
+	proc InitRulerDialog*
+		var 
+			v: Views.View
+			ra: TextRulers.Attributes
+	begin 
+		v := Controllers.FocusView()
+		if v # nil then
+			with v: TextRulers.Ruler do 
+				ra := v.style.attr
+				ruler.pageBreaks.notInside := TextRulers.noBreakInside in ra.opts
+				ruler.pageBreaks.joinPara := TextRulers.parJoin in ra.opts 
+			else  
+			end  
+		end 
+	end InitRulerDialog
+	
+	proc SetRuler*
+		var 
+			v: Views.View
+			p: TextRulers.Prop
+	begin 
+		v := Controllers.FocusView()
+		if v # nil then
+			with v: TextRulers.Ruler do 
+				new(p)
+				p.valid := {TextRulers.opts}
+				p.opts.mask := {TextRulers.noBreakInside, TextRulers.parJoin}
+				p.opts.val_ := {}
+				if ruler.pageBreaks.notInside then
+					incl(p.opts.val_, TextRulers.noBreakInside) 
+				end 
+				if ruler.pageBreaks.joinPara then
+					incl(p.opts.val_, TextRulers.parJoin) 
+				end 
+				Properties.EmitProp(nil, p) 
+			else  
+			end  
+		end 
+	end SetRuler
+	
+	
+	// tabulator dialog
+	
+	proc InitTabDialog
+		var 
+			ra: TextRulers.Attributes
+			type_: set
+			unit: integer
+	begin 
+		if (tabulator.ruler # nil) & (tabulator.tabIndex >= 0) then
+			ra := tabulator.ruler.style.attr
+			type_ := ra.tabs.tab[tabulator.tabIndex].type_
+			if TextRulers.rightTab in type_ then
+				if TextRulers.centerTab in type_ then
+					tabulator.style := 3 
+				else 
+					tabulator.style := 2 
+				end  
+			elsif TextRulers.centerTab in type_ then 
+				tabulator.style := 1 
+			else 
+				tabulator.style := 0 
+			end 
+			tabulator.radixChar[0] := TextRulers.GetRadixChar(ra, tabulator.tabIndex)
+			tabulator.radixChar[1] := 0x
+			if Dialog.metricSystem then
+				unit := Ports.mm * 10 
+			else 
+				unit := Ports.inch 
+			end 
+			Strings.RealToStringForm(ra.tabs.tab[tabulator.tabIndex].stop / unit, 6, 4, -2, " ", tabulator.pos)
+			if TextRulers.defaultRadixChar = "," then
+				tabulator.pos[len(tabulator.pos) - 3] := TextRulers.defaultRadixChar 
+			end 
+			tabulator.verticalBar := TextRulers.barTab in type_ 
+		end 
+		Dialog.Update(tabulator)
+	end InitTabDialog
+	
+	proc CloseTab*
+	begin 
+		tabulator.ruler := nil // avoid pending references to the text
+	end CloseTab
+	
+	proc SetTab*
+		var 
+			p: TextRulers.Prop
+			ra, a: TextRulers.Attributes
+			pos: array 7 of char
+			val_: real
+			unit, res, i, j, stop: integer
+			ch: char
+			hasDot: boolean
+	begin 
+		if (tabulator.ruler # nil) & (tabulator.tabIndex < tabulator.ruler.style.attr.tabs.len_) then
+			ra := tabulator.ruler.style.attr
+			p := ra.Prop()(TextRulers.Prop)
+			p.valid := {TextRulers.tabs}
+			// set alignment type
+			excl(p.tabs.tab[tabulator.tabIndex].type_, TextRulers.rightTab)
+			excl(p.tabs.tab[tabulator.tabIndex].type_, TextRulers.centerTab)
+			case tabulator.style of 
+				| 0:   // left
+				| 1:  // center
+					incl(p.tabs.tab[tabulator.tabIndex].type_, TextRulers.centerTab) 
+				| 2:  // right
+					incl(p.tabs.tab[tabulator.tabIndex].type_, TextRulers.rightTab) 
+				| 3:  // decimal
+					incl(p.tabs.tab[tabulator.tabIndex].type_, TextRulers.rightTab)
+					incl(p.tabs.tab[tabulator.tabIndex].type_, TextRulers.centerTab)
+					if tabulator.radixChar[0] = 0x then
+						tabulator.radixChar[0] := TextRulers.defaultRadixChar
+						Dialog.Update(tabulator) 
+					end 
+					TextRulers.SetRadixCharProp(p, tabulator.tabIndex, tabulator.radixChar[0]) 
+			end 
+			// set tab stop position
+			j := 0
+			hasDot := false
+			for i:= 0 to len(tabulator.pos) - 1 do 
+				ch := tabulator.pos[i]
+				if Strings.IsNumeric(ch) then
+					pos[j] := ch
+					inc(j) 
+				elsif ((ch = ",") or (ch = ".")) & ~hasDot then 
+					pos[j] := "."
+					inc(j)
+					hasDot := true 
+				end  
+			end 
+			pos[j] := 0x
+			Strings.StringToReal(pos, val_, res)
+			assert(res = 0)
+			if Dialog.metricSystem then
+				unit := Ports.mm * 10 
+			else 
+				unit := Ports.inch 
+			end 
+			val_ := min(val_ * unit + 0.5, Ports.mm * (1000 * 10))
+			stop := short(entier(val_))
+			if ((tabulator.tabIndex = 0) or (p.tabs.tab[tabulator.tabIndex - 1].stop < stop)) 
+				& ((tabulator.tabIndex + 1 >= p.tabs.len_) or (stop < p.tabs.tab[tabulator.tabIndex + 1].stop)) then
+				p.tabs.tab[tabulator.tabIndex].stop := stop 
+			else 
+				Dialog.GetOK("#Text:TabErr1", "", "", "", {Dialog.ok}, res) 
+			end 
+			// set barTab option
+			if tabulator.verticalBar then
+				incl(p.tabs.tab[tabulator.tabIndex].type_, TextRulers.barTab) 
+			else 
+				excl(p.tabs.tab[tabulator.tabIndex].type_, TextRulers.barTab) 
+			end 
+			a := TextRulers.ModifiedAttr(ra, p)
+			tabulator.ruler.style.SetAttr(a) 
+		end 
+	end SetTab
+	
+	proc TabGuard*(var par: Dialog.Par) 
+	begin 
+		par.disabled := (tabulator.ruler = nil) 
+			or (tabulator.tabIndex < 0) or (tabulator.tabIndex >= tabulator.ruler.style.attr.tabs.len_)
+	end TabGuard
+	
+	proc NextTabGuard*(var par: Dialog.Par) 
+	begin 
+		TabGuard(par)
+		par.disabled := par.disabled or (tabulator.tabIndex + 1 >= tabulator.ruler.style.attr.tabs.len_)
+	end NextTabGuard
+	
+	proc NextTab*
+	begin 
+		if (tabulator.ruler # nil) & (tabulator.tabIndex + 1 < tabulator.ruler.style.attr.tabs.len_) then
+			inc(tabulator.tabIndex)
+			InitTabDialog 
+		end 
+	end NextTab
+	
+	proc PrevTabGuard*(var par: Dialog.Par) 
+	begin 
+		TabGuard(par)
+		par.disabled := par.disabled or (tabulator.tabIndex = 0)
+	end PrevTabGuard
+	
+	proc PrevTab*
+	begin 
+		if (tabulator.ruler # nil) & (tabulator.tabIndex - 1 >= 0) & (tabulator.ruler.style.attr.tabs.len_ > 0) then
+			dec(tabulator.tabIndex)
+			InitTabDialog 
+		end 
+	end PrevTab
+	
+	proc DecTabGuard*(var par: Dialog.Par) 
+	begin 
+		TabGuard(par)
+		par.disabled := par.disabled or (tabulator.style # 3)
+	end DecTabGuard
+	
+	proc TabUnitGuard*(var par: Dialog.Par) 
+	begin 
+		TabGuard(par)
+		if Dialog.metricSystem then
+			par.label := "cm" 
+		else 
+			par.label := "inch" 
+		end 
+	end TabUnitGuard
+	
+	proc TabNumGuard*(var par: Dialog.Par) 
+		var 
+			numStr: array 3 of char
+	begin 
+		TabGuard(par)
+		if par.disabled then
+			numStr := "" 
+		else 
+			Strings.IntToString(tabulator.tabIndex + 1, numStr) 
+		end 
+		Dialog.MapParamString("#Text:TabNum", numStr, "", "", par.label)
+	end TabNumGuard
+	
+	proc (this: TabDialogHook) Open(ruler: TextRulers.Ruler; tabIndex: integer) 
+		var 
+			v: Views.View
+	begin 
+		tabulator.ruler := ruler
+		tabulator.tabIndex := tabIndex
+		InitTabDialog
+		StdApi.OpenToolDialog('Text/Rsrc/Tab', '#Text:TabTitle', v)
+	end Open
+	
+	proc (this: TabDialogHook) Init(ruler: TextRulers.Ruler; tabIndex: integer) 
+	begin 
+		if tabulator.ruler # nil then // dialog open
+			tabulator.ruler := ruler
+			tabulator.tabIndex := tabIndex
+			InitTabDialog 
+		end 
+	end Init
+	
+	proc (this: TabDialogHook) Refresh(style: TextRulers.Style) 
+	begin 
+		if (tabulator.ruler # nil) & (tabulator.ruler.style = style) then // dialog open and displaying changed ruler
+			InitTabDialog 
+		end 
+	end Refresh
+	
+	
+	// standard text-related guards
+	
+	proc FocusGuard*(var par: Dialog.Par) 
+	// in non-TextView menus; otherwise implied by menu type
+	begin 
+		if TextViews.Focus() = nil then
+			par.disabled := true 
+		end 
+	end FocusGuard
+	
+	proc EditGuard*(var par: Dialog.Par) 
+		// in non-TextView menus; otherwise use "StdCmds.EditGuard"
+		var 
+			c: TextControllers.Controller
+	begin 
+		c := TextControllers.Focus()
+		if (c = nil) or (Containers.noCaret in c.opts) then
+			par.disabled := true 
+		end 
+	end EditGuard
+	
+	proc SelectionGuard*(var par: Dialog.Par) 
+		// in non-TextView menus; otherwise use "StdCmds.SelectionGuard"
+		var 
+			c: TextControllers.Controller
+	begin 
+		c := TextControllers.Focus()
+		if (c = nil) or ~c.HasSelection() then
+			par.disabled := true 
+		end 
+	end SelectionGuard
+	
+	proc EditSelectionGuard*(var par: Dialog.Par) 
+		// in non-TextView menus; otherwise use "StdCmds.SelectionGuard"
+		var 
+			c: TextControllers.Controller
+	begin 
+		c := TextControllers.Focus()
+		if (c = nil) or (Containers.noCaret in c.opts) or ~c.HasSelection() then
+			par.disabled := true 
+		end 
+	end EditSelectionGuard
+	
+	proc SingletonGuard*(var par: Dialog.Par) 
+		// in non-TextView menus; otherwise use "StdCmds.SingletonGuard"
+		var 
+			c: TextControllers.Controller
+	begin 
+		c := TextControllers.Focus()
+		if (c = nil) or (c.Singleton() = nil) then
+			par.disabled := true 
+		end 
+	end SingletonGuard
+	
+	proc NewTabDialogHook(): TabDialogHook 
+		var 
+			h: TabDialogHook
+	begin 
+		new(h)
+		return h
+	end NewTabDialogHook
+
+begin
+	TextRulers.tabDialogHook := NewTabDialogHook()
+(* CLOSE
+	TextRulers.tabDialogHook := nil *) 
+end TextCmds

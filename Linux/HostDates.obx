@@ -1,0 +1,122 @@
+module HostDates
+	
+	
+	import 
+		SYSTEM, Kernel, LinLibc, Dates
+	
+	// Dates Hook
+	
+	type 
+		DatesHook = pointer to record (Dates.Hook) end 
+	
+	(* Some conversions are needed between the Linux and the BlackBox representations of  dates. The following
+	   table shows the differences:
+	   
+	   Linux	BlackBox
+	   year	from year 1900	from year 0000
+	   month	range 0-11	range 1-12
+	   weekday	0:sunday - 6:satruday	0:monday - 6:sunday *)
+	
+	
+	
+	
+	proc (h: DatesHook) DateToString(d: Dates.Date; format: integer; var str: array of char) 
+		var 
+			tm: LinLibc.tmDesc
+			sstr: array 64 of char
+			res: LinLibc.size_t
+			res2: integer
+	begin 
+		assert(format in {Dates.short_, Dates.abbreviated, Dates.long_, Dates.plainAbbreviated, Dates.plainLong}, 20)
+		tm.tm_year := d.year - 1900 // Linux counts years from 1900 but BlackBox from 0000
+		tm.tm_mon := d.month - 1
+		tm.tm_mday := d.day
+		tm.tm_wday := (Dates.DayOfWeek(d) + 1) mod 7
+		if format = Dates.short_ then
+			res := LinLibc.strftime(sstr, len(sstr), "%x", SYSTEM.VAL(LinLibc.tm, SYSTEM.ADR(tm))) 
+		elsif format = Dates.abbreviated then 
+			res := LinLibc.strftime(sstr, len(sstr), "%a, %b %d, %Y", SYSTEM.VAL(LinLibc.tm, SYSTEM.ADR(tm))) 
+		elsif format = Dates.long_ then 
+			res := LinLibc.strftime(sstr, len(sstr), "%A, %B %d, %Y", SYSTEM.VAL(LinLibc.tm, SYSTEM.ADR(tm))) 
+		elsif format = Dates.plainAbbreviated then 
+			res := LinLibc.strftime(sstr, len(sstr), "%b %d, %Y", SYSTEM.VAL(LinLibc.tm, SYSTEM.ADR(tm))) 
+		else  // format = Dates.plainLong
+			res := LinLibc.strftime(sstr, len(sstr), "%B %d, %Y", SYSTEM.VAL(LinLibc.tm, SYSTEM.ADR(tm))) 
+		end 
+		if res > 0 then
+			Kernel.Utf8ToString(sstr, str, res2) 
+		else 
+			str := "invalid date" 
+		end 
+	end DateToString
+	
+	proc (h: DatesHook) GetTime(var d: Dates.Date; var t: Dates.Time) 
+		var 
+			time: LinLibc.time_t
+			tm: LinLibc.tm
+	begin 
+		time := LinLibc.time(nil)
+		tm := LinLibc.localtime(time)
+		d.year := tm.tm_year + 1900 // Linux counts years from 1900 but BlackBox from 0000
+		d.month := tm.tm_mon + 1
+		d.day := tm.tm_mday
+		t.hour := tm.tm_hour
+		t.minute := tm.tm_min
+		t.second := tm.tm_sec
+	end GetTime
+	
+	proc (h: DatesHook) GetUTCBias(var bias: integer) 
+		var 
+			time: LinLibc.time_t
+			tm: LinLibc.tm
+	begin 
+		time := LinLibc.time(nil)
+		tm := LinLibc.localtime(time) // call to localtime needed to make sure that timezone is set
+		bias := -tm.tm_gmtoff div 60
+	end GetUTCBias
+	
+	proc (h: DatesHook) GetUTCTime(var d: Dates.Date; var t: Dates.Time) 
+		var 
+			time: LinLibc.time_t
+			tm: LinLibc.tm
+	begin 
+		time := LinLibc.time(nil)
+		tm := LinLibc.gmtime(time)
+		d.year := tm.tm_year + 1900 // Linux counts years from 1900 but BlackBox from 0000
+		d.month := tm.tm_mon + 1
+		d.day := tm.tm_mday
+		t.hour := tm.tm_hour
+		t.minute := tm.tm_min
+		t.second := tm.tm_sec
+	end GetUTCTime
+	
+	proc (h: DatesHook) TimeToString(t: Dates.Time; var str: array of char) 
+		var 
+			tm: LinLibc.tmDesc
+			sstr: array 64 of char
+			res: LinLibc.size_t
+			res2: integer
+	begin 
+		tm.tm_hour := t.hour
+		tm.tm_min := t.minute
+		tm.tm_sec := t.second
+		res := LinLibc.strftime(sstr, len(sstr), "%X", SYSTEM.VAL(LinLibc.tm, SYSTEM.ADR(tm)))
+		if res > 0 then
+			Kernel.Utf8ToString(sstr, str, res2) 
+		else 
+			str := "invalid time" 
+		end 
+	end TimeToString
+	
+	
+	proc Init
+		var 
+			datesHook: DatesHook
+	begin 
+		new(datesHook)
+		Dates.SetHook(datesHook)
+	end Init
+
+begin
+	Init
+end HostDates

@@ -1,0 +1,87 @@
+module Printers
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20070327, bh, SetOrientation added
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Ports
+	
+	type 
+		Printer* = pointer to (* abstract *) record 
+				l, t, r, b: integer // paper rect relative to port coords
+				res*: integer
+				port: Ports.Port 
+			end 
+		
+		Directory* = pointer to (* abstract *) record end 
+	
+	var 
+		dir-, stdDir-: Directory
+	
+	
+	proc (p: Printer) OpenJob*(var copies: integer; name: array of char)  end // new abstract
+	proc (p: Printer) CloseJob*()  end // new abstract
+	proc (p: Printer) OpenPage*()  end // new abstract
+	proc (p: Printer) ClosePage*()  end // new abstract
+	
+	proc (p: Printer) SetOrientation*(landscape: boolean)  end // new empty
+	
+	proc (p: Printer) InitPort*(port: Ports.Port)  // new
+	begin 
+		assert((p.port = nil) or (p.port = port), 20)
+		p.port := port
+	end InitPort
+	
+	proc (p: Printer) ThisPort*(): Ports.Port  // new
+	begin 
+		return p.port
+	end ThisPort
+	
+	proc (p: Printer) GetRect*(var l, t, r, b: integer)  // new
+	begin 
+		l := p.l
+		t := p.t
+		r := p.r
+		b := p.b
+	end GetRect
+	
+	proc (p: Printer) InitPrinter*(l, t, r, b: integer)  // new
+	begin 
+		assert(l <= r, 20)
+		assert(t <= b, 21)
+		p.l := l
+		p.t := t
+		p.r := r
+		p.b := b
+		p.res := 0
+	end InitPrinter
+	
+	
+	proc (d: Directory) Default*(): Printer  end // new abstract
+	proc (d: Directory) Current*(): Printer  end // new abstract
+	proc (d: Directory) Available*(): boolean  end // new abstract
+	
+	
+	proc SetDir*(d: Directory) 
+	begin 
+		assert(d # nil, 20)
+		dir := d
+		if stdDir = nil then
+			stdDir := d 
+		end 
+	end SetDir
+
+end Printers

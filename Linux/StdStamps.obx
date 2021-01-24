@@ -1,0 +1,697 @@
+module StdStamps
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20150617, center #62, Unicode and Internationalization support for StdStamps
+	   - 20151015, center #63, editing of old comments added plus some cleanups
+	   - 20160321, center #110, use mapped strings for labels in all forms
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		SYSTEM,  // SYSTEM.ROT only, for fingerprint calculation
+		Dialog, Strings, Dates, StdCmds, 
+		Ports, Models, Stores, Containers, Properties, Views, Controllers, Fonts, 
+		TextModels, TextSetters, TextMappers, TextViews, TextRulers
+	
+	const 
+		setCommentKey = "#Std:Set Comment"
+		maxHistoryEntries = 25 // prepared for future expansion
+		minVersion = 0
+		origStampVersion = 0
+		noSnrVersion = 1
+		snrVersion = 2
+		wideCommentVersion = 3
+		maxVersion = 3
+	
+	type 
+		History = pointer to array of record 
+				fprint, snr: integer // fingerprint, sequence number
+				date: integer // days since 1/1/1
+				time: integer // min + 64 * hour
+				comment: pointer to array of char  // nil if no comment
+			end 
+		
+		Comment* = array 64 of char
+		
+		StdView = pointer to record (Views.View) 
+				// --snr: LONGINT;   for version 1
+				nentries: integer // number of entries in history
+				history: History // newest entry in history[0]
+				comment0: Comment  // comment for new history entry or empty
+			end 
+		
+		SetCmtOp = pointer to record (Stores.Operation) 
+				stamp: StdView
+				age: integer
+				oldcomment: pointer to array of char 
+			end 
+	
+	var 
+		comment*: record 
+				stamp: StdView
+				snrList*: Dialog.List
+				date-: Dates.Date
+				s*: Comment 
+			end 
+	
+	proc (op: SetCmtOp) Do
+		var 
+			temp: pointer to array of char
+	begin 
+		if op.age = 0 then
+			new(temp, len(op.stamp.comment0) + 1)
+			temp^ := op.stamp.comment0
+			op.stamp.comment0 := op.oldcomment^ 
+		else 
+			temp := op.stamp.history[op.age - 1].comment
+			op.stamp.history[op.age - 1].comment := op.oldcomment 
+		end 
+		op.oldcomment := temp
+	end Do
+	
+	proc FontContext(v: StdView): Fonts.Font 
+		var 
+			c: Models.Context
+	begin 
+		c := v.context
+		if (c # nil) & (c is TextModels.Context) then
+			return c(TextModels.Context).Attr().font 
+		else 
+			return Fonts.dir.Default() 
+		end 
+	end FontContext
+	
+	proc CalcFP(t: TextModels.Model): integer 
+		const 
+			sglQuote = "'"
+			dblQuote = '"'
+		var 
+			fp: integer
+			rd: TextModels.Reader
+			ch, quoteChar: char
+	begin 
+		quoteChar := 0x
+		fp := 0
+		rd := t.NewReader(nil)
+		rd.ReadChar(ch)
+		while ~rd.eot do 
+			if ch = quoteChar then
+				quoteChar := 0x 
+			elsif (quoteChar = 0x) & ((ch = dblQuote) or (ch = sglQuote)) then 
+				quoteChar := ch 
+			end 
+			if (quoteChar = 0x) & (21x <= ch) & (ch # 8bx) & (ch # 8fx) & (ch # 0a0x)  // not in string literal
+				or (quoteChar # 0x) & (20x <= ch)  // within string literal
+			then
+				fp := SYSTEM.ROT(fp, 1) + 13 * ord(ch) 
+			end 
+			rd.ReadChar(ch) 
+		end 
+		return fp
+	end CalcFP
+	
+	proc FillComment(v: StdView; age: integer; rebuild: boolean) 
+		var 
+			i: integer
+			s: array 10 of char
+	begin 
+		comment.stamp := v
+		if rebuild then
+			comment.snrList.SetLen(v.nentries + 1)
+			comment.snrList.SetItem(0, "#Std:new")
+			for i:= 1 to v.nentries do 
+				Strings.IntToString(v.history[i - 1].snr, s)
+				comment.snrList.SetItem(i, s) 
+			end 
+			comment.snrList.index := age
+			Dialog.UpdateList(comment.snrList) 
+		end 
+		if age = 0 then
+			Dates.GetDate(comment.date)
+			comment.s := v.comment0 
+		else 
+			dec(age)
+			Dates.DayToDate(v.history[age].date, comment.date)
+			if v.history[age].comment = nil then
+				comment.s := '' 
+			else 
+				comment.s := v.history[age].comment 
+			end  
+		end 
+		Dialog.Update(comment)
+	end FillComment
+	
+	// Rochus: removed illegal character
+	
+	proc Update(v: StdView; forcenew: boolean) 
+		var 
+			fp, ndays, i: integer
+			d: Dates.Date
+			t: Dates.Time
+	begin 
+		if (v.context # nil) & (v.context is TextModels.Context) then
+			fp := CalcFP(v.context(TextModels.Context).ThisModel())
+			if (fp # v.history[0].fprint) or forcenew or (v.comment0 # "") then
+				Dates.GetDate(d)
+				Dates.GetTime(t)
+				ndays := Dates.Day(d)
+				if (ndays # v.history[0].date) or forcenew then
+					if v.nentries = len(v.history) then // find oldest uncommented entry
+						i := len(v.history) - 1
+						while (i > 0) & (v.history[i].comment # nil) & (v.history[i].comment[0] # 0x) do 
+							dec(i) 
+						end 
+						if i = 0 then
+							i := len(v.history) - 1 
+						end  
+					else 
+						i := v.nentries
+						inc(v.nentries) 
+					end 
+					// move down entries in history list
+					while i > 0 do 
+						v.history[i] := v.history[i - 1]
+						dec(i) 
+					end 
+					v.history[0].comment := nil 
+				elsif v.nentries = 0 then 
+					v.nentries := 1 
+				end 
+				inc(v.history[0].snr)
+				v.history[0].fprint := fp
+				v.history[0].date := ndays
+				v.history[0].time := t.minute + t.hour * 64
+				if v.comment0 # "" then
+					new(v.history[0].comment, len(v.comment0) + 1)
+					v.history[0].comment^ := v.comment0
+					v.comment0 := "" 
+				end 
+				Views.Update(v, Views.keepFrames)
+				if comment.stamp = v then
+					FillComment(v, 1, true) 
+				end  
+			end  
+		end 
+	end Update
+	
+	proc HasWideChars(in s: array of char): boolean 
+		var 
+			i: integer
+			ch: char
+	begin 
+		i := 0
+		ch := s[0]
+		while (ch # 0x) & (ch <= 0ffx) do 
+			inc(i)
+			ch := s[i] 
+		end 
+		return ch # 0x
+	end HasWideChars
+	
+	proc (v: StdView) Externalize(var wr: Stores.Writer) 
+		var 
+			i, len_: integer
+			version: integer
+	begin 
+		Update(v, v.comment0 # "")
+		v.Externalize^(wr)
+		i := 0
+		while (i < v.nentries) & ~((v.history[i].comment # nil) & HasWideChars(v.history[i].comment)) do 
+			inc(i) 
+		end 
+		if i < v.nentries then
+			version := wideCommentVersion 
+		else 
+			version := snrVersion 
+		end 
+		wr.WriteVersion(version)
+		// --wr.WriteLInt(v.snr);
+		wr.WriteXInt(v.nentries)
+		for i:= 0 to v.nentries - 1 do 
+			wr.WriteInt(v.history[i].fprint)
+			wr.WriteInt(v.history[i].snr)
+			wr.WriteInt(v.history[i].date)
+			wr.WriteXInt(v.history[i].time)
+			if (v.history[i].comment # nil) & (len(v.history[i].comment) > 0) then
+				len_ := len(v.history[i].comment)
+				wr.WriteXInt(len_)
+				if version >= wideCommentVersion then
+					wr.WriteString(v.history[i].comment) 
+				else 
+					wr.WriteXString(v.history[i].comment) 
+				end  
+			else 
+				wr.WriteXInt(0) 
+			end  
+		end 
+	end Externalize
+	
+	proc (v: StdView) Internalize(var rd: Stores.Reader) 
+		var 
+			version: integer
+			format: byte
+			k, purge, i, len_: integer
+			d: Dates.Date
+			t: Dates.Time
+	begin 
+		v.Internalize^(rd)
+		if ~rd.cancelled then
+			rd.ReadVersion(minVersion, maxVersion, version)
+			if ~rd.cancelled then
+				if version = origStampVersion then // deal with old StdStamp format
+					// would like to calculate fingerprint, but hosting model not available at this time
+					new(v.history, maxHistoryEntries)
+					v.history[0].fprint := 0
+					v.history[0].snr := 1
+					v.nentries := 1
+					rd.ReadXInt(d.year)
+					rd.ReadXInt(d.month)
+					rd.ReadXInt(d.day)
+					rd.ReadXInt(t.hour)
+					rd.ReadXInt(t.minute)
+					rd.ReadXInt(t.second)
+					rd.ReadByte(format) // format not used anymore
+					v.history[0].date := Dates.Day(d)
+					v.history[0].time := t.minute + t.hour * 64 
+				else 
+					if version = noSnrVersion then
+						new(v.history, maxHistoryEntries)
+						rd.ReadInt(v.history[0].snr) 
+					end 
+					rd.ReadXInt(v.nentries)
+					if version > noSnrVersion then
+						new(v.history, max(v.nentries, maxHistoryEntries)) 
+					end 
+					purge := 0
+					for k:= 0 to v.nentries - 1 do 
+						i := k - purge
+						rd.ReadInt(v.history[i].fprint)
+						if version > noSnrVersion then
+							rd.ReadInt(v.history[i].snr) 
+						elsif (* (version = noSnrVersion) & *)i > 0 then 
+							v.history[i].snr := v.history[i - 1].snr - 1 
+						end 
+						rd.ReadInt(v.history[i].date)
+						rd.ReadXInt(v.history[i].time)
+						rd.ReadXInt(len_)
+						if len_ > 0 then
+							new(v.history[i].comment, len_ + 1)
+							if version >= wideCommentVersion then
+								rd.ReadString(v.history[i].comment) 
+							else 
+								rd.ReadXString(v.history[i].comment) 
+							end  
+						else 
+							v.history[i].comment := nil 
+						end 
+						if (i > 0) & (v.history[i].date = v.history[i - 1].date) then
+							// purge uncommented entry if another entry for the same date exists
+							if v.history[i - 1].comment = nil then
+								v.history[i - 1].comment := v.history[i].comment
+								inc(purge) 
+							elsif v.history[i].comment = nil then 
+								inc(purge) 
+							end  
+						end  
+					end 
+					dec(v.nentries, purge)
+					if version < wideCommentVersion then // cleanup
+						i := v.nentries - 1
+						while (i > 0) & (v.history[i].date = 0) do 
+							dec(i)
+							dec(v.nentries) 
+						end  
+					end  
+				end  
+			end  
+		end 
+	end Internalize
+	
+	proc (v: StdView) CopyFromSimpleView(source: Views.View) 
+		var 
+			i: integer
+	begin 
+		// v.CopyFrom^(source);
+		with source: StdView do 
+			// --v.snr := source.snr;
+			v.nentries := source.nentries
+			v.comment0 := source.comment0
+			new(v.history, len(source.history))
+			for i:= 0 to max(v.nentries - 1, 1) do 
+				v.history[i] := source.history[i]
+				if source.history[i].comment # nil then
+					new(v.history[i].comment, len(source.history[i].comment) + 1)
+					v.history[i].comment^ := source.history[i].comment^ 
+				end  
+			end  
+		end 
+	end CopyFromSimpleView
+	
+	proc (v: StdView) Restore(f: Views.Frame; l, t, r, b: integer) 
+		var 
+			a: TextModels.Attributes
+			color: Ports.Color
+			c: Models.Context
+			font: Fonts.Font
+			asc, dsc, fw: integer
+			d: Dates.Date
+			date: array 32 of char
+			seq: array 8 of char
+	begin 
+		c := v.context
+		if (c # nil) & (c is TextModels.Context) then
+			a := v.context(TextModels.Context).Attr()
+			font := a.font
+			color := a.color 
+		else 
+			font := Fonts.dir.Default()
+			color := Ports.black 
+		end 
+		font.GetBounds(asc, dsc, fw)
+		f.DrawLine(f.l, asc + f.dot, f.r, asc + f.dot, 1, Ports.grey25)
+		Dates.DayToDate(v.history[0].date, d)
+		Dates.DateToString(d, Dates.plainAbbreviated, date)
+		Strings.IntToStringForm(v.history[0].snr, Strings.decimal, 4, "0", false, seq)
+		f.DrawString(0, asc, color, date + " (" + seq + ")", font)
+	end Restore
+	
+	proc SizePref(v: StdView; var p: Properties.SizePref) 
+		var 
+			font: Fonts.Font
+			asc, dsc, w: integer
+			d: Dates.Date
+			s: array 64 of char
+	begin 
+		font := FontContext(v)
+		font.GetBounds(asc, dsc, w)
+		d.day := 28
+		d.month := 1
+		d.year := 2222
+		p.w := 0
+		while d.month <= 12 do 
+			Dates.DateToString(d, Dates.plainAbbreviated, s)
+			s := s + " (0000)"
+			w := font.StringWidth(s)
+			if w > p.w then
+				p.w := w 
+			end 
+			inc(d.month) 
+		end 
+		p.h := asc + dsc
+	end SizePref
+	
+	proc (v: StdView) HandlePropMsg(var msg: Properties.Message) 
+		var 
+			font: Fonts.Font
+			asc, w: integer
+	begin 
+		with msg: Properties.Preference do 
+			with msg: Properties.SizePref do 
+				SizePref(v, msg) 
+			| msg: Properties.ResizePref do 
+				msg.fixed := true 
+			| msg: Properties.FocusPref do 
+				msg.hotFocus := true 
+			| msg: TextSetters.Pref do 
+				font := FontContext(v)
+				font.GetBounds(asc, msg.dsc, w) 
+			else  
+			end  
+		else  
+		end 
+	end HandlePropMsg
+	
+	proc NewRuler(): TextRulers.Ruler 
+		const 
+			mm = Ports.mm
+		var 
+			r: TextRulers.Ruler
+	begin 
+		r := TextRulers.dir.New(nil)
+		TextRulers.SetRight(r, 140 * mm)
+		TextRulers.AddTab(r, 15 * mm)
+		TextRulers.AddTab(r, 35 * mm)
+		TextRulers.AddTab(r, 75 * mm)
+		return r
+	end NewRuler
+	
+	proc ShowHistory(v: StdView) 
+		var 
+			text: TextModels.Model
+			f: TextMappers.Formatter
+			i: integer
+			d: Dates.Date
+			s: array 64 of char
+			tv: TextViews.View
+			attr: TextModels.Attributes
+	begin 
+		text := TextModels.dir.New()
+		f.ConnectTo(text)
+		attr := f.rider.attr
+		f.rider.SetAttr(TextModels.NewStyle(attr, {Fonts.italic}))
+		Dialog.MapString("#Std:seq nr.", s)
+		f.WriteString(s)
+		f.WriteTab
+		Dialog.MapString("#Std:fingerprint", s)
+		f.WriteString(s)
+		f.WriteTab
+		Dialog.MapString("#Std:date and time", s)
+		f.WriteString(s)
+		f.WriteTab
+		Dialog.MapString("#Std:comment", s)
+		f.WriteString(s)
+		f.WriteLn
+		f.rider.SetAttr(attr)
+		f.WriteLn
+		// --n := v.snr;
+		if v.comment0 # "" then
+			Dialog.MapString("#Std:new", s)
+			f.WriteString(s)
+			f.WriteTab
+			f.WriteTab
+			Dates.GetDate(d)
+			Dates.DateToString(d, Dates.plainAbbreviated, s)
+			f.WriteString(s)
+			f.WriteTab
+			f.WriteString(v.comment0)
+			f.WriteLn 
+		end 
+		for i:= 0 to v.nentries - 1 do 
+			f.WriteIntForm(v.history[i].snr, 10, 4, "0", false)
+			// --DEC(n);
+			f.WriteTab
+			f.WriteIntForm(v.history[i].fprint, TextMappers.hexadecimal, 8, "0", false)
+			f.WriteTab
+			Dates.DayToDate(v.history[i].date, d)
+			Dates.DateToString(d, Dates.plainAbbreviated, s)
+			f.WriteString(s)
+			f.WriteString("  ")
+			f.WriteIntForm(v.history[i].time div 64, 10, 2, "0", false)
+			f.WriteString(":")
+			f.WriteIntForm(v.history[i].time mod 64, 10, 2, "0", false)
+			if v.history[i].comment # nil then
+				f.WriteTab
+				f.WriteString(v.history[i].comment^) 
+			end 
+			f.WriteLn 
+		end 
+		tv := TextViews.dir.New(text)
+		tv.SetDefaults(NewRuler(), TextViews.dir.defAttr)
+		tv.ThisController().SetOpts({Containers.noFocus, Containers.noCaret})
+		Views.OpenAux(tv, "History")
+	end ShowHistory
+	
+	proc Track(v: StdView; f: Views.Frame; x, y: integer; buttons: set) 
+		var 
+			c: Models.Context
+			w, h: integer
+			isDown, in_, in0: boolean
+			m: set
+			d: Dates.Date
+			today, age: integer
+	begin 
+		c := v.context
+		c.GetSize(w, h)
+		in0 := false
+		in_ := true
+		repeat 
+			if in_ # in0 then
+				f.MarkRect(0, 0, w, h, Ports.fill, Ports.invert, Ports.show)
+				in0 := in_ 
+			end 
+			f.Input(x, y, m, isDown)
+			in_ := (0 <= x) & (x < w) & (0 <= y) & (y < h) 
+		until ~isDown 
+		if in0 then
+			f.MarkRect(0, 0, w, h, Ports.fill, Ports.invert, Ports.hide)
+			if Controllers.modify in m then
+				Dates.GetDate(d)
+				today := Dates.Day(d)
+				if (v.nentries = 0) or (v.history[0].date # today) or (v.comment0 # "") then
+					age := 0 
+				else 
+					age := 1 
+				end 
+				FillComment(v, age, true)
+				StdCmds.OpenToolDialog("Std/Rsrc/Stamps", "#Std:Comment") 
+			else 
+				ShowHistory(v) 
+			end  
+		end 
+	end Track
+	
+	proc (v: StdView) HandleCtrlMsg(
+		f: Views.Frame; var msg: Controllers.Message; var focus: Views.View) 
+	begin 
+		with msg: Controllers.TrackMsg do 
+			Track(v, f, msg.x, msg.y, msg.modifiers) 
+		| msg: Controllers.PollCursorMsg do 
+			msg.cursor := Ports.refCursor 
+		else  
+		end 
+	end HandleCtrlMsg
+	
+	proc GetActiveStamp(): StdView 
+		var 
+			context: Models.Context
+	begin 
+		if comment.stamp # nil then
+			context := comment.stamp.context
+			if context # nil then
+				if context.ThisModel() = TextViews.FocusText() then
+					return comment.stamp 
+				end  
+			end  
+		end 
+		return nil
+	end GetActiveStamp
+	
+	// ------------ programming interface: ----------------------
+	
+	proc GetFirstInText*(t: TextModels.Model): Views.View 
+		var 
+			r: TextModels.Reader
+			v: Views.View
+	begin 
+		if t # nil then
+			r := t.NewReader(nil)
+			repeat 
+				r.ReadView(v) 
+			until (v = nil) or (v is StdView) 
+			return v 
+		else 
+			return nil 
+		end 
+	end GetFirstInText
+	
+	proc IsStamp*(v: Views.View): boolean 
+	begin 
+		return v is StdView
+	end IsStamp
+	
+	proc GetInfo*(v: Views.View; var historylen: integer) 
+	begin 
+		assert(v is StdView, 20)
+		with v: StdView do 
+			historylen := v.nentries 
+		end 
+	end GetInfo
+	
+	proc GetData*(v: Views.View; entryno: integer
+		var snr, fprint: integer; var date: Dates.Date; var time: Dates.Time
+		var comment: array of char) 
+	begin 
+		assert(v is StdView, 20)
+		with v: StdView do 
+			assert(entryno < v.nentries, 21)
+			snr := v.history[entryno].snr
+			fprint := v.history[entryno].fprint
+			Dates.DayToDate(v.history[entryno].date, date)
+			time.hour := v.history[entryno].time div 64
+			time.minute := v.history[entryno].time mod 64
+			time.second := 0
+			if v.history[entryno].comment # nil then
+				comment := v.history[entryno].comment^ 
+			else 
+				comment := "" 
+			end  
+		end 
+	end GetData
+	
+	// * Insert new history entry with comment in v.
+	proc Stamp*(v: Views.View; in comment: array of char) 
+	begin 
+		assert(v is StdView, 20)
+		with v: StdView do 
+			Update(v, true)
+			new(v.history[0].comment, len(comment) + 1)
+			v.history[0].comment^ := comment 
+		end 
+	end Stamp
+	
+	proc New*(): Views.View 
+		var 
+			v: StdView
+			d: Dates.Date
+			t: Dates.Time
+	begin 
+		new(v)
+		new(v.history, maxHistoryEntries)
+		v.history[0].snr := 0
+		v.nentries := 0
+		v.history[0].fprint := -1
+		Dates.GetDate(d)
+		Dates.GetTime(t)
+		v.history[0].date := Dates.Day(d)
+		v.history[0].time := t.minute + t.hour * 64
+		return v
+	end New
+	
+	proc SetComment*
+		var 
+			v: StdView
+			op: SetCmtOp
+	begin 
+		v := GetActiveStamp()
+		if v # nil then
+			new(op)
+			op.stamp := v
+			op.age := comment.snrList.index
+			new(op.oldcomment, len(comment.s) + 1)
+			op.oldcomment^ := comment.s
+			Views.Do(v, setCommentKey, op) 
+		end 
+	end SetComment
+	
+	proc Deposit*
+	begin 
+		Views.Deposit(New())
+	end Deposit
+	
+	proc Guard*(var par: Dialog.Par) 
+	begin 
+		par.disabled := GetActiveStamp() = nil
+	end Guard
+	
+	proc SnrNotifier*(op, from, to_: integer) 
+		var 
+			v: StdView
+	begin 
+		if op = Dialog.changed then
+			FillComment(comment.stamp, comment.snrList.index, false) 
+		end 
+	end SnrNotifier
+
+end StdStamps

@@ -1,0 +1,291 @@
+definition Gtk2Gtk
+
+	import GLib:= Gtk2GLib, GObject:= Gtk2GObject, Gdk:= Gtk2Gdk
+	// deprecated
+	type 
+		ADDRESS = integer
+		String = carray of char
+		PString = unsafe pointer to carray of char
+		
+		gboolean = GLib.gboolean
+		gpointer = GLib.gpointer
+	
+	const 
+		// types for calls to gtk_window_new, these are the possible values of GtkWindowType
+		GTK_WINDOW_TOPLEVEL = 0
+		
+		// GTK_STATE_TYPE enum
+		GTK_STATE_NORMAL = 0
+		
+		// GtkAccelFlags enum
+		GTK_ACCEL_VISIBLE = 0 // should the accelerator appear in the widget's display?
+		
+		// Values for GtkWindowPosition
+		GTK_WIN_POS_CENTER = 1
+										
+	const 
+		GTK_DIALOG_MODAL = {0}
+		GTK_DIALOG_DESTROY_WITH_PARENT = {1}
+
+	const 
+		GTK_MESSAGE_INFO = 0
+		GTK_MESSAGE_WARNING = 1
+		GTK_MESSAGE_QUESTION = 2
+	
+	const 
+		GTK_BUTTONS_OK = 1
+		GTK_BUTTONS_YES_NO = 4
+		GTK_BUTTONS_OK_CANCEL = 5
+	
+	const 
+		GTK_RESPONSE_DELETE_EVENT = -4
+		GTK_RESPONSE_OK = -5
+		GTK_RESPONSE_CANCEL = -6
+		GTK_RESPONSE_YES = -8
+		GTK_RESPONSE_NO = -9
+	
+	type 
+		GtkMessageType = integer
+		GtkButtonsType = integer
+		GtkWindowPosition = integer
+		GtkAccelFlags = set
+		
+	type 
+		GtkColors = carray 4 of real
+	
+	type 
+		GtkSelectionData = cstruct 
+				selection, target, type_: Gdk.GdkAtom
+				data: PString
+				length: integer
+			end 
+		
+		GtkRequisition = cstruct width, height: integer end 
+		GtkAllocation = cstruct x, y, width, height: integer end 		
+		
+		GtkAccelGroup = pointer to record (GObject.GObject) 	end 
+				
+		GtkStyle = pointer to record (GObject.GObject) 
+				fg, bg, light, dark, mid, text, base, text_aa: array 5 of Gdk.GdkColor
+				black, white: Gdk.GdkColor
+				black_gc, white_gc: Gdk.GdkGC
+			end 
+		
+		GtkSignalFunc = ADDRESS // PROCEDURE [ccall] (object: GtkObject; ... ; func_data: Ptr);
+		GtkKeySnoopFunc = proc (widget: GtkWidget; event: Gdk.GdkEventKey; user_data: gpointer): integer
+		GtkCallbackMarshal = ADDRESS
+		GtkDestroyNotify = ADDRESS
+		
+		// Object hierarchy
+		GtkObject = pointer to (* limited *) record (GObject.GObject) 
+				flags: set  // GtkObject only uses 4 of these bits and GtkWidget uses the rest.
+			end 
+		
+		GtkAdjustment = pointer to (* limited *) record (GtkObject) 
+				lower, upper, value, 
+				page_size: real 
+			end 
+		
+		GtkWidget = pointer to (* limited *) record (GtkObject) 
+				style: GtkStyle
+				requisition: GtkRequisition
+				allocation: GtkAllocation
+				window: Gdk.GdkWindow
+				parent: GtkWidget 
+			end 
+		
+		GtkDrawingArea = pointer to (* limited *) record (GtkWidget) end 
+				
+		GtkRange = pointer to (* limited *) record (GtkWidget) end 
+		GtkScrollbar = pointer to (* limited *) record (GtkRange) end 
+		GtkHScrollbar = pointer to (* limited *) record (GtkScrollbar) end 
+		GtkVScrollbar = pointer to (* limited *) record (GtkScrollbar) end 
+		
+		GtkMisc = pointer to (* limited *) record (GtkWidget) end 
+		GtkLabel = pointer to (* limited *) record (GtkMisc) end 
+		
+		GtkContainer = pointer to (* limited *) record (GtkWidget) end 
+		
+		GtkFixed = pointer to (* limited *) record (GtkContainer) end 
+		
+		GtkBox = pointer to (* limited *) record (GtkContainer) end 
+		GtkVBox = pointer to (* limited *) record (GtkBox) end 
+		GtkColorSelection = pointer to (* limited *) record (GtkVBox) end 
+
+		GtkHBox = pointer to (* limited *) record (GtkBox) end 
+
+		GtkStatusbar = pointer to (* limited *) record (GtkHBox) end 
+		
+		GtkMenuShell = pointer to (* limited *) record (GtkContainer) end 
+		GtkMenu = pointer to (* limited *) record (GtkMenuShell) end 
+				
+		GtkItem = pointer to (* limited *) record (GtkBin) end 
+		
+		GtkMenuItem = pointer to (* limited *) record (GtkItem) end 
+		GtkCheckMenuItem = pointer to (* limited *) record (GtkMenuItem) 
+				cmi_flags: set 
+			// active : 1;   always_show_toggle : 1;   inconsistent : 1;   draw_as_radio : 1;
+			end 
+		GtkSeparatorMenuItem = pointer to (* limited *) record (GtkMenuItem) end 
+				
+		GtkWindow = pointer to (* limited *) record (GtkBin) end 
+		
+		GtkDialog = pointer to (* limited *) record (GtkWindow) end 
+		
+		GtkColorSelectionDialog = pointer to (* limited *) record (GtkDialog) 
+				colorsel: GtkColorSelection
+			end 
+		
+		GtkFontSelectionDialog = pointer to (* limited *) record (GtkDialog) end 
+			
+		GtkFileChooserDialog = pointer to (* limited *) record (GtkDialog) end 
+		
+		GtkMessageDialog = pointer to (* limited *) record (GtkDialog) end 
+			
+		GtkBin = pointer to (* limited *) record (GtkContainer) 
+				child: GtkWidget 
+			end 
+
+	// /gtk-2.0/gtk/gtkclipboard.h
+	type 
+		GtkClipboard = integer
+	
+		
+	proc gtk_grab_add(widget: GtkWidget) 
+	proc gtk_grab_get_current(): GtkWidget 
+	proc gtk_grab_remove(widget: GtkWidget) 
+	proc gtk_main() 
+	proc gtk_main_do_event(event: Gdk.GdkEvent) 
+	proc gtk_main_quit() 
+	
+	proc gtk_key_snooper_install(snooper: GtkKeySnoopFunc; user_data: gpointer): integer 	
+	
+	proc gtk_object_ref(object: GtkObject) 
+	proc gtk_range_get_adjustment(range: GtkRange): GtkAdjustment 
+	
+	proc gtk_selection_add_target(widget: GtkWidget; selection, target: Gdk.GdkAtom; info: integer) 
+	proc gtk_selection_convert(widget: GtkWidget; selection, target: Gdk.GdkAtom; time: integer): boolean 
+	proc gtk_selection_data_set(var selection_data: GtkSelectionData; type_: Gdk.GdkAtom; format: integer
+		in data: String; length: integer) 
+	proc gtk_selection_owner_set(widget: GtkWidget; selection: Gdk.GdkAtom; time: integer): integer 
+	
+	
+	proc gtk_signal_connect_full(object: GtkObject; name: PString; func: GtkSignalFunc
+		marshal: GtkCallbackMarshal
+		func_data: gpointer
+		destroy_func: GtkDestroyNotify; object_signal: integer; after: integer): integer 
+	
+	proc gtk_signal_emit_by_name(object: GtkObject; name: PString) 
+		
+	proc gtk_widget_queue_draw_area(widget: GtkWidget; x, y, width, height: integer) 
+	proc gtk_widget_destroy(object: GtkWidget) 
+			
+	proc gtk_widget_grab_focus(widget: GtkWidget) 
+	proc gtk_widget_hide(widget: GtkWidget) 
+
+	proc gtk_widget_ref(widget: GtkWidget) 
+
+	proc gtk_widget_set_events(widget: GtkWidget; events: Gdk.GdkEventMask) 
+
+	proc gtk_widget_set_sensitive(widget: GtkWidget; sensitive: gboolean) 
+	proc gtk_widget_set_usize(widget: GtkWidget; width, height: integer) 
+	proc gtk_widget_show(widget: GtkWidget) 
+	proc gtk_widget_show_all(widget: GtkWidget) 
+	
+	proc gtk_widget_size_request(widget: GtkWidget; var requisition: GtkRequisition) 	
+	proc gtk_widget_unref(widget: GtkWidget) 
+	proc gtk_widget_add_accelerator(widget: GtkWidget; accel_signal: PString
+		accel_group: GtkAccelGroup; accel_key: integer
+		accel_mods: Gdk.GdkModifierType; accel_flags: GtkAccelFlags) 
+	
+	
+	proc gtk_container_add(container: GtkContainer; widget: GtkWidget) 
+	proc gtk_container_remove(container: GtkContainer; widget: GtkWidget) 
+	
+	proc gtk_dialog_run(dialog: GtkDialog): integer 
+	proc gtk_accel_group_new(): GtkAccelGroup 
+	
+	proc gtk_adjustment_new(value, lower, upper, step_increment, page_increment, page_size: real): GtkAdjustment 
+	proc gtk_adjustment_changed(adjustment: GtkAdjustment) 
+	proc gtk_box_reorder_child(box: GtkWidget; widget: GtkWidget; position: integer) 
+	
+				
+	proc gtk_drawing_area_new(): GtkDrawingArea 
+	proc gtk_drawing_area_size(darea: GtkDrawingArea; width, height: integer) 
+			
+	proc gtk_fixed_new(): GtkFixed 
+	proc gtk_fixed_put(fixed: GtkFixed; widget: GtkWidget; x, y: integer) 
+	proc gtk_fixed_move(fixed, widget: GtkWidget; x, y: integer) 
+		
+	proc gtk_label_set_text(label: GtkLabel; in str: String) 
+		
+	proc gtk_menu_new(): GtkMenu 
+	proc gtk_menu_bar_new(): GtkMenu 
+	proc gtk_menu_popup(menu: GtkMenu; parent_menu_shell, parent_menu_item: GtkWidget
+		func, data: gpointer
+		button: integer; activate_time: integer) 
+	
+	proc gtk_menu_detach(menu: GtkMenu) 
+	proc gtk_menu_get_attach_widget(menu: GtkMenu): GtkWidget 
+	
+	proc gtk_menu_item_new_with_mnemonic(label: PString): GtkMenuItem 
+	
+	proc gtk_menu_item_activate(menu_item: GtkWidget) 
+	
+	proc gtk_menu_item_set_submenu(menu_item: GtkMenuItem; submenu: GtkWidget) 
+	
+	proc gtk_menu_shell_append(menu: GtkMenu; child: GtkMenuItem) 
+	
+	proc gtk_separator_menu_item_new(): GtkSeparatorMenuItem 
+	
+	proc gtk_check_menu_item_new_with_mnemonic(label: PString): GtkCheckMenuItem 
+			
+	proc gtk_statusbar_get_context_id(statusbar: GtkStatusbar; context_description: PString): integer 
+	
+	proc gtk_statusbar_new(): GtkStatusbar 
+	proc gtk_statusbar_pop(statusbar: GtkStatusbar; context_id: integer) 
+	proc gtk_statusbar_push(statusbar: GtkStatusbar; context_id: integer; text: PString): integer 
+		
+	proc gtk_hbox_new(homogeneous: gboolean; spacing: integer): GtkHBox 
+	proc gtk_vbox_new(homogeneous: gboolean; spacing: integer): GtkVBox 
+	
+	proc gtk_hscrollbar_new(adjustment: GtkAdjustment): GtkHScrollbar 
+	proc gtk_vscrollbar_new(adjustment: GtkAdjustment): GtkVScrollbar 
+	
+	proc gtk_window_new(type_: integer): GtkWindow 
+	proc gtk_window_add_accel_group(window: GtkWindow; accel_group: GtkAccelGroup) 
+	proc gtk_window_set_policy(window: GtkWindow; allow_shrink, allow_grow, auto_shrink: integer) 
+	proc gtk_window_set_position(window: GtkWindow; position: GtkWindowPosition) 
+	proc gtk_window_set_title(window: GtkWindow; title: PString) 
+	proc gtk_window_get_title(window: GtkWindow): PString 
+	proc gtk_window_move(window: GtkWindow; x, y: integer) 
+	
+	proc gtk_color_selection_get_color(colorsel: GtkColorSelection; var color: GtkColors) 
+	proc gtk_color_selection_set_color(colorsel: GtkColorSelection; var color: GtkColors) 
+	proc gtk_color_selection_dialog_new(title: PString): GtkColorSelectionDialog 
+	
+	proc gtk_message_dialog_new(parent: GtkWindow; flags: set; type_: GtkMessageType; buttons: GtkButtonsType; in message_format: String(* ... *)): GtkMessageDialog 
+	
+	proc gtk_font_selection_dialog_new(title: PString): GtkFontSelectionDialog 
+	proc gtk_font_selection_dialog_get_font_name(fsd: GtkFontSelectionDialog): PString 
+	proc gtk_font_selection_dialog_set_font_name(fsd: GtkFontSelectionDialog; in fontname: String): integer 
+	
+	// GtkFileChooser — File chooser interface used by GtkFileChooserWidget and GtkFileChooserDialog.
+	proc gtk_file_chooser_get_filename(fc: GtkDialog): PString 
+	proc gtk_file_chooser_set_filename(fc: GtkDialog; in filename: String) 
+	
+	proc gtk_file_chooser_dialog_new(title: PString; parent: GtkWindow; action: integer
+		b1: PString; r1: integer
+		b2: PString; r2: integer
+		b3: PString; r3: integer
+		terminator: integer
+		): GtkFileChooserDialog 
+	
+	// /gtk-2.0/gtk/gtkclipboard.h
+	
+	proc gtk_clipboard_get(selection: Gdk.GdkAtom): GtkClipboard 
+	proc gtk_clipboard_set_text(clipboard: GtkClipboard; text: PString; len_: integer) 
+	proc gtk_clipboard_store(clipboard: GtkClipboard) 
+
+
+end Gtk2Gtk

@@ -1,0 +1,512 @@
+module StdMenuTool
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20150922, center #71, fix for case insensitive sort in Comp
+	   - 20161216, center #144, inconsistent docu and usage of Files.Locator error codes
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		Kernel, Files, Fonts, Ports, Models, Views, Dialog, Properties, Containers, Documents, 
+		HostMenus, StdLinks, StdCmds, 
+		TextModels, TextMappers, TextViews, TextControllers
+	
+	const 
+		char_ = TextMappers.char_
+		string = TextMappers.string
+		keyword = 100
+		menuFile = "Menus"
+		rsrcDir = "Rsrc"
+		sysDir = "System"
+	
+	type 
+		LangNotifier = pointer to record (Dialog.LangNotifier) end 
+	
+	var 
+		noerr, showerr, gen: boolean
+		includes: Files.LocInfo
+		langNotifier: LangNotifier
+	
+	proc Scan(var s: TextMappers.Scanner) 
+		var 
+			ch: char
+			p: integer
+	begin 
+		s.Scan
+		if s.type_ = string then
+			p := s.rider.Pos() - 1
+			if ~s.rider.eot then
+				dec(p) 
+			end 
+			s.rider.SetPos(p)
+			s.rider.ReadChar(ch)
+			s.rider.Read
+			if ch # '"' then
+				s.type_ := keyword 
+			end  
+		end 
+	end Scan
+	
+	proc Comp(in s1, s2: array of char): integer 
+		var 
+			i: integer
+			a, b: char
+	begin 
+		i := 0
+		a := Kernel.Upper(s1[0])
+		b := Kernel.Upper(s2[0])
+		while (a # 0x) & (a = b) do 
+			inc(i)
+			a := Kernel.Upper(s1[i])
+			b := Kernel.Upper(s2[i]) 
+		end 
+		return ord(a) - ord(b)
+	end Comp
+	
+	proc Sort(var list: Files.LocInfo) 
+		var 
+			inc_, last, i1, i2: Files.LocInfo
+	begin 
+		inc_ := list
+		list := nil
+		while inc_ # nil do 
+			i1 := inc_
+			inc_ := inc_.next
+			i2 := list
+			last := nil
+			while (i2 # nil) & (Comp(i1.name, i2.name) > 0) do 
+				last := i2
+				i2 := i2.next 
+			end 
+			if last = nil then
+				i1.next := list
+				list := i1 
+			else 
+				i1.next := last.next
+				last.next := i1 
+			end  
+		end 
+	end Sort
+	
+	
+	proc ParseMenus(var s: TextMappers.Scanner; view: Views.View; loc: Files.Locator; name: Files.Name) 
+		var 
+			menu, category: Dialog.String
+			n: integer
+		
+		proc Error(var s: TextMappers.Scanner; err: array of char) 
+			var 
+				end_: integer
+		begin 
+			if noerr & showerr then
+				if loc # nil then
+					Views.Open(view, loc, name, nil) 
+				end 
+				end_ := max(s.rider.Pos() - 1, s.start + 1)
+				end_ := min(end_, s.rider.Base().Length())
+				TextControllers.SetSelection(s.rider.Base(), s.start, end_)
+				TextViews.ShowRange(s.rider.Base(), s.start, end_, TextViews.focusOnly)
+				Dialog.ShowMsg(err) 
+			end 
+			noerr := false
+		end Error
+		
+		proc Category(var s: TextMappers.Scanner; var c: array of char) 
+		begin 
+			if (s.type_ = char_) & (s.char_ = "(") then
+				Scan(s)
+				if s.type_ # string then
+					Error(s, "string expected") 
+				end 
+				c := s.string
+				Scan(s)
+				if (s.type_ # char_) or (s.char_ # ")") then
+					Error(s, ") expected") 
+				end 
+				Scan(s) 
+			else 
+				c := "" 
+			end 
+		end Category
+		
+		proc Item(var s: TextMappers.Scanner) 
+			var 
+				item, str, shortcut, filter: Dialog.String
+		begin 
+			if s.type_ = keyword then
+				if gen then
+					HostMenus.AddSeparator 
+				end 
+				Scan(s) 
+			else 
+				if s.len_ < len(item) then
+					item := s.string 
+				else 
+					item := ""
+					Error(s, "string too long") 
+				end 
+				if item = "" then
+					Error(s, "nonempty string expected") 
+				end 
+				Scan(s)
+				shortcut := ""
+				if s.type_ = string then
+					if s.len_ < 8 then
+						shortcut := s.string 
+					else 
+						Error(s, "string too long") 
+					end  
+				else 
+					Error(s, "string expected") 
+				end 
+				Scan(s)
+				if s.type_ # string then
+					Error(s, "string expected") 
+				end 
+				if s.len_ < len(str) then
+					str := s.string 
+				else 
+					str := ""
+					Error(s, "string too long") 
+				end 
+				if str = "" then
+					Error(s, "nonempty string expected") 
+				end 
+				Scan(s)
+				if s.type_ # string then
+					Error(s, "string expected") 
+				end 
+				if s.len_ < len(str) then
+					filter := s.string 
+				else 
+					filter := ""
+					Error(s, "string too long") 
+				end 
+				if gen then
+					HostMenus.AddItem(item, str, shortcut, filter) 
+				end 
+				Scan(s) 
+			end 
+		end Item
+		
+		proc IncludeSub(sub: array of char) 
+			var 
+				loc: Files.Locator
+				view: Views.View
+				t: TextModels.Model
+				s: TextMappers.Scanner
+		begin 
+			loc := Files.dir.This(sub)
+			if loc.res # 0 then
+				return  
+			end 
+			loc := loc.This(rsrcDir)
+			if loc.res # 0 then
+				return  
+			end 
+			view := Views.OldView(loc, menuFile)
+			if (view # nil) & (view is TextViews.View) then
+				t := view(TextViews.View).ThisModel()
+				if t # nil then
+					s.ConnectTo(t)
+					Scan(s)
+					ParseMenus(s, view, loc, menuFile) 
+				end  
+			end 
+		end IncludeSub
+		
+		proc Include(sub: array of char) 
+			var 
+				inc_, last: Files.LocInfo
+		begin 
+			if sub = "*" then // wildcard include
+				if ~gen then // first pass: generate complete list
+					if includes # nil then
+						Error(s, "only one wildcard include allowed") 
+					end 
+					includes := Files.dir.LocList(Files.dir.This("")) 
+				else  // second pass: sort reduced list
+					Sort(includes) 
+				end 
+				inc_ := includes
+				while (inc_ # nil) & noerr do 
+					if Comp(inc_.name, sysDir) # 0 then
+						IncludeSub(inc_.name) 
+					end 
+					inc_ := inc_.next 
+				end  
+			else  // spedific includes
+				IncludeSub(sub)
+				inc_ := includes
+				last := nil
+				while (inc_ # nil) & (Comp(inc_.name, sub) # 0) do 
+					last := inc_
+					inc_ := inc_.next 
+				end 
+				if inc_ # nil then // remove from wilcard list
+					if last = nil then
+						includes := inc_.next 
+					else 
+						last.next := inc_.next 
+					end  
+				end  
+			end 
+		end Include
+	
+	begin 
+		n := 0
+		while noerr & (s.type_ = keyword) & ((s.string = "MENU") or (s.string = "INCLUDE")) do 
+			if s.string = "INCLUDE" then
+				Scan(s)
+				if s.type_ # string then
+					Error(s, "string expected") 
+				end 
+				Include(s.string)
+				Scan(s)
+				inc(n) 
+			else 
+				inc(n)
+				Scan(s)
+				if s.type_ # string then
+					Error(s, "string expected") 
+				end 
+				menu := s.string
+				if menu = "" then
+					Error(s, "nonempty string expected") 
+				end 
+				Scan(s)
+				Category(s, category)
+				if gen then
+					HostMenus.Open(menu, category) 
+				end 
+				while noerr & ((s.type_ = string) or (s.type_ = keyword) & (s.string = "SEPARATOR")) do 
+					Item(s) 
+				end 
+				if (s.type_ # keyword) or (s.string # "END") then
+					Error(s, "END expected") 
+				end 
+				if gen then
+					HostMenus.Close 
+				end 
+				Scan(s) 
+			end  
+		end 
+		if (s.type_ # TextMappers.eot) or (n = 0) then
+			Error(s, "MENU expected") 
+		end 
+	end ParseMenus
+	
+	
+	proc InitNotifier
+	begin 
+		if langNotifier = nil then
+			new(langNotifier)
+			Dialog.RegisterLangNotifier(langNotifier) 
+		end 
+	end InitNotifier
+	
+	proc UpdateFromText*(text: TextModels.Model) 
+		var 
+			s: TextMappers.Scanner
+	begin 
+		InitNotifier
+		assert(text # nil, 20)
+		s.ConnectTo(text)
+		s.SetPos(0)
+		Scan(s)
+		noerr := true
+		showerr := false
+		gen := false
+		ParseMenus(s, nil, nil, "")
+		if noerr then
+			s.SetPos(0)
+			Scan(s)
+			gen := true
+			HostMenus.DeleteAll
+			ParseMenus(s, nil, nil, "")
+			HostMenus.InitMenus 
+		end 
+		includes := nil
+	end UpdateFromText
+	
+	proc UpdateMenus*
+		var 
+			t: TextModels.Model
+			s: TextMappers.Scanner
+	begin 
+		InitNotifier
+		t := TextViews.FocusText()
+		if t # nil then
+			s.ConnectTo(t)
+			s.SetPos(0)
+			Scan(s)
+			noerr := true
+			showerr := true
+			gen := false
+			ParseMenus(s, nil, nil, "")
+			if noerr then
+				s.SetPos(0)
+				Scan(s)
+				gen := true
+				HostMenus.DeleteAll
+				ParseMenus(s, nil, nil, "")
+				HostMenus.InitMenus 
+			end  
+		end 
+		includes := nil
+	end UpdateMenus
+	
+	proc UpdateAllMenus*
+		var 
+			view: Views.View
+			t: TextModels.Model
+			s: TextMappers.Scanner
+			loc: Files.Locator
+	begin 
+		InitNotifier
+		loc := Files.dir.This(sysDir)
+		if loc.res # 0 then
+			return  
+		end 
+		loc := loc.This(rsrcDir)
+		if loc.res # 0 then
+			return  
+		end 
+		view := Views.OldView(loc, menuFile)
+		if (view # nil) & (view is TextViews.View) then
+			t := view(TextViews.View).ThisModel()
+			if t # nil then
+				s.ConnectTo(t)
+				Scan(s)
+				noerr := true
+				showerr := true
+				gen := false
+				ParseMenus(s, view, loc, menuFile)
+				if noerr then
+					s.SetPos(0)
+					Scan(s)
+					gen := true
+					HostMenus.DeleteAll
+					ParseMenus(s, nil, nil, "")
+					HostMenus.InitMenus 
+				else 
+					Dialog.ShowMsg("errors detected in menu file") 
+				end  
+			end  
+		else 
+			Dialog.ShowMsg("cannot open menu file") 
+		end 
+		includes := nil
+	end UpdateAllMenus
+	
+	
+	proc InsertLink(var w: TextMappers.Formatter; path: array of char) 
+		var 
+			a0: TextModels.Attributes
+			cmd: array 256 of char
+	begin 
+		a0 := w.rider.attr
+		w.rider.SetAttr(TextModels.NewStyle(w.rider.attr, {Fonts.underline}))
+		w.rider.SetAttr(TextModels.NewColor(w.rider.attr, Ports.blue))
+		cmd := "StdCmds.OpenDoc('" + path + "')"
+		w.WriteView(StdLinks.dir.NewLink(cmd))
+		w.WriteString(path)
+		w.WriteView(StdLinks.dir.NewLink(""))
+		w.rider.SetAttr(a0)
+	end InsertLink
+	
+	proc ListAllMenus*
+		var 
+			sub: Files.LocInfo
+			loc: Files.Locator
+			f: Files.File
+			t: TextModels.Model
+			w: TextMappers.Formatter
+			path: Files.Name
+			v: Views.View
+			c: Containers.Controller
+			p: Properties.BoundsPref
+	begin 
+		t := TextModels.dir.New()
+		w.ConnectTo(t)
+		w.WriteString("Menu Files:")
+		w.WriteLn
+		w.WriteLn
+		path := sysDir + "/" + rsrcDir + "/" + menuFile
+		InsertLink(w, path)
+		w.WriteLn
+		w.WriteLn
+		sub := Files.dir.LocList(Files.dir.This(""))
+		Sort(sub)
+		while sub # nil do 
+			if Comp(sub.name, sysDir) # 0 then
+				loc := Files.dir.This(sub.name)
+				loc := loc.This(rsrcDir)
+				if loc.res = 0 then
+					path := menuFile
+					Kernel.MakeFileName(path, "")
+					f := Files.dir.Old(loc, path, Files.shared)
+					if f # nil then
+						path := sub.name + "/" + rsrcDir + "/" + menuFile
+						InsertLink(w, path)
+						w.WriteLn 
+					end  
+				end  
+			end 
+			sub := sub.next 
+		end 
+		v := TextViews.dir.New(t)
+		c := v(Containers.View).ThisController()
+		c.SetOpts(c.opts + {Containers.noCaret})
+		p.w := Views.undefined
+		p.h := Views.undefined
+		Views.HandlePropMsg(v, p)
+		v := Documents.dir.New(v, p.w, p.h)
+		Views.OpenAux(v, "All Menus")
+	end ListAllMenus
+	
+	proc ThisMenu*
+		var 
+			s: TextMappers.Scanner
+			c: Models.Context
+			v: Views.View
+			name: array 256 of char
+	begin 
+		if StdLinks.par # nil then
+			c := StdLinks.par.context
+			with c: TextModels.Context do 
+				s.ConnectTo(c.ThisModel())
+				s.SetPos(c.Pos() + 1)
+				s.rider.ReadView(v) // right link view
+				s.Scan
+				if s.type_ = string then
+					if s.string = "*" then
+						ListAllMenus 
+					else 
+						name := s.string + "/" + rsrcDir + "/" + menuFile
+						StdCmds.OpenDoc(name) 
+					end  
+				end  
+			else  
+			end  
+		end 
+	end ThisMenu
+	
+	proc (n: LangNotifier) Notify
+	begin 
+		UpdateAllMenus
+	end Notify
+
+end StdMenuTool

@@ -1,0 +1,150 @@
+module XhtmlTextTableMarkers
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - see View.HandleCtrMsg
+	   ##<=" *)
+	
+	
+	
+	
+	import Ports, Stores, Views, Controllers, Properties, TextModels
+	
+	const 
+		minVersion = 0
+		maxVersion = 1
+	
+	type 
+		View = pointer to record (Views.View) 
+				openMark: boolean 
+			end 
+	
+	
+	// View
+	
+	proc (v: View) Internalize(var rd: Stores.Reader) 
+		var 
+			version: integer
+	begin 
+		// v is not initialized
+		// v.Domain() = NIL
+		if ~rd.cancelled then
+			rd.ReadVersion(minVersion, maxVersion, version)
+			if ~rd.cancelled then
+				rd.ReadBool(v.openMark) 
+			end  
+		end 
+	end Internalize
+	
+	proc (v: View) Externalize(var wr: Stores.Writer) 
+	begin 
+		// v is initialized
+		wr.WriteVersion(maxVersion)
+		wr.WriteBool(v.openMark)
+	end Externalize
+	
+	proc (v: View) CopyFromSimpleView(source: Views.View) 
+	begin 
+		// v is not initialized
+		// v.Domain() = NIL
+		// source # NIL
+		// source is initialized
+		// TYP(v) = TYP(source)
+		with source: View do 
+			v.openMark := source.openMark 
+		end 
+	end CopyFromSimpleView
+	
+	proc (v: View) Restore(f: Views.Frame; l, t, r, b: integer) 
+		var 
+			w, h, s: integer
+	begin 
+		// f # NIL
+		if ~Views.IsPrinterFrame(f) then
+			v.context.GetSize(w, h)
+			w := f.r - f.l
+			s := 2 * f.dot
+			f.DrawRect(0, 0, s, h, Ports.fill, Ports.grey25) // left border
+			f.DrawRect(w - s, 0, w, h, Ports.fill, Ports.grey25) // right border
+			if v.openMark then
+				f.DrawRect(s, 0, w - s, s, Ports.fill, Ports.grey25) // top border
+				f.DrawRect(s, s, w - s, h, Ports.fill, Ports.grey12)  // interior
+			else 
+				f.DrawRect(s, h - s, w - s, h, Ports.fill, Ports.grey25) // bottom border
+				f.DrawRect(s, 0, w - s, h - s, Ports.fill, Ports.grey12)  // interior
+			end  
+		end 
+	end Restore
+	
+	proc (v: View) HandleCtrlMsg(f: Views.Frame; var msg: Controllers.Message; var focus: Views.View) 
+	begin 
+		// f # NIL
+		// focus = NIL
+		with msg: Controllers.PollOpsMsg do  
+		// specify which editing operations are supported
+		| msg: Controllers.TrackMsg do  
+		// implement mouse tracking
+		| msg: Controllers.EditMsg do  
+		// implement editing operations
+		else   // ignore other messages
+		end 
+	end HandleCtrlMsg
+	
+	proc (v: View) HandlePropMsg(var msg: Properties.Message) 
+		const 
+			viewHeight = 2 * Ports.mm
+	begin 
+		with msg: Properties.SizePref do 
+			msg.w := 10000 * Ports.mm
+			msg.h := viewHeight 
+		| msg: Properties.ResizePref do 
+			msg.fixed := true 
+		| msg: TextModels.Pref do  
+		(* msg.opts := {TextModels.maskChar};
+		   msg.mask := TextModels.para *)
+		else   // ignore other messages
+		end 
+	end HandlePropMsg
+	
+	
+	// miscellaneous
+	
+	proc IsOpenMark*(v: Views.View): boolean 
+	begin 
+		return (v # nil) & (v is View) & v(View).openMark
+	end IsOpenMark
+	
+	proc IsCloseMark*(v: Views.View): boolean 
+	begin 
+		return (v # nil) & (v is View) & ~v(View).openMark
+	end IsCloseMark
+	
+	proc New*(openMark: boolean): Views.View 
+		var 
+			v: View
+	begin 
+		new(v)
+		v.openMark := openMark
+		return v
+	end New
+	
+	proc DepositOpenMark*
+	begin 
+		Views.Deposit(New(true))
+	end DepositOpenMark
+	
+	proc DepositCloseMark*
+	begin 
+		Views.Deposit(New(false))
+	end DepositCloseMark
+
+end XhtmlTextTableMarkers

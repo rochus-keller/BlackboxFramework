@@ -1,0 +1,1055 @@
+module StdDebug
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20070123, bh, WriteString, ShowArray, & ShowVar changed (Unicode support)
+	   - 20141027, center #19, full Unicode support for Component Pascal identifiers added
+	   - 20150929, center #72, speeding up the dump of large data structures by avoiding fold.Flip
+	   - 20170215, center #139, localization support for error messages
+	   - 20181207, center #195, support for long identifiers in trap handlers
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import SYSTEM, 
+		Kernel, Strings, Fonts, Services, Ports, Views, Properties, Dialog, Containers, StdFolds, 
+		TextModels, TextMappers, TextViews, TextRulers
+	
+	const 
+		refViewSize = 9 * Ports.point
+		
+		heap = 1 // RefView types
+		source = 2
+		module_ = 3
+		modules = 4
+	
+	type 
+		ArrayPtr = pointer to record 
+				last, t, first: integer // gc header
+				len_: array 16 of integer  // dynamic array length table
+			end 
+		
+		RefView = pointer to RefViewDesc
+		
+		RefViewDesc = record 
+				type_: shortint
+				command: shortint
+				back: RefView
+				adr: integer
+				desc: Kernel.Type
+				ptr: ArrayPtr
+				name: Kernel.Utf8Name 
+			end 
+		
+		Action = pointer to record (Services.Action) 
+				text: TextModels.Model 
+			end 
+		
+		Cluster = unsafe pointer to cstruct  // must correspond to Kernel.Cluster
+				size_: integer
+				next: Cluster 
+			end 
+		
+		FoldContext = record 
+				prevText: TextModels.Model
+				prevPos: integer 
+			end 
+	
+	
+	var 
+		out: TextMappers.Formatter
+	
+	
+	proc NewRuler(): TextRulers.Ruler 
+		const 
+			mm = Ports.mm
+		var 
+			r: TextRulers.Ruler
+	begin 
+		r := TextRulers.dir.New(nil)
+		TextRulers.SetRight(r, 140 * mm)
+		TextRulers.AddTab(r, 4 * mm)
+		TextRulers.AddTab(r, 34 * mm)
+		TextRulers.AddTab(r, 80 * mm)
+		return r
+	end NewRuler
+	
+	proc OpenViewer(t: TextModels.Model; title: Views.Title; ruler: TextRulers.Ruler) 
+		var 
+			v: TextViews.View
+			c: Containers.Controller
+	begin 
+		Dialog.MapString(title, title)
+		v := TextViews.dir.New(t)
+		v.SetDefaults(ruler, TextViews.dir.defAttr)
+		c := v.ThisController()
+		if c # nil then
+			c.SetOpts(c.opts - {Containers.noFocus, Containers.noSelection} + {Containers.noCaret}) 
+		end 
+		Views.OpenAux(v, title)
+	end OpenViewer
+	
+	proc OpenFold(var fc: FoldContext) 
+	begin 
+		fc.prevText := out.rider.Base()
+		fc.prevPos := out.Pos()
+		out.ConnectTo(TextModels.dir.New())
+	end OpenFold
+	
+	proc CloseFold(in fc: FoldContext; collapsed: boolean; in hidden: array of char) 
+		var 
+			fold: StdFolds.Fold
+			t: TextModels.Model
+			w: TextMappers.Formatter
+			hiddenx: array 32 of char
+	begin 
+		Dialog.MapString(hidden, hiddenx)
+		// avoid expensive fold.Flip operation
+		if collapsed then
+			fold := StdFolds.dir.New(StdFolds.collapsed, "", out.rider.Base())
+			out.ConnectTo(fc.prevText)
+			out.WriteView(fold)
+			out.WriteString(hiddenx) 
+		else 
+			t := TextModels.dir.New()
+			w.ConnectTo(t)
+			w.WriteString(hiddenx)
+			fold := StdFolds.dir.New(StdFolds.expanded, "", t)
+			t := out.rider.Base()
+			out.ConnectTo(fc.prevText)
+			out.WriteView(fold)
+			fc.prevText.Insert(out.Pos(), t, 0, t.Length())
+			out.SetPos(out.rider.Base().Length()) 
+		end 
+		fold := StdFolds.dir.New(collapsed, "", nil)
+		out.WriteView(fold)
+	end CloseFold
+	
+	proc WriteHex(n: integer) 
+	begin 
+		out.WriteIntForm(n, TextMappers.hexadecimal, 9, "0", TextMappers.showBase)
+	end WriteHex
+	
+	proc WriteString(adr, len_, base: integer; zterm, unicode: boolean) 
+		const 
+			beg = 0
+			char_ = 1
+			code = 2
+		var 
+			ch: char
+			sc: char
+			val_, mode: integer
+			str: array 16 of char
+	begin 
+		mode := beg
+		if base = 2 then
+			SYSTEM.GET(adr, ch)
+			val_ := ord(ch) 
+		else 
+			SYSTEM.GET(adr, sc)
+			val_ := ord(sc) 
+		end 
+		if zterm & (val_ = 0) then
+			out.WriteString('""') 
+		else 
+			repeat 
+				if (val_ >= ord(" ")) & (val_ < 7fh) or (val_ > 0a0h) & (val_ < 100h) or unicode & (val_ >= 100h) then
+					if mode # char_ then
+						if mode = code then
+							out.WriteString(", ") 
+						end 
+						out.WriteChar(22x)
+						mode := char_ 
+					end 
+					out.WriteChar(chr(val_)) 
+				else 
+					if mode = char_ then
+						out.WriteChar(22x) 
+					end 
+					if mode # beg then
+						out.WriteString(", ") 
+					end 
+					mode := code
+					Strings.IntToStringForm(val_, Strings.hexadecimal, 1, "0", false, str)
+					if str[0] > "9" then
+						out.WriteChar("0") 
+					end 
+					out.WriteString(str)
+					out.WriteChar("X") 
+				end 
+				inc(adr, base)
+				dec(len_)
+				if base = 2 then
+					SYSTEM.GET(adr, ch)
+					val_ := ord(ch) 
+				else 
+					SYSTEM.GET(adr, sc)
+					val_ := ord(sc) 
+				end  
+			until (len_ = 0) or zterm & (val_ = 0)  
+		end 
+		if mode = char_ then
+			out.WriteChar(22x) 
+		end 
+	end WriteString
+	
+	proc OutString(in s: array of char) 
+		var 
+			str: Dialog.String
+	begin 
+		Dialog.MapString(s, str)
+		out.WriteString(str)
+	end OutString
+	
+	// -------------------  variable display -------------------
+	
+	proc FormOf(t: Kernel.Type): char 
+	begin 
+		if SYSTEM.VAL(integer, t) div 256 = 0 then
+			return short(chr(SYSTEM.VAL(integer, t))) 
+		else 
+			return short(chr(16 + t.id mod 4)) 
+		end 
+	end FormOf
+	
+	proc LenOf(t: Kernel.Type; ptr: ArrayPtr): integer 
+	begin 
+		if t.size_ # 0 then
+			return t.size_ 
+		elsif ptr # nil then 
+			return ptr.len_[t.id div 16 mod 16 - 1] 
+		else 
+			return 0 
+		end 
+	end LenOf
+	
+	proc SizeOf(t: Kernel.Type; ptr: ArrayPtr): integer 
+	begin 
+		case FormOf(t) of 
+			| 0bx: 
+				return 0 
+			| 1x, 2x, 4x: 
+				return 1 
+			| 3x, 5x: 
+				return 2 
+			| 8x, 0ax: 
+				return 8 
+			| 11x: 
+				return t.size_ 
+			| 12x: 
+				return LenOf(t, ptr) * SizeOf(t.base[0], ptr) 
+		else 
+			return 4 
+		end 
+	end SizeOf
+	
+	proc WriteName(t: Kernel.Type; ptr: ArrayPtr) 
+		var 
+			modName, name: Kernel.Name
+			f: char
+	begin 
+		f := FormOf(t)
+		case f of 
+			| 0x: 
+				OutString("#Dev:Unknown") 
+			| 1x: 
+				out.WriteString("BOOLEAN") 
+			| 2x: 
+				out.WriteString("SHORTCHAR") 
+			| 3x: 
+				out.WriteString("CHAR") 
+			| 4x: 
+				out.WriteString("BYTE") 
+			| 5x: 
+				out.WriteString("SHORTINT") 
+			| 6x: 
+				out.WriteString("INTEGER") 
+			| 7x: 
+				out.WriteString("SHORTREAL") 
+			| 8x: 
+				out.WriteString("REAL") 
+			| 9x: 
+				out.WriteString("SET") 
+			| 0ax: 
+				out.WriteString("LONGINT") 
+			| 0bx: 
+				out.WriteString("ANYREC") 
+			| 0cx: 
+				out.WriteString("ANYPTR") 
+			| 0dx: 
+				out.WriteString("POINTER") 
+			| 0ex: 
+				out.WriteString("PROCEDURE") 
+			| 0fx: 
+				out.WriteString("STRING") 
+			| 10x .. 13x: 
+				Kernel.GetTypeName(t, name)
+				if name = "!" then
+					if f = 11x then
+						out.WriteString("RECORD") 
+					elsif f = 12x then 
+						out.WriteString("ARRAY") 
+					else 
+						OutString("#Dev:Unknown") 
+					end  
+				elsif (t.id div 256 # 0) & (t.mod_.refcnt >= 0) then 
+					Kernel.GetModName(t.mod_, modName)
+					out.WriteString(modName)
+					out.WriteChar(".")
+					out.WriteString(name) 
+				elsif f = 11x then 
+					Kernel.GetModName(t.mod_, modName)
+					out.WriteString(modName)
+					out.WriteString(".RECORD") 
+				elsif f = 12x then 
+					out.WriteString("ARRAY ")
+					out.WriteInt(LenOf(t, ptr))
+					t := t.base[0]
+					while (FormOf(t) = 12x) & ((t.id div 256 = 0) or (t.mod_.refcnt < 0)) do 
+						out.WriteString(", ")
+						out.WriteInt(LenOf(t, ptr))
+						t := t.base[0] 
+					end 
+					out.WriteString(" OF ")
+					WriteName(t, ptr) 
+				elsif f = 13x then 
+					out.WriteString("POINTER") 
+				else 
+					out.WriteString("PROCEDURE") 
+				end  
+			| 20x: 
+				out.WriteString("COM.IUnknown") 
+			| 21x: 
+				out.WriteString("COM.GUID") 
+			| 22x: 
+				out.WriteString("COM.RESULT") 
+		else 
+			OutString("#Dev:UnknownFormat")
+			out.WriteInt(ord(f)) 
+		end 
+	end WriteName
+	
+	proc WriteGuid(a: integer) 
+		
+		proc Hex(a: integer) 
+			var 
+				x: char
+		begin 
+			SYSTEM.GET(a, x)
+			out.WriteIntForm(ord(x), TextMappers.hexadecimal, 2, "0", false)
+		end Hex
+	
+	begin 
+		out.WriteChar("{")
+		Hex(a + 3)
+		Hex(a + 2)
+		Hex(a + 1)
+		Hex(a)
+		out.WriteChar("-")
+		Hex(a + 5)
+		Hex(a + 4)
+		out.WriteChar("-")
+		Hex(a + 7)
+		Hex(a + 6)
+		out.WriteChar("-")
+		Hex(a + 8)
+		Hex(a + 9)
+		out.WriteChar("-")
+		Hex(a + 10)
+		Hex(a + 11)
+		Hex(a + 12)
+		Hex(a + 13)
+		Hex(a + 14)
+		Hex(a + 15)
+		out.WriteChar("}")
+	end WriteGuid
+	
+	proc ShowRecord(a, ind: integer; desc: Kernel.Type; back: RefView; var sel: Kernel.Name) 
+		var 
+			dir: Kernel.Directory
+			obj: Kernel.Object
+			name: Kernel.Name
+			i, j, n: integer
+			base: Kernel.Type
+			fc: FoldContext
+	begin 
+		WriteName(desc, nil)
+		out.WriteTab
+		if desc.mod_.refcnt >= 0 then
+			OpenFold(fc)
+			n := desc.id div 16 mod 16
+			j := 0
+			while j <= n do 
+				base := desc.base[j]
+				if base # nil then
+					dir := base.fields
+					i := 0
+					while i < dir.num do 
+						obj := SYSTEM.VAL(Kernel.Object, SYSTEM.ADR(dir.obj[i]))
+						Kernel.GetObjName(base.mod_, obj, name)
+						ShowVar(a + obj.offs, ind, FormOf(obj.struct), 1x, obj.struct, nil, back, name, sel)
+						inc(i) 
+					end  
+				end 
+				inc(j) 
+			end 
+			out.WriteString("   ")
+			CloseFold(fc, (ind > 1) or (sel # ""), "#Dev:Fields") 
+		else 
+			OutString("#Dev:Unloaded") 
+		end 
+	end ShowRecord
+	
+	proc ShowArray(a, ind: integer; desc: Kernel.Type; ptr: ArrayPtr; back: RefView; var sel: Kernel.Name) 
+		var 
+			f: char
+			i, n, m, size_, len_: integer
+			name: Kernel.Name
+			eltyp, t: Kernel.Type
+			vi: shortint
+			vs: byte
+			str: Dialog.String
+			high: boolean
+			fc: FoldContext
+	begin 
+		WriteName(desc, ptr)
+		out.WriteTab
+		len_ := LenOf(desc, ptr)
+		eltyp := desc.base[0]
+		f := FormOf(eltyp)
+		size_ := SizeOf(eltyp, ptr)
+		if (f = 2x) or (f = 3x) then // string
+			n := 0
+			m := len_
+			high := false
+			if f = 2x then
+				repeat 
+					SYSTEM.GET(a + n, vs)
+					inc(n) 
+				until (n = 32) or (n = len_) or (vs = 0) 
+				repeat 
+					dec(m)
+					SYSTEM.GET(a + m, vs) 
+				until (m = 0) or (vs # 0)  
+			else 
+				repeat 
+					SYSTEM.GET(a + n * 2, vi)
+					inc(n)
+					if vi div 256 # 0 then
+						high := true 
+					end  
+				until (n = len_) or (vi = 0) 
+				n := min(n, 32)
+				repeat 
+					dec(m)
+					SYSTEM.GET(a + m * 2, vi) 
+				until (m = 0) or (vi # 0)  
+			end 
+			WriteString(a, n, size_, true, true)
+			inc(m, 2)
+			if m > len_ then
+				m := len_ 
+			end 
+			if high or (m > n) then
+				out.WriteString("   ")
+				OpenFold(fc)
+				out.WriteLn
+				if high & (n = 32) then
+					WriteString(a, m, size_, true, true)
+					out.WriteLn
+					out.WriteLn 
+				end 
+				WriteString(a, m, size_, false, false)
+				if m < len_ then
+					out.WriteString(", ..., 0X") 
+				end 
+				out.WriteString("   ")
+				CloseFold(fc, true, "...") 
+			end  
+		else 
+			t := eltyp
+			while FormOf(t) = 12x do 
+				t := t.base[0] 
+			end 
+			if FormOf(t) # 0x then
+				OpenFold(fc)
+				i := 0
+				while i < len_ do 
+					Strings.IntToString(i, str)
+					name := "[" + short(str) + "]"
+					ShowVar(a, ind, f, 1x, eltyp, ptr, back, name, sel)
+					inc(i)
+					inc(a, size_) 
+				end 
+				out.WriteString("   ")
+				CloseFold(fc, StdFolds.collapsed, "#Dev:Elements") 
+			end  
+		end 
+	end ShowArray
+	
+	proc ShowProcVar(a: integer) 
+		var 
+			vli, n, ref: integer
+			m: Kernel.Module
+			modName, name: Kernel.Name
+			res: integer
+			nn: Kernel.Utf8Name
+	begin 
+		SYSTEM.GET(a, vli)
+		Kernel.SearchProcVar(vli, m, vli)
+		if m = nil then
+			if vli = 0 then
+				out.WriteString("NIL") 
+			else 
+				WriteHex(vli) 
+			end  
+		else 
+			if m.refcnt >= 0 then
+				Kernel.GetModName(m, modName)
+				out.WriteString(modName)
+				ref := m.refs
+				repeat 
+					Kernel.GetRefProc(ref, n, nn) 
+				until (n = 0) or (vli < n) 
+				if vli < n then
+					out.WriteChar(".")
+					Strings.Utf8ToString(nn, name, res)
+					out.WriteString(name) 
+				end  
+			else 
+				OutString("#Dev:ProcInUnloadedMod")
+				Kernel.GetModName(m, modName)
+				out.WriteString(modName)
+				out.WriteString(" !!!") 
+			end  
+		end 
+	end ShowProcVar
+	
+	proc ShowPointer(a: integer; f: char; desc: Kernel.Type; back: RefView; var sel: Kernel.Name) 
+		var 
+			adr, x: integer
+			ptr: ArrayPtr
+			c: Cluster
+			btyp: Kernel.Type
+	begin 
+		SYSTEM.GET(a, adr)
+		if f = 13x then
+			btyp := desc.base[0] 
+		else 
+			btyp := nil 
+		end 
+		if adr = 0 then
+			out.WriteString("NIL") 
+		elsif f = 20x then 
+			out.WriteChar("[")
+			WriteHex(adr)
+			out.WriteChar("]")
+			out.WriteChar(" ")
+			c := SYSTEM.VAL(Cluster, Kernel.Root())
+			while (c # nil) & ((adr < SYSTEM.VAL(integer, c)) or (adr >= SYSTEM.VAL(integer, c) + c.size_)) do 
+				c := c.next 
+			end 
+			if c # nil then
+				ptr := SYSTEM.VAL(ArrayPtr, adr) 
+			end  
+		else 
+			if (f = 13x) or (f = 0cx) then
+				x := adr - 4 
+			else 
+				x := adr 
+			end 
+			if ((adr < -4) or (adr >= 65536)) & Kernel.IsReadable(x, adr + 16) then
+				out.WriteChar("[")
+				WriteHex(adr)
+				out.WriteChar("]")
+				if (f = 13x) or (f = 0cx) then
+					out.WriteChar(" ")
+					c := SYSTEM.VAL(Cluster, Kernel.Root())
+					while (c # nil) & ((adr < SYSTEM.VAL(integer, c)) or (adr >= SYSTEM.VAL(integer, c) + c.size_)) do 
+						c := c.next 
+					end 
+					if c # nil then
+						ptr := SYSTEM.VAL(ArrayPtr, adr)
+						if (f = 13x) & (FormOf(btyp) = 12x) then // array
+							adr := SYSTEM.ADR(ptr.len_[btyp.id div 16 mod 16]) 
+						end  
+					else 
+						OutString("#Dev:IllegalPointer") 
+					end  
+				end  
+			else 
+				OutString("#Dev:IllegalAddress")
+				WriteHex(adr) 
+			end  
+		end 
+	end ShowPointer
+	
+	proc ShowSelector(ref: RefView) 
+		var 
+			b: RefView
+			n: shortint
+			a, a0: TextModels.Attributes
+			res: integer
+			nn: Kernel.Name
+	begin 
+		b := ref.back
+		n := 1
+		if b # nil then
+			while (b.name = ref.name) & (b.back # nil) do 
+				inc(n)
+				b := b.back 
+			end 
+			ShowSelector(b)
+			if n > 1 then
+				out.WriteChar("(") 
+			end 
+			out.WriteChar(".") 
+		end 
+		Strings.Utf8ToString(ref.name, nn, res)
+		out.WriteString(nn)
+		if ref.type_ = heap then
+			out.WriteChar("^") 
+		end 
+		if n > 1 then
+			out.WriteChar(")")
+			a0 := out.rider.attr
+			a := TextModels.NewOffset(a0, 2 * Ports.point)
+			out.rider.SetAttr(a)
+			out.WriteInt(n)
+			out.rider.SetAttr(a0) 
+		end 
+	end ShowSelector
+	
+	proc ShowVar(ad, ind: integer; f, c: char; desc: Kernel.Type; ptr: ArrayPtr; back: RefView
+		var name, sel: Kernel.Name) 
+		var 
+			i, j, vli, a: integer
+			tsel: Kernel.Name
+			a0: TextModels.Attributes
+			vc: char
+			vsi: byte
+			vi: shortint
+			vr: real
+			vlr: real
+			vs: set
+	begin 
+		out.WriteLn
+		out.WriteTab
+		i := 0
+		while i < ind do 
+			out.WriteString("  ")
+			inc(i) 
+		end 
+		a := ad
+		i := 0
+		j := 0
+		if sel # "" then
+			while sel[i] # 0x do 
+				tsel[i] := sel[i]
+				inc(i) 
+			end 
+			if (tsel[i - 1] # ":") & (name[0] # "[") then
+				tsel[i] := "."
+				inc(i) 
+			end  
+		end 
+		while name[j] # 0x do 
+			tsel[i] := name[j]
+			inc(i)
+			inc(j) 
+		end 
+		tsel[i] := 0x
+		a0 := out.rider.attr
+		if c = 3x then // varpar
+			SYSTEM.GET(ad, a)
+			out.rider.SetAttr(TextModels.NewStyle(a0, {Fonts.italic})) 
+		end 
+		if name[0] # "[" then
+			out.WriteChar(".") 
+		end 
+		out.WriteString(name)
+		out.rider.SetAttr(a0)
+		out.WriteTab
+		if (c = 3x) & (a >= 0) & (a < 65536) then
+			out.WriteTab
+			out.WriteString("NIL VARPAR") 
+		elsif f = 11x then 
+			Kernel.GetTypeName(desc, name)
+			if (c = 3x) & (name[0] # "!") then // dynamic type
+				SYSTEM.GET(ad + 4, desc) 
+			end 
+			ShowRecord(a, ind + 1, desc, back, tsel) 
+		elsif (c = 3x) & (f = 0bx) then  // VAR anyrecord
+			SYSTEM.GET(ad + 4, desc)
+			ShowRecord(a, ind + 1, desc, back, tsel) 
+		elsif f = 12x then 
+			if (desc.size_ = 0) & (ptr = nil) then // dyn array val par
+				SYSTEM.GET(ad, a) 
+			end 
+			if ptr = nil then
+				ptr := SYSTEM.VAL(ArrayPtr, ad - 8) 
+			end 
+			ShowArray(a, ind + 1, desc, ptr, back, tsel) 
+		else 
+			if desc = nil then
+				desc := SYSTEM.VAL(Kernel.Type, ord(f)) 
+			end 
+			WriteName(desc, nil)
+			out.WriteTab
+			case f of 
+				| 0x:   // SYSTEM.GET(a, vli); WriteHex(vli)
+				| 1x: 
+					SYSTEM.GET(a, vc)
+					if vc = 0x then
+						out.WriteString("FALSE") 
+					elsif vc = 1x then 
+						out.WriteString("TRUE") 
+					else 
+						OutString("#Dev:Undefined")
+						out.WriteInt(ord(vc)) 
+					end  
+				| 2x: 
+					WriteString(a, 1, 1, false, false) 
+				| 3x: 
+					WriteString(a, 1, 2, false, true)
+					SYSTEM.GET(a, vi)
+					if vi div 256 # 0 then
+						out.WriteString("  ")
+						WriteString(a, 1, 2, false, false) 
+					end  
+				| 4x: 
+					SYSTEM.GET(a, vsi)
+					out.WriteInt(vsi) 
+				| 5x: 
+					SYSTEM.GET(a, vi)
+					out.WriteInt(vi) 
+				| 6x: 
+					SYSTEM.GET(a, vli)
+					out.WriteInt(vli) 
+				| 7x: 
+					SYSTEM.GET(a, vr)
+					out.WriteReal(vr) 
+				| 8x: 
+					SYSTEM.GET(a, vlr)
+					out.WriteReal(vlr) 
+				| 9x: 
+					SYSTEM.GET(a, vs)
+					out.WriteSet(vs) 
+				| 0ax: 
+					SYSTEM.GET(a, vli)
+					SYSTEM.GET(a + 4, i)
+					if (vli >= 0) & (i = 0) or (vli < 0) & (i = -1) then
+						out.WriteInt(vli) 
+					else 
+						out.WriteIntForm(i, TextMappers.hexadecimal, 8, "0", TextMappers.hideBase)
+						WriteHex(vli) 
+					end  
+				| 0cx, 0dx, 13x, 20x: 
+					ShowPointer(a, f, desc, back, tsel) 
+				| 0ex, 10x: 
+					ShowProcVar(a) 
+				| 0fx: 
+					WriteString(a, 256, 1, true, false) 
+				| 21x: 
+					WriteGuid(a) 
+				| 22x: 
+					SYSTEM.GET(a, vli)
+					WriteHex(vli) 
+			else  
+			end  
+		end 
+	end ShowVar
+	
+	
+	proc ShowStack
+		var 
+			ref, end_, i, j, x, a, b, c: integer
+			m, f: char
+			mod_: Kernel.Module
+			modName, name, sel: Kernel.Name
+			d: Kernel.Type
+			res: integer
+			nn: Kernel.Utf8Name
+	begin 
+		a := Kernel.pc
+		b := Kernel.fp
+		c := 100
+		repeat 
+			mod_ := Kernel.modList
+			while (mod_ # nil) & ((a < mod_.code) or (a >= mod_.code + mod_.csize)) do 
+				mod_ := mod_.next 
+			end 
+			if mod_ # nil then
+				dec(a, mod_.code)
+				if mod_.refcnt >= 0 then
+					Kernel.GetModName(mod_, modName)
+					out.WriteChar(" ")
+					out.WriteString(modName)
+					ref := mod_.refs
+					repeat 
+						Kernel.GetRefProc(ref, end_, nn) 
+					until (end_ = 0) or (a < end_) 
+					if a < end_ then
+						Strings.Utf8ToString(nn, name, res)
+						out.WriteChar(".")
+						out.WriteString(name)
+						sel := mod_.name
+						i := 0
+						while sel[i] # 0x do 
+							inc(i) 
+						end 
+						sel[i] := "."
+						inc(i)
+						j := 0
+						while name[j] # 0x do 
+							sel[i] := name[j]
+							inc(i)
+							inc(j) 
+						end 
+						sel[i] := ":"
+						sel[i + 1] := 0x
+						out.WriteString("   [")
+						WriteHex(a)
+						out.WriteString("] ")
+						i := Kernel.SourcePos(mod_, 0)
+						if name # "$$" then
+							Kernel.GetRefVar(ref, m, f, d, x, nn)
+							Strings.Utf8ToString(nn, name, res)
+							while m # 0x do 
+								if name[0] # "@" then
+									ShowVar(b + x, 0, f, m, d, nil, nil, name, sel) 
+								end 
+								Kernel.GetRefVar(ref, m, f, d, x, nn)
+								Strings.Utf8ToString(nn, name, res) 
+							end  
+						end 
+						out.WriteLn 
+					else 
+						out.WriteString(".???")
+						out.WriteLn 
+					end  
+				else 
+					Kernel.GetModName(mod_, modName)
+					out.WriteChar("(")
+					out.WriteString(modName)
+					out.WriteString(")   (pc=")
+					WriteHex(a)
+					out.WriteString(",  fp=")
+					WriteHex(b)
+					out.WriteChar(")")
+					out.WriteLn 
+				end  
+			else 
+				out.WriteString("<system>   (pc=")
+				WriteHex(a)
+				out.WriteString(",  fp=")
+				WriteHex(b)
+				out.WriteChar(")")
+				out.WriteLn 
+			end 
+			if (b >= Kernel.fp) & (b < Kernel.stack) then
+				SYSTEM.GET(b + 4, a) // stacked pc
+				SYSTEM.GET(b, b) // dynamic link
+				dec(a)
+				dec(c) 
+			else 
+				c := 0 
+			end  
+		until c = 0 
+	end ShowStack
+	
+	proc (a: Action) Do // delayed trap window open
+	begin 
+		Kernel.SetTrapGuard(true)
+		OpenViewer(a.text, "#Dev:Trap", NewRuler())
+		Kernel.SetTrapGuard(false)
+	end Do
+	
+	proc GetTrapMsg(var msg: array of char) 
+		var 
+			ref, end_, a, res: integer
+			mod_: Kernel.Module
+			nn: Kernel.Utf8Name
+			name, head, tail: Kernel.Name
+			errstr: array 12 of char
+			key: array Kernel.nameLen * 3 + len(errstr) of char
+	begin 
+		a := Kernel.pc
+		mod_ := Kernel.modList
+		msg := ""
+		while (mod_ # nil) & ((a < mod_.code) or (a >= mod_.code + mod_.csize)) do 
+			mod_ := mod_.next 
+		end 
+		if mod_ # nil then
+			dec(a, mod_.code)
+			ref := mod_.refs
+			repeat 
+				Kernel.GetRefProc(ref, end_, nn) 
+			until (end_ = 0) or (a < end_) 
+			Strings.Utf8ToString(nn, name, res)
+			if a < end_ then
+				Kernel.GetModName(mod_, head)
+				Kernel.SplitName(head, head, tail)
+				if head = "" then
+					head := "System" 
+				end 
+				Strings.IntToString(Kernel.err, errstr)
+				key := tail + "." + name + "." + errstr
+				Dialog.MapString("#" + head + ":" + key, msg)
+				if msg = key then
+					msg := "" 
+				end  
+			end  
+		end 
+	end GetTrapMsg
+	
+	proc OutAdr(adr: integer) 
+	begin 
+		out.WriteString(" (")
+		OutString("#System:adr")
+		out.WriteString(" = ")
+		WriteHex(adr)
+		out.WriteChar(")")
+	end OutAdr
+	
+	proc Trap
+		var 
+			a0: TextModels.Attributes
+			action: Action
+			msg: array 512 of char
+	begin 
+		out.ConnectTo(TextModels.dir.New())
+		a0 := out.rider.attr
+		out.rider.SetAttr(TextModels.NewWeight(a0, Fonts.bold))
+		if Kernel.err = 129 then
+			OutString("#System:invalid WITH") 
+		elsif Kernel.err = 130 then 
+			OutString("#System:invalid CASE") 
+		elsif Kernel.err = 131 then 
+			OutString("#System:function without RETURN") 
+		elsif Kernel.err = 132 then 
+			OutString("#System:type guard") 
+		elsif Kernel.err = 133 then 
+			OutString("#System:implied type guard") 
+		elsif Kernel.err = 134 then 
+			OutString("#System:value out of range") 
+		elsif Kernel.err = 135 then 
+			OutString("#System:index out of range") 
+		elsif Kernel.err = 136 then 
+			OutString("#System:string too long") 
+		elsif Kernel.err = 137 then 
+			OutString("#System:stack overflow") 
+		elsif Kernel.err = 138 then 
+			OutString("#System:integer overflow") 
+		elsif Kernel.err = 139 then 
+			OutString("#System:division by zero") 
+		elsif Kernel.err = 140 then 
+			OutString("#System:infinite real result") 
+		elsif Kernel.err = 141 then 
+			OutString("#System:real underflow") 
+		elsif Kernel.err = 142 then 
+			OutString("#System:real overflow") 
+		elsif Kernel.err = 143 then 
+			OutString("#System:undefined real result")
+			out.WriteString(" (")
+			out.WriteIntForm(Kernel.val_ mod 10000h, TextMappers.hexadecimal, 4, "0", TextMappers.hideBase)
+			out.WriteString(", ")
+			out.WriteIntForm(Kernel.val_ div 10000h, TextMappers.hexadecimal, 3, "0", TextMappers.hideBase)
+			out.WriteChar(")") 
+		elsif Kernel.err = 144 then 
+			OutString("#System:not a number") 
+		elsif Kernel.err = 200 then 
+			OutString("#System:keyboard interrupt") 
+		elsif Kernel.err = 201 then 
+			OutString("#System:NIL dereference") 
+		elsif Kernel.err = 202 then 
+			OutString("#System:illegal instruction")
+			out.WriteString(": ")
+			out.WriteIntForm(Kernel.val_, TextMappers.hexadecimal, 5, "0", TextMappers.showBase) 
+		elsif Kernel.err = 203 then 
+			if (Kernel.val_ >= -4) & (Kernel.val_ < 65536) then
+				OutString("#System:NIL dereference (read)") 
+			else 
+				OutString("#System:illegal memory read")
+				OutAdr(Kernel.val_) 
+			end  
+		elsif Kernel.err = 204 then 
+			if (Kernel.val_ >= -4) & (Kernel.val_ < 65536) then
+				OutString("#System:NIL dereference (write)") 
+			else 
+				OutString("#System:illegal memory write")
+				OutAdr(Kernel.val_) 
+			end  
+		elsif Kernel.err = 205 then 
+			if (Kernel.val_ >= -4) & (Kernel.val_ < 65536) then
+				OutString("#System:NIL procedure call") 
+			else 
+				OutString("#System:illegal execution")
+				OutAdr(Kernel.val_) 
+			end  
+		elsif Kernel.err = 257 then 
+			OutString("#System:out of memory") 
+		elsif Kernel.err = 10001h then 
+			OutString("#System:bus error") 
+		elsif Kernel.err = 10002h then 
+			OutString("#System:address error") 
+		elsif Kernel.err = 10007h then 
+			OutString("#System:fpu error") 
+		elsif Kernel.err < 0 then 
+			OutString("#System:Exception")
+			out.WriteChar(" ")
+			out.WriteIntForm(-Kernel.err, TextMappers.hexadecimal, 3, "0", TextMappers.showBase) 
+		else 
+			OutString("#System:TRAP")
+			out.WriteChar(" ")
+			out.WriteInt(Kernel.err)
+			if Kernel.err = 126 then
+				out.WriteString("  (")
+				OutString("#System:not yet implemented")
+				out.WriteChar(")") 
+			elsif Kernel.err = 125 then 
+				out.WriteString("  (")
+				OutString("#System:call of obsolete procedure")
+				out.WriteChar(")") 
+			elsif Kernel.err >= 100 then 
+				out.WriteString("  (")
+				OutString("#System:invariant violated")
+				out.WriteChar(")") 
+			elsif Kernel.err >= 60 then 
+				out.WriteString("  (")
+				OutString("#System:postcondition violated")
+				out.WriteChar(")") 
+			elsif Kernel.err >= 20 then 
+				out.WriteString("  (")
+				OutString("#System:precondition violated")
+				out.WriteChar(")") 
+			end  
+		end 
+		GetTrapMsg(msg)
+		if msg # "" then
+			out.WriteLn
+			out.WriteString(msg) 
+		end 
+		out.WriteLn
+		out.rider.SetAttr(a0)
+		out.WriteLn
+		ShowStack
+		new(action)
+		action.text := out.rider.Base()
+		Services.DoLater(action, Services.now)
+		out.ConnectTo(nil)
+	end Trap
+
+begin
+	Kernel.InstallTrapViewer(Trap)
+end StdDebug

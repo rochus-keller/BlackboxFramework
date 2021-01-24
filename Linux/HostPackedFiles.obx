@@ -1,0 +1,806 @@
+module HostPackedFiles
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20080829, mf, PackedDirectory.Old: success/error handling corrected
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	(* A. V. Shiryaev, 2012.11
+	   "Unix-like" HostPackedFiles
+	   Based on 1.6 Windows HostPackedFiles *)
+	
+	
+	
+	// This module depends on the implementation of DevPacker.
+	
+	import SYSTEM, Files, HostFiles, (* , Dialog *)Libc:= LinLibc
+	
+	const 
+		packTag* = 12681268h
+		version = 1 // same as in DevPacker
+	
+	type 
+		Directory = pointer to record (Files.Directory) end 
+		PackedDirectory = pointer to record (Files.Directory) end 
+		FileList = pointer to record 
+				path, name: Files.Name
+				adr, len_: integer
+				year, month, day, hour, minute, second: integer
+				next: FileList 
+			end 
+		Locator = pointer to record 
+				name: Files.Name
+				files: FileList
+				sublocs: Locator
+				next: Locator 
+			end 
+		File = pointer to record (Files.File) 
+				l: FileList
+				f: Files.File 
+			end 
+		Reader = pointer to record (Files.Reader) 
+				r: Files.Reader
+				base: File 
+			end 
+	
+	var 
+		orgdir: Files.Directory
+		stdDir-, packedDir-: Files.Directory
+		roots: Locator
+		exefile: Files.File
+		curloc: HostFiles.Locator
+	
+	// Auxiliary procedures
+	
+	proc Msg(in ss: array of char) 
+		var 
+			res: integer
+	begin 
+		res := Libc.printf(ss)
+		res := Libc.printf(0ax)
+	end Msg
+	
+	proc DebugPrint(in str: array of char) 
+	begin 
+		// Dialog.ShowMsg(str)
+		
+		
+		Msg(short(str))
+	end DebugPrint
+	
+	proc ReadInt(r: Files.Reader; var x: integer) 
+		var 
+			b: array 4 of byte
+	begin 
+		r.ReadBytes(b, 0, 4)
+		x := b[0] mod 256 + 256 * (b[1] mod 256 + 256 * (b[2] mod 256 + 256 * (b[3] mod 256)))
+	end ReadInt
+	
+	proc ReadChar(r: Files.Reader; var x: char) 
+		var 
+			b: array 2 of byte
+	begin 
+		r.ReadBytes(b, 0, 2)
+		x := SYSTEM.VAL(char, b)
+	end ReadChar
+	
+	proc ReadString(r: Files.Reader; var x: array of char) 
+		var 
+			i: integer
+			ch: char
+	begin 
+		i := 0
+		repeat 
+			ReadChar(r, ch)
+			x[i] := ch
+			inc(i) 
+		until ch = 0x 
+	end ReadString
+	
+	proc Diff(var a, b: array of char; caseSens: boolean): integer 
+		var 
+			i: integer
+			cha, chb: char
+	begin 
+		i := 0
+		repeat 
+			cha := a[i]
+			chb := b[i]
+			inc(i)
+			if cha # chb then
+				if ~caseSens then
+					if (cha >= "a") & ((cha <= "z") or (cha >= 0e0x) & (cha <= 0fex) & (cha # 0f7x)) then
+						cha := cap(cha) 
+					end 
+					if (chb >= "a") & ((chb <= "z") or (chb >= 0e0x) & (chb <= 0fex) & (chb # 0f7x)) then
+						chb := cap(chb) 
+					end  
+				end 
+				(* IF cha = "\" THEN cha := "/" END;
+				   IF chb = "\" THEN chb := "/" END; *)
+				
+				
+				if cha # chb then
+					return ord(cha) - ord(chb) 
+				end  
+			end  
+		until cha = 0x 
+		return 0
+	end Diff
+	
+	proc GetType(name: Files.Name; var type_: Files.Type) 
+		var 
+			l, i: integer
+	begin 
+		l := len(name)
+		type_ := ""
+		while (l > 0) & (name[l - 1] # '.') do 
+			dec(l) 
+		end 
+		for i:= 0 to len(name) - l do 
+			type_[i] := name[l + i] 
+		end 
+	end GetType
+	
+	proc GetNextSubLoc(path: Files.Name; beg: integer; var res: Files.Name; var end_: integer) 
+		var 
+			i: integer
+	begin 
+		i := 0
+		res := ""
+		while (beg < len(path)) & (path[beg] # '/') do 
+			res[i] := path[beg]
+			inc(beg)
+			inc(i) 
+		end 
+		res[i] := 0x
+		end_ := beg
+	end GetNextSubLoc
+	
+	proc GetLoc(path: Files.Name; create: boolean): Locator 
+		var 
+			end_, diff: integer
+			sp: Files.Name
+			loc, tl, last: Locator
+	begin 
+		sp := ""
+		if path = '' then
+			DebugPrint("Cannot use an empty path.")
+			return nil 
+		(* ELSIF (path[0] = '/') OR (path[0] = '\') THEN (* network path *)
+		   IF (path[1] = '/') OR (path[1] = '\') THEN
+		   GetNextSubLoc(path, 2, sp, end)
+		   ELSE
+		   DebugPrint("Invalid network path.");
+		   RETURN NIL
+		   END
+		   ELSIF path[1] = ':' THEN (* absolute path *)
+		   GetNextSubLoc(path, 0, sp, end) *)
+		
+		
+		elsif path[0] = '/' then  // absolute path
+			GetNextSubLoc(path, 1, sp, end_) 
+		elsif path[0] = '.' then 
+			if path[1] = '/' then
+				GetNextSubLoc(path, 2, sp, end_) 
+			end  
+		else 
+			DebugPrint("No absolute path.")
+			return nil 
+		end 
+		if sp # "" then
+			loc := roots
+			last := loc
+			if loc # nil then
+				diff := Diff(sp, loc.name, false) 
+			end 
+			while (loc # nil) & (diff > 0) do 
+				last := loc
+				loc := loc.next
+				if loc # nil then
+					diff := Diff(sp, loc.name, false) 
+				end  
+			end 
+			if ((loc = nil) or (diff # 0)) & ~create then
+				return nil 
+			end 
+			if (loc = nil) or (diff < 0) then
+				new(loc)
+				loc.name := sp
+				if roots = nil then
+					roots := loc 
+				else 
+					loc.next := last.next
+					last.next := loc 
+				end  
+			end 
+			GetNextSubLoc(path, 3, sp, end_)
+			while sp # "" do 
+				tl := loc.sublocs
+				last := nil
+				if tl # nil then
+					diff := Diff(sp, tl.name, false) 
+				end 
+				while (tl # nil) & (diff > 0) do 
+					last := tl
+					tl := tl.next
+					if tl # nil then
+						diff := Diff(sp, tl.name, false) 
+					end  
+				end 
+				if (tl = nil) or (diff < 0) then
+					if create then
+						new(tl)
+						tl.name := sp
+						if last = nil then
+							tl.next := loc.sublocs
+							loc.sublocs := tl 
+						else 
+							tl.next := last.next
+							last.next := tl 
+						end  
+					else 
+						return nil 
+					end  
+				end 
+				loc := tl
+				GetNextSubLoc(path, end_ + 1, sp, end_) 
+			end 
+			return loc 
+		end 
+		return nil
+	end GetLoc
+	
+	proc ReadResourceTable
+		var 
+			r: Files.Reader
+			tableadr, int_, noff, i: integer
+			str: Files.Name
+			l: FileList
+			loc: Locator
+	begin 
+		roots := nil
+		r := exefile.NewReader(nil)
+		r.SetPos(exefile.Length() - 12)
+		ReadInt(r, int_)
+		if int_ = packTag then
+			ReadInt(r, int_)
+			if int_ = version then
+				ReadInt(r, tableadr)
+				r.SetPos(tableadr)
+				ReadInt(r, noff)
+				new(roots)
+				for i:= 0 to noff - 1 do 
+					(* Files are packed in reversed alphabetical order,
+					   so adding files at the beginning of the list renders an alphabetically sorted list. *)
+					new(l)
+					ReadString(r, str)
+					l.path := str
+					ReadString(r, str)
+					l.name := str
+					ReadInt(r, int_)
+					l.adr := int_
+					ReadInt(r, int_)
+					l.len_ := int_
+					ReadInt(r, int_)
+					l.year := int_
+					ReadInt(r, int_)
+					l.month := int_
+					ReadInt(r, int_)
+					l.day := int_
+					ReadInt(r, int_)
+					l.hour := int_
+					ReadInt(r, int_)
+					l.minute := int_
+					ReadInt(r, int_)
+					l.second := int_
+					loc := GetLoc(curloc.path + '/' + l.path, true)
+					l.next := loc.files
+					loc.files := l 
+				end  
+			end  
+		end 
+	end ReadResourceTable
+	
+	proc Get(path: HostFiles.FullName; name: Files.Name): Files.File 
+		var 
+			l: FileList
+			f: File
+			loc: Locator
+			type_: Files.Type
+			diff: integer
+	begin 
+		loc := GetLoc(path, false)
+		if loc # nil then
+			l := loc.files 
+		else 
+			return nil 
+		end 
+		if l # nil then
+			diff := Diff(l.name, name, false) 
+		end 
+		while (l # nil) & (diff < 0) do 
+			l := l.next
+			if l # nil then
+				diff := Diff(l.name, name, false) 
+			end  
+		end 
+		if (l # nil) & (diff = 0) then
+			new(f)
+			f.l := l
+			f.f := exefile
+			GetType(name, type_)
+			f.InitType(type_)
+			return f 
+		end 
+		return nil
+	end Get
+	
+	// Files.Directory
+	
+	proc (d: Directory) Delete(loc: Files.Locator; name: Files.Name) 
+	begin 
+		orgdir.Delete(loc, name)
+	end Delete
+	
+	proc (d: Directory) FileList(floc: Files.Locator): Files.FileInfo 
+		var 
+			pi, fi, tfi, nfi, last: Files.FileInfo
+			diff: integer
+			caseSens: boolean
+	begin 
+		assert(floc is HostFiles.Locator, 20)
+		fi := orgdir.FileList(floc) // Gives an alphabetically sorted list of files.
+		pi := packedDir.FileList(floc) // Gives an alphabetically sorted list of files.
+		nfi := nil
+		last := nil
+		tfi := nil
+		// Both fi and l are alphabetically sorted. And the returned list also has to be alphabetically sorted.
+		caseSens := floc(HostFiles.Locator).caseSens
+		while (pi # nil) & (fi # nil) do 
+			diff := Diff(pi.name, fi.name, caseSens)
+			if diff >= 0 then
+				tfi := fi
+				fi := fi.next
+				if diff = 0 then
+					pi := pi.next 
+				end  
+			else 
+				tfi := pi
+				pi := pi.next 
+			end 
+			if nfi = nil then
+				nfi := tfi 
+			else 
+				last.next := tfi 
+			end 
+			last := tfi 
+		end 
+		if pi # nil then
+			if nfi = nil then
+				nfi := pi 
+			else 
+				last.next := pi 
+			end  
+		elsif fi # nil then 
+			if nfi = nil then
+				nfi := fi 
+			else 
+				last.next := fi 
+			end  
+		end 
+		return nfi
+	end FileList
+	
+	proc (d: Directory) GetFileName(name: Files.Name; type_: Files.Type; var filename: Files.Name) 
+	begin 
+		orgdir.GetFileName(name, type_, filename)
+	end GetFileName
+	
+	proc (d: Directory) LocList(floc: Files.Locator): Files.LocInfo 
+		var 
+			pi, li, nli, last: Files.LocInfo
+			diff: integer
+			caseSens: boolean
+	begin 
+		li := orgdir.LocList(floc)
+		pi := packedDir.LocList(floc)
+		caseSens := floc(HostFiles.Locator).caseSens
+		nli := nil
+		// Both pi and li are alphabetically ordered.
+		while (pi # nil) & (li # nil) do 
+			diff := Diff(pi.name, li.name, caseSens)
+			if diff >= 0 then
+				if nli = nil then
+					nli := li 
+				else 
+					last.next := li 
+				end 
+				last := li
+				li := li.next
+				if diff = 0 then
+					pi := pi.next 
+				end  
+			else 
+				if nli = nil then
+					nli := pi 
+				else 
+					last.next := pi 
+				end 
+				last := pi
+				pi := pi.next 
+			end  
+		end 
+		if pi = nil then
+			if nli = nil then
+				nli := li 
+			else 
+				last.next := li 
+			end  
+		else 
+			if nli = nil then
+				nli := pi 
+			else 
+				last.next := pi 
+			end  
+		end 
+		return nli
+	end LocList
+	
+	proc (d: Directory) New(loc: Files.Locator; ask: boolean): Files.File 
+	begin 
+		return orgdir.New(loc, ask)
+	end New
+	
+	proc (d: Directory) Old(loc: Files.Locator; name: Files.Name; shared: boolean): Files.File 
+		var 
+			f: Files.File
+	begin 
+		f := orgdir.Old(loc, name, shared)
+		if f = nil then
+			f := packedDir.Old(loc, name, shared) 
+		end 
+		return f
+	end Old
+	
+	proc (d: Directory) Rename(loc: Files.Locator; old, new_: Files.Name; ask: boolean) 
+	begin 
+		orgdir.Rename(loc, old, new_, ask)
+	end Rename
+	
+	proc (d: Directory) SameFile(
+		loc0: Files.Locator; name0: Files.Name; loc1: Files.Locator; name1: Files.Name
+		): boolean 
+	begin 
+		return orgdir.SameFile(loc0, name0, loc1, name1)
+	end SameFile
+	
+	proc (d: Directory) Temp(): Files.File 
+	begin 
+		return orgdir.Temp()
+	end Temp
+	
+	proc (d: Directory) This(in path: array of char): Files.Locator 
+	begin 
+		return orgdir.This(path)
+	end This
+	
+	// PackedDirectory
+	
+	proc (d: PackedDirectory) Delete(loc: Files.Locator; name: Files.Name) 
+	begin 
+		loc.res := 4 // write-protection
+	end Delete
+	
+	proc (d: PackedDirectory) FileList(floc: Files.Locator): Files.FileInfo 
+		var 
+			nfi, tfi, last: Files.FileInfo
+			loc: Locator
+			l: FileList
+			type_: Files.Type
+			hloc: HostFiles.Locator
+	begin 
+		assert(floc is HostFiles.Locator, 20)
+		hloc := floc(HostFiles.Locator)
+		loc := GetLoc(hloc.path, false)
+		nfi := nil
+		if loc # nil then
+			l := loc.files
+			last := nil
+			tfi := nil
+			// l is alphabetically sorted. And the returned list also has to be alphabetically sorted.
+			while l # nil do 
+				GetType(l.name, type_)
+				new(tfi)
+				tfi.name := l.name
+				tfi.type_ := type_
+				tfi.attr := {Files.readOnly}
+				tfi.modified.year := l.year
+				tfi.modified.month := l.month
+				tfi.modified.day := l.day
+				tfi.modified.hour := l.hour
+				tfi.modified.minute := l.minute
+				tfi.modified.second := l.second
+				if nfi = nil then
+					nfi := tfi 
+				else 
+					last.next := tfi 
+				end 
+				last := tfi
+				l := l.next 
+			end  
+		end 
+		return nfi
+	end FileList
+	
+	proc (d: PackedDirectory) GetFileName(name: Files.Name; type_: Files.Type; var filename: Files.Name) 
+	begin 
+		orgdir.GetFileName(name, type_, filename)
+	end GetFileName
+	
+	proc (d: PackedDirectory) LocList(floc: Files.Locator): Files.LocInfo 
+		var 
+			nli, tli, last: Files.LocInfo
+			loc: Locator
+			hloc: HostFiles.Locator
+	begin 
+		hloc := floc(HostFiles.Locator)
+		nli := nil
+		loc := GetLoc(hloc.path, false)
+		if loc # nil then
+			loc := loc.sublocs 
+		end 
+		// loc is alphabetically ordered.
+		while loc # nil do 
+			new(tli)
+			tli.name := loc.name
+			tli.attr := {Files.readOnly}
+			if nli = nil then
+				nli := tli 
+			else 
+				last.next := tli 
+			end 
+			last := tli
+			loc := loc.next 
+		end 
+		return nli
+	end LocList
+	
+	proc (d: PackedDirectory) New(loc: Files.Locator; ask: boolean): Files.File 
+	begin 
+		loc.res := 4 // write-protection
+		return nil
+	end New
+	
+	proc (d: PackedDirectory) Old(loc: Files.Locator; name: Files.Name; shared: boolean): Files.File 
+		var 
+			f: Files.File
+	begin 
+		f := nil
+		if shared then
+			with loc: HostFiles.Locator do 
+				f := Get(loc.path, name)
+				if f # nil then
+					loc.res := 0 
+				end  
+			else 
+				DebugPrint("HostPackedFiles: Directory.Old - This operation requires HostFiles. ") 
+			end  
+		end 
+		return f
+	end Old
+	
+	proc (d: PackedDirectory) Rename(loc: Files.Locator; old, new_: Files.Name; ask: boolean) 
+	begin 
+		loc.res := 4 // write-protection
+	end Rename
+	
+	proc (d: PackedDirectory) SameFile(loc0: Files.Locator; name0: Files.Name; loc1: Files.Locator; name1: Files.Name): boolean 
+	begin 
+		return orgdir.SameFile(loc0, name0, loc1, name1)
+	end SameFile
+	
+	proc (d: PackedDirectory) Temp(): Files.File 
+	begin 
+		return orgdir.Temp()
+	end Temp
+	
+	proc (d: PackedDirectory) This(in path: array of char): Files.Locator 
+	begin 
+		return orgdir.This(path)
+	end This
+	
+	// Files.Reader
+	
+	proc (r: Reader) Base(): File 
+	begin 
+		return r.base
+	end Base
+	
+	proc (r: Reader) Pos(): integer 
+	begin 
+		return r.r.Pos() - r.base.l.adr
+	end Pos
+	
+	proc (r: Reader) SetPos(pos: integer) 
+	begin 
+		assert(pos <= r.base.l.len_, 20)
+		r.r.SetPos(pos + r.base.l.adr)
+		r.eof := false
+	end SetPos
+	
+	proc (r: Reader) ReadByte(var x: byte) 
+	begin 
+		if (r.r.Pos() - r.base.l.adr) >= r.base.l.len_ then
+			r.eof := true
+			x := 0 
+		else 
+			r.r.ReadByte(x) 
+		end 
+	end ReadByte
+	
+	proc (r: Reader) ReadBytes(var x: array of byte; beg, len_: integer) 
+	begin 
+		assert(beg >= 0, 20)
+		assert(len_ >= 0, 21)
+		assert(beg + len_ <= len(x), 22)
+		len_ := min(r.base.l.len_, len_)
+		r.r.ReadBytes(x, beg, len_)
+		if (r.r.Pos() - r.base.l.adr) >= r.base.l.len_ then
+			r.eof := true 
+		end 
+	end ReadBytes
+	
+	// Files.File
+	
+	proc (f: File) Close
+	begin 
+	// Do nothing since all packed files are opened on the exe file which should stay open.
+	end Close
+	
+	proc (f: File) Closed(): boolean 
+	begin  // Always FALSE since all packed files are opened
+		return false
+	end Closed
+	
+	proc (f: File) Shared(): boolean 
+	begin  // Always TRUE since all packed files are read only
+		return true
+	end Shared
+	
+	
+	proc (f: File) Flush
+	begin 
+	// Do nothing since all packed files are read only.
+	end Flush
+	
+	proc (f: File) Length(): integer 
+	begin 
+		return f.l.len_
+	end Length
+	
+	proc (f: File) NewReader(old: Files.Reader): Files.Reader 
+		var 
+			r: Reader
+			hr: Files.Reader
+	begin 
+		assert(f.f # nil, 20)
+		assert(f.l # nil, 21)
+		hr := f.f.NewReader(old)
+		if hr = nil then
+			return nil 
+		end 
+		hr.SetPos(f.l.adr)
+		new(r)
+		r.base := f
+		r.r := hr
+		r.eof := false
+		return r
+	end NewReader
+	
+	proc (f: File) NewWriter(old: Files.Writer): Files.Writer 
+	begin 
+		// Return NIL since all packed files are read only.
+		return nil
+	end NewWriter
+	
+	proc (f: File) Register(name: Files.Name; type_: Files.Type; ask: boolean; var res: integer) 
+	begin 
+		halt(20)
+	// Do nothing since all packed files are opened using Old and only files opened using New can be registered.
+	end Register
+	
+	// Inititlization and uninitialization
+	
+	proc SetFilesDir*
+	begin 
+		orgdir := Files.dir
+		if orgdir # nil then
+			if roots # nil then
+				curloc := Files.dir.This("")(HostFiles.Locator)
+				Files.SetDir(stdDir) 
+			end  
+		else  
+		end 
+	end SetFilesDir
+	
+	proc RestoreFilesDir*
+	begin 
+		if orgdir # nil then
+			Files.SetDir(orgdir) 
+		end 
+	end RestoreFilesDir
+	
+	proc IsInstalled*
+	begin 
+		if Files.dir is Directory then
+			DebugPrint("HostPackedFiles is installed") 
+		else 
+			DebugPrint("HostPackedFiles is NOT installed") 
+		end 
+	end IsInstalled
+	
+	proc GetModDate*(f: Files.File; var year, month, day, hour, minute, second: integer) 
+	begin 
+		assert(f is File)
+		with f: File do 
+			year := f.l.year
+			month := f.l.month
+			day := f.l.day
+			hour := f.l.hour
+			minute := f.l.minute
+			second := f.l.second 
+		end 
+	end GetModDate
+	
+	proc Init
+		var 
+			loc: Files.Locator
+			appName: Files.Name
+			pDir: PackedDirectory
+			sDir: Directory
+			env: Libc.PtrSTR
+	begin 
+		env := Libc.getenv("BB_PACKED_NAME")
+		if env # nil then
+			(* NOTE: environment variable encoding translation not required
+			   because appName should be ASCII *)
+			loc := Files.dir.This("")
+			Files.dir.GetFileName(env, "", appName)
+			exefile := Files.dir.Old(loc, appName, Files.shared)
+			if exefile # nil then
+				curloc := loc(HostFiles.Locator)
+				ReadResourceTable
+				new(pDir)
+				packedDir := pDir
+				new(sDir)
+				stdDir := sDir
+				SetFilesDir 
+			else 
+				DebugPrint("HostPackedFiles: Could not open " + appName) 
+			end  
+		else 
+			Msg("HostPackedFiles: BB_PACKED_NAME environment variable not specified") 
+		end 
+	end Init
+
+begin
+	Init
+(* CLOSE
+	RestoreFilesDir
+	if exefile # nil then
+		exefile.Close 
+	end  *) 
+end HostPackedFiles

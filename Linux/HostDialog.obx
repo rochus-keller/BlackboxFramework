@@ -1,0 +1,863 @@
+module HostDialog
+	
+	import 
+		SYSTEM, LinLibc, 
+		GLib:= Gtk2GLib, Gtk:= Gtk2Gtk, 
+		Dialog, Files, Stores, Views, Ports, Converters, 
+		Windows, Fonts, Strings, Properties, StdCmds, 
+		HostFiles, HostFonts, HostWindows, HostGnome, 
+		HostCFrames, HostRegistry, Iconv:= LinIconv, Kernel, 
+		HostLang // set Dialog.LanguageHook
+	
+	const 
+		// CloseDialog res
+		save* = 1
+		cancel* = 2
+		
+		dirtyString = "#Host:SaveChanges"
+		defaultLanguage = "en"
+		
+		sepChar = GLib.G_DIR_SEPARATOR
+	
+	type 
+		ShowHook = pointer to record (Dialog.ShowHook) end 
+		DialogHook = pointer to record (Dialog.GetHook) end 
+		GetSpecHook = pointer to record (Views.GetSpecHook) end 
+		ExtCallHook = pointer to record (Dialog.ExtCallHook) end 
+	
+	var 
+		hist: HostFiles.FullName
+		encoder, decoder: Iconv.iconv_t
+		
+		prefs*: record 
+				useTTMetric*: boolean
+				visualScroll*: boolean
+				statusbar*: integer
+				thickCaret*: boolean
+				caretPeriod*: integer
+				beep*: boolean
+				serverMode*: boolean
+				language*: Dialog.Combo 
+			end 
+		
+		prefFName, prefDName: Fonts.Typeface
+		prefFSize, prefDSize, prefDWght: integer
+		prefDStyle: set
+	
+	proc RunDialog(dialog: Gtk.GtkDialog): integer 
+		var 
+			res: integer
+	begin 
+		HostGnome.dialogIsOpen := true
+		res := Gtk.gtk_dialog_run(dialog)
+		HostGnome.dialogIsOpen := false
+		return res
+	end RunDialog
+	
+	(* old version of RunDialog, which caused problems
+	   PROCEDURE [ccall] Response (dialog :Gtk.GtkDialog; id,user_data: INTEGER);
+	   BEGIN
+	   response:=id;
+	   END Response;
+	   
+	   PROCEDURE RunDialog(dialog :Gtk.GtkDialog ):INTEGER;
+	   VAR res: INTEGER;
+	   BEGIN
+	   res := GtkU.gtk_signal_connect(dialog, "response", SYSTEM.ADR(Response), 0);
+	   Gtk.gtk_window_set_modal(dialog, 1); (* TODO: *)
+	   Gtk.gtk_widget_show_now(dialog);
+	   response:=Gtk.GTK_RESPONSE_NONE;
+	   WHILE response=Gtk.GTK_RESPONSE_NONE DO
+	   res := Gtk.gtk_main_iteration();
+	   Windows.dir.Update(NIL);
+	   END;
+	   RETURN response
+	   END RunDialog; *)
+	
+	
+	// Show Hook
+	
+	proc ShowParamMsg*(in str, p0, p1, p2: array of char) 
+		var 
+			res: integer
+			dlg: Gtk.GtkMessageDialog
+			st: array 512 of char
+			us: GLib.PString
+	begin 
+		assert(str # "", 20)
+		// Dialog.appName ?
+		Dialog.MapParamString(str, p0, p1, p2, st)
+		us := GLib.g_utf16_to_utf8(st, -1, nil, nil, nil)
+		dlg := Gtk.gtk_message_dialog_new(nil,  // TODO: NIL-> main_application_window
+			Gtk.GTK_DIALOG_MODAL + Gtk.GTK_DIALOG_DESTROY_WITH_PARENT, 
+			Gtk.GTK_MESSAGE_INFO, 
+			Gtk.GTK_BUTTONS_OK, 
+			us)
+		GLib.g_free(SYSTEM.VAL(GLib.gpointer, us))
+		res := RunDialog(dlg)
+		Gtk.gtk_widget_destroy(dlg)
+	end ShowParamMsg
+	
+	proc ShowParamStatus*(in str, p0, p1, p2: array of char) 
+		var 
+			res: integer
+			st: array 512 of char
+	begin 
+		Dialog.MapParamString(str, p0, p1, p2, st)
+		HostWindows.SetStatusText(st)
+	end ShowParamStatus
+	
+	proc (h: ShowHook) ShowParamMsg(in str, p0, p1, p2: array of char) 
+	begin 
+		ShowParamMsg(str, p0, p1, p2)
+	end ShowParamMsg
+	
+	proc (h: ShowHook) ShowParamStatus(in str, p0, p1, p2: array of char) 
+	begin 
+		ShowParamStatus(str, p0, p1, p2)
+	end ShowParamStatus
+	
+	
+	// * Dialogs
+	
+	proc (hook: DialogHook) GetOK(in str, p0, p1, p2: array of char; form: set; var res: integer) 
+		var 
+			r: integer
+			dlg: Gtk.GtkMessageDialog
+			st: array 512 of char
+			us: GLib.PString
+			type_: Gtk.GtkMessageType
+			buttons: Gtk.GtkButtonsType
+	begin 
+		assert(str # "", 20)
+		Dialog.MapParamString(str, p0, p1, p2, st)
+		if Dialog.yes in form then
+			type_ := Gtk.GTK_MESSAGE_QUESTION
+			buttons := Gtk.GTK_BUTTONS_YES_NO 
+		// IF Dialog.cancel IN form THEN YES_NO_CANCEL	END
+		else  // ok
+			type_ := Gtk.GTK_MESSAGE_WARNING
+			if Dialog.cancel in form then
+				buttons := Gtk.GTK_BUTTONS_OK_CANCEL 
+			else 
+				buttons := Gtk.GTK_BUTTONS_OK 
+			end  
+		end 
+		us := GLib.g_utf16_to_utf8(st, -1, nil, nil, nil)
+		dlg := Gtk.gtk_message_dialog_new(nil, 
+			Gtk.GTK_DIALOG_MODAL + Gtk.GTK_DIALOG_DESTROY_WITH_PARENT, 
+			type_, buttons, us)
+		GLib.g_free(SYSTEM.VAL(GLib.gpointer, us))
+		r := RunDialog(dlg)
+		case r of 
+			| Gtk.GTK_RESPONSE_YES: 
+				res := Dialog.yes 
+			| Gtk.GTK_RESPONSE_CANCEL: 
+				res := Dialog.cancel 
+			| Gtk.GTK_RESPONSE_OK: 
+				res := Dialog.ok 
+			| Gtk.GTK_RESPONSE_NO: 
+				res := Dialog.no 
+		else 
+			res := 0 
+		end 
+		Gtk.gtk_widget_destroy(dlg)
+	end GetOK
+	
+	
+	proc CloseDialog*(w: Windows.Window; quit: boolean; var res: integer) 
+		var 
+			r: integer
+			dlg: Gtk.GtkMessageDialog
+			title: Views.Title
+			text: array 256 of char
+			us: GLib.PString
+	begin 
+		w.GetTitle(title)
+		Dialog.MapParamString(dirtyString, title, 0dx, 0dx, text)
+		us := GLib.g_utf16_to_utf8(text, -1, nil, nil, nil)
+		dlg := Gtk.gtk_message_dialog_new(nil, 
+			Gtk.GTK_DIALOG_MODAL + Gtk.GTK_DIALOG_DESTROY_WITH_PARENT, 
+			Gtk.GTK_MESSAGE_QUESTION, 
+			Gtk.GTK_BUTTONS_YES_NO, us)
+		GLib.g_free(SYSTEM.VAL(GLib.gpointer, us))
+		r := RunDialog(dlg)
+		Gtk.gtk_widget_destroy(dlg)
+		
+		if r = Gtk.GTK_RESPONSE_YES then
+			res := save 
+		elsif r = Gtk.GTK_RESPONSE_NO then 
+			res := 0 
+		else 
+			res := cancel 
+		end 
+	end CloseDialog
+	
+	proc GetColor(in_: Ports.Color; var out: Ports.Color; var set_: boolean) 
+		var 
+			colorDialog: Gtk.GtkColorSelectionDialog
+			color: Gtk.GtkColors
+			res: integer
+	begin 
+		set_ := false
+		colorDialog := Gtk.gtk_color_selection_dialog_new("Color")
+		color[0] := (in_ mod 256) / 255.0
+		color[1] := ((in_ div 256) mod 256) / 255.0
+		color[2] := ((in_ div 65536) mod 256) / 255.0
+		color[3] := 0 // opacity
+		Gtk.gtk_color_selection_set_color(colorDialog.colorsel, color)
+		// Gtk.gtk_widget_hide(colorDialog.help_button);
+		res := RunDialog(colorDialog)
+		case res of 
+			| Gtk.GTK_RESPONSE_OK: 
+				Gtk.gtk_color_selection_get_color(colorDialog.colorsel, color)
+				out := Ports.RGBColor(
+					short(entier((color[0] * 255))), 
+					short(entier((color[1] * 255))), 
+					short(entier((color[2] * 255))))
+				set_ := true 
+			| Gtk.GTK_RESPONSE_DELETE_EVENT:  
+		else  
+		end 
+		Gtk.gtk_widget_destroy(colorDialog)
+	end GetColor
+	
+	proc ColorDialog*
+		// open color dialog and set selection to choosen color
+		var 
+			set_: boolean
+			p: Properties.StdProp
+			col: Ports.Color
+	begin 
+		Properties.CollectStdProp(p)
+		if ~(Properties.color in p.known) then
+			p.color.val_ := Ports.black 
+		end 
+		GetColor(p.color.val_, col, set_)
+		if set_ then
+			StdCmds.Color(col) 
+		end 
+	end ColorDialog
+	
+	proc (hook: DialogHook) GetColor(in_: Ports.Color; var out: Ports.Color; var set_: boolean) 
+	begin 
+		GetColor(in_, out, set_)
+	end GetColor
+	
+	proc GetFont(var typeface: Fonts.Typeface; var size_: integer; var weight: integer; var style: set; var set_: boolean) 
+		var 
+			res: integer
+			fsDialog: Gtk.GtkFontSelectionDialog
+			fn: GLib.PString
+			s: array 256 of char
+	begin 
+		set_ := false
+		fsDialog := Gtk.gtk_font_selection_dialog_new("Font")
+		HostFonts.MakePangoString(typeface, size_, style, weight, s)
+		res := Gtk.gtk_font_selection_dialog_set_font_name(fsDialog, s)
+		res := RunDialog(fsDialog)
+		case res of 
+			| Gtk.GTK_RESPONSE_OK: 
+				fn := Gtk.gtk_font_selection_dialog_get_font_name(fsDialog)
+				HostFonts.ParsePangoString(fn, typeface, size_, style, weight)
+				set_ := true 
+			| Gtk.GTK_RESPONSE_DELETE_EVENT:  
+		else  
+		end 
+		Gtk.gtk_widget_destroy(fsDialog)
+	end GetFont
+	
+	proc FontDialog*
+		// open font dialog and set selection to choosen attributes
+		var 
+			set_: boolean
+			p, p0: Properties.StdProp
+	begin 
+		Properties.CollectStdProp(p0)
+		if (p0 # nil) & (Properties.typeface in p0.known) then
+			new(p)
+			p.typeface := p0.typeface
+			p.size_ := p0.size_
+			p.weight := p0.weight
+			p.style := p0.style
+			GetFont(p.typeface, p.size_, p.weight, p.style.val_, set_)
+			if set_ then
+				p.valid := {Properties.typeface, Properties.style, Properties.weight, Properties.size_}
+				p.style.mask := {Fonts.italic, Fonts.underline, Fonts.strikeout}
+				Properties.EmitProp(nil, p) 
+			end  
+		end 
+	end FontDialog
+	
+	proc TypefaceDialog*
+		// open font dialog and set selection to choosen typeface
+		var 
+			set_: boolean
+			p, p0: Properties.StdProp
+			s, w: integer
+			st: set
+	begin 
+		Properties.CollectStdProp(p0)
+		if (p0 # nil) & (Properties.typeface in p0.known) then
+			new(p)
+			p.typeface := p0.typeface
+			p.size_ := p0.size_
+			p.weight := p0.weight
+			p.style := p0.style
+			GetFont(p.typeface, p.size_, p.weight, p.style.val_, set_)
+			if set_ then
+				p.valid := {Properties.typeface}
+				Properties.EmitProp(nil, p) 
+			end  
+		end 
+	end TypefaceDialog
+	
+	// * A. V. Shiryaev, 2012.11: filenames encoding translation *
+	
+	proc ConvInit
+	begin 
+		// NOTE: In case of Gtk for Windows, use UTF-8 encoding instead of HostLang.enc
+		if Kernel.littleEndian then
+			decoder := Iconv.iconv_open("UCS-2LE", HostLang.enc)
+			encoder := Iconv.iconv_open(HostLang.enc, "UCS-2LE") 
+		else 
+			decoder := Iconv.iconv_open("UCS-2BE", HostLang.enc)
+			encoder := Iconv.iconv_open(HostLang.enc, "UCS-2BE") 
+		end 
+	end ConvInit
+	
+	proc ConvClose
+		var 
+			res: integer
+	begin 
+		if decoder # -1 then
+			res := Iconv.iconv_close(decoder)
+			decoder := -1 
+		end 
+		if encoder # -1 then
+			res := Iconv.iconv_close(encoder)
+			encoder := -1 
+		end 
+	end ConvClose
+	
+	proc ResetCodec(c: Iconv.iconv_t): boolean 
+		var 
+			res, fLen, tLen: Iconv.size_t
+	begin 
+		assert(c # -1, 20)
+		fLen := 0
+		tLen := 0
+		res := Iconv.iconv(c, nil, fLen, nil, tLen)
+		return res # -1
+	end ResetCodec
+	
+	// decode filename from HostLang.enc encoding
+	proc Long(ss: Iconv.PtrSTR; var s: array of char) 
+		var 
+			res: Iconv.size_t
+			fLen, tLen: Iconv.size_t
+			to_: Iconv.PtrLSTR
+			i: integer
+	begin 
+		i := 0
+		while (i < len(s) - 1) & (ss[i] >= ' ') & (ss[i] <= '~') do 
+			s[i] := ss[i]
+			inc(i) 
+		end 
+		if ss[i] = 0x then
+			if i < len(s) then
+				s[i] := 0x 
+			else 
+				s[0] := 0x 
+			end  
+		elsif (decoder # -1) & ResetCodec(decoder) then 
+			fLen := len(ss)
+			to_ := s
+			tLen := (len(s) - 1) * size(char)
+			res := Iconv.iconv_decode(decoder, ss, fLen, to_, tLen)
+			if (res >= 0) & (fLen = 0) & (tLen >= 0) then
+				to_[0] := 0x 
+			else 
+				s[0] := 0x 
+			end  
+		else 
+			s[0] := 0x 
+		end 
+	end Long
+	
+	// encode filename to HostLang.enc encoding
+	proc Short(in s: array of char; var ss: array of char) 
+		var 
+			res: Iconv.size_t
+			fLen, tLen: Iconv.size_t
+			from: Iconv.PtrLSTR
+			to_: Iconv.PtrSTR
+			i: integer
+	begin 
+		i := 0
+		while (i < len(ss) - 1) & (s[i] >= ' ') & (s[i] <= '~') do 
+			ss[i] := short(s[i])
+			inc(i) 
+		end 
+		if s[i] = 0x then
+			if i < len(ss) then
+				ss[i] := 0x 
+			else 
+				ss[0] := 0x 
+			end  
+		elsif (encoder # -1) & ResetCodec(encoder) then 
+			from := s
+			fLen := len(s) * size(char)
+			to_ := ss
+			tLen := len(ss) - 1
+			res := Iconv.iconv_encode(encoder, from, fLen, to_, tLen)
+			if (res >= 0) & (fLen = 0) & (tLen >= 0) then
+				to_[0] := 0x 
+			else 
+				ss[0] := 0x 
+			end  
+		else 
+			ss[0] := 0x 
+		end 
+	end Short
+	
+	// * end of filenames encoding translation *
+	
+	// s -> [ locName sepChar ] name
+	proc SplitFileName(in s: array of char; var name: Files.Name; var locName: HostFiles.FullName) 
+		var 
+			i, j, sepIdx, len_: integer
+	begin 
+		len_ := len(s)
+		i := len_ - 1
+		while (i >= 0) & (s[i] # sepChar) do 
+			dec(i) 
+		end 
+		if (i >= 0) & (s[i] = sepChar) then
+			sepIdx := i
+			// s(sepIdx;len) -> name
+			inc(i)
+			j := 0
+			while (i < len_) & (j < len(name) - 1) do 
+				name[j] := s[i]
+				inc(j)
+				inc(i) 
+			end 
+			if (i = len_) & (j < len(name)) then
+				name[j] := 0x 
+			else 
+				name[0] := 0x 
+			end 
+			// s[0;sepIdx) -> locName
+			i := 0
+			while (i < sepIdx) & (i < len(locName) - 1) do 
+				locName[i] := s[i]
+				inc(i) 
+			end 
+			if (i = sepIdx) & (i < len(locName)) then
+				locName[i] := 0x 
+			else 
+				locName[0] := 0x 
+			end  
+		elsif len_ > 0 then 
+			name := s
+			locName[0] := 0x 
+		else 
+			name[0] := 0x
+			locName[0] := 0x 
+		end 
+	end SplitFileName
+	
+	
+	proc GetFileSpec(mode: integer; var loc: Files.Locator; var name: Files.Name) 
+		var 
+			fs: Gtk.GtkFileChooserDialog
+			res: integer
+			locName: HostFiles.FullName
+			ss: GLib.PString
+			ss1: array len(HostFiles.FullName) * 4 of char
+			s: HostFiles.FullName
+			root: Files.Locator
+			title: array 64 of char
+			sTitle: array 128 of char
+	begin 
+		(* gtk_file_chooser_set_current_name
+		   gtk_file_chooser_add_filter/remove *)
+		
+		case mode of 
+			| 0: 
+				Dialog.MapString("#System:OpenFile", title)
+				Short(title, sTitle)
+				fs := Gtk.gtk_file_chooser_dialog_new(sTitle, nil, 0, 
+					"gtk-open", Gtk.GTK_RESPONSE_OK, 
+					"gtk-cancel", Gtk.GTK_RESPONSE_CANCEL, nil, 0, 0) 
+			| 1: 
+				Dialog.MapString("#System:SaveAs", title)
+				Short(title, sTitle)
+				fs := Gtk.gtk_file_chooser_dialog_new(sTitle, nil, 1, 
+					"gtk-save", Gtk.GTK_RESPONSE_OK, 
+					"gtk-cancel", Gtk.GTK_RESPONSE_CANCEL, nil, 0, 0) 
+		end 
+		
+		if (loc # nil) & (loc is HostFiles.Locator) then
+			locName := loc(HostFiles.Locator).path 
+		elsif hist # "" then 
+			locName := hist 
+		else 
+			root := Files.dir.This("")
+			if root is HostFiles.Locator then
+				locName := root(HostFiles.Locator).path 
+			else 
+				locName := "" 
+			end  
+		end 
+		if locName # "" then
+			Short(locName + sepChar + name, ss1) 
+		else 
+			Short(name, ss1) 
+		end 
+		Gtk.gtk_file_chooser_set_filename(fs, ss1)
+		res := RunDialog(fs)
+		case res of 
+			| Gtk.GTK_RESPONSE_OK: 
+				ss := Gtk.gtk_file_chooser_get_filename(fs)
+				Long(ss, s)
+				SplitFileName(s, name, locName)
+				loc := HostFiles.NewLocator(locName)
+				hist := loc(HostFiles.Locator).path 
+			| Gtk.GTK_RESPONSE_DELETE_EVENT:  
+		else  
+		end 
+		Gtk.gtk_widget_destroy(fs)
+	
+	end GetFileSpec
+	
+	proc FindConverter(in name: Files.Name; var conv: Converters.Converter) 
+		var 
+			i, l: integer
+			type_: Files.Type
+	begin 
+		l := len(name)
+		type_ := ""
+		i := l
+		while (i > 0) & (name[i] # ".") do 
+			dec(i) 
+		end 
+		if i > 0 then
+			Strings.Extract(name, i + 1, l - i, type_)
+			conv := Converters.list
+			while (conv # nil) & (conv.fileType # type_) do 
+				conv := conv.next 
+			end  
+		else 
+			conv := nil 
+		end 
+	end FindConverter
+	
+	proc GetIntSpec*(var loc: Files.Locator; var name: Files.Name; var conv: Converters.Converter) 
+	begin 
+		GetFileSpec(0, loc, name)
+		FindConverter(name, conv)
+	end GetIntSpec
+	
+	proc GetExtSpec*(s: Stores.Store; var loc: Files.Locator; var name: Files.Name; var conv: Converters.Converter) 
+	begin 
+		GetFileSpec(1, loc, name)
+		FindConverter(name, conv)
+	end GetExtSpec
+	
+	proc (hook: DialogHook) GetIntSpec(in defType: Files.Type; var loc: Files.Locator; var name: Files.Name) 
+	begin 
+		// defType
+		GetFileSpec(0, loc, name)
+	end GetIntSpec
+	
+	proc (hook: DialogHook) GetExtSpec(in default: Files.Name; in defType: Files.Type; var loc: Files.Locator; var name: Files.Name) 
+	begin 
+		// defType
+		name := default
+		GetFileSpec(1, loc, name)
+	end GetExtSpec
+	
+	
+	proc (h: GetSpecHook) GetIntSpec(var loc: Files.Locator; var name: Files.Name; var conv: Converters.Converter) 
+	begin 
+		GetIntSpec(loc, name, conv)
+	end GetIntSpec
+	
+	proc (h: GetSpecHook) GetExtSpec(s: Stores.Store; var loc: Files.Locator; var name: Files.Name; var conv: Converters.Converter) 
+	begin 
+		GetExtSpec(s, loc, name, conv)
+	end GetExtSpec
+	
+	
+	// preferences dialog
+	
+	proc DefFont*
+		var 
+			tf: Fonts.Typeface
+			size_: integer
+			w: integer
+			style: set
+			set_: boolean
+	begin 
+		tf := prefFName
+		size_ := prefFSize
+		w := Fonts.normal
+		style := {}
+		GetFont(tf, size_, w, style, set_)
+		if set_ then
+			prefFName := tf
+			prefFSize := size_ 
+		end 
+	end DefFont
+	
+	proc DlgFont*
+		var 
+			tf: Fonts.Typeface
+			size_: integer
+			w: integer
+			style: set
+			set_: boolean
+	begin 
+		tf := prefDName
+		size_ := prefDSize
+		w := prefDWght
+		style := prefDStyle
+		GetFont(tf, size_, w, style, set_)
+		if set_ then
+			prefDName := tf
+			prefDSize := size_
+			prefDStyle := style
+			prefDWght := w 
+		end 
+	end DlgFont
+	
+	proc PrefOk*
+		var 
+			res: integer
+	begin 
+		HostFonts.SetDefaultFont(prefFName, prefFSize)
+		HostFonts.SetDialogFont(prefDName, prefDSize, prefDStyle, prefDWght)
+		(* HostFonts.SetTTMetric(prefs.useTTMetric);
+		   HostWindows.SetVisualScroll(prefs.visualScroll); *)
+		
+		
+		if prefs.statusbar = 1 then
+			Dialog.showsStatus := true
+			Dialog.memInStatus := false 
+		elsif prefs.statusbar = 2 then 
+			Dialog.showsStatus := true
+			Dialog.memInStatus := true 
+		else 
+			Dialog.showsStatus := false 
+		end 
+		Dialog.Call("StdCmds.UpdateAll", "", res)
+		Dialog.Call("StdCmds.RecalcAllSizes", "", res)
+		Dialog.Call("TextCmds.UpdateDefaultAttr", "", res)
+		HostCFrames.SetDefFonts
+		HostRegistry.WriteBool("noStatus", ~Dialog.showsStatus)
+		HostRegistry.WriteBool("memStatus", Dialog.memInStatus)
+		(* res := WinApi.GetClientRect(HostWindows.main, rect);
+		   HostWindows.ResizeMainWindow(0, rect.right, rect.bottom); *)
+		
+		
+		Dialog.thickCaret := prefs.thickCaret
+		Dialog.caretPeriod := prefs.caretPeriod
+		Dialog.beep := prefs.beep
+		Dialog.serverMode := prefs.serverMode
+		HostRegistry.WriteBool("thickCaret", Dialog.thickCaret)
+		HostRegistry.WriteInt("caretPeriod", Dialog.caretPeriod)
+		HostRegistry.WriteBool("beep", Dialog.beep)
+		HostRegistry.WriteBool("serverMode", Dialog.serverMode)
+		// prefs.language.item[2] := 0X;
+		
+		
+		Dialog.SetLanguage(prefs.language.item, Dialog.persistent)
+	end PrefOk
+	
+	proc InitLanguage
+		var 
+			loc: Files.Locator
+			li: Files.LocInfo
+			lang: Dialog.Language
+			n: integer
+	begin 
+		prefs.language.SetItem(0, defaultLanguage)
+		n := 1
+		loc := Files.dir.This("System/Rsrc/")
+		li := Files.dir.LocList(loc)
+		while li # nil do 
+			if len(li.name) = 2 then
+				Strings.ToLower(li.name, lang)
+				prefs.language.SetItem(n, lang)
+				inc(n) 
+			end 
+			li := li.next 
+		end 
+		prefs.language.SetLen(n)
+		prefs.language.item := Dialog.language
+		if prefs.language.item = '' then
+			prefs.language.item := defaultLanguage 
+		end 
+	end InitLanguage
+	
+	proc InitPrefDialog*
+	begin 
+		prefFName := HostFonts.defFont.alias
+		prefFSize := HostFonts.defFont.size_
+		prefDName := HostFonts.dlgFont.typeface
+		prefDSize := HostFonts.dlgFont.size_
+		prefDStyle := HostFonts.dlgFont.style
+		prefDWght := HostFonts.dlgFont.weight
+		(* prefs.useTTMetric := HostFonts.useTTMetric;
+		   prefs.visualScroll := HostWindows.visualScroll; *)
+		
+		
+		prefs.visualScroll := true
+		if ~Dialog.showsStatus then
+			prefs.statusbar := 0 
+		elsif Dialog.memInStatus then 
+			prefs.statusbar := 2 
+		else 
+			prefs.statusbar := 1 
+		end 
+		prefs.thickCaret := Dialog.thickCaret
+		prefs.caretPeriod := Dialog.caretPeriod
+		prefs.beep := Dialog.beep
+		prefs.serverMode := Dialog.serverMode
+		InitLanguage
+	end InitPrefDialog
+	
+	proc Msg(in msg: array of char) 
+		var 
+			len_: integer
+			str: pointer to array of char
+	begin 
+		len_ := len(msg)
+		new(str, len_ * 4 + 2)
+		Short(msg, str)
+		len_ := len(str)
+		str[len_] := 0ax
+		str[len_ + 1] := 0x
+		len_ := LinLibc.printf(str^)
+	end Msg
+	
+	proc ForkOfChild(in cmd: array of char) 
+		const 
+			CR = 0dx
+			LF = 0ax
+		var 
+			res, i: integer
+			argv: carray 4 of LinLibc.PtrSTR
+			ss: pointer to array of char
+	begin 
+		Msg("/bin/sh -c " + cmd)
+		argv[0] := "/bin/sh" // interpreter
+		argv[1] := "-c" // options
+		new(ss, len(cmd) * 4 + 1)
+		Short(cmd, ss)
+		i := -1
+		repeat 
+			inc(i)
+			if ss[i] = CR then
+				ss[i] := LF 
+			end  
+		until ss[i] = 0x 
+		argv[2] := ss^
+		argv[3] := nil
+		res := LinLibc.execv(argv[0], argv)
+		if res = -1 then
+			Msg("execv() returned - that's a fatal error. Calling Libc.exit(-13)")
+			LinLibc.exit_(-13) 
+		end 
+	end ForkOfChild
+	
+	proc (h: ExtCallHook) RunExternal*(in cmd: array of char) 
+		var 
+			pid: integer
+	begin 
+		pid := LinLibc.fork()
+		// Normally, after a fork() the parent has to call waitpid() to wait for the termination of the child process; if this is not done, Without a wait() call, the child process will become a zombie process after its termination because its parent process does not cleanup its process information in the system. However, with Kernel 1.7, 1.8, this does not happen, because the Kernel sets signal action to SIG_IGN for the SIGCHILD signal. Cf http://thinkiii.blogspot.com/2009/12/double-fork-to-avoid-zombie-process.html
+		if pid = -1 then
+			Msg("fork() returned -1; external program not started") 
+		elsif pid = 0 then 
+			Msg("Hello from child!")
+			ForkOfChild(cmd) 
+		else 
+			Msg("Hello from parent!") 
+		end 
+	end RunExternal
+	
+	proc (h: ExtCallHook) OpenExternal*(in fileName: array of char) 
+		var 
+			ss: pointer to array of char
+			argv: carray 3 of LinLibc.PtrSTR
+			res: integer
+	begin 
+		if LinLibc.fork() = 0 then
+			new(ss, len(fileName) * 4 + 1)
+			Short(fileName, ss)
+			argv[0] := "xdg-open"
+			argv[1] := ss^
+			argv[2] := nil
+			res := LinLibc.execvp(argv[0], argv)
+			if res = -1 then
+				Msg("execvp() returned - that's a fatal error. Calling Libc.exit(-13)")
+				LinLibc.exit_(-13) 
+			end  
+		end 
+	end OpenExternal
+	
+	proc Init
+		var 
+			n, res: integer
+			b: boolean
+			showHook: ShowHook
+			dialogHook: DialogHook
+			getSpecHook: GetSpecHook
+			extCallHook: ExtCallHook
+	begin 
+		ConvInit
+		
+		Dialog.platform := Dialog.linux
+		
+		HostRegistry.ReadBool("noStatus", b, res)
+		Dialog.showsStatus := (res # 0) or ~b
+		HostRegistry.ReadBool("memStatus", b, res)
+		Dialog.memInStatus := (res = 0) & b
+		HostRegistry.ReadBool("thickCaret", b, res)
+		if res = 0 then
+			Dialog.thickCaret := b 
+		end 
+		HostRegistry.ReadInt("caretPeriod", n, res)
+		if res = 0 then
+			Dialog.caretPeriod := n 
+		end 
+		HostRegistry.ReadBool("beep", b, res)
+		if res = 0 then
+			Dialog.beep := b 
+		end 
+		HostRegistry.ReadBool("serverMode", b, res)
+		if res = 0 then
+			Dialog.serverMode := b 
+		end 
+		
+		new(showHook)
+		Dialog.SetShowHook(showHook)
+		new(dialogHook)
+		Dialog.SetGetHook(dialogHook)
+		new(getSpecHook)
+		Views.SetGetSpecHook(getSpecHook)
+		new(extCallHook)
+		Dialog.SetExtCallHook(extCallHook)
+		HostFiles.MapParamString := Dialog.MapParamString
+		
+		hist := ""
+	end Init
+
+begin
+	Init
+(* CLOSE
+	ConvClose *) 
+end HostDialog

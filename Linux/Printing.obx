@@ -1,0 +1,360 @@
+module Printing
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20150922, center #69, Printing.NewDefaultPar does not set footer font
+	   - 20151009, center #73, ExpandHook for custom tags added; using MapString for names of months
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Kernel, Fonts, Ports, Dates, Printers, Views, Dialog, Strings
+	
+	const 
+		maxNrOfSegments = 16
+		bufLen = 256
+	
+	type 
+		PageInfo* = record 
+				first*, from*, to_*: integer // current IN
+				// first, from, to: OUT, preset to (0, 0, 9999)
+				alternate*: boolean
+				title*: Views.Title 
+			end 
+		
+		Banner* = record 
+				font*: Fonts.Font
+				gap*: integer // OUT, prest to (0,0)
+				left*, right*: array 128 of char  // OUT, preset to "", ""
+			(* anywhere in header or footer:
+			   &p - replaced by current page number as arabic numeral
+			   &r - replaced by current page number as roman numeral
+			   &R - replaced by current page number as capital roman numeral
+			   &a - replaced by current page number as alphanumeric character
+			   &A - replaced by current page number as capital alphanumeric character
+			   &d - replaced by printing date
+			   &t - replaced by printing time
+			   &&- replaced by & character
+			   &; - specifies split point
+			   &f - filename without path/title *)
+			
+			end 
+		
+		Par* = pointer to (* limited *) record 
+				page*: PageInfo
+				header*, footer*: Banner
+				copies-: integer 
+			end 
+		
+		Line = record 
+				buf: array bufLen of char
+				beg: array maxNrOfSegments of byte
+				len_: integer 
+			end 
+		
+		Hook* = pointer to (* abstract *) record (Kernel.Hook) end 
+		
+		ExpandHook* = proc (in s: array of char; printView: Views.View; in date: Dates.Date
+			in time: Dates.Time; in title: Views.Title; pno: integer; printing: boolean
+			var sx: array of char)
+	
+	var 
+		par*: Par
+		
+		month: array 12 * 3 + 1 of char
+		printingHook: Hook
+		
+		printView: Views.View // param for expandHook; set per printed document in PrintView
+		expandHook-: ExpandHook // for expanding custom tags
+	
+	proc (h: Hook) Print*(v: Views.View; par: Par)  end // new abstract
+	proc (h: Hook) Current*(): integer  end // new abstract
+	
+	proc SetHook*(p: Hook) 
+	begin 
+		printingHook := p
+	end SetHook
+	
+	proc SetExpandHook*(p: ExpandHook) 
+	begin 
+		expandHook := p
+	end SetExpandHook
+	
+	proc NewPar*(in page: PageInfo; in header, footer: Banner; copies: integer): Par 
+		var 
+			par: Par
+	begin 
+		new(par)
+		par.page := page
+		par.header := header
+		par.footer := footer
+		par.copies := copies
+		if par.header.font = nil then
+			par.header.font := Fonts.dir.Default() 
+		end 
+		if par.footer.font = nil then
+			par.footer.font := Fonts.dir.Default() 
+		end 
+		return par
+	end NewPar
+	
+	proc NewDefaultPar*(title: Views.Title): Par 
+		var 
+			par: Par
+	begin 
+		new(par)
+		par.page.first := 1
+		par.page.from := 0
+		par.page.to_ := 9999
+		par.page.alternate := false
+		par.copies := 1
+		par.header.gap := 0
+		par.header.left := ""
+		par.header.right := ""
+		par.header.font := Fonts.dir.Default()
+		par.footer.gap := 0
+		par.footer.left := ""
+		par.footer.right := ""
+		par.footer.font := Fonts.dir.Default()
+		par.page.title := title
+		return par
+	end NewDefaultPar
+	
+	proc PrintView*(view: Views.View; p: Par) 
+	begin 
+		assert(view # nil, 20)
+		assert(p # nil, 21)
+		assert(par = nil, 22) // no recursive printing
+		if Printers.dir.Available() then
+			assert(p.page.first >= 0, 23)
+			assert(p.page.from >= 0, 24)
+			assert(p.page.to_ >= p.page.from, 25)
+			assert(printingHook # nil, 100)
+			printView := view
+			printingHook.Print(view, p)
+			printView := nil 
+		else 
+			Dialog.ShowMsg("#System:NoPrinterFound") 
+		end 
+	end PrintView
+	
+	proc GetDateAndTime(in date: Dates.Date; in time: Dates.Time
+		var d, t: array of char) 
+		var 
+			i, j, k: integer
+			s: array 8 of char
+	begin 
+		Strings.IntToStringForm(date.day, Strings.decimal, 0, "0", false, d)
+		
+		j := date.month * 3
+		i := j - 3
+		k := 0
+		while i < j do 
+			s[k] := month[i]
+			inc(k)
+			inc(i) 
+		end 
+		s[k] := 0x
+		d := d + "-" + s
+		
+		Strings.IntToStringForm(date.year, Strings.decimal, 0, "0", false, s)
+		d := d + "-" + s
+		
+		Strings.IntToStringForm(time.hour, Strings.decimal, 0, "0", false, t)
+		Strings.IntToStringForm(time.minute, Strings.decimal, 2, "0", false, s)
+		t := t + ":" + s
+	end GetDateAndTime
+	
+	proc Expand(s: array of char; in date: Dates.Date; in time: Dates.Time
+		in title: Views.Title; pno: integer; printing: boolean; var line: Line) 
+		var 
+			i, l: integer
+			ch: char
+			j: byte
+			p, d, t, r, rl: array 32 of char
+			sx: array bufLen * 2 of char
+	begin 
+		if expandHook # nil then
+			expandHook(s, printView, date, time, title, pno, printing, sx) 
+		else 
+			sx := s 
+		end 
+		if printing then
+			Strings.IntToStringForm(pno, Strings.decimal, 0, "0", false, p)
+			if (0 < pno) & (pno < 4000) then
+				Strings.IntToStringForm(pno, Strings.roman, 0, " ", false, r) 
+			else 
+				r := p 
+			end  
+		else 
+			p := "#"
+			r := "#" 
+		end 
+		
+		GetDateAndTime(date, time, d, t)
+		
+		i := 0
+		ch := sx[i]
+		line.len_ := 0
+		j := 0
+		while ch # 0x do 
+			if ch = "&" then
+				inc(i)
+				ch := sx[i]
+				if ch = "p" then
+					l := 0
+					while p[l] # 0x do 
+						line.buf[j] := p[l]
+						inc(j)
+						inc(l) 
+					end  
+				elsif ch = "r" then 
+					Strings.ToLower(r, rl)
+					l := 0
+					while rl[l] # 0x do 
+						line.buf[j] := rl[l]
+						inc(j)
+						inc(l) 
+					end  
+				elsif ch = "R" then 
+					l := 0
+					while r[l] # 0x do 
+						line.buf[j] := r[l]
+						inc(j)
+						inc(l) 
+					end  
+				elsif (ch = "a") or (ch = "A") then 
+					if printing & (0 < pno) & (pno <= 26) then
+						line.buf[j] := chr(pno + ord(ch) - 1)
+						inc(j) 
+					else 
+						l := 0
+						while p[l] # 0x do 
+							line.buf[j] := p[l]
+							inc(j)
+							inc(l) 
+						end  
+					end  
+				elsif ch = "d" then 
+					l := 0
+					while d[l] # 0x do 
+						line.buf[j] := d[l]
+						inc(j)
+						inc(l) 
+					end  
+				elsif ch = "t" then 
+					l := 0
+					while t[l] # 0x do 
+						line.buf[j] := t[l]
+						inc(j)
+						inc(l) 
+					end  
+				elsif ch = "f" then 
+					l := 0
+					while title[l] # 0x do 
+						line.buf[j] := title[l]
+						inc(j)
+						inc(l) 
+					end  
+				elsif ch = ";" then 
+					if (line.len_ < maxNrOfSegments - 1) then
+						line.beg[line.len_] := j
+						inc(line.len_) 
+					else 
+						line.buf[j] := " "
+						inc(j) 
+					end  
+				elsif ch = "&" then 
+					line.buf[j] := "&"
+					inc(j) 
+				end 
+				if ch # 0x then
+					inc(i)
+					ch := sx[i] 
+				end  
+			else 
+				line.buf[j] := ch
+				inc(j)
+				inc(i)
+				ch := sx[i] 
+			end  
+		end 
+		line.buf[j] := 0x
+		line.beg[line.len_] := j
+		inc(line.len_)
+	end Expand
+	
+	proc PrintLine(f: Views.Frame; font: Fonts.Font
+		x0, x1, y: integer; var line: Line) 
+		var 
+			sp, dx, x: integer
+			i, j, k: integer
+			buf: array 128 of char
+	begin 
+		sp := (x1 - x0 - font.StringWidth(line.buf))
+		if line.len_ = 1 then // center
+			f.DrawString(x0 + sp div 2, y, Ports.defaultColor, line.buf, font) 
+		else 
+			if sp > 0 then
+				dx := sp div (line.len_ - 1) 
+			else 
+				dx := 0 
+			end 
+			k := 0
+			j := 0
+			x := x0
+			while k < line.len_ do 
+				i := 0
+				while j < line.beg[k] do 
+					buf[i] := line.buf[j]
+					inc(i)
+					inc(j) 
+				end 
+				buf[i] := 0x
+				f.DrawString(x, y, Ports.defaultColor, buf, font)
+				x := x + font.StringWidth(buf) + dx
+				inc(k) 
+			end  
+		end 
+	end PrintLine
+	
+	proc PrintBanner*(f: Views.Frame; in p: PageInfo; in b: Banner
+		in date: Dates.Date; in time: Dates.Time; x0, x1, y: integer) 
+		var 
+			line: Line
+			printing: boolean
+	begin 
+		printing := par # nil
+		if printing then
+			assert(printingHook # nil, 100)
+			if p.alternate & ~odd(p.first + printingHook.Current()) then
+				Expand(b.left, date, time, p.title, p.first + printingHook.Current(), printing, line) 
+			else 
+				Expand(b.right, date, time, p.title, p.first + printingHook.Current(), printing, line) 
+			end  
+		else 
+			Expand(b.right, date, time, p.title, 0, printing, line) 
+		end 
+		PrintLine(f, b.font, x0, x1, y, line)
+	end PrintBanner
+	
+	proc Current*(): integer 
+	begin 
+		assert(par # nil, 21)
+		assert(printingHook # nil, 100)
+		return printingHook.Current()
+	end Current
+
+begin
+	Dialog.MapString("#System:JanFebMarAprMayJunJulAugSepOctNovDec", month)
+end Printing

@@ -1,0 +1,1234 @@
+module StdScrollers
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20050715, mf, corrections in InnerFrame and its clients
+	   - 20150714, center #66, adding procedure WrappedView and improving View.HandleCtrlMsg
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Dialog, Ports, Services, Stores, Models, Views, Properties, Controllers, StdCFrames
+	
+	
+	const 
+		// properties & options
+		horBar* = 0
+		verBar* = 1
+		horHide* = 2
+		verHide* = 3
+		width* = 4
+		height* = 5
+		showBorder* = 6
+		savePos* = 7
+	
+	
+	type 
+		Prop* = pointer to record (Properties.Property) 
+				horBar*, verBar*: boolean
+				horHide*, verHide*: boolean
+				width*, height*: integer
+				showBorder*: boolean
+				savePos*: boolean 
+			end 
+		
+		ScrollBar = pointer to record (Views.View) 
+				v: View
+				ver: boolean 
+			end 
+		
+		InnerView = pointer to record (Views.View) 
+				v: View 
+			end 
+		
+		View = pointer to record (Views.View)  // Rochus: removed semicolon
+				view: Views.View
+				sbW: integer
+				orgX, orgY: integer
+				w, h: integer // = 0: adapt to container
+				opts: set
+				// not persistent
+				hor, ver: ScrollBar
+				inner: InnerView
+				rgap, bgap: integer // = 0: no scrollbar
+				border: integer
+				update: Action 
+			end 
+		
+		Context = pointer to record (Models.Context) 
+				v: View
+				type_: integer 
+			end 
+		
+		Action = pointer to record (Services.Action) 
+				v: View 
+			end 
+		
+		Op = pointer to record (Stores.Operation) 
+				v: View
+				p: Prop 
+			end 
+		
+		SOp = pointer to record (Stores.Operation) 
+				v: View
+				x, y: integer 
+			end 
+		
+		UpdateMsg = record (Views.Message) 
+				changed: boolean 
+			end 
+	
+	
+	var 
+		dialog*: record 
+				horizontal*, vertical*: record 
+						mode*: integer
+						adapt*: boolean
+						size_*: real 
+					end 
+				showBorder*: boolean
+				savePos*: boolean
+				valid, readOnly: set 
+			end 
+	
+	
+	// tools
+	
+	proc CheckPos(v: View; var x, y: integer) 
+		var 
+			w, h: integer
+	begin 
+		v.context.GetSize(w, h)
+		dec(w, v.rgap + 2 * v.border)
+		dec(h, v.bgap + 2 * v.border)
+		if x > v.w - w then
+			x := v.w - w 
+		end 
+		if x < 0 then
+			x := 0 
+		end 
+		if y > v.h - h then
+			y := v.h - h 
+		end 
+		if y < 0 then
+			y := 0 
+		end 
+	end CheckPos
+	
+	proc InnerFrame(v: View; f: Views.Frame): Views.Frame 
+		var 
+			g, h: Views.Frame
+	begin 
+		g := Views.ThisFrame(f, v.inner)
+		if g = nil then
+			Views.InstallFrame(f, v.inner, v.border, v.border, 0, true)
+			g := Views.ThisFrame(f, v.inner) 
+		end 
+		if g # nil then
+			h := Views.ThisFrame(g, v.view)
+			if h = nil then
+				Views.InstallFrame(g, v.view, -v.orgX, -v.orgY, 0, true)
+				h := Views.ThisFrame(g, v.view) 
+			end  
+		end 
+		return h
+	end InnerFrame
+	
+	proc Scroll(v: View; dir: integer; ver: boolean; p: integer; var pos: integer) 
+		var 
+			x, y: integer
+			last: Stores.Operation
+			op: SOp
+	begin 
+		x := v.orgX
+		y := v.orgY
+		if ver then
+			pos := y 
+		else 
+			pos := x 
+		end 
+		if dir = StdCFrames.lineUp then
+			dec(pos, 10 * Ports.mm) 
+		elsif dir = StdCFrames.lineDown then 
+			inc(pos, 10 * Ports.mm) 
+		elsif dir = StdCFrames.pageUp then 
+			dec(pos, 40 * Ports.mm) 
+		elsif dir = StdCFrames.pageDown then 
+			inc(pos, 40 * Ports.mm) 
+		elsif dir = Controllers.gotoPos then 
+			pos := p 
+		end 
+		if ver then
+			CheckPos(v, x, pos)
+			y := pos 
+		else 
+			CheckPos(v, pos, y)
+			x := pos 
+		end 
+		if (x # v.orgX) or (y # v.orgY) then
+			last := Views.LastOp(v)
+			if ~(savePos in v.opts) or (last # nil) & (last is SOp) then
+				v.orgX := x
+				v.orgY := y
+				Views.Update(v.view, Views.keepFrames) 
+			else 
+				new(op)
+				op.v := v
+				op.x := x
+				op.y := y
+				Views.Do(v, "#System:Scrolling", op) 
+			end  
+		end 
+	end Scroll
+	
+	proc PollSection(v: View; ver: boolean; var size_, sect, pos: integer) 
+		var 
+			w, h: integer
+	begin 
+		v.context.GetSize(w, h)
+		if ver then
+			size_ := v.h
+			sect := h - v.bgap - 2 * v.border
+			pos := v.orgY 
+		else 
+			size_ := v.w
+			sect := w - v.rgap - 2 * v.border
+			pos := v.orgX 
+		end 
+	end PollSection
+	
+	
+	// SOp
+	
+	proc (op: SOp) Do
+		var 
+			x, y: integer
+	begin 
+		x := op.x
+		op.x := op.v.orgX
+		op.v.orgX := x
+		y := op.y
+		op.y := op.v.orgY
+		op.v.orgY := y
+		Views.Update(op.v.view, Views.keepFrames)
+	end Do
+	
+	
+	// properties
+	
+	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean) 
+		var 
+			valid: set
+	begin 
+		with q: Prop do 
+			valid := p.valid * q.valid
+			equal := true
+			if p.horBar # q.horBar then
+				excl(valid, horBar) 
+			end 
+			if p.verBar # q.verBar then
+				excl(valid, verBar) 
+			end 
+			if p.horHide # q.horHide then
+				excl(valid, horHide) 
+			end 
+			if p.verHide # q.verHide then
+				excl(valid, verHide) 
+			end 
+			if p.width # q.width then
+				excl(valid, width) 
+			end 
+			if p.height # q.height then
+				excl(valid, height) 
+			end 
+			if p.showBorder # q.showBorder then
+				excl(valid, showBorder) 
+			end 
+			if p.savePos # q.savePos then
+				excl(valid, savePos) 
+			end 
+			if p.valid # valid then
+				p.valid := valid
+				equal := false 
+			end  
+		end 
+	end IntersectWith
+	
+	proc SetProp(v: View; p: Properties.Property) 
+		var 
+			op: Op
+	begin 
+		with p: Prop do 
+			new(op)
+			op.v := v
+			op.p := p
+			Views.Do(v, "#System:SetProp", op) 
+		end 
+	end SetProp
+	
+	proc PollProp(v: View; var prop: Prop) 
+		var 
+			p: Prop
+	begin 
+		new(p)
+		p.valid := {horBar, verBar, horHide, verHide, width, height, showBorder, savePos}
+		p.readOnly := {width, height} - v.opts
+		p.horBar := horBar in v.opts
+		p.verBar := verBar in v.opts
+		p.horHide := horHide in v.opts
+		p.verHide := verHide in v.opts
+		p.width := v.w
+		p.height := v.h
+		p.showBorder := showBorder in v.opts
+		p.savePos := savePos in v.opts
+		p.known := p.valid
+		prop := p
+	end PollProp
+	
+	
+	// Op
+	
+	proc (op: Op) Do
+		var 
+			p: Prop
+			v: View
+			valid: set
+	begin 
+		v := op.v
+		p := op.p
+		PollProp(v, op.p)
+		op.p.valid := p.valid
+		valid := p.valid * ({horBar, verBar, horHide, verHide, showBorder, savePos} + v.opts * {width, height})
+		if horBar in valid then
+			if p.horBar then
+				incl(v.opts, horBar) 
+			else 
+				excl(v.opts, horBar) 
+			end  
+		end 
+		if verBar in valid then
+			if p.verBar then
+				incl(v.opts, verBar) 
+			else 
+				excl(v.opts, verBar) 
+			end  
+		end 
+		if horHide in valid then
+			if p.horHide then
+				incl(v.opts, horHide) 
+			else 
+				excl(v.opts, horHide) 
+			end  
+		end 
+		if verHide in valid then
+			if p.verHide then
+				incl(v.opts, verHide) 
+			else 
+				excl(v.opts, verHide) 
+			end  
+		end 
+		if width in valid then
+			v.w := p.width 
+		end 
+		if height in valid then
+			v.h := p.height 
+		end 
+		if showBorder in valid then
+			if p.showBorder then
+				incl(v.opts, showBorder)
+				v.border := 2 * Ports.point 
+			else 
+				excl(v.opts, showBorder)
+				v.border := 0 
+			end  
+		end 
+		if savePos in valid then
+			if p.savePos then
+				incl(v.opts, savePos) 
+			else 
+				excl(v.opts, savePos) 
+			end  
+		end 
+		Views.Update(v, Views.rebuildFrames)
+	end Do
+	
+	
+	// Action
+	
+	proc (a: Action) Do
+		var 
+			msg: UpdateMsg
+	begin 
+		msg.changed := false
+		Views.Broadcast(a.v, msg)
+		if msg.changed then
+			Views.Update(a.v, Views.keepFrames) 
+		else 
+			Views.Broadcast(a.v.hor, msg)
+			Views.Broadcast(a.v.ver, msg) 
+		end 
+	end Do
+	
+	
+	// ScrollBars
+	
+	proc TrackSB(f: StdCFrames.ScrollBar; dir: integer; var pos: integer) 
+		var 
+			s: ScrollBar
+			msg: Controllers.ScrollMsg
+			pmsg: Controllers.PollSectionMsg
+			host, inner: Views.Frame
+	begin 
+		s := f.view(ScrollBar)
+		host := Views.HostOf(f)
+		msg.focus := false
+		msg.vertical := s.ver
+		msg.op := dir
+		msg.done := false
+		inner := InnerFrame(s.v, host)
+		if inner # nil then
+			Views.ForwardCtrlMsg(inner, msg) 
+		end 
+		if msg.done then
+			pmsg.focus := false
+			pmsg.vertical := s.ver
+			pmsg.valid := false
+			pmsg.done := false
+			inner := InnerFrame(s.v, host)
+			if inner # nil then
+				Views.ForwardCtrlMsg(inner, pmsg) 
+			end 
+			if pmsg.done then
+				pos := pmsg.partPos 
+			end  
+		else 
+			Scroll(s.v, dir, s.ver, 0, pos)
+			Views.ValidateRoot(Views.RootOf(host)) 
+		end 
+	end TrackSB
+	
+	proc SetSB(f: StdCFrames.ScrollBar; pos: integer) 
+		var 
+			s: ScrollBar
+			msg: Controllers.ScrollMsg
+			p: integer
+			host, inner: Views.Frame
+	begin 
+		s := f.view(ScrollBar)
+		host := Views.HostOf(f)
+		msg.focus := false
+		msg.vertical := s.ver
+		msg.op := Controllers.gotoPos
+		msg.pos := pos
+		msg.done := false
+		inner := InnerFrame(s.v, host)
+		if inner # nil then
+			Views.ForwardCtrlMsg(inner, msg) 
+		end 
+		if ~msg.done then
+			Scroll(s.v, Controllers.gotoPos, s.ver, pos, p)
+			Views.ValidateRoot(Views.RootOf(host)) 
+		end 
+	end SetSB
+	
+	proc GetSB(f: StdCFrames.ScrollBar; var size_, sect, pos: integer) 
+		var 
+			s: ScrollBar
+			msg: Controllers.PollSectionMsg
+			host, inner: Views.Frame
+	begin 
+		s := f.view(ScrollBar)
+		host := Views.HostOf(f)
+		msg.focus := false
+		msg.vertical := s.ver
+		msg.wholeSize := 1
+		msg.partSize := 0
+		msg.partPos := 0
+		msg.valid := false
+		msg.done := false
+		inner := InnerFrame(s.v, host)
+		if inner # nil then
+			Views.ForwardCtrlMsg(inner, msg) 
+		end 
+		if msg.done then
+			if msg.valid then
+				size_ := msg.wholeSize
+				sect := msg.partSize
+				pos := msg.partPos 
+			else 
+				size_ := 1
+				sect := 1
+				pos := 0 
+			end  
+		else 
+			PollSection(s.v, s.ver, size_, sect, pos) 
+		end 
+	end GetSB
+	
+	proc (s: ScrollBar) GetNewFrame(var frame: Views.Frame) 
+		var 
+			f: StdCFrames.ScrollBar
+	begin 
+		f := StdCFrames.dir.NewScrollBar()
+		f.disabled := false
+		f.undef := false
+		f.readOnly := false
+		f.Track := TrackSB
+		f.Get := GetSB
+		f.Set := SetSB
+		frame := f
+	end GetNewFrame
+	
+	proc (s: ScrollBar) Restore(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		with f: StdCFrames.Frame do 
+			f.Restore(l, t, r, b) 
+		end 
+	end Restore
+	
+	proc (s: ScrollBar) HandleCtrlMsg(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View) 
+	begin 
+		with f: StdCFrames.Frame do 
+			with msg: Controllers.PollCursorMsg do 
+				f.GetCursor(msg.x, msg.y, msg.modifiers, msg.cursor) 
+			| msg: Controllers.TrackMsg do 
+				f.MouseDown(msg.x, msg.y, msg.modifiers) 
+			else  
+			end  
+		end 
+	end HandleCtrlMsg
+	
+	proc (s: ScrollBar) HandleViewMsg(f: Views.Frame; var msg: Views.Message) 
+	begin 
+		with msg: UpdateMsg do 
+			with f: StdCFrames.Frame do 
+				f.Update() 
+			end  
+		else  
+		end 
+	end HandleViewMsg
+	
+	
+	// View
+	
+	proc Update(v: View; f: Views.Frame) 
+		var 
+			msg: Controllers.PollSectionMsg
+			w, h: integer
+			depends: boolean
+			inner: Views.Frame
+	begin 
+		v.bgap := 0
+		v.rgap := 0
+		depends := false
+		v.context.GetSize(w, h)
+		dec(w, 2 * v.border)
+		dec(h, 2 * v.border)
+		if horBar in v.opts then
+			if horHide in v.opts then
+				msg.focus := false
+				msg.vertical := false
+				msg.wholeSize := 1
+				msg.partSize := 0
+				msg.partPos := 0
+				msg.valid := false
+				msg.done := false
+				inner := InnerFrame(v, f)
+				if inner # nil then
+					Views.ForwardCtrlMsg(inner, msg) 
+				end 
+				if msg.done then
+					if msg.valid then
+						v.bgap := v.sbW 
+					end  
+				elsif v.w > 0 then 
+					if w < v.w then
+						v.bgap := v.sbW 
+					elsif w - v.sbW < v.w then 
+						depends := true 
+					end  
+				end  
+			else 
+				v.bgap := v.sbW 
+			end  
+		end 
+		if verBar in v.opts then
+			if verHide in v.opts then
+				msg.focus := false
+				msg.vertical := true
+				msg.wholeSize := 1
+				msg.partSize := 0
+				msg.partPos := 0
+				msg.valid := false
+				msg.done := false
+				inner := InnerFrame(v, f)
+				if inner # nil then
+					Views.ForwardCtrlMsg(inner, msg) 
+				end 
+				if msg.done then
+					if msg.valid then
+						v.rgap := v.sbW 
+					end  
+				elsif v.h > 0 then 
+					if h - v.bgap < v.h then
+						v.rgap := v.sbW 
+					end  
+				end  
+			else 
+				v.rgap := v.sbW 
+			end  
+		end 
+		if depends & (v.rgap > 0) then
+			v.bgap := v.sbW 
+		end 
+		CheckPos(v, v.orgX, v.orgY)
+	end Update
+	
+	proc Init(v: View; newView: boolean) 
+		const 
+			min_ = 2 * Ports.mm
+			max_ = max(integer)
+			default = 50 * Ports.mm
+		var 
+			c: Context
+			x: integer
+			msg: Properties.ResizePref
+	begin 
+		if newView then
+			v.opts := v.opts + {horBar, verBar, horHide, verHide}
+			StdCFrames.dir.GetScrollBarSize(x, v.sbW)
+			if v.view.context # nil then
+				v.view.context.GetSize(v.w, v.h)
+				v.view := Views.CopyOf(v.view, Views.shallow) 
+			else 
+				v.w := Views.undefined
+				v.h := Views.undefined
+				Properties.PreferredSize(v.view, min_, max_, min_, max_, default, default, v.w, v.h) 
+			end 
+			msg.fixed := false
+			msg.horFitToWin := false
+			msg.verFitToWin := false
+			msg.horFitToPage := false
+			msg.verFitToPage := false
+			Views.HandlePropMsg(v.view, msg)
+			if ~msg.fixed then
+				incl(v.opts, width)
+				incl(v.opts, height)
+				if msg.horFitToWin or msg.horFitToPage then
+					v.w := 0 
+				end 
+				if msg.verFitToWin or msg.verFitToPage then
+					v.h := 0 
+				end  
+			end  
+		end 
+		v.rgap := 0
+		v.bgap := 0
+		if showBorder in v.opts then
+			v.border := 2 * Ports.point 
+		else 
+			v.border := 0 
+		end 
+		new(v.inner)
+		v.inner.v := v
+		new(c)
+		c.v := v
+		c.type_ := 3
+		v.inner.InitContext(c)
+		new(v.hor)
+		v.hor.ver := false
+		v.hor.v := v
+		new(c)
+		c.v := v
+		c.type_ := 2
+		v.hor.InitContext(c)
+		new(v.ver)
+		v.ver.ver := true
+		v.ver.v := v
+		new(c)
+		c.v := v
+		c.type_ := 1
+		v.ver.InitContext(c)
+		new(v.update)
+		v.update.v := v
+		Stores.Join(v, v.view)
+		Stores.Join(v, v.inner)
+		Stores.Join(v, v.hor)
+		Stores.Join(v, v.ver)
+		Services.DoLater(v.update, Services.now)
+	end Init
+	
+	proc (v: View) Internalize(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+	begin 
+		v.Internalize^(rd)
+		if ~rd.cancelled then
+			rd.ReadVersion(0, 0, thisVersion)
+			if ~rd.cancelled then
+				Views.ReadView(rd, v.view)
+				rd.ReadInt(v.sbW)
+				rd.ReadInt(v.orgX)
+				rd.ReadInt(v.orgY)
+				rd.ReadInt(v.w)
+				rd.ReadInt(v.h)
+				rd.ReadSet(v.opts)
+				Init(v, false) 
+			end  
+		end 
+	end Internalize
+	
+	proc (v: View) Externalize(var wr: Stores.Writer) 
+	begin 
+		v.Externalize^(wr)
+		wr.WriteVersion(0)
+		Views.WriteView(wr, v.view)
+		wr.WriteInt(v.sbW)
+		if savePos in v.opts then
+			wr.WriteInt(v.orgX)
+			wr.WriteInt(v.orgY) 
+		else 
+			wr.WriteInt(0)
+			wr.WriteInt(0) 
+		end 
+		wr.WriteInt(v.w)
+		wr.WriteInt(v.h)
+		wr.WriteSet(v.opts)
+	end Externalize
+	
+	proc (v: View) ThisModel(): Models.Model 
+	begin 
+		return v.view.ThisModel()
+	end ThisModel
+	
+	proc (v: View) CopyFromModelView(source: Views.View; model: Models.Model) 
+	begin 
+		with source: View do 
+			if model = nil then
+				v.view := Views.CopyOf(source.view, Views.deep) 
+			else 
+				v.view := Views.CopyWithNewModel(source.view, model) 
+			end 
+			v.sbW := source.sbW
+			v.orgX := source.orgX
+			v.orgY := source.orgY
+			v.w := source.w
+			v.h := source.h
+			v.opts := source.opts 
+		end 
+		Init(v, false)
+	end CopyFromModelView
+	
+	proc (v: View) InitContext(context: Models.Context) 
+		var 
+			c: Context
+	begin 
+		v.InitContext^(context)
+		if v.view.context = nil then
+			new(c)
+			c.v := v
+			c.type_ := 0
+			v.view.InitContext(c) 
+		end 
+	end InitContext
+	
+	proc (v: View) Neutralize
+	begin 
+		v.view.Neutralize
+	end Neutralize
+	
+	proc (v: View) Restore(f: Views.Frame; l, t, r, b: integer) 
+		var 
+			w, h: integer
+	begin 
+		v.context.GetSize(w, h)
+		if showBorder in v.opts then
+			v.border := 2 * f.dot
+			f.DrawRect(0, f.dot, w, v.border, Ports.fill, Ports.black)
+			f.DrawRect(f.dot, 0, v.border, h, Ports.fill, Ports.black)
+			f.DrawRect(0, h - v.border, w, h - f.dot, Ports.fill, Ports.grey25)
+			f.DrawRect(w - v.border, 0, w - f.dot, h, Ports.fill, Ports.grey25)
+			f.DrawRect(0, 0, w, f.dot, Ports.fill, Ports.grey50)
+			f.DrawRect(0, 0, f.dot, h, Ports.fill, Ports.grey50)
+			f.DrawRect(0, h - f.dot, w, h, Ports.fill, Ports.white)
+			f.DrawRect(w - f.dot, 0, w, h, Ports.fill, Ports.white) 
+		end 
+		Views.InstallFrame(f, v.inner, v.border, v.border, 0, true)
+		if v.bgap > 0 then
+			Views.InstallFrame(f, v.hor, v.border, h - v.border - v.bgap, 0, false) 
+		end 
+		if v.rgap > 0 then
+			Views.InstallFrame(f, v.ver, w - v.border - v.rgap, v.border, 0, false) 
+		end 
+	end Restore
+	
+	proc (v: View) HandleCtrlMsg(f: Views.Frame; var msg: Controllers.Message; var focus: Views.View) 
+		var 
+			w, h, p, n: integer
+			smsg: Controllers.ScrollMsg
+			inner: Views.Frame
+	begin 
+		with msg: Controllers.WheelMsg do 
+			smsg.focus := false
+			smsg.op := msg.op
+			smsg.pos := 0
+			smsg.done := false
+			n := msg.nofLines
+			if (v.rgap > 0) or (v.bgap > 0) then
+				smsg.vertical := v.rgap > 0
+				repeat 
+					smsg.done := false
+					inner := InnerFrame(v, f)
+					if inner # nil then
+						Views.ForwardCtrlMsg(inner, smsg) 
+					end 
+					if ~smsg.done then
+						Scroll(v, smsg.op, smsg.vertical, 0, p)
+						Views.ValidateRoot(Views.RootOf(f)) 
+					end 
+					dec(n) 
+				until n <= 0 
+				msg.done := true 
+			else 
+				focus := v.inner 
+			end  
+		| msg: Controllers.CursorMessage do 
+			v.context.GetSize(w, h)
+			if msg.x > w - v.border - v.rgap then
+				if msg.y <= h - v.border - v.bgap then
+					focus := v.ver 
+				end  
+			elsif msg.y > h - v.border - v.bgap then 
+				focus := v.hor 
+			else 
+				focus := v.inner 
+			end  
+		| msg: Controllers.PollSectionMsg do 
+			inner := InnerFrame(v, f)
+			if inner # nil then
+				Views.ForwardCtrlMsg(inner, msg) 
+			end 
+			if ~msg.done then
+				PollSection(v, msg.vertical, msg.wholeSize, msg.partSize, msg.partPos)
+				msg.valid := msg.partSize < msg.wholeSize
+				msg.done := true 
+			end  
+		| msg: Controllers.ScrollMsg do 
+			inner := InnerFrame(v, f)
+			if inner # nil then
+				Views.ForwardCtrlMsg(inner, msg) 
+			end 
+			if ~msg.done then
+				Scroll(v, msg.op, msg.vertical, msg.pos, p)
+				Views.ValidateRoot(Views.RootOf(f))
+				msg.done := true 
+			end  
+		else 
+			focus := v.inner 
+		end 
+		// avoid redundant updates in order to save memory and CPU resources
+		if ~((msg is Controllers.TickMsg) or (msg is Controllers.PollCursorMsg) 
+			or (msg is Controllers.PollOpsMsg) or (msg is Controllers.PollFocusMsg)) then
+			Services.DoLater(v.update, Services.now) 
+		end 
+	end HandleCtrlMsg
+	
+	proc (v: View) HandleViewMsg(f: Views.Frame; var msg: Views.Message) 
+		var 
+			b, r: integer
+	begin 
+		with msg: UpdateMsg do 
+			b := v.bgap
+			r := v.rgap
+			Update(v, f)
+			if (v.bgap # b) or (v.rgap # r) then
+				msg.changed := true 
+			end  
+		else  
+		end 
+	end HandleViewMsg
+	
+	proc (v: View) HandlePropMsg(var msg: Properties.Message) 
+		var 
+			w, h: integer
+			p: Properties.Property
+			prop: Prop
+			fv: Views.View
+	begin 
+		with msg: Properties.FocusPref do 
+			v.context.GetSize(w, h)
+			Views.HandlePropMsg(v.view, msg)
+			if msg.atLocation then
+				if (msg.x > w - v.border - v.rgap) & (msg.y > h - v.border - v.bgap) then
+					msg.hotFocus := false
+					msg.setFocus := false 
+				elsif ((msg.x > w - v.border - v.rgap) or (msg.y > h - v.border - v.bgap)) & ~msg.setFocus then 
+					msg.hotFocus := true 
+				end  
+			end  
+		| msg: Properties.SizePref do 
+			if (v.w > 0) & (v.h > 0) then
+				if msg.w = Views.undefined then
+					msg.w := 50 * Ports.mm 
+				end 
+				if msg.h = Views.undefined then
+					msg.h := 50 * Ports.mm 
+				end  
+			else 
+				if msg.w > v.rgap then
+					dec(msg.w, v.rgap + 2 * v.border) 
+				end 
+				if msg.h > v.bgap then
+					dec(msg.h, v.bgap + 2 * v.border) 
+				end 
+				Views.HandlePropMsg(v.view, msg)
+				if msg.w > 0 then
+					inc(msg.w, v.rgap + 2 * v.border) 
+				end 
+				if msg.h > 0 then
+					inc(msg.h, v.bgap + 2 * v.border) 
+				end  
+			end 
+			if msg.w < 3 * v.sbW then
+				msg.w := 3 * v.sbW 
+			end 
+			if msg.h < 3 * v.sbW then
+				msg.h := 3 * v.sbW 
+			end  
+		| msg: Properties.ResizePref do 
+			Views.HandlePropMsg(v.view, msg)
+			if v.w > 0 then
+				msg.fixed := false
+				msg.horFitToWin := true
+				msg.horFitToPage := false 
+			end 
+			if v.h > 0 then
+				msg.fixed := false
+				msg.verFitToWin := true
+				msg.verFitToPage := false 
+			end  
+		| msg: Properties.BoundsPref do 
+			Views.HandlePropMsg(v.view, msg)
+			inc(msg.w, 2 * v.border)
+			inc(msg.h, 2 * v.border)
+			if (horBar in v.opts) & ~(horHide in v.opts) then
+				inc(msg.w, v.sbW) 
+			end 
+			if (verBar in v.opts) & ~(verHide in v.opts) then
+				inc(msg.h, v.sbW) 
+			end  
+		| msg: Properties.PollMsg do 
+			Views.HandlePropMsg(v.view, msg)
+			PollProp(v, prop)
+			Properties.Insert(msg.prop, prop) 
+		| msg: Properties.SetMsg do 
+			p := msg.prop
+			while (p # nil) & ~(p is Prop) do 
+				p := p.next 
+			end 
+			if p # nil then
+				SetProp(v, p) 
+			end 
+			Views.HandlePropMsg(v.view, msg) 
+		| msg: Properties.ControlPref do 
+			fv := msg.focus
+			if fv = v then
+				msg.focus := v.view 
+			end 
+			Views.HandlePropMsg(v.view, msg)
+			msg.focus := fv 
+		else 
+			Views.HandlePropMsg(v.view, msg) 
+		end 
+	end HandlePropMsg
+	
+	proc WrappedView*(v: Views.View): Views.View 
+	begin 
+		with v: View do 
+			return v.view 
+		else 
+			return v 
+		end 
+	end WrappedView
+	
+	
+	// InnerView
+	
+	proc (v: InnerView) GetBackground(var color: Ports.Color) 
+	begin 
+		color := Ports.background
+	end GetBackground
+	
+	proc (v: InnerView) Restore(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		Views.InstallFrame(f, v.v.view, -v.v.orgX, -v.v.orgY, 0, true)
+	end Restore
+	
+	proc (v: InnerView) HandleCtrlMsg(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View) 
+	begin 
+		focus := v.v.view
+	end HandleCtrlMsg
+	
+	
+	// Context
+	
+	proc (c: Context) MakeVisible(l, t, r, b: integer) 
+		var 
+			w, h, x, y: integer
+	begin 
+		if ~(savePos in c.v.opts) then
+			c.v.context.GetSize(w, h)
+			x := c.v.orgX
+			y := c.v.orgY
+			if c.v.w > 0 then
+				dec(w, c.v.rgap + 2 * c.v.border)
+				if r > x + w - Ports.point then
+					x := r - w + Ports.point 
+				end 
+				if l < x + Ports.point then
+					x := l - Ports.point 
+				end  
+			end 
+			if c.v.h > 0 then
+				dec(h, c.v.bgap + 2 * c.v.border)
+				if b > y + h - Ports.point then
+					y := b - h + Ports.point 
+				end 
+				if t < y + Ports.point then
+					y := t - Ports.point 
+				end  
+			end 
+			if (x # c.v.orgX) or (y # c.v.orgY) then
+				CheckPos(c.v, x, y)
+				c.v.orgX := x
+				c.v.orgY := y
+				Views.Update(c.v.view, Views.keepFrames) 
+			end 
+			Services.DoLater(c.v.update, Services.now) 
+		end 
+	end MakeVisible
+	
+	proc (c: Context) Consider(var p: Models.Proposal) 
+	begin 
+		c.v.context.Consider(p)
+	end Consider
+	
+	proc (c: Context) Normalize(): boolean 
+	begin 
+		return ~(savePos in c.v.opts)
+	end Normalize
+	
+	proc (c: Context) GetSize(var w, h: integer) 
+	begin 
+		c.v.context.GetSize(w, h)
+		dec(w, c.v.rgap + 2 * c.v.border)
+		dec(h, c.v.bgap + 2 * c.v.border)
+		if c.type_ = 0 then
+			if c.v.w > 0 then
+				w := c.v.w 
+			end 
+			if c.v.h > 0 then
+				h := c.v.h 
+			end  
+		elsif c.type_ = 1 then 
+			w := c.v.rgap 
+		elsif c.type_ = 2 then 
+			h := c.v.bgap 
+		end 
+	end GetSize
+	
+	proc (c: Context) SetSize(w, h: integer) 
+		var 
+			w0, h0, w1, h1: integer
+	begin 
+		assert(c.type_ = 0, 100)
+		c.v.context.GetSize(w0, h0)
+		w1 := w0
+		h1 := h0
+		if c.v.w > 0 then
+			c.v.w := w 
+		else 
+			w1 := w + c.v.rgap + 2 * c.v.border 
+		end 
+		if c.v.h > 0 then
+			c.v.h := h 
+		else 
+			h1 := h + c.v.bgap + 2 * c.v.border 
+		end 
+		if (w1 # w0) or (h1 # h0) then
+			c.v.context.SetSize(w1, h1) 
+		end 
+	end SetSize
+	
+	proc (c: Context) ThisModel(): Models.Model 
+	begin 
+		return nil
+	end ThisModel
+	
+	
+	// dialog
+	
+	proc InitDialog*
+		var 
+			p: Properties.Property
+			u: integer
+	begin 
+		Properties.CollectProp(p)
+		while (p # nil) & ~(p is Prop) do 
+			p := p.next 
+		end 
+		if p # nil then
+			with p: Prop do 
+				if Dialog.metricSystem then
+					u := Ports.mm div 10 
+				else 
+					u := Ports.inch div 100 
+				end 
+				dialog.valid := p.valid
+				dialog.readOnly := p.readOnly
+				if ~p.horBar then
+					dialog.horizontal.mode := 0 
+				elsif p.horHide then 
+					dialog.horizontal.mode := 1 
+				else 
+					dialog.horizontal.mode := 2 
+				end 
+				if ~p.verBar then
+					dialog.vertical.mode := 0 
+				elsif p.verHide then 
+					dialog.vertical.mode := 1 
+				else 
+					dialog.vertical.mode := 2 
+				end 
+				dialog.horizontal.size_ := p.width div u / 100
+				dialog.vertical.size_ := p.height div u / 100
+				dialog.horizontal.adapt := p.width = 0
+				dialog.vertical.adapt := p.height = 0
+				dialog.showBorder := p.showBorder
+				dialog.savePos := p.savePos 
+			end  
+		end 
+	end InitDialog
+	
+	proc Set*
+		var 
+			p: Prop
+			u: integer
+	begin 
+		if Dialog.metricSystem then
+			u := 10 * Ports.mm 
+		else 
+			u := Ports.inch 
+		end 
+		new(p)
+		p.valid := dialog.valid
+		p.horBar := dialog.horizontal.mode # 0
+		p.verBar := dialog.vertical.mode # 0
+		p.horHide := dialog.horizontal.mode = 1
+		p.verHide := dialog.vertical.mode = 1
+		if ~dialog.horizontal.adapt then
+			p.width := short(entier(dialog.horizontal.size_ * u)) 
+		end 
+		if ~dialog.vertical.adapt then
+			p.height := short(entier(dialog.vertical.size_ * u)) 
+		end 
+		p.showBorder := dialog.showBorder
+		p.savePos := dialog.savePos
+		Properties.EmitProp(nil, p)
+	end Set
+	
+	proc DialogGuard*(var par: Dialog.Par) 
+		var 
+			p: Properties.Property
+	begin 
+		Properties.CollectProp(p)
+		while (p # nil) & ~(p is Prop) do 
+			p := p.next 
+		end 
+		if p = nil then
+			par.disabled := true 
+		end 
+	end DialogGuard
+	
+	proc HorAdaptGuard*(var par: Dialog.Par) 
+	begin 
+		if width in dialog.readOnly then
+			par.readOnly := true 
+		end 
+	end HorAdaptGuard
+	
+	proc VerAdaptGuard*(var par: Dialog.Par) 
+	begin 
+		if height in dialog.readOnly then
+			par.readOnly := true 
+		end 
+	end VerAdaptGuard
+	
+	proc WidthGuard*(var par: Dialog.Par) 
+	begin 
+		if dialog.horizontal.adapt then
+			par.disabled := true 
+		elsif width in dialog.readOnly then 
+			par.readOnly := true 
+		end 
+	end WidthGuard
+	
+	proc HeightGuard*(var par: Dialog.Par) 
+	begin 
+		if dialog.vertical.adapt then
+			par.disabled := true 
+		elsif height in dialog.readOnly then 
+			par.readOnly := true 
+		end 
+	end HeightGuard
+	
+	
+	// commands
+	
+	proc AddScroller*
+		var 
+			poll: Controllers.PollOpsMsg
+			v: View
+			replace: Controllers.ReplaceViewMsg
+	begin 
+		Controllers.PollOps(poll)
+		if (poll.singleton # nil) & ~(poll.singleton is View) then
+			new(v)
+			v.view := poll.singleton
+			Init(v, true)
+			replace.old := poll.singleton
+			replace.new_ := v
+			Controllers.Forward(replace) 
+		else 
+			Dialog.Beep 
+		end 
+	end AddScroller
+	
+	proc RemoveScroller*
+		var 
+			poll: Controllers.PollOpsMsg
+			replace: Controllers.ReplaceViewMsg
+	begin 
+		Controllers.PollOps(poll)
+		if (poll.singleton # nil) & (poll.singleton is View) then
+			replace.old := poll.singleton
+			replace.new_ := Views.CopyOf(poll.singleton(View).view, Views.shallow)
+			Controllers.Forward(replace) 
+		else 
+			Dialog.Beep 
+		end 
+	end RemoveScroller
+
+end StdScrollers

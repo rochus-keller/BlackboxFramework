@@ -1,0 +1,2297 @@
+module HostCFrames
+	
+	(* cross-platform CFrames
+	   Ivan Denisov, 2019 *)
+	
+	
+	
+	import 
+		Kernel, Dialog, Fonts, Ports, Views, Properties, Strings, 
+		StdCFrames, Controllers, TextViews, TextModels, Models, Stores, Controls, 
+		HostClipboard, HostWindows, HostFonts, FormModels
+	
+	const 
+		(* alignment
+		   none = 0; left = 1; right = 2; center = 3; *)
+		
+		RDEL = 07x
+		LDEL = 08x
+		TAB = 09x
+		LTAB = 0ax
+		ENTER = 0dx
+		PL = 10x
+		PR = 11x
+		PU = 12x
+		PD = 13x
+		DL = 14x
+		DR = 15x
+		DU = 16x
+		DD = 17x
+		ESC = 1bx
+		AL = 1cx
+		AR = 1dx
+		AU = 1ex
+		AD = 1fx
+		
+		arrWidth = 12
+	
+	type 
+		Directory = pointer to record (StdCFrames.Directory) end 
+		
+		Caption = pointer to record (StdCFrames.Caption) end 
+		
+		Group = pointer to record (StdCFrames.Group) end 
+		
+		PushButton = pointer to record (StdCFrames.PushButton) 
+				hasFocus: boolean 
+			end 
+		
+		CheckBox = pointer to record (StdCFrames.CheckBox) 
+				hasFocus: boolean 
+			end 
+		
+		RadioButton = pointer to record (StdCFrames.RadioButton) 
+				hasFocus: boolean 
+			end 
+		
+		ComboBox = pointer to record (StdCFrames.ComboBox) 
+				index, 
+				pos, from, to_: integer // select
+				hasFocus, carriage, expand: boolean
+				popup: PopUp 
+			end 
+		
+		Field = pointer to record (StdCFrames.Field) 
+				pos, from, to_: integer // select
+				hasFocus, carriage: boolean 
+			end 
+		
+		UpDownField = pointer to record (StdCFrames.UpDownField) 
+				pos, from, to_: integer // select
+				hasFocus, carriage: boolean 
+			end 
+		
+		ListBox = pointer to record (StdCFrames.ListBox) 
+			end 
+		
+		SelectionBox = pointer to record (StdCFrames.SelectionBox) 
+				num: integer  // the number of items in the list, updated by UpdateList
+			end 
+		
+		TreeFrame = pointer to record (StdCFrames.TreeFrame) 
+			// hasFocus: BOOLEAN;
+			end 
+		
+		ScrollBar = pointer to record (StdCFrames.ScrollBar) end 
+		
+		TimeField = pointer to record (StdCFrames.TimeField) end 
+		DateField = pointer to record (StdCFrames.DateField) end 
+		ColorField = pointer to record (StdCFrames.ColorField) end 
+		
+		PopUp = pointer to record (Controls.Control) 
+				combo: ComboBox 
+			end 
+		Context = pointer to record (FormModels.Context) 
+				w, h: integer
+				base: Views.Frame 
+			end 
+	
+	var 
+		time: longint
+		inHandleMouse*: boolean // for compatibility with Windows version
+	
+	proc (c: Context) ThisModel(): FormModels.Model 
+	begin 
+		return c.base.view.context.ThisModel()(FormModels.Model)
+	end ThisModel
+	
+	proc (c: Context) GetSize(var w, h: integer) 
+	begin 
+		w := c.w
+		h := c.h
+	end GetSize
+	
+	proc (c: Context) SetSize(w, h: integer) 
+	begin 
+		c.w := w
+		c.h := h
+	end SetSize
+	
+	proc (c: Context) Normalize(): boolean 
+	begin 
+		return false
+	end Normalize
+	
+	proc (c: Context) GetRect(var l, t, r, b: integer) 
+	begin 
+		l := 0
+		t := 0
+	end GetRect
+	
+	proc (c: Context) Consider(var p: Models.Proposal) 
+	begin 
+	end Consider
+	
+	
+	// On Windows & is used to mark an Alt-shortcut. This is not available on Linux.
+	proc AmpersandToUline(var ss: array of char) 
+		var 
+			i: integer
+	begin 
+		i := 0
+		while ss[i] # 0x do 
+			if ss[i] = "&" then
+				ss[i] := "_" 
+			end 
+			inc(i) 
+		end 
+	end AmpersandToUline
+	
+	// processing & and &&
+	proc CleanAmp(var s: array of char) 
+		var 
+			i, j: integer
+	begin 
+		j := 0
+		for i:= 0 to len(s) - 1 do 
+			if ((i > 0) & (s[i - 1] = "&") & (s[i] = "&")) or (s[i] # "&") then
+				s[j] := s[i]
+				inc(j) 
+			end  
+		end 
+		s[j] := 0x
+	end CleanAmp
+	
+	// Caption
+	
+	proc (c: Caption) Restore(l, t, r, b: integer) 
+		var 
+			w, h, col, asc, dsc, sw: integer
+			s: Dialog.String
+	begin 
+		// TODO: left & right
+		if c # nil then
+			c.view.context.GetSize(w, h)
+			if c.disabled then
+				col := Ports.grey50 
+			else 
+				col := Ports.black 
+			end 
+			c.font.GetBounds(asc, dsc, sw)
+			Dialog.MapString(c.label, s)
+			CleanAmp(s)
+			c.DrawString(c.dot, h div 2 + asc div 2, col, s, c.font) 
+		end 
+	end Restore
+	
+	
+	// PushButton
+	
+	proc Execute(f: PushButton) 
+	begin 
+		if f.Do # nil then
+			Dialog.ShowStatus("")
+			f.Do(f) 
+		end 
+	end Execute
+	
+	proc (f: PushButton) Restore(l, t, r, b: integer) 
+		var 
+			w, h, res, asc, dsc, sw: integer
+			s: Dialog.String
+	begin 
+		f.view.context.GetSize(w, h)
+		Dialog.MapString(f.label, s)
+		CleanAmp(s)
+		f.font.GetBounds(asc, dsc, sw)
+		if f.disabled then
+			f.DrawRect(0, 0, w, h, -1, Ports.grey12)
+			f.DrawRect(0, 0, w, h, f.dot, Ports.grey50)
+			res := f.font.StringWidth(s)
+			f.DrawString((w - res) div 2, h div 2 + (asc - dsc) div 2, Ports.grey50, s, f.font) 
+		else 
+			res := f.font.StringWidth(s)
+			if f.readOnly then
+				f.DrawRect(0, 0, w, h, -1, Ports.grey12)
+				f.DrawRect(0, 0, w, h, f.dot, Ports.grey75)
+				f.DrawString((w - res) div 2, h div 2 + (asc - dsc) div 2, Ports.grey75, s, f.font) 
+			else 
+				f.DrawRect(0, 0, w, h, -1, Ports.white)
+				f.DrawString((w - res) div 2, h div 2 + (asc - dsc) div 2, Ports.black, s, f.font)
+				if f.hasFocus then
+					f.DrawRect(0, 0, w, h, f.dot * 2, Ports.black) 
+				elsif f.default then 
+					f.DrawRect(0, 0, w, h, f.dot * 2, Ports.grey50) 
+				else 
+					f.DrawRect(0, 0, w, h, f.dot, Ports.grey50) 
+				end  
+			end  
+		end 
+	end Restore
+	
+	proc (f: PushButton) Mark(on, focus: boolean) 
+	begin 
+		if focus then
+			if on then
+				if ~f.hasFocus then
+					f.hasFocus := true 
+				end  
+			else 
+				if f.hasFocus then
+					f.hasFocus := false 
+				end  
+			end  
+		end 
+		f.Update
+	end Mark
+	
+	proc (f: PushButton) MouseDown(x, y: integer; buttons: set) 
+		var 
+			w, h: integer
+			inside, isDown: boolean
+			modifiers: set
+	begin 
+		assert(~f.disabled, 100)
+		f.view.context.GetSize(w, h)
+		f.MarkRect(0, 0, w, h, Ports.fill, Ports.invert, Ports.show)
+		inside := true
+		repeat  // mouse tracking loop
+			f.Input(x, y, modifiers, isDown)
+			if inside # (x >= 0) & (y >= 0) & (x < w) & (y < h) then // toggle state
+				inside := ~inside
+				f.MarkRect(0, 0, w, h, Ports.fill, Ports.invert, inside) 
+			end  
+		until ~isDown 
+		if inside then // mouse was released inside the control
+			f.MarkRect(0, 0, w, h, Ports.fill, Ports.invert, Ports.hide)
+			Execute(f) 
+		end 
+	end MouseDown
+	
+	proc (f: PushButton) KeyDown(ch: char) 
+	begin 
+		assert(~f.disabled, 100)
+		if ~f.readOnly then
+			Execute(f) 
+		end 
+	end KeyDown
+	
+	// CheckBox
+	
+	proc (c: CheckBox) Restore(l, t, r, b: integer) 
+		var 
+			w, h, h2, res, asc, dsc, sw: integer
+			col: Ports.Color
+			s: Dialog.String
+			active: boolean
+	begin 
+		c.noRedraw := false
+		if c # nil then
+			c.Get(c, active)
+			c.view.context.GetSize(w, h)
+			if c.disabled then
+				col := Ports.grey50 
+			else 
+				col := Ports.black 
+			end 
+			h2 := (h div 2) div c.dot
+			c.DrawRect(c.dot, (h2 - 6) * c.dot, 13 * c.dot, (h2 + 6) * c.dot, c.dot, col)
+			c.font.GetBounds(asc, dsc, sw)
+			if active then
+				c.DrawString(3 * c.dot, (h2 + 5) * c.dot, col, "✔", c.font) 
+			(* c.DrawLine(
+			   7 * c.dot, (h2 + 2) * c.dot,
+			   10 * c.dot, (h2 - 4) * c.dot, c.dot * 2, Ports.black);
+			   
+			   c.DrawLine(
+			   7 * c.dot, (h2 + 2) * c.dot,
+			   3 * c.dot, (h2 - 4) * c.dot, c.dot * 2, Ports.black) *)
+			
+			
+			end 
+			Dialog.MapString(c.label, s)
+			CleanAmp(s)
+			c.DrawString(20 * c.dot, h div 2 + (asc - dsc) div 2, col, s, c.font)
+			if c.hasFocus then
+				res := c.font.StringWidth(s)
+				c.DrawLine(
+				20 * c.dot, h div 2 + (asc - dsc) div 2 + 2 * c.dot, 
+				20 * c.dot + res, h div 2 + (asc - dsc) div 2 + 2 * c.dot, c.dot, Ports.black) 
+			end  
+		end 
+	end Restore
+	
+	proc (c: CheckBox) Close
+	begin 
+		c.hasFocus := false
+	end Close
+	
+	proc (f: CheckBox) Mark(on, focus: boolean) 
+	begin 
+		if focus then
+			if on then
+				if ~f.hasFocus then
+					f.hasFocus := true 
+				end  
+			else 
+				if f.hasFocus then
+					f.hasFocus := false 
+				end  
+			end  
+		end 
+		f.Update
+	end Mark
+	
+	proc (f: CheckBox) MouseDown(x, y: integer; buttons: set) 
+		var 
+			state: boolean
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			f.Get(f, state)
+			f.Set(f, ~state)
+			f.Update 
+		end 
+	end MouseDown
+	
+	proc (f: CheckBox) KeyDown(ch: char) 
+		var 
+			state: boolean
+	begin 
+		assert(~f.disabled, 100)
+		if ch = " " then
+			f.Get(f, state)
+			f.Set(f, ~state) 
+		end 
+		f.Update
+	end KeyDown
+	
+	// RadioButton
+	
+	proc (c: RadioButton) Restore(l, t, r, b: integer) 
+		var 
+			w, h, h2, res, asc, dsc, sw: integer
+			col: Ports.Color
+			s: Dialog.String
+			active: boolean
+	begin 
+		c.noRedraw := false
+		if c # nil then
+			c.Get(c, active)
+			c.view.context.GetSize(w, h)
+			if c.disabled then
+				col := Ports.grey50 
+			else 
+				col := Ports.black 
+			end 
+			h2 := (h div 2) div c.dot
+			c.DrawOval(c.dot, (h2 - 6) * c.dot, 13 * c.dot, (h2 + 6) * c.dot, c.dot, col)
+			if active then
+				c.DrawOval(4 * c.dot, (h2 - 3) * c.dot, 10 * c.dot, (h2 + 3) * c.dot, -1, col) 
+			end 
+			Dialog.MapString(c.label, s)
+			CleanAmp(s)
+			c.font.GetBounds(asc, dsc, sw)
+			c.DrawString(20 * c.dot, h div 2 + (asc - dsc) div 2, col, s, c.font)
+			if c.hasFocus then
+				res := c.font.StringWidth(s)
+				c.DrawLine(
+				20 * c.dot, h div 2 + asc div 2 + 2 * c.dot, 
+				20 * c.dot + res, h div 2 + asc div 2 + 2 * c.dot, c.dot, Ports.black) 
+			end  
+		end 
+	end Restore
+	
+	proc (c: RadioButton) Close
+	begin 
+		c.hasFocus := false
+	end Close
+	
+	proc (f: RadioButton) Mark(on, focus: boolean) 
+	begin 
+		if focus then
+			if on then
+				if ~f.hasFocus then
+					f.hasFocus := true 
+				end  
+			else 
+				if f.hasFocus then
+					f.hasFocus := false 
+				end  
+			end  
+		end 
+		f.Update
+	end Mark
+	
+	proc (f: RadioButton) MouseDown(x, y: integer; buttons: set) 
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			f.Set(f, true)
+			f.Update 
+		end 
+	end MouseDown
+	
+	proc (f: RadioButton) KeyDown(ch: char) 
+		var 
+			state: boolean
+	begin 
+		assert(~f.disabled, 100)
+		if ch = " " then
+			f.Get(f, state)
+			f.Set(f, ~state) 
+		end 
+		f.Update
+	end KeyDown
+	
+	
+	// Field
+	
+	(* PROCEDURE InsLF (VAR x: ARRAY OF CHAR);
+	   VAR i, j: INTEGER;
+	   BEGIN
+	   i := 0; j := 0;
+	   WHILE x[i] # 0X DO
+	   IF x[i] = 0DX THEN INC(j) END;
+	   INC(i); INC(j)
+	   END;
+	   x[j] := 0X;
+	   WHILE i # j DO
+	   DEC(i); DEC(j);
+	   IF x[i] = 0DX THEN x[j] := 0AX; DEC(j) END;
+	   x[j] := x[i]
+	   END
+	   END InsLF;
+	   
+	   PROCEDURE DelLF (VAR x: ARRAY OF CHAR);
+	   VAR i, j: INTEGER;
+	   BEGIN
+	   i := 0; j := 0;
+	   WHILE x[i] # 0X DO
+	   IF x[i] = 0AX THEN INC(i) END;
+	   x[j] := x[i]; INC(i); INC(j)
+	   END;
+	   x[j] := 0X;
+	   END DelLF;
+	   
+	   PROCEDURE Equal (f: Field; VAR x, y: ARRAY OF CHAR): BOOLEAN;
+	   VAR i, j: INTEGER;
+	   BEGIN
+	   DelLF(y);
+	   RETURN f.Equal(f, x, y)
+	   END Equal; *)
+	
+	
+	
+	
+	proc (f: Field) Restore(l, t, r, b: integer) 
+		var 
+			w, h, res, res2, start, asc, dsc, sw, width, stringWidth: integer
+			s, tmp: Dialog.String
+	begin 
+		f.view.context.GetSize(w, h)
+		if f.disabled then
+			f.DrawRect(0, 0, w, h, -1, Ports.grey12)
+			f.DrawRect(0, 0, w, h, f.dot, Ports.grey75) 
+		else 
+			f.Get(f, s)
+			f.font.GetBounds(asc, dsc, sw)
+			if f.left then
+				start := h div 4 
+			elsif f.right then 
+				stringWidth := f.font.StringWidth(s)
+				start := w - stringWidth - h div 4 
+			else 
+				stringWidth := f.font.StringWidth(s)
+				start := (w - stringWidth) div 2 
+			end 
+			if f.readOnly then
+				f.DrawRect(0, 0, w, h, -1, Ports.grey12)
+				f.DrawString(start, h div 2 + (asc - dsc) div 2, Ports.grey75, s, f.font)
+				f.DrawRect(0, 0, w, h, f.dot, Ports.grey75) 
+			else 
+				// backgroud
+				f.DrawRect(0, 0, w, h, -1, Ports.white)
+				// selection
+				if f.hasFocus & (f.from # f.to_) then
+					if f.to_ = max(integer) then
+						f.to_ := len(s) 
+					end 
+					tmp := s
+					tmp[f.from] := 0x
+					res := f.font.StringWidth(tmp)
+					tmp := s
+					tmp[f.to_] := 0x
+					res2 := f.font.StringWidth(tmp)
+					f.DrawRect(
+					start + res, (h - asc) div 2, 
+					start + res2, h - (h - asc) div 2, -1, Ports.grey25) 
+				end 
+				// string
+				f.DrawString(start, h div 2 + (asc - dsc) div 2, Ports.black, s, f.font)
+				
+				// carriage
+				if f.carriage then
+					if f.pos = -1 then
+						f.pos := len(s) 
+					end 
+					if (f.hasFocus) & (f.from = f.to_) then
+						if f.pos = 0 then
+							res := 0 
+						else 
+							s[f.pos] := 0x
+							res := f.font.StringWidth(s) 
+						end 
+						if Dialog.thickCaret then
+							width := f.dot * 2 
+						else 
+							width := f.dot 
+						end 
+						f.DrawLine(
+						start + res, (h - asc) div 2, 
+						start + res, h - (h - asc) div 2, width, Ports.black) 
+					end  
+				end 
+				
+				// frame
+				if f.hasFocus then
+					width := f.dot * 2 
+				else 
+					width := f.dot 
+				end 
+				f.DrawRect(0, 0, w, h, width, Ports.black) 
+			end  
+		end 
+	end Restore
+	
+	proc (f: Field) Mark(on, focus: boolean) 
+	begin 
+		if focus then
+			if on then
+				if ~f.hasFocus then
+					f.hasFocus := true 
+				end  
+			else 
+				if f.hasFocus then
+					f.hasFocus := false 
+				end  
+			end  
+		end 
+		f.Update
+	end Mark
+	
+	proc (f: Field) Edit(op: integer; var v: Views.View; var w, h: integer
+		var singleton, clipboard: boolean) 
+		var 
+			i, j, k: integer
+			s, rest, tmp: Dialog.String
+			rd: TextModels.Reader
+	begin 
+		if clipboard then
+			if op in {Controllers.cut, Controllers.copy_} then
+				if f.from = f.to_ then
+					f.Get(f, s) 
+				else 
+					// split selected text
+					f.Get(f, tmp)
+					i := f.from
+					j := 0
+					k := 0
+					for i:= 0 to len(tmp) - 1 do 
+						if (i >= f.from) & (i < f.to_) then
+							s[j] := tmp[i]
+							inc(j) 
+						else 
+							rest[k] := tmp[i]
+							inc(k) 
+						end  
+					end 
+					s[j] := 0x
+					rest[k] := 0x 
+				end 
+				HostClipboard.Register(
+				TextViews.dir.New(TextModels.dir.NewFromString(s)), 0, 0, false)
+				if op = Controllers.cut then
+					if f.from = f.to_ then
+						f.Set(f, 0x)
+						f.pos := 0
+						f.from := 0
+						f.to_ := 0 
+					else 
+						f.Set(f, rest)
+						f.pos := f.from
+						f.to_ := f.pos 
+					end 
+					f.Update 
+				end  
+			elsif op = Controllers.paste then 
+				with v: TextViews.View do 
+					f.Get(f, s)
+					if f.from # f.to_ then
+						// remove selection
+						i := f.from
+						j := f.to_
+						while j < len(s) do 
+							s[i] := s[j]
+							inc(i)
+							inc(j) 
+						end 
+						s[i] := 0x
+						f.pos := f.from
+						f.to_ := f.pos 
+					end 
+					rest[0] := 0x
+					if f.pos < len(s) then
+						i := f.pos
+						j := 0
+						while i < len(s) do 
+							rest[j] := s[i]
+							inc(i)
+							inc(j) 
+						end 
+						rest[j] := 0x 
+					end 
+					rd := v.ThisModel().NewReader(nil)
+					i := f.pos
+					rd.SetPos(0)
+					repeat 
+						rd.Read
+						if rd.view = nil then
+							if (rd.char_ = TextModels.line) or (rd.char_ = TextModels.para) then 
+							(* multiline
+							   s[i] := 0AX *)
+							
+							else 
+								s[i] := rd.char_
+								inc(i) 
+							end  
+						end  
+					until rd.eot or (i = len(s) - 1) or (i = f.maxLen) 
+					f.pos := i - 1
+					s[i] := 0x
+					s := s + rest
+					f.Set(f, s)
+					f.Update 
+				else  
+				end  
+			end  
+		end 
+	end Edit
+	
+	proc (f: Field) MouseDown(x, y: integer; buttons: set) 
+		var 
+			s: Dialog.String
+			width, w, height, i, j, movedto, len_, start, stringWidth: integer
+			mx, my: integer
+			isDown: boolean
+			modifiers: set
+			tstart: longint
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			f.Get(f, s)
+			if s # 0x then
+				
+				w := f.font.StringWidth(s)
+				f.view.context.GetSize(width, height)
+				
+				if f.left then
+					start := height div 4 
+				elsif f.right then 
+					stringWidth := f.font.StringWidth(s)
+					start := width - stringWidth - height div 4 
+				else 
+					stringWidth := f.font.StringWidth(s)
+					start := (width - stringWidth) div 2 
+				end 
+				
+				x := x - start
+				if x > w then
+					f.pos := len(s) 
+				elsif x < 0 then 
+					f.pos := 0 
+				else 
+					i := len(s) + 1
+					repeat 
+						s[i] := 0x
+						w := f.font.StringWidth(s)
+						dec(i) 
+					until (i < 0) or (w < x) 
+					f.pos := i + 1 
+				end 
+				if (Controllers.doubleClick in buttons) & (s[f.pos] # " ") then
+					// select word with double click
+					f.from := f.pos
+					while (f.from > 0) & (s[f.from - 1] # " ") do 
+						dec(f.from) 
+					end 
+					f.to_ := f.pos
+					f.Get(f, s)
+					while (f.to_ < len(s)) & (s[f.to_] # " ") do 
+						inc(f.to_) 
+					end  
+				else 
+					// should be cheched
+					tstart := Kernel.Time()
+					repeat 
+						f.Input(mx, my, modifiers, isDown)
+						f.Get(f, s)
+						len_ := len(s)
+						i := len_ + 1
+						repeat 
+							s[i] := 0x
+							w := f.font.StringWidth(s)
+							dec(i) 
+						until (i < 0) or (w < mx - start) 
+						movedto := i + 1
+						if (movedto = f.pos) or (Kernel.Time() - tstart < 150) then
+							f.from := 0
+							f.to_ := 0 
+						else 
+							if movedto > f.pos then
+								f.from := f.pos
+								f.to_ := movedto
+								if f.to_ > len_ then
+									f.to_ := len_ 
+								end  
+							else 
+								f.from := movedto
+								if f.from < 0 then
+									f.from := 0 
+								end 
+								f.to_ := f.pos 
+							end  
+						end 
+						f.Update 
+					until ~isDown  
+				end 
+				f.Update 
+			end  
+		end 
+	end MouseDown
+	
+	proc (f: Field) KeyDown(ch: char) 
+		var 
+			s: Dialog.String
+			len_, i, j: integer
+		
+		proc ResetSelection
+		begin 
+			f.from := f.pos
+			f.to_ := f.pos
+		end ResetSelection
+	
+	begin 
+		assert(~f.disabled, 100)
+		case ch of 
+			| LDEL:  // backspace
+				f.Get(f, s)
+				if f.from # f.to_ then
+					i := f.from
+					j := f.to_
+					while s[j] # 0x do 
+						s[i] := s[j]
+						inc(i)
+						inc(j) 
+					end 
+					s[i] := 0x
+					f.pos := f.from
+					f.Set(f, s) 
+				else 
+					if (s[0] # 0x) & (f.pos > 0) then
+						if s[f.pos] = 0x then
+							s[len(s) - 1] := 0x 
+						else 
+							i := f.pos - 1
+							while s[i] # 0x do 
+								inc(i)
+								s[i - 1] := s[i] 
+							end  
+						end 
+						f.Set(f, s)
+						dec(f.pos) 
+					end  
+				end 
+				ResetSelection 
+			| RDEL:  // delete
+				f.Get(f, s)
+				if f.from # f.to_ then
+					i := f.from
+					j := f.to_
+					while s[j] # 0x do 
+						s[i] := s[j]
+						inc(i)
+						inc(j) 
+					end 
+					s[i] := 0x
+					f.pos := f.from
+					f.Set(f, s) 
+				else 
+					if (s[0] # 0x) & (s[f.pos] # 0x) then
+						i := f.pos
+						while s[i] # 0x do 
+							inc(i)
+							s[i - 1] := s[i] 
+						end 
+						f.Set(f, s) 
+					end  
+				end 
+				ResetSelection 
+			| DL, DU: 
+				f.pos := 0
+				ResetSelection 
+			| DR, DD: 
+				f.Get(f, s)
+				f.pos := len(s)
+				ResetSelection 
+			| AL:  // Arrow Left
+				if Controllers.extend in HostWindows.modifiers then // Shift
+					if f.from = f.to_ then
+						f.to_ := f.pos
+						dec(f.pos)
+						f.from := f.pos 
+					elsif (f.from = f.pos) & (f.pos > 0) then 
+						dec(f.pos)
+						f.from := f.pos 
+					elsif (f.to_ = f.pos) then 
+						dec(f.pos)
+						f.to_ := f.pos 
+					end  
+				else 
+					if f.pos > 0 then
+						dec(f.pos) 
+					end 
+					ResetSelection 
+				end  
+			| AR:  // Arrow Right
+				f.Get(f, s)
+				if Controllers.extend in HostWindows.modifiers then // Shift
+					if f.from = f.to_ then
+						f.from := f.pos
+						inc(f.pos)
+						f.to_ := f.pos 
+					elsif (f.to_ = f.pos) & (f.pos < len(s)) then 
+						inc(f.pos)
+						f.to_ := f.pos 
+					elsif (f.from = f.pos) then 
+						inc(f.pos)
+						f.from := f.pos 
+					end  
+				else 
+					if f.pos < len(s) then
+						inc(f.pos) 
+					end 
+					ResetSelection 
+				end  
+		else 
+			if ch >= 20x then
+				
+				f.Get(f, s)
+				if (f.from = 0) & ((f.to_ = max(integer)) or (f.to_ = len(s))) then
+					// delete selection
+					f.Set(f, "")
+					f.to_ := 0
+					f.pos := 0
+					s := 0x 
+				elsif f.from # f.to_ then 
+					i := f.from
+					j := f.to_
+					while s[j] # 0x do 
+						s[i] := s[j]
+						inc(i)
+						inc(j) 
+					end 
+					s[i] := 0x
+					f.pos := f.from 
+				end 
+				len_ := len(s)
+				if len_ < f.maxLen then
+					// correct
+					if f.pos > len(s) then
+						f.pos := len(s) 
+					end 
+					if f.pos = len(s) then
+						s[len_] := ch
+						s[len_ + 1] := 0x 
+					else 
+						i := len(s)
+						while i >= f.pos do 
+							s[i + 1] := s[i]
+							dec(i) 
+						end 
+						s[f.pos] := ch 
+					end 
+					f.Set(f, s)
+					ResetSelection
+					inc(f.pos) 
+				end  
+			end  
+		(* IF f.multiLine OR (ch # 0DX) THEN
+		   
+		   END *)
+		
+		
+		end 
+		// prevent carriage blinking while typing
+		time := Kernel.Time()
+		f.carriage := true
+		f.Update
+	end KeyDown
+	
+	proc (f: Field) Select(from, to_: integer) 
+	begin 
+		f.from := from
+		f.to_ := to_
+		f.Update
+	end Select
+	
+	proc (f: Field) GetSelection(var from, to_: integer) 
+	begin 
+		from := f.from
+		to_ := f.to_
+	end GetSelection
+	
+	proc (f: Field) Idle
+		var 
+			newTime: longint
+	begin 
+		if f.hasFocus & (f.from = f.to_) then
+			newTime := Kernel.Time()
+			if newTime > time + Dialog.caretPeriod then
+				f.carriage := ~f.carriage
+				time := newTime
+				f.Update 
+			end  
+		end 
+	end Idle
+	
+	proc (f: Field) Length(): integer 
+		var 
+			s: Dialog.String
+	begin 
+		f.Get(f, s)
+		return len(s)
+	end Length
+	
+	
+	// ComboBox - PopUp
+	
+	proc (p: PopUp) Restore(f: Views.Frame; l, t, r, b: integer) 
+		var 
+			w, h, asc, dsc, sw, i: integer
+			s: Dialog.String
+	begin 
+		f.view.context.GetSize(w, h)
+		f.DrawRect(0, 0, w, h, -1, Ports.white)
+		f.DrawRect(0, 0, w, h, f.dot, Ports.black)
+		p.combo.font.GetBounds(asc, dsc, sw)
+		i := 0
+		repeat 
+			p.combo.GetName(p.combo, i, s)
+			f.DrawString(asc, asc + asc div 2 + asc * i * 2, Ports.black, s, p.combo.font)
+			inc(i) 
+		until s = 0x 
+	end Restore
+	
+	proc (p: PopUp) HandleCtrlMsg2(f: Views.Frame; var msg: Views.CtrlMessage; var focus: Views.View) 
+		var 
+			w, h, asc, dsc, sw, i, cx, cy: integer
+			s: Dialog.String
+			rrr: Views.RootFrame
+	begin 
+		with msg: Controllers.TrackMsg do 
+			p.combo.font.GetBounds(asc, dsc, sw)
+			p.combo.index := msg.y div (asc * 2)
+			p.combo.GetName(p.combo, p.combo.index, s)
+			p.combo.Set(p.combo, s)
+			
+			// hide
+			p.combo.expand := false
+			rrr := Views.RootOf(p.combo)
+			rrr.view.context.GetSize(cx, cy)
+			Views.RestoreRoot(rrr, 0, 0, cx, cy) 
+		else  
+		end 
+	end HandleCtrlMsg2
+	
+	proc (p: PopUp) HandlePropMsg2(var msg: Properties.Message) 
+	begin 
+		with msg: Properties.FocusPref do 
+			msg.setFocus := true 
+		| msg: Controls.PropPref do 
+			msg.valid := msg.valid 
+		else  
+		end 
+	end HandlePropMsg2
+	
+	
+	// ComboBox
+	
+	proc (c: ComboBox) UpdateList
+	begin 
+		// recreate list ... nothing to do here
+		c.Update
+	end UpdateList
+	
+	proc (c: ComboBox) Update
+		var 
+			s: Dialog.String
+	begin 
+		if ~c.disabled & ~c.readOnly & (c.index # -1) then
+			c.GetName(c, c.index, s)
+			c.Set(c, s) 
+		end 
+	end Update
+	
+	proc (f: ComboBox) Restore(l, t, r, b: integer) 
+		var 
+			w, h, asc, dsc, sw, x1, x2, y, width: integer
+			s: Dialog.String
+			host, popupFrame: Views.Frame
+	begin 
+		f.view.context.GetSize(w, h)
+		f.font.GetBounds(asc, dsc, sw)
+		if f.disabled then
+			f.DrawRect(0, 0, w, h, -1, Ports.grey12)
+			f.DrawRect(0, 0, w, h, f.dot, Ports.grey75) 
+		else 
+			f.UpdateList
+			f.Get(f, s)
+			if f.readOnly then
+				f.DrawRect(0, 0, w, asc * 2, -1, Ports.grey12)
+				f.DrawString(asc div 4, asc, Ports.grey75, s, f.font)
+				f.DrawRect(0, 0, w, asc * 2, f.dot, Ports.grey75) 
+			else 
+				// background
+				f.DrawRect(0, 0, w, asc * 2, -1, Ports.white)
+				// string
+				f.DrawString(asc, asc + asc div 2, Ports.black, s, f.font)
+				// arrow
+				if w - arrWidth * f.dot > 0 then
+					f.DrawRect(w - arrWidth * f.dot, 0, w, asc * 2, f.dot, Ports.grey75)
+					x1 := w - (arrWidth - 2) * f.dot
+					x2 := w - 2 * f.dot
+					y := asc - 2 * f.dot
+					f.DrawLine(x1, y, x2, y, f.dot, Ports.black)
+					inc(x1, f.dot)
+					dec(x2, f.dot)
+					inc(y, f.dot)
+					f.DrawLine(x1, y, x2, y, f.dot, Ports.black)
+					inc(x1, f.dot)
+					dec(x2, f.dot)
+					inc(y, f.dot)
+					f.DrawLine(x1, y, x2, y, f.dot, Ports.black)
+					inc(x1, f.dot)
+					dec(x2, f.dot)
+					inc(y, f.dot)
+					f.DrawLine(x1, y, x2, y, f.dot, Ports.black)
+					inc(x1, f.dot)
+					dec(x2, f.dot)
+					inc(y, f.dot)
+					f.DrawLine(x1, y, x2, y, f.dot, Ports.black) 
+				end 
+				// frame
+				if f.hasFocus then
+					width := f.dot * 2 
+				else 
+					width := f.dot 
+				end 
+				if w - (arrWidth + 2) * f.dot > 0 then
+					f.DrawRect(0, 0, w - (arrWidth + 2) * f.dot, asc * 2, width, Ports.black) 
+				else 
+					f.DrawRect(0, 0, w, h, width, Ports.black) 
+				end 
+				if f.expand then
+					host := Views.HostOf(f)
+					Views.InstallFrame(host, f.popup, f.gx, f.gy + asc * 2, 100, true) 
+				elsif f.popup # nil then 
+					host := Views.HostOf(f)
+					popupFrame := Views.ThisFrame(host, f.popup)
+					if popupFrame # nil then
+						Views.RemoveFrame(host, popupFrame) 
+					end  
+				end  
+			end  
+		end 
+	end Restore
+	
+	proc (f: ComboBox) Mark(on, focus: boolean) 
+	begin 
+		if focus then
+			if on then
+				if ~f.hasFocus then
+					f.hasFocus := true 
+				end  
+			else 
+				if f.hasFocus then
+					f.hasFocus := false 
+				end  
+			end  
+		end 
+		f.Update
+	end Mark
+	
+	proc (f: ComboBox) MouseDown(x, y: integer; buttons: set) 
+		var 
+			s: Dialog.String
+			h: Views.Frame
+			cx, cy, asc, dsc, sw, i: integer
+			rrr: Views.RootFrame
+			p: PopUp
+			c: Context
+		
+		proc InitProp(): Controls.Prop 
+			var 
+				p: Controls.Prop
+		begin 
+			new(p)
+			p.link := ""
+			p.label := ""
+			p.guard := ""
+			p.notifier := ""
+			p.level := 0
+			p.opt[0] := false
+			p.opt[1] := false
+			p.opt[2] := false
+			p.opt[3] := false
+			p.opt[4] := false
+			return p
+		end InitProp
+	
+	begin 
+		assert(~f.disabled, 100)
+		if ~f.readOnly & (f.rider # nil) then
+			if ~f.expand then
+				f.expand := true
+				f.font.GetBounds(asc, dsc, sw)
+				
+				if f.popup = nil then
+					
+					i := 0
+					repeat 
+						inc(i)
+						f.GetName(f, i, s) 
+					until s = 0x 
+					
+					new(p)
+					p.combo := f
+					new(c)
+					c.base := f
+					p.InitContext(c)
+					Stores.Join(f.view, p)
+					Controls.OpenLink(p, InitProp())
+					
+					f.view.context.GetSize(cx, cy)
+					c.SetSize(cx, asc * 2 * i)
+					f.popup := p 
+				end 
+				
+				rrr := Views.RootOf(f)
+				rrr.view.context.GetSize(cx, cy)
+				
+				Views.RestoreRoot(rrr, 0, 0, cx, cy)  // should be optimized
+			
+			(* Views.RestoreRoot(rrr,
+			   f.gx, f.gy + asc * 2, f.gx + cx + f.dot, f.gy + asc * 2 * (i + 1) + f.dot) *)
+			
+			
+			
+			else 
+				// for case of popup overlap
+				f.font.GetBounds(asc, dsc, sw)
+				f.index := y div (asc * 2)
+				if f.index > 0 then
+					dec(f.index) 
+				end 
+				f.GetName(f, f.index, s)
+				f.Set(f, s)
+				// hide
+				f.expand := false
+				rrr := Views.RootOf(f)
+				rrr.view.context.GetSize(cx, cy)
+				Views.RestoreRoot(rrr, 0, 0, cx, cy)  // should be optimized
+			end 
+			f.Update 
+		end 
+	end MouseDown
+	
+	proc (f: ComboBox) KeyDown(ch: char) 
+		var 
+			s: Dialog.String
+			i: integer
+	begin 
+		assert(~f.disabled, 100)
+		case ch of 
+			| AU: 
+				if f.index > 0 then
+					dec(f.index) 
+				end 
+				f.Update 
+			| AD: 
+				f.GetName(f, f.index + 1, s)
+				if s # 0x then
+					inc(f.index) 
+				end 
+				f.Update 
+		else  
+		end 
+	end KeyDown
+	
+	proc (c: ComboBox) Close
+	begin 
+	
+	end Close
+	
+	proc (f: ComboBox) Select(from, to_: integer) 
+	begin 
+		f.from := from
+		f.to_ := to_
+	end Select
+	
+	proc (f: ComboBox) GetSelection(var from, to_: integer) 
+	begin 
+		from := f.from
+		to_ := f.to_
+	end GetSelection
+	
+	proc (f: ComboBox) Idle
+	begin 
+	
+	end Idle
+	
+	proc (f: ComboBox) Length(): integer 
+		var 
+			s: Dialog.String
+	begin 
+		f.Get(f, s)
+		return len(s)
+	end Length
+	
+	
+	// Group
+	
+	proc (c: Group) Restore(l, t, r, b: integer) 
+		var 
+			w, h, asc, dsc, sw: integer
+			s: Dialog.String
+			col: Ports.Color
+	begin 
+		c.view.context.GetSize(w, h)
+		Dialog.MapString(c.label, s)
+		AmpersandToUline(s)
+		c.font.GetBounds(asc, dsc, sw)
+		sw := c.font.StringWidth(s)
+		if c.disabled then
+			col := Ports.grey50 
+		else 
+			col := Ports.black 
+		end 
+		c.DrawRect(Ports.point, (asc + dsc) * 2 div 3, w - Ports.point, h - Ports.point, Ports.point, col)
+		c.DrawRect(Ports.mm * 3 div 2, 0, Ports.mm * 3 + sw, asc + dsc, Ports.fill, Ports.dialogBackground)
+		c.DrawString(Ports.mm * 2, asc + dsc, col, s, c.font)
+	end Restore
+	
+	
+	
+	proc DummyRestore(f: StdCFrames.Frame; lbl: Dialog.String; l, t, r, b: integer) 
+		var 
+			w, h, mx, my, dw, dh, asc, dsc: integer
+	begin 
+		AmpersandToUline(lbl)
+		f.view.context.GetSize(w, h)
+		mx := w div 2
+		my := h div 2
+		dw := StdCFrames.defaultFont.StringWidth(lbl) div 2
+		StdCFrames.defaultFont.GetBounds(asc, dsc, dh)
+		dh := (asc + dsc) div 2
+		f.DrawRect(0, 0, w, h, Ports.fill, Ports.grey50)
+		f.DrawRect(0, 0, w, h, 1, Ports.black)
+		f.DrawString(mx - dw, my + dh, Ports.white, lbl, StdCFrames.defaultFont)
+	end DummyRestore
+	
+	
+	
+	// ListBox
+	
+	proc (f: ListBox) SetOffset(x, y: integer) 
+	begin 
+		f.SetOffset^(x, y)
+	end SetOffset
+	
+	proc (f: ListBox) Mark(on, focus: boolean) 
+	begin 
+	end Mark
+	
+	proc (f: ListBox) Update
+	begin 
+	end Update
+	
+	proc (c: ListBox) UpdateList
+	begin 
+		c.Update
+	end UpdateList
+	
+	proc (c: ListBox) Restore(l, t, r, b: integer) 
+	begin 
+		DummyRestore(c, "ListBox", l, t, r, b)
+	end Restore
+	
+	proc (f: ListBox) MouseDown(x, y: integer; buttons: set) 
+	begin 
+	end MouseDown
+	
+	proc (f: ListBox) KeyDown(ch: char) 
+	begin 
+	end KeyDown
+	
+	
+	// ScrollBar
+	
+	proc (c: ScrollBar) KeyDown(ch: char) 
+	begin 
+		assert(~c.disabled, 100)
+	end KeyDown
+	
+	proc (c: ScrollBar) Restore(l, t, r, b: integer) 
+		var 
+			w, h, riderSize, size_, sect, start, pos: integer
+	begin 
+		c.view.context.GetSize(w, h)
+		c.Get(c, size_, sect, pos)
+		(* size = size of embedded (wrapped) view
+		   sect = size of section, wich we see in aperture
+		   pos = position of aperture *)
+		
+		
+		c.DrawRect(0, 0, w, h, -1, Ports.white)
+		if h > w then
+			// vertical
+			if (sect = 0) or (size_ = 0) then
+				riderSize := 20 * c.dot
+				if riderSize > h div 2 then
+					riderSize := h div 2 
+				end  
+			else 
+				riderSize := short(entier(h * (sect / size_))) 
+			end 
+			if riderSize < h then
+				start := short(entier((h - riderSize) * (pos / (size_ - sect))))
+				c.DrawRect(0, start, w, start + riderSize, -1, Ports.grey50) 
+			end  
+		elsif h < w then 
+			// horisontal
+			if (sect = 0) or (size_ = 0) then
+				riderSize := 20 * c.dot
+				if riderSize > w div 2 then
+					riderSize := w div 2 
+				end  
+			else 
+				riderSize := short(entier(w * (sect / size_))) 
+			end 
+			if riderSize < w then
+				start := short(entier((w - riderSize) * (pos / (size_ - sect))))
+				c.DrawRect(start, 0, start + riderSize, h, -1, Ports.grey50) 
+			end  
+		end 
+		c.DrawRect(0, 0, w, h, c.dot, Ports.grey75)
+	end Restore
+	
+	proc (c: ScrollBar) MouseDown(x, y: integer; buttons: set) 
+		var 
+			w, h, size_, sect, pos, riderSize: integer
+			mx, my: integer
+			isDown: boolean
+			modifiers: set
+	begin 
+		assert(~c.disabled, 100)
+		if c.rider # nil then
+			c.view.context.GetSize(w, h)
+			if h > w then
+				// vertical
+				repeat 
+					c.Input(mx, my, modifiers, isDown)
+					c.Get(c, size_, sect, pos)
+					if sect = 0 then
+						riderSize := 20 * c.dot
+						if riderSize > h div 2 then
+							riderSize := h div 2 
+						end  
+					else 
+						riderSize := short(entier(h * (sect / size_))) 
+					end 
+					if my < riderSize div 2 then
+						pos := 0 
+					elsif my > h - riderSize div 2 then 
+						pos := size_ - sect 
+					else 
+						pos := short(entier(size_ * (my / h))) - sect div 2 
+					end 
+					c.Set(c, pos)
+					c.Update 
+				until ~isDown  
+			elsif h < w then 
+				// horisontal
+				repeat 
+					c.Input(mx, my, modifiers, isDown)
+					c.Get(c, size_, sect, pos)
+					if sect = 0 then
+						riderSize := 20 * c.dot
+						if riderSize > w div 2 then
+							riderSize := w div 2 
+						end  
+					else 
+						riderSize := short(entier(w * (sect / size_))) 
+					end 
+					if mx < riderSize div 2 then
+						pos := 0 
+					elsif mx > w - riderSize div 2 then 
+						pos := size_ - sect 
+					else 
+						pos := short(entier(size_ * (mx / w))) - sect div 2 
+					end 
+					c.Set(c, pos)
+					c.Update
+				until ~isDown  
+			end  
+		end 
+	end MouseDown
+	
+	
+	
+	// SelectionBox
+	
+	proc (f: SelectionBox) SetOffset(x, y: integer) 
+	begin 
+		f.SetOffset^(x, y)
+	end SetOffset
+	
+	proc (f: SelectionBox) Mark(on, focus: boolean) 
+	begin 
+	end Mark
+	
+	proc (c: SelectionBox) Update
+	begin 
+	end Update
+	
+	proc (c: SelectionBox) UpdateList
+	begin 
+		c.Update
+	end UpdateList
+	
+	proc (c: SelectionBox) Restore(l, t, r, b: integer) 
+	begin 
+		DummyRestore(c, "SelectionBox", l, t, r, b)
+	end Restore
+	
+	proc (f: SelectionBox) MouseDown(x, y: integer; buttons: set) 
+	begin 
+		assert(~f.disabled, 100)
+	end MouseDown
+	
+	proc (f: SelectionBox) KeyDown(ch: char) 
+	begin 
+		assert(~f.disabled, 100)
+	end KeyDown
+	
+	proc (f: SelectionBox) GetSelection(var from, to_: integer) 
+	begin 
+		from := 0
+		to_ := max(integer)
+	end GetSelection
+	
+	proc (f: SelectionBox) Select(from, to_: integer) 
+	begin 
+	end Select
+	
+	
+	
+	// TreeFrame
+	
+	proc (f: TreeFrame) UpdateList
+	begin 
+		f.Update
+	end UpdateList
+	
+	proc (f: TreeFrame) Update
+	begin 
+	end Update
+	
+	proc (c: TreeFrame) Restore(l, t, r, b: integer) 
+	begin 
+		DummyRestore(c, "TreeFrame", l, t, r, b)
+	end Restore
+	
+	proc (f: TreeFrame) MouseDown(x, y: integer; buttons: set) 
+	begin 
+	end MouseDown
+	
+	proc (f: TreeFrame) KeyDown(ch: char) 
+	begin 
+	end KeyDown
+	
+	proc (f: TreeFrame) GetSize(var w, h: integer) 
+	begin 
+		w := 0
+		h := 0
+	end GetSize
+	
+	
+	// UpDownField
+	
+	proc (f: UpDownField) Restore(l, t, r, b: integer) 
+		var 
+			w, h, res, res2, start, asc, dsc, sw, width, val_, x1, x2, y: integer
+			s, tmp: Dialog.String
+	begin 
+		f.view.context.GetSize(w, h)
+		if f.disabled then
+			f.DrawRect(0, 0, w, h, -1, Ports.grey12)
+			f.DrawRect(0, 0, w, h, f.dot, Ports.grey75) 
+		else 
+			f.Get(f, val_) // differs from field, that here is integer
+			Strings.IntToString(val_, s)
+			f.font.GetBounds(asc, dsc, sw)
+			start := h div 4
+			if f.readOnly then
+				f.DrawRect(0, 0, w, h, -1, Ports.grey12)
+				f.DrawString(start, h div 2 + (asc - dsc) div 2, Ports.grey75, s, f.font)
+				f.DrawRect(0, 0, w, h, f.dot, Ports.grey75) 
+			else 
+				// backgroud
+				f.DrawRect(0, 0, w, h, -1, Ports.white)
+				// selection
+				if f.hasFocus & (f.from # f.to_) then
+					if f.to_ = max(integer) then
+						f.to_ := len(s) 
+					end 
+					tmp := s
+					tmp[f.from] := 0x
+					res := f.font.StringWidth(tmp)
+					tmp := s
+					tmp[f.to_] := 0x
+					res2 := f.font.StringWidth(tmp)
+					f.DrawRect(
+					start + res, (h - asc) div 2, 
+					start + res2, h - (h - asc) div 2, -1, Ports.grey25) 
+				end 
+				
+				// string
+				f.DrawString(start, h div 2 + (asc - dsc) div 2, Ports.black, s, f.font)
+				
+				// carriage
+				if f.carriage then
+					if f.pos = -1 then
+						f.pos := len(s) 
+					end 
+					if (f.hasFocus) & (f.from = f.to_) then
+						if f.pos = 0 then
+							res := 0 
+						else 
+							s[f.pos] := 0x
+							res := f.font.StringWidth(s) 
+						end 
+						if Dialog.thickCaret then
+							width := f.dot * 2 
+						else 
+							width := f.dot 
+						end 
+						f.DrawLine(
+						start + res, (h - asc) div 2, 
+						start + res, h - (h - asc) div 2, width, Ports.black) 
+					end  
+				end 
+				
+				// arrows
+				if w - arrWidth * f.dot > 0 then
+					f.DrawRect(w - arrWidth * f.dot, 0, w, h div 2 - f.dot, f.dot, Ports.grey75)
+					x1 := w - (arrWidth - 2) * f.dot
+					x2 := w - 2 * f.dot
+					y := h div 4 + f.dot
+					f.DrawLine(x1, y, x2, y, f.dot, Ports.black)
+					inc(x1, f.dot)
+					dec(x2, f.dot)
+					dec(y, f.dot)
+					f.DrawLine(x1, y, x2, y, f.dot, Ports.black)
+					inc(x1, f.dot)
+					dec(x2, f.dot)
+					dec(y, f.dot)
+					f.DrawLine(x1, y, x2, y, f.dot, Ports.black)
+					inc(x1, f.dot)
+					dec(x2, f.dot)
+					dec(y, f.dot)
+					f.DrawLine(x1, y, x2, y, f.dot, Ports.black)
+					inc(x1, f.dot)
+					dec(x2, f.dot)
+					dec(y, f.dot)
+					f.DrawLine(x1, y, x2, y, f.dot, Ports.black)
+					
+					f.DrawRect(w - arrWidth * f.dot, h div 2 + f.dot, w, h, f.dot, Ports.grey75)
+					x1 := w - (arrWidth - 2) * f.dot
+					x2 := w - 2 * f.dot
+					y := (h div 2) + (h div 4) - f.dot
+					f.DrawLine(x1, y, x2, y, f.dot, Ports.black)
+					inc(x1, f.dot)
+					dec(x2, f.dot)
+					inc(y, f.dot)
+					f.DrawLine(x1, y, x2, y, f.dot, Ports.black)
+					inc(x1, f.dot)
+					dec(x2, f.dot)
+					inc(y, f.dot)
+					f.DrawLine(x1, y, x2, y, f.dot, Ports.black)
+					inc(x1, f.dot)
+					dec(x2, f.dot)
+					inc(y, f.dot)
+					f.DrawLine(x1, y, x2, y, f.dot, Ports.black)
+					inc(x1, f.dot)
+					dec(x2, f.dot)
+					inc(y, f.dot)
+					f.DrawLine(x1, y, x2, y, f.dot, Ports.black) 
+				end 
+				
+				// frame
+				if f.hasFocus then
+					width := f.dot * 2 
+				else 
+					width := f.dot 
+				end 
+				if w - (arrWidth + 2) * f.dot > 0 then
+					f.DrawRect(0, 0, w - (arrWidth + 2) * f.dot, h, width, Ports.black) 
+				else 
+					f.DrawRect(0, 0, w, h, width, Ports.black) 
+				end  
+			end  
+		end 
+	end Restore
+	
+	proc (f: UpDownField) GetCursor*(x, y: integer; modifiers: set; var cursor: integer) 
+		var 
+			w, h: integer
+	begin 
+		f.view.context.GetSize(w, h)
+		if x > w - arrWidth * f.dot then
+			cursor := Ports.arrowCursor 
+		else 
+			cursor := Ports.textCursor 
+		end 
+	end GetCursor
+	
+	proc (f: UpDownField) Select(from, to_: integer) 
+	begin 
+		f.from := from
+		f.to_ := to_
+		f.Update
+	end Select
+	
+	proc (f: UpDownField) GetSelection(var from, to_: integer) 
+	begin 
+		from := f.from
+		to_ := f.to_
+	end GetSelection
+	
+	proc (f: UpDownField) Idle
+		var 
+			newTime: longint
+	begin 
+		if f.hasFocus & (f.from = f.to_) then
+			newTime := Kernel.Time()
+			if newTime > time + Dialog.caretPeriod then
+				f.carriage := ~f.carriage
+				time := newTime
+				f.Update 
+			end  
+		end 
+	end Idle
+	
+	proc (f: UpDownField) Mark(on, focus: boolean) 
+	begin 
+		if focus then
+			if on then
+				if ~f.hasFocus then
+					f.hasFocus := true 
+				end  
+			else 
+				if f.hasFocus then
+					f.hasFocus := false 
+				end  
+			end  
+		end 
+		f.Update
+	end Mark
+	
+	proc (f: UpDownField) MouseDown(x, y: integer; buttons: set) 
+		var 
+			s: Dialog.String
+			w, height, i, width, val_: integer
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			f.view.context.GetSize(width, height)
+			if x > width - arrWidth * f.dot then
+				// arrows
+				if y > height div 2 then
+					f.Get(f, val_)
+					dec(val_)
+					f.Set(f, val_)
+					f.from := 0
+					f.to_ := 0
+					f.pos := 0 
+				else 
+					f.Get(f, val_)
+					inc(val_)
+					f.Set(f, val_)
+					f.from := 0
+					f.to_ := 0
+					f.pos := 0 
+				end 
+				f.Update 
+			else 
+				f.Get(f, val_) // differs from field, that here is integer
+				Strings.IntToString(val_, s)
+				if s # 0x then
+					w := f.font.StringWidth(s)
+					x := x - height div 4
+					if x > w then
+						f.pos := len(s) 
+					elsif x < 0 then 
+						f.pos := 0 
+					else 
+						i := len(s)
+						repeat 
+							s[i] := 0x
+							w := f.font.StringWidth(s)
+							dec(i) 
+						until (i <= 0) or (w < x) 
+						f.pos := i + 1 
+					end 
+					if (Controllers.doubleClick in buttons) then
+						// select all
+						f.from := 0
+						Strings.IntToString(val_, s)
+						f.to_ := len(s) 
+					else 
+						f.from := 0
+						f.to_ := 0 
+					end 
+					f.Update 
+				end  
+			end  
+		end 
+	end MouseDown
+	
+	proc (f: UpDownField) KeyDown(ch: char) 
+		var 
+			s: Dialog.String
+			len_, i, j, val_, res: integer
+		
+		proc ResetSelection
+		begin 
+			f.from := f.pos
+			f.to_ := f.pos
+		end ResetSelection
+		
+		proc GetString
+		begin 
+			f.Get(f, val_)
+			Strings.IntToString(val_, s)
+		end GetString
+		
+		proc SetString
+		begin 
+			Strings.StringToInt(s, val_, res)
+			if res = 0 then
+				f.Set(f, val_) 
+			end 
+		end SetString
+	
+	begin 
+		assert(~f.disabled, 100)
+		case ch of 
+			| LDEL:  // backspace
+				GetString
+				if f.from # f.to_ then
+					i := f.from
+					j := f.to_
+					while s[j] # 0x do 
+						s[i] := s[j]
+						inc(i)
+						inc(j) 
+					end 
+					s[i] := 0x
+					f.pos := f.from
+					SetString 
+				else 
+					if (s[0] # 0x) & (f.pos > 0) then
+						if s[f.pos] = 0x then
+							s[len(s) - 1] := 0x 
+						else 
+							i := f.pos - 1
+							while s[i] # 0x do 
+								inc(i)
+								s[i - 1] := s[i] 
+							end  
+						end 
+						SetString
+						dec(f.pos) 
+					end  
+				end 
+				ResetSelection 
+			| RDEL:  // delete
+				GetString
+				if f.from # f.to_ then
+					i := f.from
+					j := f.to_
+					while s[j] # 0x do 
+						s[i] := s[j]
+						inc(i)
+						inc(j) 
+					end 
+					s[i] := 0x
+					f.pos := f.from
+					SetString 
+				else 
+					if (s[0] # 0x) & (s[f.pos] # 0x) then
+						i := f.pos
+						while s[i] # 0x do 
+							inc(i)
+							s[i - 1] := s[i] 
+						end 
+						SetString 
+					end  
+				end 
+				ResetSelection 
+			| DL, DU: 
+				f.pos := 0
+				ResetSelection 
+			| DR, DD: 
+				GetString
+				f.pos := len(s)
+				ResetSelection 
+			| AL:  // Arrow Left
+				if Controllers.extend in HostWindows.modifiers then // Shift
+					if f.from = f.to_ then
+						f.to_ := f.pos
+						dec(f.pos)
+						f.from := f.pos 
+					elsif (f.from = f.pos) & (f.pos > 0) then 
+						dec(f.pos)
+						f.from := f.pos 
+					elsif (f.to_ = f.pos) then 
+						dec(f.pos)
+						f.to_ := f.pos 
+					end  
+				else 
+					if f.pos > 0 then
+						dec(f.pos) 
+					end 
+					ResetSelection 
+				end  
+			| AR:  // Arrow Right
+				GetString
+				if Controllers.extend in HostWindows.modifiers then // Shift
+					if f.from = f.to_ then
+						f.from := f.pos
+						inc(f.pos)
+						f.to_ := f.pos 
+					elsif (f.to_ = f.pos) & (f.pos < len(s)) then 
+						inc(f.pos)
+						f.to_ := f.pos 
+					elsif (f.from = f.pos) then 
+						inc(f.pos)
+						f.from := f.pos 
+					end  
+				else 
+					if f.pos < len(s) then
+						inc(f.pos) 
+					end 
+					ResetSelection 
+				end  
+			| AU:  // Arrow Up
+				f.Get(f, val_)
+				inc(val_)
+				f.Set(f, val_) 
+			| AD:  // Arrow Down
+				f.Get(f, val_)
+				dec(val_)
+				f.Set(f, val_) 
+		else 
+			if ((ch >= "0") & (ch <= "9")) or (ch = "-") then
+				
+				GetString
+				if (f.from = 0) & ((f.to_ = max(integer)) or (f.to_ = len(s))) then
+					// delete selection
+					f.to_ := 0
+					f.pos := 0
+					s := 0x 
+				elsif f.from # f.to_ then 
+					i := f.from
+					j := f.to_
+					while s[j] # 0x do 
+						s[i] := s[j]
+						inc(i)
+						inc(j) 
+					end 
+					s[i] := 0x
+					f.pos := f.from 
+				end 
+				len_ := len(s)
+				if f.pos > len(s) then
+					f.pos := len(s) 
+				end 
+				if f.pos = len(s) then
+					s[len_] := ch
+					s[len_ + 1] := 0x 
+				else 
+					i := len(s)
+					while i >= f.pos do 
+						s[i + 1] := s[i]
+						dec(i) 
+					end 
+					s[f.pos] := ch 
+				end 
+				SetString
+				ResetSelection
+				inc(f.pos) 
+			end  
+		end 
+		// prevent carriage blinking while typing
+		time := Kernel.Time()
+		f.carriage := true
+		f.Update
+	end KeyDown
+	
+	
+	
+	// ColorField
+	
+	proc (c: ColorField) Restore(l, t, r, b: integer) 
+	begin 
+		DummyRestore(c, "ColorField", l, t, r, b)
+	end Restore
+	
+	// DateField
+	
+	proc (c: DateField) Restore(l, t, r, b: integer) 
+	begin 
+		DummyRestore(c, "DateField", l, t, r, b)
+	end Restore
+	
+	// TimeField
+	
+	proc (c: TimeField) Restore(l, t, r, b: integer) 
+	begin 
+		DummyRestore(c, "TimeField", l, t, r, b)
+	end Restore
+	
+	
+	// Directory
+	
+	proc (d: Directory) GetPushButtonSize(var w, h: integer) 
+	begin 
+		if w = Views.undefined then
+			w := 56 * Ports.point 
+		end 
+		if h = Views.undefined then // 18 on Windows
+			h := 28 * Ports.point 
+		end 
+	end GetPushButtonSize
+	
+	proc (d: Directory) GetCheckBoxSize(var w, h: integer) 
+	begin 
+		if w = Views.undefined then
+			w := 60 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 12 * Ports.point 
+		end 
+	end GetCheckBoxSize
+	
+	proc (d: Directory) GetRadioButtonSize(var w, h: integer) 
+	begin 
+		if w = Views.undefined then
+			w := 60 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 12 * Ports.point 
+		end 
+	end GetRadioButtonSize
+	
+	proc (d: Directory) GetScrollBarSize(var w, h: integer) 
+	begin 
+		if w = Views.undefined then
+			w := 120 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 12 * Ports.point 
+		end 
+	end GetScrollBarSize
+	
+	proc (d: Directory) GetFieldSize(max_: integer; var w, h: integer) 
+	begin 
+		if w = Views.undefined then
+			if max_ = 0 then
+				w := 80 * Ports.point 
+			elsif max_ < 10 then 
+				w := 32 * Ports.point 
+			elsif max_ < 15 then 
+				w := 56 * Ports.point 
+			elsif max_ < 30 then 
+				w := 80 * Ports.point 
+			elsif max_ < 100 then 
+				w := 120 * Ports.point 
+			else 
+				w := 150 * Ports.point 
+			end  
+		end 
+		if h = Views.undefined then
+			h := 17 * Ports.point 
+		end 
+	end GetFieldSize
+	
+	proc (d: Directory) GetUpDownFieldSize(max_: integer; var w, h: integer) 
+	begin 
+		if w = Views.undefined then
+			w := 56 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 17 * Ports.point 
+		end 
+	end GetUpDownFieldSize
+	
+	proc (d: Directory) GetDateFieldSize(var w, h: integer) 
+	begin 
+		if w = Views.undefined then
+			w := 72 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 17 * Ports.point 
+		end 
+	end GetDateFieldSize
+	
+	proc (d: Directory) GetTimeFieldSize(var w, h: integer) 
+	begin 
+		if w = Views.undefined then
+			w := 72 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 17 * Ports.point 
+		end 
+	end GetTimeFieldSize
+	
+	proc (d: Directory) GetColorFieldSize(var w, h: integer) 
+	begin 
+		if w = Views.undefined then
+			w := 36 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 18 * Ports.point 
+		end 
+	end GetColorFieldSize
+	
+	proc (d: Directory) GetListBoxSize(var w, h: integer) 
+	begin 
+		if w = Views.undefined then
+			w := 100 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 18 * Ports.point 
+		end 
+	end GetListBoxSize
+	
+	proc (d: Directory) GetSelectionBoxSize(var w, h: integer) 
+	begin 
+		if w = Views.undefined then
+			w := 100 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 54 * Ports.point 
+		end 
+	end GetSelectionBoxSize
+	
+	proc (d: Directory) GetComboBoxSize(var w, h: integer) 
+	begin 
+		if w = Views.undefined then
+			w := 100 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 18 * Ports.point 
+		end 
+	end GetComboBoxSize
+	
+	proc (d: Directory) GetCaptionSize(var w, h: integer) 
+	begin 
+		if w = Views.undefined then
+			w := 50 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 12 * Ports.point 
+		end 
+	end GetCaptionSize
+	
+	proc (d: Directory) GetGroupSize(var w, h: integer) 
+	begin 
+		if w = Views.undefined then
+			w := 100 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 100 * Ports.point 
+		end 
+	end GetGroupSize
+	
+	proc (d: Directory) GetTreeFrameSize(var w, h: integer) 
+	begin 
+		if w = Views.undefined then
+			w := 100 * Ports.point 
+		end 
+		if h = Views.undefined then
+			h := 100 * Ports.point 
+		end 
+	end GetTreeFrameSize
+	
+	proc (d: Directory) NewPushButton(): StdCFrames.PushButton 
+		var 
+			f: PushButton
+	begin 
+		new(f)
+		return f
+	end NewPushButton
+	
+	proc (d: Directory) NewCheckBox(): StdCFrames.CheckBox 
+		var 
+			f: CheckBox
+	begin 
+		new(f)
+		return f
+	end NewCheckBox
+	
+	proc (d: Directory) NewRadioButton(): StdCFrames.RadioButton 
+		var 
+			f, tmp: RadioButton
+	begin 
+		new(f)
+		return f
+	end NewRadioButton
+	
+	proc (d: Directory) NewScrollBar(): StdCFrames.ScrollBar 
+		var 
+			f: ScrollBar
+	begin 
+		new(f)
+		return f
+	end NewScrollBar
+	
+	proc (d: Directory) NewField(): StdCFrames.Field 
+		var 
+			f: Field
+	begin 
+		new(f)
+		f.pos := -1
+		f.from := 0
+		f.to_ := 0
+		return f
+	end NewField
+	
+	proc (d: Directory) NewUpDownField(): StdCFrames.UpDownField 
+		var 
+			f: UpDownField
+	begin 
+		new(f)
+		return f
+	end NewUpDownField
+	
+	proc (d: Directory) NewDateField(): StdCFrames.DateField 
+		var 
+			f: DateField
+	begin 
+		new(f)
+		return f
+	end NewDateField
+	
+	proc (d: Directory) NewTimeField(): StdCFrames.TimeField 
+		var 
+			f: TimeField
+	begin 
+		new(f)
+		return f
+	end NewTimeField
+	
+	proc (d: Directory) NewColorField(): StdCFrames.ColorField 
+		var 
+			f: ColorField
+	begin 
+		new(f)
+		return f
+	end NewColorField
+	
+	proc (d: Directory) NewListBox(): StdCFrames.ListBox 
+		var 
+			f: ListBox
+	begin 
+		new(f)
+		return f
+	end NewListBox
+	
+	proc (d: Directory) NewSelectionBox(): StdCFrames.SelectionBox 
+		var 
+			f: SelectionBox
+	begin 
+		new(f)
+		return f
+	end NewSelectionBox
+	
+	proc (d: Directory) NewComboBox(): StdCFrames.ComboBox 
+		var 
+			f: ComboBox
+	begin 
+		new(f)
+		f.index := -1
+		f.pos := -1
+		f.from := 0
+		f.to_ := 0
+		f.expand := false
+		return f
+	end NewComboBox
+	
+	proc (d: Directory) NewCaption(): StdCFrames.Caption 
+		var 
+			f: Caption
+	begin 
+		new(f)
+		return f
+	end NewCaption
+	
+	proc (d: Directory) NewGroup(): StdCFrames.Group 
+		var 
+			f: Group
+	begin 
+		new(f)
+		return f
+	end NewGroup
+	
+	proc (d: Directory) NewTreeFrame(): StdCFrames.TreeFrame 
+		var 
+			f: TreeFrame
+	begin 
+		new(f)
+		return f
+	end NewTreeFrame
+	
+	proc SetDefFonts*
+	begin 
+		StdCFrames.defaultFont := HostFonts.dlgFont
+		StdCFrames.defaultLightFont := Fonts.dir.This(HostFonts.dlgFont.typeface, HostFonts.dlgFont.size_, HostFonts.dlgFont.style, Fonts.normal)
+	end SetDefFonts
+	
+	proc Init
+		var 
+			dir: Directory
+	begin 
+		StdCFrames.setFocus := true
+		inHandleMouse := false
+		SetDefFonts
+		new(dir)
+		StdCFrames.SetDir(dir)
+	end Init
+
+begin
+	Init
+end HostCFrames

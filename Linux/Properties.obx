@@ -1,0 +1,599 @@
+module Properties
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import SYSTEM, Kernel, Math, Services, Fonts, Stores, Views, Controllers, Dialog
+	
+	const 
+		// StdProp.known/valid
+		color* = 0
+		typeface* = 1
+		size_* = 2
+		style* = 3
+		weight* = 4
+		
+		// SizeProp.known/valid
+		width* = 0
+		height* = 1
+		
+		// PollVerbsMsg limitation
+		maxVerbs* = 16
+		
+		// PollPickMsg.mark, PollPick mark
+		noMark* = false
+		mark* = true
+		// PollPickMsg.show, PollPick show
+		hide* = false
+		show* = true
+	
+	
+	type 
+		Property* = pointer to (* abstract *) record 
+				next-: Property // property lists are sorted // by TD address
+				known*, readOnly*: set // used for polling, ignored when setting properties
+				valid*: set 
+			end 
+		
+		StdProp* = pointer to record (Property) 
+				color*: Dialog.Color
+				typeface*: Fonts.Typeface
+				size_*: integer
+				style*: record val_*, mask*: set end 
+				weight*: integer 
+			end 
+		
+		SizeProp* = pointer to record (Property) 
+				width*, height*: integer 
+			end 
+		
+		
+		// property messages
+		
+		Message* = Views.PropMessage
+		
+		PollMsg* = record (Message) 
+				prop*: Property  // preset to NIL
+			end 
+		
+		SetMsg* = record (Message) 
+				old*, prop*: Property 
+			end 
+		
+		
+		// preferences
+		
+		Preference* = (* abstract *) record (Message) end 
+		
+		ResizePref* = record (Preference) 
+				fixed*: boolean // OUT, preset to FALSE
+				horFitToPage*: boolean // OUT, preset to FALSE
+				verFitToPage*: boolean // OUT, preset to FALSE
+				horFitToWin*: boolean // OUT, preset to FALSE
+				verFitToWin*: boolean  // OUT, preset to FALSE
+			end 
+		
+		SizePref* = record (Preference) 
+				w*, h*: integer // OUT, preset to caller's preference
+				fixedW*, fixedH*: boolean  // IN
+			end 
+		
+		BoundsPref* = record (Preference) 
+				w*, h*: integer  // OUT, preset to (Views.undefined, Views.undefined)
+			end 
+		
+		FocusPref* = record (Preference) 
+				atLocation*: boolean // IN
+				x*, y*: integer // IN, valid iff atLocation
+				hotFocus*, setFocus*: boolean  // OUT, preset to (FALSE, FALSE)
+			end 
+		
+		ControlPref* = record (Preference) 
+				char_*: char // IN
+				focus*: Views.View // IN
+				getFocus*: boolean // OUT, valid if (v # focus), preset to ((char = [l]tab) & "FocusPref.setFocus")
+				accepts*: boolean  // OUT, preset to ((v = focus) & (char # [l]tab))
+			end 
+		
+		TypePref* = record (Preference) 
+				type_*: Stores.TypeName // IN
+				view*: Views.View  // OUT, preset to NIL
+			end 
+		
+		
+		// verbs
+		
+		PollVerbMsg* = record (Message) 
+				verb*: integer // IN
+				label*: array 64 of char // OUT, preset to ""
+				disabled*, checked*: boolean  // OUT, preset to FALSE, FALSE
+			end 
+		
+		DoVerbMsg* = record (Message) 
+				verb*: integer // IN
+				frame*: Views.Frame  // IN
+			end 
+		
+		
+		// controller messages
+		
+		CollectMsg* = record (Controllers.Message) 
+				poll*: PollMsg  // OUT, preset to NIL
+			end 
+		
+		EmitMsg* = record (Controllers.RequestMessage) 
+				set_*: SetMsg  // IN
+			end 
+		
+		
+		PollPickMsg* = record (Controllers.TransferMessage) 
+				mark*: boolean // IN, request to mark pick target
+				show*: boolean // IN, if mark then show/hide target mark
+				dest*: Views.Frame  // OUT, preset to NIL, set if PickMsg is acceptable
+			end 
+		
+		PickMsg* = record (Controllers.TransferMessage) 
+				prop*: Property  // set to picked properties by destination
+			end 
+	
+	
+	var  // estimator to cache standard properties of focus
+		era-: integer
+	
+	
+	// properties
+	
+	proc (p: Property) IntersectWith*(q: Property; var equal: boolean)  end // new abstract
+	
+	proc (p: StdProp) IntersectWith*(q: Property; var equal: boolean) 
+		var 
+			valid: set
+			c, m: set
+			eq: boolean
+	begin 
+		with q: StdProp do 
+			valid := p.valid * q.valid
+			equal := true
+			if p.color.val_ # q.color.val_ then
+				excl(valid, color) 
+			end 
+			if p.typeface # q.typeface then
+				excl(valid, typeface) 
+			end 
+			if p.size_ # q.size_ then
+				excl(valid, size_) 
+			end 
+			IntersectSelections(p.style.val_, p.style.mask, q.style.val_, q.style.mask, c, m, eq)
+			if m = {} then
+				excl(valid, style) 
+			elsif (style in valid) & ~eq then 
+				p.style.mask := m
+				equal := false 
+			end 
+			if p.weight # q.weight then
+				excl(valid, weight) 
+			end 
+			if p.valid # valid then
+				p.valid := valid
+				equal := false 
+			end  
+		end 
+	end IntersectWith
+	
+	proc (p: SizeProp) IntersectWith*(q: Property; var equal: boolean) 
+		var 
+			valid: set
+	begin 
+		with q: SizeProp do 
+			valid := p.valid * q.valid
+			equal := true
+			if p.width # q.width then
+				excl(valid, width) 
+			end 
+			if p.height # q.height then
+				excl(valid, height) 
+			end 
+			if p.valid # valid then
+				p.valid := valid
+				equal := false 
+			end  
+		end 
+	end IntersectWith
+	
+	
+	// property collection and emission
+	
+	proc IncEra*
+	begin 
+		inc(era)
+	end IncEra
+	
+	
+	proc CollectProp*(var prop: Property) 
+		var 
+			msg: CollectMsg
+	begin 
+		msg.poll.prop := nil
+		Controllers.Forward(msg)
+		prop := msg.poll.prop
+	end CollectProp
+	
+	proc CollectStdProp*(var prop: StdProp) 
+		// post: prop # NIL, prop.style.val = prop.style.val * prop.style.mask
+		var 
+			p: Property
+	begin 
+		CollectProp(p)
+		while (p # nil) & ~(p is StdProp) do 
+			p := p.next 
+		end 
+		if p # nil then
+			prop := p(StdProp)
+			prop.next := nil 
+		else 
+			new(prop)
+			prop.known := {} 
+		end 
+		prop.valid := prop.valid * prop.known
+		prop.style.val_ := prop.style.val_ * prop.style.mask
+	end CollectStdProp
+	
+	proc EmitProp*(old, prop: Property) 
+		var 
+			msg: EmitMsg
+	begin 
+		if prop # nil then
+			msg.set_.old := old
+			msg.set_.prop := prop
+			Controllers.Forward(msg) 
+		end 
+	end EmitProp
+	
+	
+	proc PollPick*(x, y: integer
+		source: Views.Frame; sourceX, sourceY: integer
+		mark, show: boolean
+		var dest: Views.Frame; var destX, destY: integer) 
+		var 
+			msg: PollPickMsg
+	begin 
+		assert(source # nil, 20)
+		msg.mark := mark
+		msg.show := show
+		msg.dest := nil
+		Controllers.Transfer(x, y, source, sourceX, sourceY, msg)
+		dest := msg.dest
+		destX := msg.x
+		destY := msg.y
+	end PollPick
+	
+	proc Pick*(x, y: integer; source: Views.Frame; sourceX, sourceY: integer
+		var prop: Property) 
+		var 
+			msg: PickMsg
+	begin 
+		assert(source # nil, 20)
+		msg.prop := nil
+		Controllers.Transfer(x, y, source, sourceX, sourceY, msg)
+		prop := msg.prop
+	end Pick
+	
+	
+	// property list construction
+	
+	proc Insert*(var list: Property; x: Property) 
+		var 
+			p, q: Property
+			ta: integer
+	begin 
+		assert(x # nil, 20)
+		assert(x.next = nil, 21)
+		assert(x # list, 22)
+		assert(x.valid - x.known = {}, 23)
+		if list # nil then
+			assert(list.valid - list.known = {}, 24)
+			assert(Services.TypeLevel(list) = 1, 25) 
+		end 
+		ta := SYSTEM.TYP(x^)
+		assert(Services.TypeLevel(x) = 1, 26)
+		p := list
+		q := nil
+		while (p # nil) & (SYSTEM.TYP(p^) < ta) do 
+			q := p
+			p := p.next 
+		end 
+		if (p # nil) & (SYSTEM.TYP(p^) = ta) then
+			x.next := p.next 
+		else 
+			x.next := p 
+		end 
+		if q # nil then
+			q.next := x 
+		else 
+			list := x 
+		end 
+	end Insert
+	
+	proc CopyOfList*(p: Property): Property 
+		var 
+			q, r, s: Property
+			t: Kernel.Type
+	begin 
+		q := nil
+		s := nil
+		while p # nil do 
+			assert(Services.TypeLevel(p) = 1, 20)
+			t := Kernel.TypeOf(p)
+			Kernel.NewObj(r, t)
+			assert(r # nil, 23)
+			SYSTEM.MOVE(p, r, t.size_)
+			r.next := nil
+			if q # nil then
+				q.next := r 
+			else 
+				s := r 
+			end 
+			q := r
+			p := p.next 
+		end 
+		return s
+	end CopyOfList
+	
+	proc CopyOf*(p: Property): Property 
+		var 
+			r: Property
+			t: Kernel.Type
+	begin 
+		if p # nil then
+			assert(Services.TypeLevel(p) = 1, 20)
+			t := Kernel.TypeOf(p)
+			Kernel.NewObj(r, t)
+			assert(r # nil, 23)
+			SYSTEM.MOVE(p, r, t.size_)
+			r.next := nil 
+		end 
+		return r
+	end CopyOf
+	
+	proc Merge*(var base, override: Property) 
+		var 
+			p, q, r, s: Property
+			tp, tr: integer
+	begin 
+		assert((base # override) or (base = nil), 20)
+		p := base
+		q := nil
+		r := override
+		override := nil
+		if p # nil then
+			tp := SYSTEM.TYP(p^)
+			assert(Services.TypeLevel(p) = 1, 21) 
+		end 
+		if r # nil then
+			tr := SYSTEM.TYP(r^)
+			assert(Services.TypeLevel(r) = 1, 22) 
+		end 
+		while (p # nil) & (r # nil) do 
+			assert(p # r, 23)
+			while (p # nil) & (tp < tr) do 
+				q := p
+				p := p.next
+				if p # nil then
+					tp := SYSTEM.TYP(p^) 
+				end  
+			end 
+			if p # nil then
+				if tp = tr then
+					s := p.next
+					p.next := nil
+					p := s
+					if p # nil then
+						tp := SYSTEM.TYP(p^) 
+					end  
+				else  
+				end 
+				s := r.next
+				if q # nil then
+					q.next := r 
+				else 
+					base := r 
+				end 
+				q := r
+				r.next := p
+				r := s
+				if r # nil then
+					tr := SYSTEM.TYP(r^) 
+				end  
+			end  
+		end 
+		if r # nil then
+			if q # nil then
+				q.next := r 
+			else 
+				base := r 
+			end  
+		end 
+	end Merge
+	
+	proc Intersect*(var list: Property; x: Property; var equal: boolean) 
+		var 
+			l, p, q, r, s: Property
+			plen, rlen, ta: integer
+			filtered: boolean
+	begin 
+		assert((x # list) or (list = nil), 20)
+		if list # nil then
+			assert(Services.TypeLevel(list) = 1, 21) 
+		end 
+		if x # nil then
+			assert(Services.TypeLevel(x) = 1, 22) 
+		end 
+		p := list
+		s := nil
+		list := nil
+		l := nil
+		plen := 0
+		r := x
+		rlen := 0
+		filtered := false
+		while (p # nil) & (r # nil) do 
+			q := p.next
+			p.next := nil
+			inc(plen)
+			ta := SYSTEM.TYP(p^)
+			while (r # nil) & (SYSTEM.TYP(r^) < ta) do 
+				r := r.next
+				inc(rlen) 
+			end 
+			if (r # nil) & (SYSTEM.TYP(r^) = ta) then
+				assert(r # p, 23)
+				if l # nil then
+					s.next := p 
+				else 
+					l := p 
+				end 
+				s := p
+				p.known := p.known + r.known
+				p.IntersectWith(r, equal)
+				filtered := filtered or ~equal or (p.valid # r.valid)
+				r := r.next
+				inc(rlen) 
+			end 
+			p := q 
+		end 
+		list := l
+		equal := (p = nil) & (r = nil) & (plen = rlen) & ~filtered
+	end Intersect
+	
+	
+	// support for IntersectWith methods
+	
+	proc IntersectSelections*(a, aMask, b, bMask: set; var c, cMask: set; var equal: boolean) 
+	begin 
+		cMask := aMask * bMask - (a / b)
+		c := a * cMask
+		equal := (aMask = bMask) & (bMask = cMask)
+	end IntersectSelections
+	
+	
+	// standard preferences protocols
+	
+	proc PreferredSize*(v: Views.View; minW, maxW, minH, maxH, defW, defH: integer
+		var w, h: integer) 
+		var 
+			p: SizePref
+	begin 
+		assert(Views.undefined < minW, 20)
+		assert(minW < maxW, 21)
+		assert(Views.undefined < minH, 23)
+		assert(minH < maxH, 24)
+		assert(Views.undefined <= defW, 26)
+		assert(Views.undefined <= defH, 28)
+		if (w < Views.undefined) or (w > maxW) then
+			w := defW 
+		end 
+		if (h < Views.undefined) or (h > maxH) then
+			h := defH 
+		end 
+		p.w := w
+		p.h := h
+		p.fixedW := false
+		p.fixedH := false
+		Views.HandlePropMsg(v, p)
+		w := p.w
+		h := p.h
+		if w = Views.undefined then
+			w := defW 
+		end 
+		if h = Views.undefined then
+			h := defH 
+		end 
+		if w < minW then
+			w := minW 
+		elsif w > maxW then 
+			w := maxW 
+		end 
+		if h < minH then
+			h := minH 
+		elsif h > maxH then 
+			h := maxH 
+		end 
+	end PreferredSize
+	
+	
+	// common resizing constraints
+	
+	proc ProportionalConstraint*(scaleW, scaleH: integer; fixedW, fixedH: boolean; var w, h: integer) 
+		// pre: w > Views.undefined, h > Views.undefined
+		// post: (E s: s * scaleW = w, s * scaleH = h), |w * h - w' * h'| min!
+		var 
+			area: real
+	begin 
+		assert(scaleW > Views.undefined, 22)
+		assert(scaleH > Views.undefined, 23)
+		if fixedH then
+			assert(~fixedW, 24)
+			assert(h > Views.undefined, 21)
+			area := h
+			area := area * scaleW
+			w := short(entier(area / scaleH)) 
+		elsif fixedW then 
+			assert(w > Views.undefined, 20)
+			area := w
+			area := area * scaleH
+			h := short(entier(area / scaleW)) 
+		else 
+			assert(w > Views.undefined, 20)
+			assert(h > Views.undefined, 21)
+			area := w
+			area := area * h
+			w := short(entier(Math.(* L *)Sqrt(area * scaleW / scaleH)))
+			h := short(entier(Math.(* L *)Sqrt(area * scaleH / scaleW))) 
+		end 
+	end ProportionalConstraint
+	
+	proc GridConstraint*(gridX, gridY: integer; var x, y: integer) 
+		var 
+			dx, dy: integer
+	begin 
+		assert(gridX > Views.undefined, 20)
+		assert(gridY > Views.undefined, 21)
+		dx := x mod gridX
+		if dx < gridX div 2 then
+			dec(x, dx) 
+		else 
+			inc(x, (-x) mod gridX) 
+		end 
+		dy := y mod gridY
+		if dy < gridY div 2 then
+			dec(y, dy) 
+		else 
+			inc(y, (-y) mod gridY) 
+		end 
+	end GridConstraint
+	
+	proc ThisType*(view: Views.View; type_: Stores.TypeName): Views.View 
+		var 
+			msg: TypePref
+	begin 
+		msg.type_ := type_
+		msg.view := nil
+		Views.HandlePropMsg(view, msg)
+		return msg.view
+	end ThisType
+
+end Properties

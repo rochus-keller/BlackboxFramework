@@ -1,0 +1,914 @@
+definition Gtk2GLib
+
+	const 
+		// Unix
+		G_DIR_SEPARATOR = '/'
+		G_SEARCHPATH_SEPARATOR = ':'
+		
+		G_PRIORITY_HIGH = -100
+		G_PRIORITY_DEFAULT = 0
+		G_PRIORITY_HIGH_IDLE = 100
+		G_PRIORITY_DEFAULT_IDLE = 200
+		G_PRIORITY_LOW = 300
+	
+	type 
+		gint8 = byte
+		guint8 = char
+		gint16 = shortint
+		guint16 = char
+		
+		gssize = integer
+		gsize = integer
+		
+		gint = integer
+		gint32 = integer
+		guint32 = integer
+		guint = integer
+		glong = integer
+		gulong = integer
+		gushort = char
+		gfloat = real
+		gdouble = real
+		gint64 = longint
+		guint64 = longint
+		
+		gpointer = integer
+		gconstpointer = integer
+		gchar = char
+		guchar = char
+		gunichar2 = char
+		gunichar = integer
+		gboolean = integer
+	
+	
+	type 
+		
+		String = carray of char
+		WString = carray of char
+		UString = carray of gunichar
+		PString = unsafe pointer to String
+		PWString = unsafe pointer to WString
+		PUString = unsafe pointer to UString
+		PAString = unsafe pointer to carray of String
+	
+	type 
+		GPid = integer
+		
+		GTimeVal = cstruct 
+				tv_sec: integer
+				tv_usec: integer 
+			end 
+		
+		GQuark = integer
+		
+		GFunc = proc (data, user_data: gpointer)
+		GCompareFunc = proc (a, b: gpointer): integer
+		GEqualFunc = proc (a, b: gpointer): integer
+		GCompareDataFunc = proc (a, b: gpointer; user_data: gpointer): integer
+		GDestroyNotify = proc (data: gpointer)
+		GHashFunc = proc (key: gpointer): integer
+		GHFunc = proc (key, value, user_data: gpointer)
+		GTranslateFunc = proc (str: PString; data: gpointer): PString
+	
+	
+	// gmem.h
+	type 
+		GAllocator = unsafe pointer to cstruct end 
+	type 
+		GMemChunk = unsafe pointer to cstruct end 
+	
+	type 
+		GMemVTable = cstruct 
+				malloc: proc (n_bytes: integer): gpointer
+				realloc: proc (mem: gpointer; n_bytes: integer): gpointer
+				free: proc (data: gpointer)
+				// optional; set to NULL if not used !
+				calloc: proc (n_blocks: integer; n_block_bytes: integer): gpointer
+				try_malloc: proc (n_bytes: integer): gpointer
+				try_realloc: proc (mem: gpointer; n_bytes: integer): gpointer 
+			end 
+	
+	const 
+		G_ALLOC_ONLY = 1
+		G_ALLOC_AND_FREE = 2
+	
+	
+	
+	
+	// ghook.h
+	type 
+		GHook = unsafe pointer to cstruct 
+				data: gpointer
+				next: GHook
+				prev: GHook
+				ref_count: integer
+				hook_id: integer
+				flags: integer
+				func: gpointer
+				destroy: GDestroyNotify 
+			end 
+		
+		GHookList = unsafe pointer to cstruct 
+				seq_id: integer
+				hook_size: set // bit field. hook_size:16, is_setup:1.
+				hooks: GHook
+				hook_memchunk: GMemChunk
+				finalize_hook: GHookFinalizeFunc
+				dummy1: gpointer
+				dummy2: gpointer 
+			end 
+		
+		
+		GHookFinalizeFunc = proc (hook_list: GHookList; hook: GHook)
+		GHookFunc = proc (data: gpointer)
+		GHookCheckFunc = proc (data: gpointer): gboolean
+		GHookCompareFunc = proc (new_hook: GHook; sibling: GHook): integer
+		GHookFindFunc = proc (hook: GHook; data: gpointer): gboolean
+		GHookMarshaller = proc (hook: GHook; marshal_data: gpointer)
+		GHookCheckMarshaller = GHookFindFunc
+	
+	
+	type  // enum: GHookFlagMask
+		GHookFlagMask = integer
+	const 
+		G_HOOK_FLAG_ACTIVE = 1
+		G_HOOK_FLAG_IN_CALL = 2
+		G_HOOK_FLAG_MASK = 0fh
+	// End of enumeration: GHookFlagMask
+	const 
+		G_HOOK_FLAG_USER_SHIFT = 4
+	
+	// gerror.h
+	type 
+		GError = unsafe pointer to cstruct 
+				domain: GQuark
+				code: integer
+				message: PString 
+			end 
+	
+	
+	// gstrfuncs.h.
+	type  // enum: GAsciiType
+		GAsciiType = integer
+	const 
+		G_ASCII_ALNUM = 1
+		G_ASCII_ALPHA = 2
+		G_ASCII_CNTRL = 4
+		G_ASCII_DIGIT = 8
+		G_ASCII_GRAPH = 16
+		G_ASCII_LOWER = 32
+		G_ASCII_PRINT = 64
+		G_ASCII_PUNCT = 128
+		G_ASCII_SPACE = 256
+		G_ASCII_UPPER = 512
+		G_ASCII_XDIGIT = 1024
+	// End of enumeration: GAsciiType
+	
+	
+	// gunicode.h
+	
+	type  // Enumeration:
+		GUnicodeType = integer
+	const 
+		G_UNICODE_CONTROL = 0
+		G_UNICODE_FORMAT = 1
+		G_UNICODE_UNASSIGNED = 2
+		G_UNICODE_PRIVATE_USE = 3
+		G_UNICODE_SURROGATE = 4
+		G_UNICODE_LOWERCASE_LETTER = 5
+		G_UNICODE_MODIFIER_LETTER = 6
+		G_UNICODE_OTHER_LETTER = 7
+		G_UNICODE_TITLECASE_LETTER = 8
+		G_UNICODE_UPPERCASE_LETTER = 9
+		G_UNICODE_COMBINING_MARK = 10
+		G_UNICODE_ENCLOSING_MARK = 11
+		G_UNICODE_NON_SPACING_MARK = 12
+		G_UNICODE_DECIMAL_NUMBER = 13
+		G_UNICODE_LETTER_NUMBER = 14
+		G_UNICODE_OTHER_NUMBER = 15
+		G_UNICODE_CONNECT_PUNCTUATION = 16
+		G_UNICODE_DASH_PUNCTUATION = 17
+		G_UNICODE_CLOSE_PUNCTUATION = 18
+		G_UNICODE_FINAL_PUNCTUATION = 19
+		G_UNICODE_INITIAL_PUNCTUATION = 20
+		G_UNICODE_OTHER_PUNCTUATION = 21
+		G_UNICODE_OPEN_PUNCTUATION = 22
+		G_UNICODE_CURRENCY_SYMBOL = 23
+		G_UNICODE_MODIFIER_SYMBOL = 24
+		G_UNICODE_MATH_SYMBOL = 25
+		G_UNICODE_OTHER_SYMBOL = 26
+		G_UNICODE_LINE_SEPARATOR = 27
+		G_UNICODE_PARAGRAPH_SEPARATOR = 28
+		G_UNICODE_SPACE_SEPARATOR = 29
+	// End of enumeration: GUnicodeType
+	
+	type  // enum: GUnicodeBreakType
+		GUnicodeBreakType = integer
+	const 
+		G_UNICODE_BREAK_MANDATORY = 0
+		G_UNICODE_BREAK_CARRIAGE_RETURN = 1
+		G_UNICODE_BREAK_LINE_FEED = 2
+		G_UNICODE_BREAK_COMBINING_MARK = 3
+		G_UNICODE_BREAK_SURROGATE = 4
+		G_UNICODE_BREAK_ZERO_WIDTH_SPACE = 5
+		G_UNICODE_BREAK_INSEPARABLE = 6
+		G_UNICODE_BREAK_NON_BREAKING_GLUE = 7
+		G_UNICODE_BREAK_CONTINGENT = 8
+		G_UNICODE_BREAK_SPACE = 9
+		G_UNICODE_BREAK_AFTER = 10
+		G_UNICODE_BREAK_BEFORE = 11
+		G_UNICODE_BREAK_BEFORE_AND_AFTER = 12
+		G_UNICODE_BREAK_HYPHEN = 13
+		G_UNICODE_BREAK_NON_STARTER = 14
+		G_UNICODE_BREAK_OPEN_PUNCTUATION = 15
+		G_UNICODE_BREAK_CLOSE_PUNCTUATION = 16
+		G_UNICODE_BREAK_QUOTATION = 17
+		G_UNICODE_BREAK_EXCLAMATION = 18
+		G_UNICODE_BREAK_IDEOGRAPHIC = 19
+		G_UNICODE_BREAK_NUMERIC = 20
+		G_UNICODE_BREAK_INFIX_SEPARATOR = 21
+		G_UNICODE_BREAK_SYMBOL = 22
+		G_UNICODE_BREAK_ALPHABETIC = 23
+		G_UNICODE_BREAK_PREFIX = 24
+		G_UNICODE_BREAK_POSTFIX = 25
+		G_UNICODE_BREAK_COMPLEX_CONTEXT = 26
+		G_UNICODE_BREAK_AMBIGUOUS = 27
+		G_UNICODE_BREAK_UNKNOWN = 28
+		G_UNICODE_BREAK_NEXT_LINE = 29
+		G_UNICODE_BREAK_WORD_JOINER = 30
+	
+	// End of enumeration: GUnicodeBreakType
+	
+	
+	
+	type  // enum: GNormalizeMode
+		GNormalizeMode = integer
+	const 
+		G_NORMALIZE_DEFAULT = 0
+		G_NORMALIZE_DEFAULT_COMPOSE = 1
+		G_NORMALIZE_ALL = 2
+		G_NORMALIZE_ALL_COMPOSE = 3
+	// End of enumeration: GNormalizeMode
+	
+	
+	// gstdio.h
+	type 
+		stat = record 
+			// !!!
+			end 
+	
+	
+	// gfileutils.h
+	type  // enum: GFileError
+		GFileError = integer
+	const 
+		G_FILE_ERROR_EXIST = 0
+		G_FILE_ERROR_ISDIR = 1
+		G_FILE_ERROR_ACCES = 2
+		G_FILE_ERROR_NAMETOOLONG = 3
+		G_FILE_ERROR_NOENT = 4
+		G_FILE_ERROR_NOTDIR = 5
+		G_FILE_ERROR_NXIO = 6
+		G_FILE_ERROR_NODEV = 7
+		G_FILE_ERROR_ROFS = 8
+		G_FILE_ERROR_TXTBSY = 9
+		G_FILE_ERROR_FAULT = 10
+		G_FILE_ERROR_LOOP = 11
+		G_FILE_ERROR_NOSPC = 12
+		G_FILE_ERROR_NOMEM = 13
+		G_FILE_ERROR_MFILE = 14
+		G_FILE_ERROR_NFILE = 15
+		G_FILE_ERROR_BADF = 16
+		G_FILE_ERROR_INVAL = 17
+		G_FILE_ERROR_PIPE = 18
+		G_FILE_ERROR_AGAIN = 19
+		G_FILE_ERROR_INTR = 20
+		G_FILE_ERROR_IO = 21
+		G_FILE_ERROR_PERM = 22
+		G_FILE_ERROR_NOSYS = 23
+		G_FILE_ERROR_FAILED = 24
+	// End of enumeration: GFileError
+	
+	type  // enum: GFileTest
+		GFileTest = integer
+	const 
+		G_FILE_TEST_IS_REGULAR = 1
+		G_FILE_TEST_IS_SYMLINK = 2
+		G_FILE_TEST_IS_DIR = 4
+		G_FILE_TEST_IS_EXECUTABLE = 8
+		G_FILE_TEST_EXISTS = 16
+	// End of enumeration: GFileTest
+	
+	
+	
+	// gdataset.h
+	// Keyed Data List
+	type 
+		GData = unsafe pointer to cstruct end 
+		GDataForeachFunc = proc (key_id: GQuark; data: gpointer; user_data: gpointer)
+	
+	// gdir.h
+	type 
+		GDir = unsafe pointer to cstruct end 
+	// gmappedfile.h
+	type 
+		GMappedFile = unsafe pointer to cstruct end 
+	
+	// gconvert.h
+	type  // enum: GConvertError
+		GConvertError = integer
+	const 
+		G_CONVERT_ERROR_NO_CONVERSION = 0
+		G_CONVERT_ERROR_ILLEGAL_SEQUENCE = 1
+		G_CONVERT_ERROR_FAILED = 2
+		G_CONVERT_ERROR_PARTIAL_INPUT = 3
+		G_CONVERT_ERROR_BAD_URI = 4
+		G_CONVERT_ERROR_NOT_ABSOLUTE_PATH = 5
+	// End of enumeration: GConvertError
+	
+	type 
+		GIConv = unsafe pointer to cstruct end 
+	
+	// gkeyfile.h
+	type 
+		GKeyFile = pointer to record end 
+	type  // enum: GKeyFileError
+		GKeyFileError = integer
+	const 
+		G_KEY_FILE_ERROR_UNKNOWN_ENCODING = 0
+		G_KEY_FILE_ERROR_PARSE = 1
+		G_KEY_FILE_ERROR_NOT_FOUND = 2
+		G_KEY_FILE_ERROR_KEY_NOT_FOUND = 3
+		G_KEY_FILE_ERROR_GROUP_NOT_FOUND = 4
+		G_KEY_FILE_ERROR_INVALID_VALUE = 5
+	// End of enumeration: GKeyFileError
+	
+	type  // enum: GKeyFileFlags
+		GKeyFileFlags = integer
+	const 
+		G_KEY_FILE_NONE = 0
+		G_KEY_FILE_KEEP_COMMENTS = 1
+		G_KEY_FILE_KEEP_TRANSLATIONS = 2
+	// End of enumeration: GKeyFileFlags
+	
+	
+	// gcache.h
+	type 
+		GCache = pointer to record end 
+		
+		GCacheNewFunc = proc (key: gpointer): gpointer
+		GCacheDupFunc = GCacheNewFunc
+		GCacheDestroyFunc = proc (value: gpointer)
+	
+	// garray.h
+	// Resizable arrays
+	type 
+		GArray = unsafe pointer to cstruct 
+				data: PString
+				len_: integer 
+			end 
+	
+	
+	// Byte arrays  Implemented as a GArray, but type-safe.
+	type 
+		GByteArray = unsafe pointer to cstruct 
+				data: unsafe pointer to carray of byte
+				len_: integer 
+			end 
+	
+	
+	// Resizable pointer array.  This interface is much less complicated
+	// * than the above.  Add appends a pointer.  Remove fills any cleared
+	// * spot and shortens the array. remove_fast will again distort order.
+	type 
+		GPtrArray = unsafe pointer to cstruct 
+				pdata: unsafe pointer to carray of gpointer
+				len_: integer 
+			end 
+	
+	
+	// gstring.h
+	type 
+		GString = unsafe pointer to cstruct 
+				str: PString
+				len_: integer
+				allocated_len: integer 
+			end 
+		
+		GStringChunk = unsafe pointer to cstruct end 
+	
+	// glist.h// Doubly linked lists
+	type 
+		GList = unsafe pointer to cstruct 
+				data: gpointer
+				next, prev: GList 
+			end 
+	
+	// gslist.h// Singly linked lists
+	type 
+		GSList = unsafe pointer to cstruct 
+				data: gpointer
+				next: GSList 
+			end 
+	
+	
+	// gqueue.h// Queues
+	type 
+		GQueue = unsafe pointer to cstruct 
+				head: GList
+				tail: GList
+				length: integer 
+			end 
+	
+	
+	// gnode.h// N-way tree implementation
+	type 
+		GNode = unsafe pointer to cstruct 
+				data: gpointer
+				next: GNode
+				prev: GNode
+				parent: GNode
+				children: GNode 
+			end 
+		
+		GCopyFunc = proc (src, data: gpointer): gpointer
+		GNodeTraverseFunc = proc (node: GNode; data: gpointer): gboolean
+		GNodeForeachFunc = proc (node: GNode; data: gpointer)
+	
+	
+	type  // enum
+		GTraverseFlags = integer
+	const 
+		G_TRAVERSE_LEAVES = 1
+		G_TRAVERSE_NON_LEAVES = 2
+		G_TRAVERSE_ALL = 3
+	
+	type  // enum
+		GTraverseType = integer
+	const 
+		G_IN_ORDER = 0
+		G_PRE_ORDER = 1
+		G_POST_ORDER = 2
+		G_LEVEL_ORDER = 3
+	
+	
+	
+	// gtree.h// Balanced binary trees
+	type 
+		GTree = unsafe pointer to cstruct end 
+		GTraverseFunc = proc (key, value, data: gpointer): gboolean
+	
+	// ghash.h// Hash tables
+	type 
+		GHashTable = unsafe pointer to cstruct end 
+		GHRFunc = proc (key: gpointer; value: gpointer; user_data: gpointer): gboolean
+	
+	// grel.h// * Indexed Relations
+	type 
+		GRelation = unsafe pointer to cstruct end 
+		GTuples = unsafe pointer to cstruct 
+				len_: integer 
+			end 
+	
+	
+	// giochannel.h
+	type 
+		GSource = unsafe pointer to cstruct end 
+	
+	type  // enum
+		GIOStatus = integer
+	const 
+		G_IO_STATUS_ERROR = 0
+		G_IO_STATUS_NORMAL = 1
+		G_IO_STATUS_EOF = 2
+		G_IO_STATUS_AGAIN = 3
+	
+	
+	type 
+		GIOFunc = proc (source: GIOChannel; condition: GIOCondition; data: gpointer): gboolean
+		
+		
+		GIOChannel = unsafe pointer to cstruct 
+				ref_count: integer
+				funcs: GIOFuncs
+				encoding: PString
+				read_cd: GIConv
+				write_cd: GIConv
+				line_term: PString
+				line_term_len: integer
+				buf_size: integer
+				read_buf: GString
+				encoded_read_buf: GString
+				write_buf: GString
+				partial_write_buf: array 6 of gchar
+				flags: set // use_buffer:1, do_encode:1, close_on_unref:1, is_readable:1, is_writeable:1, is_seekable:1.
+				reserved1: gpointer
+				reserved2: gpointer 
+			end 
+		
+		
+		
+		GIOFuncs = unsafe pointer to cstruct 
+				io_read: proc (channel: GIOChannel; buf: PString; count: integer; var bytes_read: integer; var error: GError): GIOStatus
+				io_write: proc (channel: GIOChannel; buf: PString; count: integer
+					var bytes_written: integer; var error: GError): GIOStatus
+				io_seek: proc (channel: GIOChannel; offset: longint; type_: GSeekType; var error: GError): GIOStatus
+				io_close: proc (channel: GIOChannel; var error: GError): GIOStatus
+				io_create_watch: proc (channel: GIOChannel; condition: GIOCondition): GIConv
+				io_free: proc (channel: GIOChannel)
+				io_set_flags: proc (channel: GIOChannel; flags: GIOFlags; var error: GError): GIOStatus
+				io_get_flags: proc (channel: GIOChannel): GIOFlags 
+			end 
+	
+	
+	
+	
+	
+	type 
+		GSeekType = integer
+	// enum: GSeekType
+	
+	const 
+		G_SEEK_CUR = 0
+		G_SEEK_SET = 1
+		G_SEEK_END = 2
+	// End of enumeration: GSeekType
+	
+	type 
+		GIOCondition = integer
+	// enum: GIOCondition
+	
+	const 
+		G_IO_IN = 1
+		G_IO_OUT = 4
+		G_IO_PRI = 2
+		G_IO_ERR = 8
+		G_IO_HUP = 16
+		G_IO_NVAL = 32
+	
+	// End of enumeration: GIOCondition
+	type 
+		GIOFlags = integer
+	// enum: GIOFlags
+	
+	const 
+		G_IO_FLAG_APPEND = 1
+		G_IO_FLAG_NONBLOCK = 2
+		G_IO_FLAG_IS_READABLE = 4 // Read only flag
+		G_IO_FLAG_IS_WRITEABLE = 8 // Read only flag
+		G_IO_FLAG_IS_SEEKABLE = 16 // Read only flag
+		G_IO_FLAG_MASK = 31
+		G_IO_FLAG_GET_MASK = G_IO_FLAG_MASK
+		G_IO_FLAG_SET_MASK = 3
+	
+	// End of enumeration: GIOFlags
+	
+	type 
+		GIOError = integer
+	// enum: GIOError
+	
+	const 
+		G_IO_ERROR_NONE = 0
+		G_IO_ERROR_AGAIN = 1
+		G_IO_ERROR_INVAL = 2
+		G_IO_ERROR_UNKNOWN = 3
+	
+	// End of enumeration: GIOError
+	
+	type  // enum: GIOChannelError
+		GIOChannelError = integer
+	const 
+		G_IO_CHANNEL_ERROR_FBIG = 0
+		G_IO_CHANNEL_ERROR_INVAL = 1
+		G_IO_CHANNEL_ERROR_IO = 2
+		G_IO_CHANNEL_ERROR_ISDIR = 3
+		G_IO_CHANNEL_ERROR_NOSPC = 4
+		G_IO_CHANNEL_ERROR_NXIO = 5
+		G_IO_CHANNEL_ERROR_OVERFLOW = 6
+		G_IO_CHANNEL_ERROR_PIPE = 7
+		G_IO_CHANNEL_ERROR_FAILED = 8
+	// End of enumeration: GIOChannelError
+	
+	
+	// gshell.h
+	type 
+		GShellError = integer
+	const 
+		G_SHELL_ERROR_BAD_QUOTING = 0
+		G_SHELL_ERROR_EMPTY_STRING = 1
+		G_SHELL_ERROR_FAILED = 2
+	// grand.h
+	// GRand - a good and fast random number generator
+	type 
+		GRand = unsafe pointer to cstruct 
+			end 
+	// gdate.h
+	
+	type 
+		GTime = integer
+		GDateYear = shortint
+		GDateDay = byte // day of the month
+		
+		GDateDesc = record 
+				julian_days: integer
+				fields: set  // julian:1, dmy:1, day:6, month:4, year:16.
+			end 
+		GDate = pointer to GDateDesc
+	
+	// Note: directly manipulating structs is generally a bad idea, but
+	// in this case it's an *incredibly* bad idea, because all or part
+	// of this struct can be invalid at any given time.
+	
+	
+	type 
+		tm = record 
+			// make struct tm known without having to include time.h
+			end 
+		Ptr_tm = pointer to tm
+	
+	// enum used to specify order of appearance in parsed date strings
+	type  // enum: GDateDMY
+		GDateDMY = integer
+	const 
+		G_DATE_DAY = 0
+		G_DATE_MONTH = 1
+		G_DATE_YEAR = 2
+	// End of enumeration: GDateDMY
+	
+	// actual week and month values
+	type  // enum: GDateWeekday
+		GDateWeekday = integer
+	const 
+		G_DATE_BAD_WEEKDAY = 0
+		G_DATE_MONDAY = 1
+		G_DATE_TUESDAY = 2
+		G_DATE_WEDNESDAY = 3
+		G_DATE_THURSDAY = 4
+		G_DATE_FRIDAY = 5
+		G_DATE_SATURDAY = 6
+		G_DATE_SUNDAY = 7
+	
+	// End of enumeration: GDateWeekday
+	
+	type 
+		GDateMonth = integer
+	// enum: GDateMonth
+	const 
+		G_DATE_BAD_MONTH = 0
+		G_DATE_JANUARY = 1
+		G_DATE_FEBRUARY = 2
+		G_DATE_MARCH = 3
+		G_DATE_APRIL = 4
+		G_DATE_MAY = 5
+		G_DATE_JUNE = 6
+		G_DATE_JULY = 7
+		G_DATE_AUGUST = 8
+		G_DATE_SEPTEMBER = 9
+		G_DATE_OCTOBER = 10
+		G_DATE_NOVEMBER = 11
+		G_DATE_DECEMBER = 12
+	// End of enumeration: GDateMonth
+	
+	const 
+		G_DATE_BAD_JULIAN = 0
+		G_DATE_BAD_DAY = 0
+		G_DATE_BAD_YEAR = 0
+	
+	// gtimer.h
+	// Timer
+	
+	type 
+		GTimer = unsafe pointer to cstruct end 
+	
+	const 
+		G_USEC_PER_SEC = 1000000 // microseconds per second
+	
+	
+	// gmarkup.h - Simple XML-like string parser/writer
+	
+	type 
+		GMarkupParseContext = unsafe pointer to cstruct end 
+	type 
+		GMarkupParser = cstruct 
+				// Called for open tags <foo bar="baz">
+				start_element: proc (context: GMarkupParseContext; element_name: PString
+					attribute_names, attribute_values: PAString; user_data: gpointer; var error: GError)
+				// Called for close tags </foo>
+				end_element: proc (context: GMarkupParseContext; element_name: PString; user_data: gpointer; var error: GError)
+				// Called for character data// text is not nul-terminated
+				text: proc (context: GMarkupParseContext; text: PString; text_len: integer; user_data: gpointer; var error: GError)
+				// Called for strings that should be re-saved verbatim in this same position, but are not otherwise interpretable.
+				passthrough: proc (context: GMarkupParseContext; text: PString; text_len: integer; user_data: gpointer; var error: GError)
+				// Called on error// The GError should not be freed.
+				error: proc (context: GMarkupParseContext; error: GError; user_data: gpointer) 
+			end 
+	
+	type  // enum: GMarkupError
+		GMarkupError = integer
+	const 
+		G_MARKUP_ERROR_BAD_UTF8 = 0
+		G_MARKUP_ERROR_EMPTY = 1
+		G_MARKUP_ERROR_PARSE = 2
+		G_MARKUP_ERROR_UNKNOWN_ELEMENT = 3
+		G_MARKUP_ERROR_UNKNOWN_ATTRIBUTE = 4
+		G_MARKUP_ERROR_INVALID_CONTENT = 5
+	
+	// End of enumeration: GMarkupError
+	
+	
+	type 
+		GMarkupParseFlags = integer
+	const 
+		G_MARKUP_DO_NOT_USE_THIS_UNSUPPORTED_FLAG = 1
+	// End of enumeration: GMarkupParseFlags
+	
+	
+	
+	
+	
+	
+	
+	// gmessages.h
+	const 
+		G_LOG_LEVEL_USER_SHIFT = 8
+		
+		// Glib log levels and flags.
+		// 
+		// enum: GLogLevelFlags
+		
+		// log flags
+		G_LOG_FLAG_RECURSION = 1
+		G_LOG_FLAG_FATAL = 2
+		
+		// GLib log levels
+		G_LOG_LEVEL_ERROR = 4 // always fatal
+		G_LOG_LEVEL_CRITICAL = 8
+		G_LOG_LEVEL_WARNING = 16
+		G_LOG_LEVEL_MESSAGE = 32
+		G_LOG_LEVEL_INFO = 64
+		G_LOG_LEVEL_DEBUG = 128
+		G_LOG_LEVEL_MASK = -4
+	
+	type 
+		GLogLevelFlags = integer
+	// End of enumeration: GLogLevelFlags
+	
+	// GLib log levels that are considered fatal by default
+	
+	const 
+		G_LOG_FATAL_MASK = 5
+	
+	type 
+		GLogFunc = proc (log_domain: PString; log_level: 
+			GLogLevelFlags; message: PString; user_data: 
+			gpointer)
+	// Logging mechanism
+	type 
+		GPrintFunc = proc (string: PString)
+	
+	// goption.h
+	type 
+		GOptionContext = unsafe pointer to cstruct end 
+		GOptionGroup = unsafe pointer to cstruct end 
+		GOptionEntry = unsafe pointer to cstruct 
+				long_name: PString
+				short_name: gchar
+				flags: integer
+				arg: GOptionArg
+				arg_data: gpointer
+				description: PString
+				arg_description: PString 
+			end 
+	
+	
+	type  // enum: GOptionArg
+		GOptionArg = integer
+	const 
+		G_OPTION_ARG_NONE = 0
+		G_OPTION_ARG_STRING = 1
+		G_OPTION_ARG_INT = 2
+		G_OPTION_ARG_CALLBACK = 3
+		G_OPTION_ARG_FILENAME = 4
+		G_OPTION_ARG_STRING_ARRAY = 5
+		G_OPTION_ARG_FILENAME_ARRAY = 6
+	// End of enumeration: GOptionArg
+	
+	
+	type  // enum: GOptionFlags
+		GOptionFlags = integer
+	const 
+		G_OPTION_FLAG_HIDDEN = 1
+		G_OPTION_FLAG_IN_MAIN = 2
+		G_OPTION_FLAG_REVERSE = 4
+		G_OPTION_FLAG_NO_ARG = 8
+		G_OPTION_FLAG_FILENAME = 16
+		G_OPTION_FLAG_OPTIONAL_ARG = 32
+		G_OPTION_FLAG_NOALIAS = 64
+	// End of enumeration: GOptionFlags
+	type 
+		GOptionArgFunc = proc (option_name: PString; value: PString; data: gpointer; var error: GError): gboolean
+		GOptionParseFunc = proc (context: GOptionContext; group: GOptionContext; data: gpointer; var error: GError): gboolean
+		GOptionErrorFunc = proc (context: GOptionContext; group: GOptionContext; data: gpointer; var error: GError)
+	
+	type  // enum: GOptionError
+		GOptionError = integer
+	const 
+		G_OPTION_ERROR_UNKNOWN_OPTION = 0
+		G_OPTION_ERROR_BAD_VALUE = 1
+		G_OPTION_ERROR_FAILED = 2
+	// End of enumeration: GOptionError
+	
+	const 
+		G_OPTION_REMAINING = ''
+	
+	// gpattern.h
+	type 
+		GPatternSpec = unsafe pointer to cstruct end 
+	
+	// gspawn.h
+	type 
+		GSpawnChildSetupFunc = proc (user_data: gpointer)
+		GSpawnError = integer // enum: GSpawnError
+	const 
+		G_SPAWN_ERROR_FORK = 0
+		G_SPAWN_ERROR_READ = 1
+		G_SPAWN_ERROR_CHDIR = 2
+		G_SPAWN_ERROR_ACCES = 3
+		G_SPAWN_ERROR_PERM = 4
+		G_SPAWN_ERROR_2BIG = 5
+		G_SPAWN_ERROR_NOEXEC = 6
+		G_SPAWN_ERROR_NAMETOOLONG = 7
+		G_SPAWN_ERROR_NOENT = 8
+		G_SPAWN_ERROR_NOMEM = 9
+		G_SPAWN_ERROR_NOTDIR = 10
+		G_SPAWN_ERROR_LOOP = 11
+		G_SPAWN_ERROR_TXTBUSY = 12
+		G_SPAWN_ERROR_IO = 13
+		G_SPAWN_ERROR_NFILE = 14
+		G_SPAWN_ERROR_MFILE = 15
+		G_SPAWN_ERROR_INVAL = 16
+		G_SPAWN_ERROR_ISDIR = 17
+		G_SPAWN_ERROR_LIBBAD = 18
+		G_SPAWN_ERROR_FAILED = 19
+	// End of enumeration: GSpawnError
+	
+	
+	type  // enum: GSpawnFlags
+		GSpawnFlags = integer
+	const 
+		G_SPAWN_LEAVE_DESCRIPTORS_OPEN = 1
+		G_SPAWN_DO_NOT_REAP_CHILD = 2
+		G_SPAWN_SEARCH_PATH = 4
+		G_SPAWN_STDOUT_TO_DEV_NULL = 8
+		G_SPAWN_STDERR_TO_DEV_NULL = 16
+		G_SPAWN_CHILD_INHERITS_STDIN = 32
+		G_SPAWN_FILE_AND_ARGV_ZERO = 64
+	// End of enumeration: GSpawnFlags
+	
+	
+	// gmain.h
+	type 
+		GMainContext = unsafe pointer to cstruct 
+			end 
+		
+		
+		GPollFD = cstruct 
+				fd: integer
+				events: shortint
+				revents: shortint 
+			end 
+		
+		GPollFunc = proc (in ufds: carray of GPollFD; nfsd, timeout: integer): integer
+		GChildWatchFunc = proc (pid: GPid; status: integer; data: gpointer)
+		GSourceFunc = proc (data: gpointer): gboolean
+		
+		GSourceFuncs = cstruct 
+				prepare: proc 
+				check: proc 
+				dispatch: proc 
+				finalize: proc 
+				closure_callback: GSourceFunc
+				closure_marshal: proc  
+			end 
+		
+		GSourceCallbackFuncs = cstruct 
+				ref: GDestroyNotify
+				unref: GDestroyNotify
+				get: proc (cb_data: gpointer; source: GSource; func: GSourceFunc; var data: gpointer) 
+			end 
+	
+	// Memory profiler and checker, has to be enabled via g_mem_set_vtable()
+	var 
+		glib_mem_profiler_table: unsafe pointer to GMemVTable
+	
+	
+
+	proc g_free(mem: gpointer) 
+		
+	proc g_utf16_to_utf8(in str: WString; len_: integer; var items_read, items_written: integer; var error: GError): PString 
+		
+	proc g_locale_to_utf8(opsysstring: PString; len_: integer; var bytes_read, bytes_written: integer; var error: GError): PString 	
+	
+	proc g_timeout_add_full(priority: gint; interval: guint; function: GSourceFunc; data: gpointer; notify: GDestroyNotify): guint 
+
+end Gtk2GLib

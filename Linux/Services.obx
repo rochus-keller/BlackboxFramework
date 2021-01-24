@@ -1,0 +1,370 @@
+module Services
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20141027, center #19, full Unicode support for Component Pascal identifiers added
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import SYSTEM, Kernel
+	
+	const 
+		now* = 0 // DoLater notBefore
+		immediately* = -1
+		resolution* = 1000
+		scale = resolution div Kernel.timeResolution
+		corr = resolution mod Kernel.timeResolution
+	
+	
+	type 
+		Action* = pointer to (* abstract *) record 
+				notBefore: longint
+				next: Action  // next element in linear list
+			end 
+		
+		ActionHook* = pointer to (* abstract *) record (Kernel.Hook) end 
+		StdHook = pointer to record (ActionHook) end 
+	
+	
+	var 
+		actionHook-: ActionHook
+		actions: Action // list of actions
+		candidates: Action (* list of action candidates in IterateOverActions,
+		   NIL during normal execution of commands *)
+		
+		hasImmediates: boolean // this is a hint: one or more actions in some ring may be immediate actions
+		trapCnt: integer
+	
+	
+	proc Ticks*(): longint 
+		var 
+			t: longint
+	begin 
+		t := Kernel.Time()
+		return t * scale + t * corr div Kernel.timeResolution
+	end Ticks
+	
+	
+	// Action
+	
+	proc (a: Action) Do-()  end // new abstract
+	
+	proc In(l, a: Action): boolean 
+	begin 
+		while (l # nil) & (l # a) do 
+			l := l.next 
+		end 
+		return l # nil
+	end In
+	
+	proc Incl(var l: Action; a: Action) 
+	begin 
+		if l # nil then
+			a.next := l 
+		end 
+		l := a
+	end Incl
+	
+	proc Excl(var l: Action; a: Action) 
+		var 
+			p0, p1: Action
+	begin 
+		if l = a then
+			l := a.next
+			a.next := nil 
+		elsif l # nil then 
+			p0 := l
+			p1 := p0.next
+			// (p0 # NIL) & (p0 # a)
+			while (p1 # nil) & (p1 # a) do 
+				p0 := p1
+				p1 := p0.next 
+			end 
+			if p1 = a then
+				p0.next := a.next
+				a.next := nil 
+			end  
+		end 
+	end Excl
+	
+	proc Exec(a: Action) 
+		var 
+			t: Kernel.Type
+	begin 
+		t := Kernel.TypeOf(a)
+		if t.mod_.refcnt >= 0 then // execute action if its module is not unloaded
+			a.Do  // warning: here the actions and candidates lists may be modified, or a trap may occur!
+		end 
+	end Exec
+	
+	proc Cleanup
+		var 
+			p: Action
+	begin 
+		if candidates # nil then // trap handling
+			p := candidates // find last element of candidates list
+			while p.next # nil do 
+				p := p.next 
+			end 
+			p.next := actions // prepend candidates list to actions list
+			actions := candidates
+			candidates := nil 
+		end 
+		trapCnt := Kernel.trapCount // all traps are handled now
+	end Cleanup
+	
+	proc DoLater*(a: Action; notBefore: longint) 
+	// Register action a. If a is already registered, its notBefore value is updated instead.
+	begin 
+		assert(a # nil, 20)
+		if ~In(actions, a) & ~In(candidates, a) then
+			Incl(actions, a) 
+		end 
+		a.notBefore := notBefore // if a was already in a list, this statement updates the notBefore value
+		if notBefore = immediately then
+			hasImmediates := true 
+		end 
+	end DoLater
+	
+	proc RemoveAction*(a: Action) 
+	// Unregister action a. If a is not registered, nothing happens
+	begin 
+		if a # nil then
+			Excl(actions, a)
+			Excl(candidates, a) 
+		end 
+	end RemoveAction
+	
+	proc IterateOverActions(time: longint) 
+		var 
+			p: Action
+	begin 
+		Cleanup // trap handling, if necessary
+		// candidates = NIL
+		candidates := actions // move action list to candidates list
+		actions := nil
+		while candidates # nil do  // for every candidate: execute it or put it back into actions list
+			p := candidates // remove head element from candidates list
+			candidates := p.next
+			if (0 <= p.notBefore) & (p.notBefore <= time) or (p.notBefore <= time) & (time < 0) then
+				p.next := nil (* warning: p may call DoLater or RemoveAction,
+				   which change the lists! *)
+				Exec(p) 
+			
+			else 
+				p.next := actions // move to actions list for later processing
+				actions := p 
+			end  
+		end 
+	end IterateOverActions
+	
+	
+	proc (h: ActionHook) Step* end // new abstract
+	
+	proc (h: ActionHook) Loop* end // new abstract
+	
+	
+	proc (h: StdHook) Step
+	begin 
+		if (candidates = nil) or (trapCnt < Kernel.trapCount) then
+			IterateOverActions(Ticks()) 
+		end 
+	end Step
+	
+	proc (h: StdHook) Loop
+	begin 
+		if hasImmediates then
+			assert((candidates = nil) or (trapCnt < Kernel.trapCount), 100)
+			IterateOverActions(immediately)
+			hasImmediates := false 
+		end 
+	end Loop
+	
+	
+	// type handling functions
+	
+	proc ThisDesc(in type_: array of char; load: boolean): Kernel.Type 
+		const 
+			record_ = 1
+			pointer_ = 3
+		var 
+			m: Kernel.Module
+			t: Kernel.Type
+			i, j: integer
+			ch: char
+			typ, mod_: Kernel.Name
+	begin 
+		assert(type_ # "", 20)
+		i := 0
+		ch := type_[0]
+		while (ch # ".") & (ch # 0x) do 
+			mod_[i] := ch
+			inc(i)
+			ch := type_[i] 
+		end 
+		assert(ch = ".", 21)
+		mod_[i] := 0x
+		inc(i)
+		t := nil
+		if load then
+			m := Kernel.ThisMod(mod_) 
+		else 
+			m := Kernel.ThisLoadedMod(mod_) 
+		end 
+		
+		if m # nil then
+			j := 0
+			repeat 
+				ch := type_[i]
+				typ[j] := ch
+				inc(i)
+				inc(j) 
+			until ch = 0x 
+			t := Kernel.ThisType(m, typ)
+			if t = nil then
+				typ[j - 1] := "^"
+				typ[j] := 0x
+				t := Kernel.ThisType(m, typ) 
+			end  
+		end 
+		if t # nil then
+			if t.id mod 4 = pointer_ then
+				t := t.base[0] 
+			end 
+			if t.id mod 4 # record_ then
+				t := nil 
+			end  
+		end 
+		return t
+	end ThisDesc
+	
+	proc GetTypeName*(in rec: ANYREC; var type_: array of char) 
+		var 
+			i, j: integer
+			ch: char
+			t: Kernel.Type
+			modName, name: Kernel.Name
+	begin 
+		t := Kernel.TypeOf(rec)
+		Kernel.GetModName(t.mod_, modName)
+		Kernel.GetTypeName(t, name)
+		type_ := modName
+		i := 0
+		ch := type_[0]
+		while ch # 0x do 
+			inc(i)
+			ch := type_[i] 
+		end 
+		type_[i] := "."
+		inc(i)
+		j := 0
+		repeat 
+			ch := name[j]
+			type_[i] := ch
+			inc(i)
+			inc(j) 
+		until ch = 0x 
+		if type_[i - 2] = "^" then
+			type_[i - 2] := 0x 
+		end 
+	(* type := modName$ + "." + name$;
+	   i := LEN(type$);
+	   IF type[i - 1] = "^" THEN type[i - 1] := 0X END *)
+	
+	
+	end GetTypeName
+	
+	proc SameType*(in ra, rb: ANYREC): boolean 
+	begin 
+		return Kernel.TypeOf(ra) = Kernel.TypeOf(rb)
+	end SameType
+	
+	proc IsExtensionOf*(in ra, rb: ANYREC): boolean 
+		var 
+			ta, tb: Kernel.Type
+	begin 
+		ta := Kernel.TypeOf(ra)
+		tb := Kernel.TypeOf(rb)
+		return ta.base[tb.id div 16 mod 16] = tb
+	end IsExtensionOf
+	
+	proc Is*(in rec: ANYREC; in type_: array of char): boolean 
+		var 
+			ta, tb: Kernel.Type
+	begin 
+		ta := Kernel.TypeOf(rec)
+		tb := ThisDesc(type_, false)
+		if tb # nil then
+			return ta.base[tb.id div 16 mod 16] = tb 
+		else 
+			return false 
+		end 
+	end Is
+	
+	proc Extends*(in type_, base: array of char): boolean 
+		var 
+			ta, tb: Kernel.Type
+	begin 
+		assert((type_ # "") & (base # ""), 20)
+		ta := ThisDesc(type_, true)
+		tb := ThisDesc(base, false)
+		if (ta # nil) & (tb # nil) then
+			return ta.base[tb.id div 16 mod 16] = tb 
+		else 
+			return false 
+		end 
+	end Extends
+	
+	proc Level*(in type_: array of char): integer 
+		var 
+			t: Kernel.Type
+	begin 
+		t := ThisDesc(type_, true)
+		return t.id div 16 mod 16
+	end Level
+	
+	proc TypeLevel*(in rec: ANYREC): integer 
+		var 
+			t: Kernel.Type
+	begin 
+		t := Kernel.TypeOf(rec)
+		if t = nil then
+			return -1 
+		else 
+			return t.id div 16 mod 16 
+		end 
+	end TypeLevel
+	
+	proc AdrOf*(in rec: ANYREC): integer 
+	begin 
+		return SYSTEM.ADR(rec)
+	end AdrOf
+	
+	proc Collect*
+	begin 
+		Kernel.FastCollect
+	end Collect
+	
+	
+	proc Init
+		var 
+			h: StdHook
+	begin 
+		new(h)
+		actionHook := h
+	end Init
+
+begin
+	Init
+end Services

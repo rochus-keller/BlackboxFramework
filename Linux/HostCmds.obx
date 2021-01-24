@@ -1,0 +1,473 @@
+module HostCmds
+	// Ominc
+	
+	// TODO: Many commands are commented out for the Linux port. Make them available.
+	
+	
+	
+	// bj	06.03.01	Changed the gap for headers in PrintDoc from 10*Ports.mm to 5*Ports.mm
+	// bj	26.02.01	Changed Open and SaveWindow to handle file names which are longer than Views.Title
+	// bj	31.10.00	Moved OpenStationary here from StdCmds. Renamed it to OpenCopyOf
+	// ww	07.02.00	added SaveAll command
+	// dg	06.05.99	changes due to interface change of BeginModification/EndModification
+	
+	import 
+		Kernel, Ports, Printers, Files, 
+		Stores, Views, Controllers, Dialog,  // Printing,
+		Converters, Sequencers, Documents, Windows, 
+		StdDialog, StdCmds, 
+		HostFiles, HostWindows, HostDialog, HostClipboard
+	
+	const 
+		// hints
+		impAll = 0 // can import all file types
+		expDoc = 1 // imported view should be stored as document
+	
+	var 
+		quit*: boolean
+	
+	
+	// File menu
+	
+	proc Open*
+		// open an existing document or view
+		var 
+			loc: Files.Locator
+			name: Files.Name
+			v: Views.View
+			s: Stores.Store
+			done: boolean
+			w: Windows.Window
+			conv: Converters.Converter
+	begin 
+		HostDialog.GetIntSpec(loc, name, conv)
+		if loc # nil then
+			w := Windows.dir.First()
+			while (w # nil) 
+				& ((w.loc = nil) or (w.name = "") or (w.loc.res = 77) 
+				or ~Files.dir.SameFile(loc, name, w.loc, w.name) 
+				or (w.conv # conv)) do 
+				w := Windows.dir.Next(w) 
+			end 
+			if w # nil then
+				s := w.doc 
+			else 
+				Converters.Import(loc, name, conv, s)
+				if s # nil then
+					StdDialog.RecalcView(s(Views.View)) 
+				end  
+			end 
+			if s # nil then
+				v := s(Views.View)
+				if (conv # nil) & (expDoc in conv.opts) then
+					conv := nil 
+				end 
+				Views.Open(v, loc, name, conv) 
+			else 
+				Dialog.ShowParamMsg("#System:FailedToOpen", name, "", "") 
+			end  
+		end 
+	end Open
+	
+	proc OpenCopyOf*
+		var 
+			loc: Files.Locator
+			name: Files.Name
+			conv: Converters.Converter
+			v: Views.View
+	begin 
+		v := Views.Old(true, loc, name, conv)
+		if v # nil then
+			if v.context # nil then
+				v := Views.CopyOf(v.context(Documents.Context).ThisDoc(), Views.deep)
+				Stores.InitDomain(v) 
+			else 
+				v := Views.CopyOf(v, Views.deep) 
+			end 
+			Views.Open(v, nil, "", conv) 
+		end 
+	end OpenCopyOf
+	
+	proc SaveWindow(w: Windows.Window; rename: boolean) 
+		var 
+			title: Views.Title
+			loc: Files.Locator
+			name: Files.Name
+			v: Views.View
+			conv: Converters.Converter
+			stat: boolean
+			i: integer
+	begin 
+		if (w # nil) & (rename or ~(Windows.neverDirty in w.flags)) then
+			v := w.doc.OriginalView()
+			loc := w.loc
+			name := w.name
+			conv := w.conv
+			if name = "" then
+				Dialog.MapString("#System:untitled", name) 
+			end 
+			if (loc = nil) or (loc.res = 77) or (conv # nil) & (conv.exp = "") then
+				rename := true 
+			end 
+			if rename then
+				HostDialog.GetExtSpec(v, loc, name, conv) 
+			end 
+			if loc # nil then
+				Dialog.ShowStatus("#Host:Saving")
+				Converters.Export(loc, name, conv, v)
+				if loc.res = 0 then
+					if w.seq.Dirty() then
+						w.seq.BeginModification(Sequencers.notUndoable, nil)
+						w.seq.EndModification(Sequencers.notUndoable, nil) // clear sequencer
+						w.seq.SetDirty(false) 
+					end 
+					if rename then
+						i := 0
+						while (i < len(title) - 1) & (name[i] # 0x) do 
+							title[i] := name[i]
+							inc(i) 
+						end 
+						title[i] := 0x
+						w.SetTitle(title)
+						w.SetSpec(loc, name, conv) 
+					end 
+					Dialog.ShowStatus("#Host:Saved") 
+				else 
+					Dialog.ShowStatus("#Host:Failed") 
+				end  
+			end 
+			if ~quit then
+				Kernel.Cleanup 
+			end  
+		end 
+	end SaveWindow
+	
+	proc Save*
+		// save document shown in target window under old name
+		var 
+			w: Windows.Window
+	begin 
+		w := Windows.dir.Focus(Controllers.targetPath)
+		SaveWindow(w, false)
+	end Save
+	
+	proc SaveAs*
+		// save document shown in target window under new name
+		var 
+			w: Windows.Window
+	begin 
+		w := Windows.dir.Focus(Controllers.targetPath)
+		SaveWindow(w, true)
+	end SaveAs
+	
+	proc SaveCopyAs*
+		// save copy of document shown in target window under new name
+		var 
+			w: Windows.Window
+			loc: Files.Locator
+			name: Files.Name
+			v: Views.View
+			conv: Converters.Converter
+	begin 
+		w := Windows.dir.Focus(Controllers.targetPath)
+		if (w # nil) then
+			v := w.doc.OriginalView()
+			loc := w.loc
+			name := w.name
+			conv := w.conv
+			if name = "" then
+				Dialog.MapString("#System:untitled", name) 
+			end 
+			HostDialog.GetExtSpec(v, loc, name, conv)
+			if loc # nil then
+				Dialog.ShowStatus("#Host:Saving")
+				Converters.Export(loc, name, conv, v)
+				if loc.res = 0 then
+					Dialog.ShowStatus("#Host:Saved") 
+				else 
+					Dialog.ShowStatus("#Host:Failed") 
+				end  
+			end 
+			if ~quit then
+				Kernel.Cleanup 
+			end  
+		end 
+	end SaveCopyAs
+	
+	proc CloseWindow(w: Windows.Window) 
+		var 
+			res: integer
+			msg: Sequencers.CloseMsg
+	begin 
+		if w # nil then
+			if ~w.sub then
+				msg.sticky := false
+				w.seq.Notify(msg)
+				if ~msg.sticky then
+					if w.seq.Dirty() & ~(Windows.neverDirty in w.flags) then
+						HostDialog.CloseDialog(w, quit, res)
+						if res = HostDialog.save then
+							SaveWindow(w, false) // if saving is canceled, document remains dirty
+							if w.seq.Dirty() then
+								quit := false 
+							else 
+								Windows.dir.Close(w) 
+							end  
+						elsif res = HostDialog.cancel then 
+							quit := false 
+						else 
+							Windows.dir.Close(w) 
+						end  
+					else 
+						Windows.dir.Close(w) 
+					end  
+				else 
+					quit := false 
+				end  
+			else 
+				Windows.dir.Close(w) 
+			end 
+			if ~quit then
+				Kernel.Cleanup 
+			end  
+		end 
+	end CloseWindow
+	
+	proc Close*
+	// close top window
+	begin 
+		CloseWindow(Windows.dir.First())
+	end Close
+	
+	
+	proc Print*
+	begin 
+	// empty dummy implementation
+	end Print
+	
+	
+	proc Quit*
+		// stop if all windows can be closed
+		var 
+			w: Windows.Window
+	begin 
+		quit := true
+		w := Windows.dir.First()
+		// WHILE (w # NIL) & (HostWindows.inPlace IN w.flags) DO w := Windows.dir.Next(w) END;
+		while (w # nil) & quit do 
+			CloseWindow(w)
+			w := Windows.dir.First() 
+		// WHILE (w # NIL) & (HostWindows.inPlace IN w.flags) DO w := Windows.dir.Next(w) END
+		end 
+	end Quit
+	
+	(* PROCEDURE SaveAll*;
+	   VAR w: Windows.Window; res: INTEGER;
+	   BEGIN
+	   quit := FALSE;
+	   w := Windows.dir.First();
+	   WHILE (w # NIL) & (HostWindows.inPlace IN w.flags) DO w := Windows.dir.Next(w) END;
+	   res := HostDialog.save;
+	   WHILE (w # NIL) & (res # HostDialog.cancel) DO
+	   IF ~w.sub & w.seq.Dirty() & ~(Windows.neverDirty IN w.flags) THEN
+	   HostDialog.CloseDialog(w, FALSE, res);
+	   IF res = HostDialog.save THEN
+	   SaveWindow(w, FALSE)	(* if saving is canceled, document remains dirty *)
+	   END;
+	   Kernel.Cleanup
+	   END;
+	   w := Windows.dir.Next(w)
+	   END
+	   END SaveAll; *)
+	
+	
+	// Edit menu
+	
+	proc Cut*
+		// move the focus document's selection into the clipboard
+		var 
+			msg: Controllers.EditMsg
+	begin 
+		msg.op := Controllers.cut
+		msg.clipboard := true
+		msg.view := nil
+		msg.w := Views.undefined
+		msg.h := Views.undefined
+		Controllers.Forward(msg)
+		if msg.view # nil then
+			HostClipboard.Register(msg.view, msg.w, msg.h, msg.isSingle) 
+		end 
+	end Cut
+	
+	proc Copy*
+		// move a copy of the focus document's selection into the clipboard
+		var 
+			msg: Controllers.EditMsg
+	begin 
+		msg.op := Controllers.copy_
+		msg.clipboard := true
+		msg.view := nil
+		msg.w := Views.undefined
+		msg.h := Views.undefined
+		Controllers.Forward(msg)
+		if msg.view # nil then
+			HostClipboard.Register(msg.view, msg.w, msg.h, msg.isSingle) 
+		end 
+	end Copy
+	
+	proc Paste*
+		// let focus document insert a copy of the clipboard's contents
+		var 
+			ops: Controllers.PollOpsMsg
+			msg: Controllers.EditMsg
+			res: integer
+	begin 
+		HostClipboard.InitPaste
+	
+	(* HostClipboard.cloneAttributes := TRUE;
+	   HostClipboard.isText := TRUE;
+	   Controllers.PollOps(ops);
+	   HostClipboard.isText := ops.type = "TextViews.View";
+	   IF Controllers.paste IN ops.valid THEN
+	   msg.clipboard := TRUE;
+	   HostClipboard.GetClipView(ops.pasteType, msg.view, msg.w, msg.h, msg.isSingle);
+	   IF msg.view # NIL THEN
+	   msg.op := Controllers.paste; Controllers.Forward(msg)
+	   END
+	   END;
+	   HostClipboard.cloneAttributes := FALSE;
+	   HostClipboard.isText := TRUE; *)
+	
+	
+	end Paste
+	
+	proc PasteObject*
+		// let focus document insert a copy of the clipboard's contents
+		var 
+			ops: Controllers.PollOpsMsg
+			v: Views.View
+			w, h: integer
+			s: boolean
+	begin 
+		Dialog.ShowMsg("PasteObject not implemented yet")
+	(* HostClipboard.cloneAttributes := FALSE;
+	   Controllers.PollOps(ops);
+	   IF Controllers.paste IN ops.valid THEN
+	   HostClipboard.GetClipView(ops.pasteType, v, w, h, s);
+	   IF v # NIL THEN
+	   Controllers.PasteView(v, w, h, TRUE)
+	   END
+	   END *)
+	
+	
+	end PasteObject
+	
+	proc PasteToWindow*
+		var 
+			v: Views.View
+			w, h: integer
+			d: Documents.Document
+			s: boolean
+	begin 
+		Dialog.ShowMsg("PasteToWindow not implemented yet")
+	(* HostClipboard.cloneAttributes := FALSE;
+	   HostClipboard.GetClipView("", v, w, h, s);
+	   IF v # NIL THEN
+	   d := Documents.dir.New(v, w, h);
+	   Views.OpenView(d)
+	   END *)
+	
+	
+	end PasteToWindow
+	
+	
+	proc OpenDoc*(file: array of char) 
+		var 
+			w: Windows.Window
+	begin 
+		w := Windows.dir.Focus(false)
+		if (w.loc # nil) & (w.loc is HostFiles.Locator) & (w.loc(HostFiles.Locator).path # "") then
+			StdCmds.OpenDoc(w.loc(HostFiles.Locator).path + "/" + file) 
+		else 
+			StdCmds.OpenDoc(file) 
+		end 
+	end OpenDoc
+	
+	
+	// Guards
+	
+	proc SaveGuard*(var par: Dialog.Par) 
+		var 
+			w: Windows.Window
+	begin 
+		w := Windows.dir.Focus(Controllers.targetPath)
+		if (w = nil) or (Windows.neverDirty in w.flags) or ~w.seq.Dirty() then
+			par.disabled := true 
+		end 
+	end SaveGuard
+	
+	proc PrintGuard*(var par: Dialog.Par) 
+		var 
+			w: Windows.Window
+	begin 
+		w := Windows.dir.Focus(Controllers.targetPath)
+		if (w = nil) or (Printers.dir = nil) or ~Printers.dir.Available() then
+			par.disabled := true 
+		end 
+	end PrintGuard
+	
+	proc PrinterGuard*(var par: Dialog.Par) 
+	begin 
+		if ~Printers.dir.Available() then
+			par.disabled := true 
+		end 
+	end PrinterGuard
+	
+	proc CutGuard*(var par: Dialog.Par) 
+		var 
+			ops: Controllers.PollOpsMsg
+	begin 
+		Controllers.PollOps(ops)
+		if ~(Controllers.cut in ops.valid) then
+			par.disabled := true 
+		end 
+	end CutGuard
+	
+	proc CopyGuard*(var par: Dialog.Par) 
+		var 
+			ops: Controllers.PollOpsMsg
+	begin 
+		Controllers.PollOps(ops)
+		if ~(Controllers.copy_ in ops.valid) then
+			par.disabled := true 
+		end 
+	end CopyGuard
+	
+	proc PasteGuard*(var par: Dialog.Par) 
+	begin 
+	(* VAR ops: Controllers.PollOpsMsg;
+	   BEGIN
+	   Controllers.PollOps(ops);
+	   IF ~(Controllers.paste IN ops.valid)
+	   OR ~HostClipboard.ConvertibleTo(ops.pasteType) THEN par.disabled := TRUE END *)
+	
+	
+	end PasteGuard
+
+(* PROCEDURE PasteObjectGuard* (VAR par: Dialog.Par);
+   VAR ops: Controllers.PollOpsMsg;
+   BEGIN
+   Controllers.PollOps(ops);
+   IF ~(Controllers.paste IN ops.valid)
+   OR ~HostClipboard.ConvertibleTo("") THEN par.disabled := TRUE END
+   END PasteObjectGuard;
+   
+   PROCEDURE PasteToWindowGuard* (VAR par: Dialog.Par);
+   BEGIN
+   IF ~HostClipboard.ConvertibleTo("") THEN par.disabled := TRUE END
+   END PasteToWindowGuard; *)
+
+
+begin
+	quit := false
+end HostCmds

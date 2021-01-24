@@ -1,0 +1,193 @@
+module Log
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Kernel
+	
+	type 
+		Hook* = pointer to (* abstract *) record (Kernel.Hook) end 
+	
+	var 
+		synch*: boolean // ~synch => output only on FlushBuf
+		force*: boolean // force => every call causes a Views.Restore
+		
+		hook: Hook
+	
+	proc (log: Hook) Guard*(o: ANYPTR): boolean  end // new abstract
+	
+	proc (log: Hook) ClearBuf* end // new abstract
+	proc (log: Hook) FlushBuf* end // new abstract
+	
+	proc (log: Hook) Beep* end // new abstract
+	proc (log: Hook) Char*(ch: char)  end // new abstract
+	proc (log: Hook) Int*(n: integer)  end // new abstract
+	proc (log: Hook) Real*(x: real)  end // new abstract
+	proc (log: Hook) String*(in str: array of char)  end // new abstract
+	proc (log: Hook) Bool*(x: boolean)  end // new abstract
+	proc (log: Hook) Set*(x: set)  end // new abstract
+	proc (log: Hook) IntForm*(x: integer; base, minWidth: integer; fillCh: char
+		showBase: boolean)  end // new abstract
+	proc (log: Hook) RealForm*(x: real; precision, minW, expW: integer
+		fillCh: char)  end // new abstract
+	proc (log: Hook) Tab* end // new abstract
+	proc (log: Hook) Ln* end // new abstract
+	proc (log: Hook) Para* end // new abstract
+	proc (log: Hook) View*(v: ANYPTR)  end // new abstract
+	proc (log: Hook) ViewForm*(v: ANYPTR; w, h: integer)  end // new abstract
+	proc (log: Hook) ParamMsg*(in s, p0, p1, p2: array of char)  end // new abstract
+	
+	
+	proc SetHook*(h: Hook) 
+	begin 
+		hook := h
+	end SetHook
+	
+	proc ClearBuf*
+	begin 
+		if hook # nil then
+			hook.ClearBuf 
+		end 
+	end ClearBuf
+	
+	proc FlushBuf*
+	begin 
+		if hook # nil then
+			hook.FlushBuf 
+		end 
+	end FlushBuf
+	
+	proc Guard*(o: ANYPTR): boolean 
+	begin 
+		return (hook # nil) & hook.Guard(o)
+	end Guard
+	
+	
+	proc Beep*
+	begin 
+		if hook # nil then
+			hook.Beep() 
+		end 
+	end Beep
+	
+	proc Char*(ch: char) 
+	begin 
+		if hook # nil then
+			hook.Char(ch) 
+		end 
+	end Char
+	
+	proc Int*(n: integer) 
+	begin 
+		if hook # nil then
+			hook.Int(n) 
+		end 
+	end Int
+	
+	proc Real*(x: real) 
+	begin 
+		if hook # nil then
+			hook.Real(x) 
+		end 
+	end Real
+	
+	proc String*(str: array of char) 
+	begin 
+		if hook # nil then
+			hook.String(str) 
+		end 
+	end String
+	
+	proc Bool*(x: boolean) 
+	begin 
+		if hook # nil then
+			hook.Bool(x) 
+		end 
+	end Bool
+	
+	proc Set*(x: set) 
+	begin 
+		if hook # nil then
+			hook.Set(x) 
+		end 
+	end Set
+	
+	proc IntForm*(x: integer; base, minWidth: integer; fillCh: char; showBase: boolean) 
+	begin 
+		if hook # nil then
+			hook.IntForm(x, base, minWidth, fillCh, showBase) 
+		end 
+	end IntForm
+	
+	proc RealForm*(x: real; precision, minW, expW: integer; fillCh: char) 
+	begin 
+		if hook # nil then
+			hook.RealForm(x, precision, minW, expW, fillCh) 
+		end 
+	end RealForm
+	
+	proc Tab*
+	begin 
+		if hook # nil then
+			hook.Tab 
+		end 
+	end Tab
+	
+	proc Ln*
+	begin 
+		if hook # nil then
+			hook.Ln 
+		end 
+	end Ln
+	
+	proc Para*
+	begin 
+		if hook # nil then
+			hook.Para 
+		end 
+	end Para
+	
+	proc View*(v: ANYPTR) 
+	begin 
+		if hook # nil then
+			hook.View(v) 
+		end 
+	end View
+	
+	proc ViewForm*(v: ANYPTR; w, h: integer) 
+	begin 
+		if hook # nil then
+			hook.ViewForm(v, w, h) 
+		end 
+	end ViewForm
+	
+	proc ParamMsg*(s, p0, p1, p2: array of char) 
+	begin 
+		if hook # nil then
+			hook.ParamMsg(s, p0, p1, p2) 
+		end 
+	end ParamMsg
+	
+	proc Msg*(s: array of char) 
+	begin 
+		ParamMsg(s, "", "", "")
+	end Msg
+
+begin
+	synch := true
+	force := false
+end Log

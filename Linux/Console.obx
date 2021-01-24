@@ -1,0 +1,54 @@
+module Console
+	(* A. V. Shiryaev, 2012.10
+	   Interface based on OpenBUGS Console *)
+	
+	
+	
+	
+	
+	type 
+		Console* = pointer to (* abstract *) record end 
+	
+	var 
+		cons: Console
+	
+	// Console
+	
+	proc (c: Console) WriteStr-(in s: array of char)  end // new abstract
+	proc (c: Console) WriteChar-(ch: char)  end // new abstract
+	proc (c: Console) WriteLn- end // new abstract
+	
+	(* post:
+	   s = "": end of input or input error
+	   s # "": line with end of line postfix *)
+	
+	
+	proc (c: Console) ReadLn-(var s: array of char)  end // new abstract
+	
+	proc WriteStr*(in text: array of char) 
+	begin 
+		cons.WriteStr(text)
+	end WriteStr
+	
+	proc WriteChar*(c: char) 
+	begin 
+		cons.WriteChar(c)
+	end WriteChar
+	
+	proc WriteLn*
+	begin 
+		cons.WriteLn
+	end WriteLn
+	
+	proc ReadLn*(var text: array of char) 
+	begin 
+		cons.ReadLn(text)
+	end ReadLn
+	
+	
+	proc SetConsole*(c: Console) 
+	begin 
+		cons := c
+	end SetConsole
+
+end Console

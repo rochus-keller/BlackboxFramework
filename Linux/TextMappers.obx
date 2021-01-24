@@ -1,0 +1,845 @@
+module TextMappers
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20141027, center #19, full Unicode support for Component Pascal identifiers added
+	   - 20150130, center #27, Adding SET conversion to the module Strings
+	   - 20160115, center #95, making the Set procedure check the syntax more accurately
+	   - 20160205, center #103, bug fix in TextMappers.Scanner
+	   - 20160306, center #38, use IN for Formatter methods  to avoid incompatibilities with 1.6
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Strings, Views, Dialog, TextModels
+	
+	const 
+		// Scanner.opts
+		returnCtrlChars* = 1
+		returnQualIdents* = 2
+		returnViews* = 3
+		interpretBools* = 4
+		interpretSets* = 5
+		maskViews* = 6
+		
+		// Scanner.type
+		char_* = 1
+		string* = 3
+		int_* = 4
+		real_* = 5
+		bool* = 6 // iff interpretBools IN opts
+		set_* = 7 // iff interpretSets IN opts
+		view* = 8 // iff returnViews IN opts
+		tab* = 9 // iff returnCtrlChars IN opts
+		line* = 10
+		para* = 11
+		lint* = 16
+		eot* = 30
+		invalid* = 31 // last Scan hit lexically invalid sequence
+		
+		// Formatter.WriteIntForm base
+		charCode* = Strings.charCode
+		decimal* = Strings.decimal
+		hexadecimal* = Strings.hexadecimal
+		
+		// Formatter.WriteIntForm showBase
+		hideBase* = Strings.hideBase
+		showBase* = Strings.showBase
+		
+		VIEW = TextModels.viewcode
+		TAB = TextModels.tab
+		LINE = TextModels.line
+		PARA = TextModels.para
+		
+		acceptUnderscores = true
+	
+	type 
+		String* = array 256 of char
+		
+		Scanner* = record 
+				opts-: set
+				rider-: TextModels.Reader // prefetch state for single character look-ahead
+				
+				type_*: integer
+				start*, lines*, paras*: integer // update by Skip
+				
+				char_*: char // valid iff type = char
+				int_*: integer // valid iff type = int
+				base*: integer // valid iff type IN {int, lint}
+				lint*: longint // valid iff type IN {int, lint}
+				real_*: real // valid iff type = real
+				bool*: boolean // valid iff type = bool
+				set_*: set // valid iff type = set
+				len_*: integer // valid iff type IN {string, int, lint}
+				string*: String // valid iff type IN {string, int, lint, bool, char}
+				view*: Views.View; w*, h*: integer  // valid iff type = view
+			end 
+		
+		Formatter* = record 
+				rider-: TextModels.Writer 
+			end 
+	
+	
+	// Scanner
+	
+	
+	proc Get(var s: Scanner; var ch: char) 
+	begin 
+		s.rider.ReadChar(ch)
+		if ({returnViews, maskViews} * s.opts = {returnViews}) & (s.rider.view # nil) then
+			ch := VIEW
+			s.rider.char_ := VIEW 
+		end 
+	end Get
+	
+	proc Real(var s: Scanner) 
+		var 
+			res: integer
+			ch: char
+	begin 
+		s.type_ := real_
+		s.string[s.len_] := "."
+		inc(s.len_)
+		Get(s, ch)
+		while ("0" <= ch) & (ch <= "9") & (s.len_ < len(s.string) - 1) do 
+			s.string[s.len_] := ch
+			inc(s.len_)
+			Get(s, ch) 
+		end 
+		if (ch = "E") or (ch = "D") then
+			s.string[s.len_] := ch
+			inc(s.len_)
+			Get(s, ch)
+			if (ch = "-") or (ch = "+") then
+				s.string[s.len_] := ch
+				inc(s.len_)
+				Get(s, ch) 
+			end 
+			while ("0" <= ch) & (ch <= "9") & (s.len_ < len(s.string) - 1) do 
+				s.string[s.len_] := ch
+				inc(s.len_)
+				Get(s, ch) 
+			end  
+		end 
+		s.string[s.len_] := 0x
+		Strings.StringToReal(s.string, s.real_, res)
+		if res # 0 then
+			s.type_ := invalid 
+		end 
+	end Real
+	
+	proc Integer(var s: Scanner) 
+		var 
+			n, k, res: integer
+			ch: char
+			hex: boolean
+	begin 
+		s.type_ := int_
+		hex := false
+		ch := s.rider.char_
+		if ch = "%" then
+			s.string[s.len_] := "%"
+			inc(s.len_)
+			Get(s, ch)
+			n := 0
+			if ("0" <= ch) & (ch <= "9") then
+				k := ord(ch) - ord("0")
+				repeat 
+					n := 10 * n + k
+					s.string[s.len_] := ch
+					inc(s.len_)
+					Get(s, ch)
+					k := ord(ch) - ord("0") 
+				until (ch < "0") or (ch > "9") or (n > (max(integer) - k) div 10) or (s.len_ = len(s.string)) 
+				if ("0" <= ch) & (ch <= "9") then
+					s.type_ := invalid 
+				else 
+					s.base := n 
+				end  
+			else 
+				s.type_ := invalid 
+			end  
+		elsif (ch = "H") or (ch = "X") then 
+			hex := true
+			s.base := 16
+			s.string[s.len_] := ch
+			inc(s.len_)
+			Get(s, ch) 
+		else 
+			s.base := 10 
+		end 
+		s.string[s.len_] := 0x
+		if s.type_ # invalid then
+			Strings.StringToInt(s.string, s.int_, res)
+			if res = 0 then
+				s.type_ := int_
+				if hex then // Strings.StringToLInt(s.string, s.lint, res); ASSERT(res = 0, 100);
+					if s.int_ < 0 then
+						s.lint := s.int_ + (long(max(integer)) + 1) * 2 
+					else 
+						s.lint := s.int_ 
+					end  
+				else 
+					s.lint := s.int_ 
+				end  
+			elsif res = 1 then  // INTEGER overflow
+				Strings.StringToLInt(s.string, s.lint, res)
+				if res = 0 then
+					s.type_ := lint 
+				else 
+					s.type_ := invalid 
+				end  
+			else  // syntax error
+				s.type_ := invalid 
+			end  
+		end 
+	end Integer
+	
+	proc Number(var s: Scanner; neg: boolean) 
+		var 
+			m: integer
+			ch: char
+	begin 
+		s.len_ := 0
+		m := 0
+		ch := s.rider.char_
+		if neg then
+			s.string[s.len_] := "-"
+			inc(s.len_) 
+		end 
+		repeat 
+			if (m > 0) or (ch # "0") then // ignore leading zeroes
+				s.string[s.len_] := ch
+				inc(s.len_)
+				inc(m) 
+			end 
+			Get(s, ch) 
+		until (ch < "0") or (ch > "9") & (ch < "A") or (ch > "F") 
+			or (s.len_ = len(s.string) - 1) or s.rider.eot 
+		if (s.len_ = 0) or (s.len_ = 1) & (s.string[0] = "-") then // compensate for ignoring leading zeroes
+			s.string[s.len_] := "0"
+			inc(s.len_) 
+		end 
+		s.string[s.len_] := 0x
+		if ch = "." then
+			Real(s) 
+		else 
+			Integer(s) 
+		end 
+	end Number
+	
+	proc Cardinal(var s: Scanner; var n: integer) 
+		var 
+			k: integer
+			ch: char
+	begin 
+		n := 0
+		s.Skip(ch)
+		if ("0" <= ch) & (ch <= "9") then
+			k := ord(ch) - ord("0")
+			repeat 
+				n := n * 10 + k
+				Get(s, ch)
+				k := ord(ch) - ord("0") 
+			until (ch < "0") or (ch > "9") or (n > (max(integer) - k) div 10) 
+			if ("0" <= ch) & (ch <= "9") then
+				s.type_ := invalid 
+			end  
+		else 
+			s.type_ := invalid 
+		end 
+	end Cardinal
+	
+	proc Set(var s: Scanner) 
+		var 
+			n, m, start: integer
+			ch: char
+	begin 
+		s.type_ := set_
+		start := s.start
+		Get(s, ch)
+		s.Skip(ch)
+		s.set_ := {}
+		while ("0" <= ch) & (ch <= "9") & (s.type_ = set_) do 
+			Cardinal(s, n)
+			s.Skip(ch)
+			if (min(set) <= n) & (n <= max(set)) then
+				incl(s.set_, n)
+				if ch = "." then
+					Get(s, ch)
+					if ch = "." then
+						Get(s, ch)
+						s.Skip(ch)
+						Cardinal(s, m)
+						s.Skip(ch)
+						if (n <= m) & (m <= max(set)) then
+							while m > n do 
+								incl(s.set_, m)
+								dec(m) 
+							end  
+						else 
+							s.type_ := invalid 
+						end  
+					else 
+						s.type_ := invalid 
+					end  
+				end 
+				if (s.type_ = set_) & (ch = ",") then
+					Get(s, ch)
+					s.Skip(ch)
+					if ch = "}" then
+						s.type_ := invalid 
+					end  
+				elsif ch # "}" then 
+					s.type_ := invalid 
+				end  
+			else 
+				s.type_ := invalid 
+			end  
+		end 
+		if s.type_ = set_ then
+			if ch = "}" then
+				Get(s, ch) 
+			else 
+				s.type_ := invalid 
+			end  
+		else 
+			s.type_ := invalid 
+		end 
+		s.start := start
+	end Set
+	
+	proc Boolean(var s: Scanner) 
+		var 
+			ch: char
+	begin 
+		s.type_ := bool
+		Get(s, ch)
+		if (ch = "T") or (ch = "F") then
+			s.Scan
+			if (s.type_ = string) & (s.string = "TRUE") then
+				s.type_ := bool
+				s.bool := true 
+			elsif (s.type_ = string) & (s.string = "FALSE") then 
+				s.type_ := bool
+				s.bool := false 
+			else 
+				s.type_ := invalid 
+			end  
+		else 
+			s.type_ := invalid 
+		end 
+	end Boolean
+	
+	proc Name(var s: Scanner) 
+		var 
+			max_: integer
+			ch: char
+	begin 
+		s.type_ := string
+		s.len_ := 0
+		ch := s.rider.char_
+		max_ := len(s.string)
+		repeat 
+			s.string[s.len_] := ch
+			inc(s.len_)
+			Get(s, ch) 
+		until ~(Strings.IsIdent(ch) & (ch # "_") or acceptUnderscores & (ch = "_")) or (s.len_ = max_) 
+		if (returnQualIdents in s.opts) & (ch = ".") & (s.len_ < max_) then
+			repeat 
+				s.string[s.len_] := ch
+				inc(s.len_)
+				Get(s, ch) 
+			until 
+				~(Strings.IsIdent(ch) & (ch # "_") or acceptUnderscores & (ch = "_")) or (s.len_ = max_)  
+		end 
+		if s.len_ = max_ then // ident too long
+			dec(s.len_)
+			s.type_ := invalid 
+		end 
+		s.string[s.len_] := 0x
+	end Name
+	
+	proc DoubleQuotedString(var s: Scanner) 
+		var 
+			max_, pos: integer
+			ch: char
+	begin 
+		pos := s.rider.Pos()
+		s.type_ := string
+		s.len_ := 0
+		max_ := len(s.string) - 1
+		Get(s, ch)
+		while (ch # '"') & (ch # 0x) & (s.len_ < max_) do 
+			s.string[s.len_] := ch
+			inc(s.len_)
+			Get(s, ch) 
+		end 
+		s.string[s.len_] := 0x
+		if ch = '"' then
+			Get(s, ch) 
+		else  // s.rider.Pos() - s.len - 1
+			s.type_ := invalid
+			s.rider.SetPos(pos)
+			Get(s, ch) 
+		end 
+	end DoubleQuotedString
+	
+	proc SingleQuotedString(var s: Scanner) 
+		var 
+			max_, pos: integer
+			ch: char
+	begin 
+		pos := s.rider.Pos()
+		s.type_ := string
+		s.len_ := 0
+		max_ := len(s.string) - 1
+		Get(s, ch)
+		while (ch # "'") & (ch # 0x) & (s.len_ < max_) do 
+			s.string[s.len_] := ch
+			inc(s.len_)
+			Get(s, ch) 
+		end 
+		s.string[s.len_] := 0x
+		if s.len_ = 1 then
+			s.type_ := char_
+			s.char_ := s.string[0] 
+		end 
+		if ch = "'" then
+			Get(s, ch) 
+		else  // s.rider.Pos() - s.len - 1
+			s.type_ := invalid
+			s.rider.SetPos(pos)
+			Get(s, ch) 
+		end 
+	end SingleQuotedString
+	
+	proc Char(var s: Scanner) 
+		var 
+			ch: char
+	begin 
+		ch := s.rider.char_
+		if ch # 0x then
+			s.type_ := char_
+			s.char_ := ch
+			s.string[0] := ch
+			s.string[1] := 0x
+			Get(s, ch) 
+		else 
+			s.type_ := invalid 
+		end 
+	end Char
+	
+	proc View(var s: Scanner) 
+		var 
+			ch: char
+	begin 
+		s.type_ := view
+		s.view := s.rider.view
+		s.w := s.rider.w
+		s.h := s.rider.h
+		if maskViews in s.opts then
+			if s.rider.char_ # TextModels.viewcode then
+				s.type_ := char_
+				s.char_ := s.rider.char_
+				s.string[0] := s.char_
+				s.string[1] := 0x 
+			end  
+		end 
+		Get(s, ch)
+	end View
+	
+	
+	proc (var s: Scanner) ConnectTo*(text: TextModels.Model)  // new
+	begin 
+		if text # nil then
+			s.rider := text.NewReader(s.rider)
+			s.SetPos(0)
+			s.SetOpts({}) 
+		else 
+			s.rider := nil 
+		end 
+	end ConnectTo
+	
+	proc (var s: Scanner) SetPos*(pos: integer)  // new
+	begin 
+		s.rider.SetPos(pos)
+		s.start := pos
+		s.lines := 0
+		s.paras := 0
+		s.type_ := invalid
+	end SetPos
+	
+	proc (var s: Scanner) SetOpts*(opts: set)  // new
+	begin 
+		s.opts := opts
+	end SetOpts
+	
+	proc (var s: Scanner) Pos*(): integer  // new
+	begin 
+		return s.rider.Pos()
+	end Pos
+	
+	proc (var s: Scanner) Skip*(var ch: char)  // new
+		var 
+			c, v: boolean
+	begin 
+		if s.opts * {returnCtrlChars, returnViews} = {} then
+			ch := s.rider.char_
+			while ((ch <= " ") or (ch = TextModels.digitspace) or (ch = TextModels.nbspace)) 
+				& ~s.rider.eot do 
+				if ch = LINE then
+					inc(s.lines) 
+				elsif ch = PARA then 
+					inc(s.paras) 
+				end 
+				Get(s, ch) 
+			end  
+		else 
+			c := returnCtrlChars in s.opts
+			v := returnViews in s.opts
+			ch := s.rider.char_
+			while ((ch <= " ") or (ch = TextModels.digitspace) or (ch = TextModels.nbspace)) 
+				& ~s.rider.eot 
+				& (~c or (ch # TAB) & (ch # LINE) & (ch # PARA)) 
+				& (~v or (ch # VIEW) or (s.rider.view = nil)) do 
+				if ch = LINE then
+					inc(s.lines) 
+				elsif ch = PARA then 
+					inc(s.paras) 
+				end 
+				Get(s, ch) 
+			end  
+		end 
+		if ~s.rider.eot then
+			s.start := s.rider.Pos() - 1 
+		else 
+			s.start := s.rider.Base().Length()
+			s.type_ := eot 
+		end 
+	end Skip
+	
+	proc (var s: Scanner) Scan* // new
+		var 
+			sign, neg: boolean
+			ch: char
+	begin 
+		s.Skip(ch)
+		if s.type_ # eot then
+			neg := (ch = "-")
+			sign := neg or (ch = "+")
+			if sign then
+				s.char_ := ch
+				Get(s, ch) 
+			end 
+			if ("0" <= ch) & (ch <= "9") then
+				Number(s, neg) 
+			elsif sign then  // return prefetched sign w/o trailing number
+				s.type_ := char_
+				s.string[0] := s.char_
+				s.string[1] := 0x 
+			else 
+				if Strings.IsAlpha(ch) then
+					Name(s) 
+				else 
+					case ch of 
+						| '"': 
+							DoubleQuotedString(s) 
+						| "'": 
+							SingleQuotedString(s) 
+						| TAB: 
+							s.type_ := tab
+							Get(s, ch) 
+						| LINE: 
+							s.type_ := line
+							Get(s, ch) 
+						| PARA: 
+							s.type_ := para
+							Get(s, ch) 
+						| VIEW: 
+							if s.rider.view # nil then
+								View(s) 
+							else 
+								Char(s) 
+							end  
+						| "{": 
+							if interpretSets in s.opts then
+								Set(s) 
+							else 
+								Char(s) 
+							end  
+						| "$": 
+							if interpretBools in s.opts then
+								Boolean(s) 
+							else 
+								Char(s) 
+							end  
+						| "_": 
+							if acceptUnderscores then
+								Name(s) 
+							else 
+								Char(s) 
+							end  
+					else 
+						Char(s) 
+					end  
+				end  
+			end  
+		end 
+	end Scan
+	
+	
+	// scanning utilities
+	
+	proc IsQualIdent*(in s: array of char): boolean 
+		var 
+			i: integer
+			ch: char
+	begin 
+		ch := s[0]
+		i := 1
+		if Strings.IsIdentStart(ch) then
+			repeat 
+				ch := s[i]
+				inc(i) 
+			until ~Strings.IsIdent(ch) 
+			if ch = "." then
+				inc(i)
+				repeat 
+					ch := s[i]
+					inc(i) 
+				until ~Strings.IsIdent(ch) 
+				return ch = 0x 
+			else 
+				return false 
+			end  
+		else 
+			return false 
+		end 
+	end IsQualIdent
+	
+	proc ScanQualIdent*(var s: Scanner; var x: array of char; var done: boolean) 
+		var 
+			mod_: String
+			i, j, len_, start: integer
+			ch: char
+	begin 
+		done := false
+		if s.type_ = string then
+			if IsQualIdent(s.string) then
+				if s.len_ < len(x) then
+					x := s.string
+					done := true 
+				end  
+			else 
+				mod_ := s.string
+				len_ := s.len_
+				start := s.start
+				s.Scan
+				if (s.type_ = char_) & (s.char_ = ".") then
+					s.Scan
+					if (s.type_ = string) & (len_ + 1 + s.len_ < len(x)) then
+						i := 0
+						ch := mod_[0]
+						while ch # 0x do 
+							x[i] := ch
+							inc(i)
+							ch := mod_[i] 
+						end 
+						x[i] := "."
+						inc(i)
+						j := 0
+						ch := s.string[0]
+						while ch # 0x do 
+							x[i] := ch
+							inc(i)
+							inc(j)
+							ch := s.string[j] 
+						end 
+						x[i] := 0x
+						done := true 
+					end  
+				end 
+				if ~done then
+					s.SetPos(start)
+					s.Scan() 
+				end  
+			end  
+		end 
+	end ScanQualIdent
+	
+	
+	// Formatter
+	
+	
+	proc (var f: Formatter) ConnectTo*(text: TextModels.Model)  // new
+	begin 
+		if text # nil then
+			f.rider := text.NewWriter(f.rider)
+			f.SetPos(text.Length()) 
+		else 
+			f.rider := nil 
+		end 
+	end ConnectTo
+	
+	proc (in f: Formatter) SetPos*(pos: integer)  // new
+	begin 
+		f.rider.SetPos(pos)
+	end SetPos
+	
+	proc (in f: Formatter) Pos*(): integer  // new
+	begin 
+		return f.rider.Pos()
+	end Pos
+	
+	
+	proc (in f: Formatter) WriteChar*(x: char)  // new
+	begin 
+		if (x >= " ") & (x # 7fx) then
+			f.rider.WriteChar(x) 
+		else 
+			f.rider.WriteChar(" ")
+			f.WriteIntForm(ord(x), charCode, 3, "0", showBase)
+			f.rider.WriteChar(" ") 
+		end 
+	end WriteChar
+	
+	proc (in f: Formatter) WriteInt*(x: longint)  // new
+	begin 
+		f.WriteIntForm(x, decimal, 0, TextModels.digitspace, hideBase)
+	end WriteInt
+	
+	proc (in f: Formatter) WriteSString*(x: array of char)  // new
+		var 
+			i: integer
+	begin 
+		i := 0
+		while x[i] # 0x do 
+			f.WriteChar(x[i])
+			inc(i) 
+		end 
+	end WriteSString
+	
+	proc (in f: Formatter) WriteString*(x: array of char)  // new
+		var 
+			i: integer
+	begin 
+		i := 0
+		while x[i] # 0x do 
+			f.WriteChar(x[i])
+			inc(i) 
+		end 
+	end WriteString
+	
+	proc (in f: Formatter) WriteReal*(x: real)  // new
+		var 
+			m: array 256 of char
+	begin 
+		Strings.RealToString(x, m)
+		f.WriteString(m)
+	end WriteReal
+	
+	proc (in f: Formatter) WriteBool*(x: boolean)  // new
+	begin 
+		if x then
+			f.WriteString("$TRUE") 
+		else 
+			f.WriteString("$FALSE") 
+		end 
+	end WriteBool
+	
+	proc (in f: Formatter) WriteSet*(x: set)  // new
+		var 
+			str: array 128 of char
+	begin 
+		Strings.SetToString(x, str)
+		f.WriteString(str)
+	end WriteSet
+	
+	proc (in f: Formatter) WriteTab* // new
+	begin 
+		f.rider.WriteChar(TAB)
+	end WriteTab
+	
+	proc (in f: Formatter) WriteLn* // new
+	begin 
+		f.rider.WriteChar(LINE)
+	end WriteLn
+	
+	proc (in f: Formatter) WritePara* // new
+	begin 
+		f.rider.WriteChar(PARA)
+	end WritePara
+	
+	proc (in f: Formatter) WriteView*(v: Views.View)  // new
+	begin 
+		f.WriteViewForm(v, Views.undefined, Views.undefined)
+	end WriteView
+	
+	
+	proc (in f: Formatter) WriteIntForm*(x: longint
+		base, minWidth: integer; fillCh: char; showBase: boolean
+		)  // new
+		var 
+			s: array 80 of char
+	begin 
+		Strings.IntToStringForm(x, base, minWidth, fillCh, showBase, s)
+		f.WriteString(s)
+	end WriteIntForm
+	
+	proc (in f: Formatter) WriteRealForm*(x: real
+		precision, minW, expW: integer; fillCh: char
+		)  // new
+		var 
+			s: array 256 of char
+	begin 
+		Strings.RealToStringForm(x, precision, minW, expW, fillCh, s)
+		f.WriteString(s)
+	end WriteRealForm
+	
+	
+	proc (in f: Formatter) WriteViewForm*(v: Views.View; w, h: integer)  // new
+	begin 
+		f.rider.WriteView(v, w, h)
+	end WriteViewForm
+	
+	proc (in f: Formatter) WriteParamMsg*(msg, p0, p1, p2: array of char)  // new
+		var 
+			s: array 256 of char
+			i: integer
+			ch: char
+	begin 
+		Dialog.MapParamString(msg, p0, p1, p2, s)
+		i := 0
+		ch := s[0]
+		while ch # 0x do 
+			if ch = LINE then
+				f.WriteLn 
+			elsif ch = PARA then 
+				f.WritePara 
+			elsif ch = TAB then 
+				f.WriteTab 
+			elsif ch >= " " then 
+				f.WriteChar(ch) 
+			end 
+			inc(i)
+			ch := s[i] 
+		end 
+	end WriteParamMsg
+	
+	proc (in f: Formatter) WriteMsg*(msg: array of char)  // new
+	begin 
+		f.WriteParamMsg(msg, "", "", "")
+	end WriteMsg
+
+end TextMappers

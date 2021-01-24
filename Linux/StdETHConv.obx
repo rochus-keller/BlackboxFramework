@@ -1,0 +1,373 @@
+module StdETHConv
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		Fonts, Files, Stores, Ports, Views, 
+		TextModels, TextRulers, TextViews, 
+		Stamps:= StdStamps, Clocks:= StdClocks, StdFolds
+	
+	const 
+		V2Tag = -4095 // 01 F0
+		V4Tag = 496 // F0 01
+	
+	type 
+		FontDesc = record 
+				typeface: Fonts.Typeface
+				size_: integer
+				style: set
+				weight: integer 
+			end 
+	
+	var 
+		default: Fonts.Font
+	
+	proc Split(name: array of char; var d: FontDesc) 
+		var 
+			i: integer
+			ch: char
+	begin 
+		i := 0
+		ch := name[0]
+		while (ch < "0") or (ch > "9") do 
+			d.typeface[i] := ch
+			inc(i)
+			ch := name[i] 
+		end 
+		d.typeface[i] := 0x
+		d.size_ := 0
+		while ("0" <= ch) & (ch <= "9") do 
+			d.size_ := d.size_ * 10 + (ord(ch) - 30h)
+			inc(i)
+			ch := name[i] 
+		end 
+		case ch of 
+			"b": 
+				d.style := {}
+				d.weight := Fonts.bold 
+			| "i": 
+				d.style := {Fonts.italic}
+				d.weight := Fonts.normal 
+			| "j": 
+				d.style := {Fonts.italic}
+				d.weight := Fonts.bold 
+			| "m": 
+				d.style := {}
+				d.weight := Fonts.bold 
+		else  // unknown style
+			d.style := {}
+			d.weight := Fonts.normal 
+		end 
+	end Split
+	
+	proc ThisFont(name: array of char): Fonts.Font 
+		var 
+			d: FontDesc
+	begin 
+		Split(name, d)
+		if d.typeface = "Syntax" then
+			d.typeface := default.typeface 
+		end 
+		if d.size_ = 10 then
+			d.size_ := default.size_ 
+		else 
+			d.size_ := (d.size_ - 2) * Ports.point 
+		end 
+		return Fonts.dir.This(d.typeface, d.size_, d.style, d.weight)
+	end ThisFont
+	
+	proc ThisChar(ch: char): char 
+	begin 
+		case ord(ch) of 
+			80h: 
+				ch := 0c4x 
+			| 81h: 
+				ch := 0d6x 
+			| 82h: 
+				ch := 0dcx 
+			| 83h: 
+				ch := 0e4x 
+			| 84h: 
+				ch := 0f6x 
+			| 85h: 
+				ch := 0fcx 
+			| 86h: 
+				ch := 0e2x 
+			| 87h: 
+				ch := 0eax 
+			| 88h: 
+				ch := 0eex 
+			| 89h: 
+				ch := 0f4x 
+			| 8ah: 
+				ch := 0fbx 
+			| 8bh: 
+				ch := 0e0x 
+			| 8ch: 
+				ch := 0e8x 
+			| 8dh: 
+				ch := 0ecx 
+			| 8eh: 
+				ch := 0f2x 
+			| 8fh: 
+				ch := 0f9x 
+			| 90h: 
+				ch := 0e9x 
+			| 91h: 
+				ch := 0ebx 
+			| 92h: 
+				ch := 0efx 
+			| 93h: 
+				ch := 0e7x 
+			| 94h: 
+				ch := 0e1x 
+			| 95h: 
+				ch := 0f1x 
+			| 9bh: 
+				ch := TextModels.hyphen 
+			| 9fh: 
+				ch := TextModels.nbspace 
+			| 0abh: 
+				ch := 0dfx 
+		else 
+			ch := 0bfx  // use inverted question mark for unknown character codes
+		end 
+		return ch
+	end ThisChar
+	
+	proc StdFold(var r: Stores.Reader): Views.View 
+		const 
+			colLeft = 0
+			colRight = 1
+			expRight = 2
+			expLeft = 3
+		var 
+			k: byte
+			state: boolean
+			hidden: TextModels.Model
+			fold: StdFolds.Fold
+	begin 
+		r.ReadByte(k)
+		case k mod 4 of 
+			| colLeft: 
+				state := StdFolds.collapsed 
+			| colRight: 
+				state := StdFolds.collapsed 
+			| expRight: 
+				state := StdFolds.expanded 
+			| expLeft: 
+				state := StdFolds.expanded 
+		end 
+		if (k mod 4 in {colLeft, expLeft}) & (k < 4) then
+			hidden := TextModels.dir.New()
+			LoadTextBlock(r, hidden) 
+		else 
+			hidden := nil 
+		end 
+		fold := StdFolds.dir.New(state, "", hidden)
+		return fold
+	end StdFold
+	
+	proc LoadTextBlock(r: Stores.Reader; t: TextModels.Model) 
+		var 
+			r0: Stores.Reader
+			wr: TextModels.Writer
+			org, len_: integer
+			en, ano, i, n: byte
+			col, voff, ch: char
+			tag: integer
+			fname: array 32 of char
+			attr: array 32 of TextModels.Attributes
+			mod_, proc_: array 32 of array 32 of char
+		
+		proc ReadNum(var n: integer) 
+			var 
+				s: byte
+				ch: char
+				y: integer
+		begin 
+			s := 0
+			y := 0
+			r.ReadXChar(ch)
+			while ch >= 80x do 
+				inc(y, ash(ord(ch) - 128, s))
+				inc(s, 7)
+				r.ReadXChar(ch) 
+			end 
+			n := ash((ord(ch) + 64) mod 128 - 64, s) + y
+		end ReadNum
+		
+		proc ReadSet(var s: set) 
+			var 
+				x: integer
+		begin 
+			ReadNum(x)
+			s := bits(x)
+		end ReadSet
+		
+		proc Elem(var r: Stores.Reader; span: integer) 
+			var 
+				v: Views.View
+				end_, ew, eh, n, indent: integer
+				eno, version: byte
+				p: TextRulers.Prop
+				opts: set
+		begin 
+			r.ReadInt(ew)
+			r.ReadInt(eh)
+			r.ReadByte(eno)
+			if eno > en then
+				en := eno
+				r.ReadXString(mod_[eno])
+				r.ReadXString(proc_[eno]) 
+			end 
+			end_ := r.Pos() + span
+			if (mod_[eno] = "ParcElems") or (mod_[eno] = "StyleElems") then
+				r.ReadByte(version)
+				new(p)
+				p.valid := {TextRulers.first..TextRulers.tabs}
+				ReadNum(indent)
+				ReadNum(p.left)
+				p.first := p.left + indent
+				ReadNum(n)
+				p.right := p.left + n
+				ReadNum(p.lead)
+				ReadNum(p.grid)
+				ReadNum(p.dsc)
+				p.asc := p.grid - p.dsc
+				ReadSet(opts)
+				p.opts.val_ := {}
+				if ~(0 in opts) then
+					p.grid := 1 
+				end 
+				if 1 in opts then
+					incl(p.opts.val_, TextRulers.leftAdjust) 
+				end 
+				if 2 in opts then
+					incl(p.opts.val_, TextRulers.rightAdjust) 
+				end 
+				if 3 in opts then
+					incl(p.opts.val_, TextRulers.pageBreak) 
+				end 
+				incl(p.opts.val_, TextRulers.rightFixed)
+				p.opts.mask := {TextRulers.leftAdjust..TextRulers.pageBreak, TextRulers.rightFixed}
+				ReadNum(n)
+				p.tabs.len_ := n
+				i := 0
+				while i < p.tabs.len_ do 
+					ReadNum(p.tabs.tab[i].stop)
+					inc(i) 
+				end 
+				v := TextRulers.dir.NewFromProp(p)
+				wr.WriteView(v, ew, eh) 
+			elsif mod_[eno] = "StampElems" then 
+				v := Stamps.New()
+				wr.WriteView(v, ew, eh) 
+			elsif mod_[eno] = "ClockElems" then 
+				v := Clocks.New()
+				wr.WriteView(v, ew, eh) 
+			elsif mod_[eno] = "FoldElems" then 
+				v := StdFold(r)
+				wr.WriteView(v, ew, eh) 
+			end 
+			r.SetPos(end_)
+		end Elem
+	
+	begin 
+		// skip inner text tags (legacy from V2)
+		r.ReadXInt(tag)
+		if tag # V2Tag then
+			r.SetPos(r.Pos() - 2) 
+		end 
+		// load text block
+		org := r.Pos()
+		r.ReadInt(len_)
+		inc(org, len_ - 2)
+		r0.ConnectTo(r.rider.Base())
+		r0.SetPos(org)
+		wr := t.NewWriter(nil)
+		wr.SetPos(0)
+		n := 0
+		en := 0
+		r.ReadByte(ano)
+		while ano # 0 do 
+			if ano > n then
+				n := ano
+				r.ReadXString(fname)
+				attr[n] := TextModels.NewFont(wr.attr, ThisFont(fname)) 
+			end 
+			r.ReadXChar(col)
+			r.ReadXChar(voff)
+			r.ReadInt(len_)
+			wr.SetAttr(attr[ano])
+			if len_ > 0 then
+				while len_ # 0 do 
+					r0.ReadXChar(ch)
+					if ch >= 80x then
+						ch := ThisChar(ch) 
+					end 
+					if (ch >= " ") or (ch = TextModels.tab) or (ch = TextModels.line) then
+						wr.WriteChar(ch) 
+					end 
+					dec(len_) 
+				end  
+			else 
+				Elem(r, -len_)
+				r0.ReadXChar(ch) 
+			end 
+			r.ReadByte(ano) 
+		end 
+		r.ReadInt(len_)
+		r.SetPos(r.Pos() + len_)
+	end LoadTextBlock
+	
+	proc ImportOberon*(f: Files.File): TextModels.Model 
+		var 
+			r: Stores.Reader
+			t: TextModels.Model
+			tag: integer
+	begin 
+		r.ConnectTo(f)
+		r.SetPos(0)
+		r.ReadXInt(tag)
+		if tag = ord("o") + 256 * ord("B") then
+			// ignore file header of Oberon for Windows and DOSOberon files
+			r.SetPos(34)
+			r.ReadXInt(tag) 
+		end 
+		assert((tag = V2Tag) or (tag = V4Tag), 100)
+		t := TextModels.dir.New()
+		LoadTextBlock(r, t)
+		return t
+	end ImportOberon
+	
+	
+	proc ImportETHDoc*(f: Files.File; var s: Stores.Store) 
+		var 
+			t: TextModels.Model
+	begin 
+		assert(f # nil, 20)
+		t := ImportOberon(f)
+		if t # nil then
+			s := TextViews.dir.New(t) 
+		end 
+	end ImportETHDoc
+
+begin
+	default := Fonts.dir.Default()
+end StdETHConv

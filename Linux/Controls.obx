@@ -1,0 +1,4201 @@
+module Controls
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20141027, center #19, full Unicode support for Component Pascal identifiers added
+	   - 20150521, center #51, support for ANYPTR and SYSTEM.PTR in LookupPath
+	   - 20160122, center #98, improvements of GUI controls
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		Kernel, Dates, Dialog, Meta, Services, Stores, Views, Properties, 
+		Strings, Fonts, Ports, Controllers, Windows, StdCFrames
+	
+	const 
+		// elements of Property.valid
+		opt0* = 0
+		opt1* = 1
+		opt2* = 2
+		opt3* = 3
+		opt4* = 4
+		link* = 5
+		label* = 6
+		guard* = 7
+		notifier* = 8
+		level* = 9
+		
+		default* = opt0
+		cancel* = opt1
+		left* = opt0
+		right* = opt1
+		multiLine* = opt2
+		password* = opt3
+		sorted* = opt0
+		haslines* = opt1
+		hasbuttons* = opt2
+		atroot* = opt3
+		foldericons* = opt4
+		
+		minVersion = 0
+		maxBaseVersion = 4
+		pbVersion = 0
+		cbVersion = 0
+		rbVersion = 0
+		fldVersion = 0
+		dfldVersion = 0
+		tfldVersion = 0
+		cfldVersion = 0
+		lbxVersion = 0
+		sbxVersion = 0
+		cbxVersion = 0
+		capVersion = 1
+		grpVersion = 0
+		tfVersion = 0
+		
+		rdel = 07x
+		ldel = 08x
+		tab = 09x
+		ltab = 0ax
+		lineChar = 0dx
+		esc = 01bx
+		arrowLeft = 1cx
+		arrowRight = 1dx
+		arrowUp = 1ex
+		arrowDown = 1fx
+		
+		update = 2 // notify options
+		listUpdate = 3
+		guardCheck = 4
+		flushCaches = 5 // re-map labels for flushed string resources, after a language change
+		
+		maxAdr = 8
+		
+		// unicode non-characters, known in HostMenus, HostCFrames, Controls
+		apps = 0fdd0x // 'menu key',  WinApi.VK_APPS, bypasses BB's popup mechanism for edit controls
+		ctrlZ = 0fdd1x // bypasses BB's undo mechanism for edit controls
+		ctrlA = 0fdd2x // send ctrl-A (select all) to edit controls
+	
+	type 
+		Prop* = pointer to record (Properties.Property) 
+				opt*: array 5 of boolean
+				link*: Dialog.String
+				label*: Dialog.String
+				guard*: Dialog.String
+				notifier*: Dialog.String
+				level*: integer 
+			end 
+		
+		Directory* = pointer to (* abstract *) record end 
+		
+		Control* = pointer to (* abstract *) record (Views.View) 
+				item-: Meta.Item
+				disabled-, undef-, readOnly-, customFont-: boolean
+				font-: Fonts.Font
+				label-: Dialog.String
+				prop-: Prop
+				adr: array maxAdr of integer
+				num: integer
+				stamp: integer
+				shortcut: char
+				guardErr, notifyErr: boolean 
+			end 
+		
+		DefaultsPref* = record (Properties.Preference) 
+				disabled*: boolean // * OUT, preset to ~c.item.Valid()
+				undef*: boolean // * OUT, preset to FALSE
+				readOnly*: boolean  // * OUT, preset to c.item.vis = readOnly
+			end 
+		
+		PropPref* = record (Properties.Preference) 
+				valid*: set  // * OUT, preset to {link, label, guard, notifier, customFont}
+			end 
+		
+		PushButton = pointer to record (Control) end 
+		
+		CheckBox = pointer to record (Control) end 
+		
+		RadioButton = pointer to record (Control) end 
+		
+		Field = pointer to record (Control) 
+				maxLen: integer 
+			end 
+		
+		UpDownField = pointer to record (Control) 
+				min_, max_, inc_: integer 
+			end 
+		
+		DateField = pointer to record (Control) 
+				selection: integer  // 0: no selection, 1..n-1: this part selected, -1: part n selected
+			end 
+		
+		TimeField = pointer to record (Control) 
+				selection: integer 
+			end 
+		
+		ColorField = pointer to record (Control) end 
+		
+		ListBox = pointer to record (Control) end 
+		
+		SelectionBox = pointer to record (Control) end 
+		
+		ComboBox = pointer to record (Control) end 
+		
+		Caption = pointer to record (Control) end 
+		
+		Group = pointer to record (Control) end 
+		
+		TreeControl = pointer to record (Control) end 
+		
+		StdDirectory = pointer to record (Directory) end 
+		
+		Op = pointer to record (Stores.Operation) 
+				ctrl: Control
+				prop: Prop 
+			end 
+		
+		FontOp = pointer to record (Stores.Operation) 
+				ctrl: Control
+				font: Fonts.Font
+				custom: boolean 
+			end 
+		
+		NotifyMsg = record (Views.NotifyMsg) 
+				frame: Views.Frame
+				op, from, to_: integer 
+			end 
+		
+		UpdateCachesMsg = record (Views.UpdateCachesMsg) end 
+		
+		SelectPtr = pointer to Dialog.Selection
+		
+		ProcValue = record (Meta.Value) p*: proc  end 
+		SelectValue = record (Meta.Value) p*: SelectPtr end 
+		GuardProcVal = record (Meta.Value) p*: Dialog.GuardProc end 
+		NotifyProcValOld = record (Meta.Value) p*: proc (op, from, to_: integer) end 
+		GuardProcPVal = record (Meta.Value) p*: proc (n: integer; var p: Dialog.Par) end 
+		NotifyProcPVal = record (Meta.Value) p*: proc (n, op, f, t: integer) end 
+		
+		Param = record from, to_, i: integer; n: Dialog.String end 
+		
+		TVParam = record l: integer; e: boolean; nodeIn, nodeOut: Dialog.TreeNode end 
+		
+		Action = pointer to record (Services.Action) 
+				w: Windows.Window
+				resolution, cnt: integer 
+			end 
+		
+		TrapCleaner = pointer to record (Kernel.TrapCleaner) end 
+	
+	var 
+		dir-, stdDir-: Directory
+		par-: Control
+		stamp: integer
+		action: Action
+		cleaner: TrapCleaner
+		cleanerInstalled: integer
+	
+	
+	// Cleaner
+	
+	proc (c: TrapCleaner) Cleanup
+	begin 
+		par := nil
+		cleanerInstalled := 0
+	end Cleanup
+	
+	
+	proc (c: Control) Update-(f: Views.Frame; op, from, to_: integer)  end // new empty
+	proc (c: Control) UpdateList-(f: Views.Frame)  end // new empty
+	proc (c: Control) CheckLink-(var ok: boolean)  end // new empty
+	proc (c: Control) HandlePropMsg2-(var p: Views.PropMessage)  end // new empty
+	proc (c: Control) HandleViewMsg2-(f: Views.Frame; var msg: Views.Message)  end // new empty
+	proc (c: Control) HandleCtrlMsg2-(f: Views.Frame; var msg: Views.CtrlMessage
+		var focus: Views.View)  end // new empty
+	proc (c: Control) Externalize2-(var wr: Stores.Writer)  end // new empty
+	proc (c: Control) Internalize2-(var rd: Stores.Reader)  end // new empty
+	
+	
+	// auxiliary procedures
+	
+	proc IsShortcut(ch: char; c: Control): boolean 
+	begin 
+		return Strings.Upper(ch) = c.shortcut
+	end IsShortcut
+	
+	proc ExtractShortcut(c: Control) 
+		var 
+			label: Dialog.String
+			i: integer
+			ch, sCh: char
+	begin 
+		Dialog.MapString(c.label, label)
+		i := 0
+		ch := label[0]
+		sCh := "&"
+		while sCh = "&" do 
+			while (ch # 0x) & (ch # "&") do 
+				inc(i)
+				ch := label[i] 
+			end 
+			if ch = 0x then
+				sCh := 0x 
+			else 
+				inc(i)
+				sCh := label[i]
+				inc(i)
+				ch := label[i] 
+			end  
+		end 
+		c.shortcut := Strings.Upper(sCh)
+	end ExtractShortcut
+	
+	proc GetGuardProc(name: array of char; var i: Meta.Item; var err: boolean
+		var par: boolean; var n: integer) 
+		var 
+			j, k, e: integer
+			num: array 32 of char
+	begin 
+		j := 0
+		while (name[j] # 0x) & (name[j] # "(") do 
+			inc(j) 
+		end 
+		if name[j] = "(" then
+			inc(j)
+			k := 0
+			while (name[j] # 0x) & (name[j] # ")") do 
+				num[k] := name[j]
+				inc(j)
+				inc(k) 
+			end 
+			if (name[j] = ")") & (name[j + 1] = 0x) then
+				num[k] := 0x
+				Strings.StringToInt(num, n, e)
+				if e = 0 then
+					name[j - k - 1] := 0x
+					Meta.LookupPath(name, i)
+					par := true 
+				else 
+					if ~err then
+						Dialog.ShowParamMsg("#System:SyntaxErrorIn", name, "", "")
+						err := true 
+					end 
+					Meta.Lookup("", i)
+					return  
+				end  
+			else 
+				if ~err then
+					Dialog.ShowParamMsg("#System:SyntaxErrorIn", name, "", "")
+					err := true 
+				end 
+				Meta.Lookup("", i)
+				return  
+			end  
+		else 
+			Meta.LookupPath(name, i)
+			par := false 
+		end 
+		if (i.obj = Meta.procObj) or (i.obj = Meta.varObj) & (i.typ = Meta.procTyp) then  // ok
+		else 
+			if ~err then
+				if i.obj = Meta.undef then
+					Dialog.ShowParamMsg("#System:NotFound", name, "", "") 
+				else 
+					Dialog.ShowParamMsg("#System:HasWrongType", name, "", "") 
+				end 
+				err := true 
+			end 
+			Meta.Lookup("", i) 
+		end 
+	end GetGuardProc
+	
+	proc CallGuard(c: Control) 
+		var 
+			ok, up: boolean
+			n: integer
+			dpar: Dialog.Par
+			p: Control
+			v: GuardProcVal
+			vp: GuardProcPVal
+			i: Meta.Item
+			pref: DefaultsPref
+	begin 
+		Controllers.SetCurrentPath(Controllers.targetPath)
+		pref.disabled := ~c.item.Valid()
+		pref.undef := false
+		pref.readOnly := c.item.vis = Meta.readOnly
+		Views.HandlePropMsg(c, pref)
+		c.disabled := pref.disabled
+		c.undef := pref.undef
+		c.readOnly := pref.readOnly
+		c.label := c.prop.label
+		if ~c.disabled & (c.prop.guard # "") & ~c.guardErr then
+			if cleanerInstalled = 0 then
+				Kernel.PushTrapCleaner(cleaner) 
+			end 
+			inc(cleanerInstalled)
+			p := par
+			par := c
+			dpar.disabled := false
+			dpar.undef := false
+			dpar.readOnly := c.readOnly
+			dpar.checked := false
+			dpar.label := c.label
+			GetGuardProc(c.prop.guard, i, c.guardErr, up, n)
+			if i.obj # Meta.undef then
+				if up then // call with numeric parameter
+					i.GetVal(vp, ok)
+					if ok then
+						vp.p(n, dpar) 
+					end  
+				else 
+					i.GetVal(v, ok)
+					if ok then
+						v.p(dpar) 
+					end  
+				end 
+				if ok then
+					c.disabled := dpar.disabled
+					c.undef := dpar.undef
+					if dpar.readOnly then
+						c.readOnly := true 
+					end 
+					if dpar.label # c.label then
+						c.label := dpar.label 
+					end  
+				elsif ~c.guardErr then 
+					Dialog.ShowParamMsg("#System:HasWrongType", c.prop.guard, "", "")
+					c.guardErr := true 
+				end  
+			end 
+			par := p
+			dec(cleanerInstalled)
+			if cleanerInstalled = 0 then
+				Kernel.PopTrapCleaner(cleaner) 
+			end  
+		end 
+		ExtractShortcut(c)
+		Controllers.ResetCurrentPath()
+	end CallGuard
+	
+	proc CallNotifier(c: Control; op, from, to_: integer) 
+		var 
+			ok, up: boolean
+			n: integer
+			vold: NotifyProcValOld
+			vp: NotifyProcPVal
+			i: Meta.Item
+			p: Control
+	begin 
+		if c.prop.notifier # "" then
+			if cleanerInstalled = 0 then
+				Kernel.PushTrapCleaner(cleaner) 
+			end 
+			inc(cleanerInstalled)
+			p := par
+			par := c
+			if c.prop.notifier[0] = "!" then
+				if op = Dialog.pressed then
+					c.prop.notifier[0] := " "
+					Dialog.ShowStatus(c.prop.notifier)
+					c.prop.notifier[0] := "!" 
+				elsif op = Dialog.released then 
+					Dialog.ShowStatus("") 
+				end  
+			else 
+				GetGuardProc(c.prop.notifier, i, c.notifyErr, up, n)
+				if i.obj # Meta.undef then
+					if up then // call with numeric parameter
+						i.GetVal(vp, ok)
+						if ok then
+							vp.p(n, op, from, to_) 
+						end  
+					else 
+						i.GetVal(vold, ok)
+						if ok then
+							vold.p(op, from, to_) 
+						end  
+					end 
+					if ~ok & ~c.notifyErr then
+						Dialog.ShowParamMsg("#System:HasWrongType", c.prop.notifier, "", "")
+						c.notifyErr := true 
+					end  
+				end  
+			end 
+			par := p
+			dec(cleanerInstalled)
+			if cleanerInstalled = 0 then
+				Kernel.PopTrapCleaner(cleaner) 
+			end  
+		end 
+	end CallNotifier
+	
+	proc DCHint(modifiers: set): integer 
+	begin 
+		if Controllers.doubleClick in modifiers then
+			return 1 
+		else 
+			return 0 
+		end 
+	end DCHint
+	
+	proc Notify*(c: Control; f: Views.Frame; op, from, to_: integer) 
+		var 
+			msg: NotifyMsg
+	begin 
+		if ~c.readOnly & ~c.disabled then
+			CallNotifier(c, op, from, to_)
+			if op >= Dialog.changed then
+				msg.id0 := c.item.adr
+				msg.id1 := msg.id0 + c.item.Size()
+				msg.frame := f
+				msg.op := op
+				msg.from := from
+				msg.to_ := to_
+				msg.opts := {update, guardCheck}
+				Views.Omnicast(msg) 
+			end  
+		end 
+	end Notify
+	
+	proc NotifyFlushCaches*
+		var 
+			msg: NotifyMsg
+	begin 
+		msg.opts := {flushCaches}
+		msg.id0 := 0
+		msg.id1 := 0
+		Views.Omnicast(msg)
+	end NotifyFlushCaches
+	
+	proc GetName(var path, name: array of char; var i: integer) 
+		var 
+			j: integer
+			ch: char
+	begin 
+		j := 0
+		ch := path[i]
+		while (j < len(name) - 1) & Strings.IsIdent(ch) do 
+			name[j] := ch
+			inc(i)
+			inc(j)
+			ch := path[i] 
+		end 
+		if (ch = 0x) or (ch = ".") or (ch = "[") or (ch = "^") then
+			name[j] := 0x 
+		else 
+			name[0] := 0x 
+		end 
+	end GetName
+	
+	proc LookupPath(path: array of char; var i: Meta.Item
+		var adr: array of integer; var num: integer) 
+		var 
+			j, n: integer
+			name: Meta.Name
+			ch: char
+	begin 
+		path[len(path) - 1] := 0x
+		j := 0
+		num := 0
+		GetName(path, name, j)
+		Meta.Lookup(name, i)
+		if (i.obj = Meta.modObj) & (path[j] = ".") then
+			inc(j)
+			GetName(path, name, j)
+			i.Lookup(name, i)
+			ch := path[j]
+			inc(j)
+			while i.obj = Meta.varObj do 
+				adr[num] := i.adr
+				if num < len(adr) - 1 then
+					inc(num) 
+				end 
+				if ch = 0x then
+					return  
+				elsif i.typ in {Meta.ptrTyp, Meta.anyPtrTyp, Meta.sysPtrTyp} then 
+					if ch = "^" then
+						ch := path[j]
+						inc(j) 
+					end 
+					i.Deref(i) 
+				elsif (i.typ = Meta.recTyp) & (ch = ".") then 
+					GetName(path, name, j)
+					i.Lookup(name, i)
+					ch := path[j]
+					inc(j) 
+				elsif (i.typ = Meta.arrTyp) & (ch = "[") then 
+					ch := path[j]
+					inc(j)
+					n := 0
+					while (ch >= "0") & (ch <= "9") do 
+						n := 10 * n + ord(ch) - ord("0")
+						ch := path[j]
+						inc(j) 
+					end 
+					if ch = "]" then
+						ch := path[j]
+						inc(j)
+						i.Index(n, i) 
+					else 
+						Meta.Lookup("", i) 
+					end  
+				else 
+					Meta.Lookup("", i) 
+				end  
+			end  
+		else 
+			Meta.LookupPath(path, i)
+			num := 0
+			if i.obj = Meta.varObj then
+				adr[0] := i.adr
+				num := 1 
+			elsif i.obj # Meta.procObj then 
+				Meta.Lookup("", i) 
+			end  
+		end 
+	end LookupPath
+	
+	proc Sort(var adr: array of integer; num: integer) 
+		var 
+			i, j, p: integer
+	begin 
+		i := 1
+		while i < num do 
+			p := adr[i]
+			j := i
+			while (j >= 1) & (adr[j - 1] > p) do 
+				adr[j] := adr[j - 1]
+				dec(j) 
+			end 
+			adr[j] := p
+			inc(i) 
+		end 
+	end Sort
+	
+	proc GetTypeName(in item: Meta.Item; var name: Meta.Name) 
+		var 
+			mod_: Meta.Name
+	begin 
+		if (item.typ = Meta.recTyp) then
+			item.GetTypeName(mod_, name)
+			if (mod_ = "Dialog") or (mod_ = "Dates") then  // ok
+			else 
+				name := "" 
+			end  
+		else 
+			name := "" 
+		end 
+	end GetTypeName
+	
+	proc OpenLink*(c: Control; p: Prop) 
+		var 
+			ok: boolean
+	begin 
+		assert(c # nil, 20)
+		assert(p # nil, 21)
+		c.num := 0
+		c.prop := Properties.CopyOf(p)(Prop)
+		if c.font = nil then
+			if c.customFont then
+				c.font := StdCFrames.defaultLightFont 
+			else 
+				c.font := StdCFrames.defaultFont 
+			end  
+		end 
+		c.guardErr := false
+		c.notifyErr := false
+		LookupPath(p.link, c.item, c.adr, c.num)
+		if c.item.obj = Meta.varObj then
+			Sort(c.adr, c.num)
+			ok := true
+			c.CheckLink(ok)
+			if ~ok then
+				Meta.Lookup("", c.item)
+				Dialog.ShowParamMsg("#System:HasWrongType", p.link, "", "") 
+			end  
+		else 
+			Meta.Lookup("", c.item)
+			c.num := 0 
+		end 
+		CallGuard(c)
+		c.stamp := stamp
+	end OpenLink
+	
+	
+	// Prop
+	
+	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean) 
+		var 
+			valid: set
+	begin 
+		with q: Prop do 
+			valid := p.valid * q.valid
+			equal := true
+			if p.link # q.link then
+				excl(valid, link) 
+			end 
+			if p.label # q.label then
+				excl(valid, label) 
+			end 
+			if p.guard # q.guard then
+				excl(valid, guard) 
+			end 
+			if p.notifier # q.notifier then
+				excl(valid, notifier) 
+			end 
+			if p.level # q.level then
+				excl(valid, level) 
+			end 
+			if p.opt[0] # q.opt[0] then
+				excl(valid, opt0) 
+			end 
+			if p.opt[1] # q.opt[1] then
+				excl(valid, opt1) 
+			end 
+			if p.opt[2] # q.opt[2] then
+				excl(valid, opt2) 
+			end 
+			if p.opt[3] # q.opt[3] then
+				excl(valid, opt3) 
+			end 
+			if p.opt[4] # q.opt[4] then
+				excl(valid, opt4) 
+			end 
+			if p.valid # valid then
+				p.valid := valid
+				equal := false 
+			end  
+		end 
+	end IntersectWith
+	
+	
+	// Control
+	
+	proc (c: Control) CopyFromSimpleView2-(source: Control)  end // new empty
+	
+	proc (c: Control) CopyFromSimpleView-(source: Views.View) 
+	begin 
+		with source: Control do 
+			c.item := source.item
+			c.adr := source.adr
+			c.num := source.num
+			c.disabled := source.disabled
+			c.undef := source.undef
+			c.readOnly := source.readOnly
+			c.shortcut := source.shortcut
+			c.customFont := source.customFont
+			c.font := source.font
+			c.label := source.label
+			c.prop := Properties.CopyOf(source.prop)(Prop)
+			c.CopyFromSimpleView2(source) 
+		end 
+	end CopyFromSimpleView
+	
+	proc (c: Control) Internalize-(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+			x, def, canc, sort: boolean
+	begin 
+		c.Internalize^(rd)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minVersion, maxBaseVersion, thisVersion)
+		if rd.cancelled then
+			return  
+		end 
+		new(c.prop)
+		if thisVersion >= 3 then
+			rd.ReadString(c.prop.link)
+			rd.ReadString(c.prop.label)
+			rd.ReadString(c.prop.guard)
+			rd.ReadString(c.prop.notifier)
+			rd.ReadInt(c.prop.level)
+			rd.ReadBool(c.customFont)
+			rd.ReadBool(c.prop.opt[0])
+			rd.ReadBool(c.prop.opt[1])
+			rd.ReadBool(c.prop.opt[2])
+			rd.ReadBool(c.prop.opt[3])
+			rd.ReadBool(c.prop.opt[4])
+			if c.customFont & (thisVersion = 4) then
+				Views.ReadFont(rd, c.font) 
+			end  
+		else 
+			rd.ReadXString(c.prop.link)
+			rd.ReadXString(c.prop.label)
+			rd.ReadXString(c.prop.guard)
+			c.prop.notifier := ""
+			c.prop.opt[2] := false
+			c.prop.opt[3] := false
+			c.prop.opt[4] := false
+			sort := false
+			if thisVersion = 2 then
+				rd.ReadXString(c.prop.notifier)
+				rd.ReadBool(sort)
+				rd.ReadBool(c.prop.opt[multiLine]) 
+			elsif thisVersion = 1 then 
+				rd.ReadXString(c.prop.notifier)
+				rd.ReadBool(sort) 
+			end 
+			rd.ReadBool(x) // free, was sed for prop.element
+			rd.ReadBool(def)
+			rd.ReadBool(canc)
+			rd.ReadXInt(c.prop.level)
+			rd.ReadBool(c.customFont)
+			c.prop.opt[default] := def or sort or (c is Field)
+			c.prop.opt[cancel] := canc 
+		end 
+		c.Internalize2(rd)
+		OpenLink(c, c.prop)
+	end Internalize
+	
+	proc (c: Control) Externalize-(var wr: Stores.Writer) 
+	begin 
+		c.Externalize^(wr)
+		wr.WriteVersion(maxBaseVersion)
+		wr.WriteString(c.prop.link)
+		wr.WriteString(c.prop.label)
+		wr.WriteString(c.prop.guard)
+		wr.WriteString(c.prop.notifier)
+		wr.WriteInt(c.prop.level)
+		wr.WriteBool(c.customFont)
+		wr.WriteBool(c.prop.opt[0])
+		wr.WriteBool(c.prop.opt[1])
+		wr.WriteBool(c.prop.opt[2])
+		wr.WriteBool(c.prop.opt[3])
+		wr.WriteBool(c.prop.opt[4])
+		if c.customFont then
+			Views.WriteFont(wr, c.font) 
+		end 
+		c.Externalize2(wr)
+	end Externalize
+	
+	proc (c: Control) HandleViewMsg-(f: Views.Frame; var msg: Views.Message) 
+		var 
+			disabled, undef, readOnly, done, allDone: boolean
+			i: integer
+			lbl: Dialog.String
+	begin 
+		with msg: Views.NotifyMsg do 
+			done := false
+			allDone := false
+			if guardCheck in msg.opts then
+				// should call c.Update for each frame but Views.Update only once
+				with f: StdCFrames.Caption do 
+					lbl := f.label 
+				| f: StdCFrames.PushButton do 
+					lbl := f.label 
+				| f: StdCFrames.RadioButton do 
+					lbl := f.label 
+				| f: StdCFrames.CheckBox do 
+					lbl := f.label 
+				| f: StdCFrames.Group do 
+					lbl := f.label 
+				else 
+					lbl := c.label 
+				end 
+				with f: StdCFrames.Frame do 
+					disabled := f.disabled
+					undef := f.undef
+					readOnly := f.readOnly 
+				else 
+					disabled := c.disabled
+					undef := c.undef
+					readOnly := c.readOnly 
+				end 
+				CallGuard(c)
+				if (c.disabled # disabled) or (c.undef # undef) 
+					or (c.readOnly # readOnly) or (c.label # lbl) then
+					with f: StdCFrames.Frame do 
+						if f.noRedraw then
+							f.disabled := c.disabled
+							f.undef := c.undef
+							f.readOnly := c.readOnly
+							c.Update(f, 0, 0, 0)
+							done := true 
+						else 
+							Views.Update(c, Views.rebuildFrames)
+							allDone := true 
+						end  
+					else 
+						Views.Update(c, Views.keepFrames)
+						done := true 
+					end  
+				end  
+			end 
+			if flushCaches in msg.opts then
+				Views.Update(c, Views.rebuildFrames) 
+			end 
+			i := 0
+			while (i < c.num) & (c.adr[i] < msg.id0) do 
+				inc(i) 
+			end 
+			if (i < c.num) & (c.adr[i] < msg.id1) & ~allDone then
+				if (update in msg.opts) & ~done then
+					with msg: NotifyMsg do 
+						if msg.frame # f then // don't update origin frame
+							c.Update(f, msg.op, msg.from, msg.to_) 
+						end  
+					else 
+						c.Update(f, 0, 0, 0) 
+					end  
+				end 
+				if listUpdate in msg.opts then
+					c.UpdateList(f) 
+				end  
+			end  
+		| msg: Views.UpdateCachesMsg do 
+			if c.stamp # stamp then
+				OpenLink(c, c.prop)
+				if msg is UpdateCachesMsg then
+					Views.Update(c, Views.rebuildFrames) 
+				end  
+			end  
+		else  
+		end 
+		c.HandleViewMsg2(f, msg)
+	end HandleViewMsg
+	
+	proc (c: Control) HandleCtrlMsg*(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View) 
+		var 
+			sp: Properties.SizeProp
+			p: Control
+			dcOk: boolean
+	begin 
+		if cleanerInstalled = 0 then
+			Kernel.PushTrapCleaner(cleaner) 
+		end 
+		inc(cleanerInstalled)
+		p := par
+		par := c
+		with msg: Properties.PollPickMsg do 
+			msg.dest := f 
+		| msg: Properties.PickMsg do 
+			new(sp)
+			sp.known := {Properties.width, Properties.height}
+			sp.valid := sp.known
+			c.context.GetSize(sp.width, sp.height)
+			Properties.Insert(msg.prop, sp) 
+		| msg: Controllers.TrackMsg do 
+			if ~c.disabled then
+				dcOk := true
+				if f is StdCFrames.Frame then
+					dcOk := f(StdCFrames.Frame).DblClickOk(msg.x, msg.y) 
+				end 
+				if (DCHint(msg.modifiers) = 1) & dcOk then
+					// double click
+					Notify(c, f, Dialog.pressed, 1, 0) 
+				else 
+					Notify(c, f, Dialog.pressed, 0, 0) 
+				end  
+			end  
+		else  
+		end 
+		c.HandleCtrlMsg2(f, msg, focus)
+		with msg: Controllers.TrackMsg do 
+			if ~c.disabled then
+				Notify(c, f, Dialog.released, 0, 0) 
+			end  
+		else  
+		end 
+		par := p
+		dec(cleanerInstalled)
+		if cleanerInstalled = 0 then
+			Kernel.PopTrapCleaner(cleaner) 
+		end 
+	end HandleCtrlMsg
+	
+	proc (c: Control) HandlePropMsg-(var msg: Properties.Message) 
+		var 
+			fpref: Properties.FocusPref
+			stp: Properties.StdProp
+			cp: Prop
+			ppref: PropPref
+			op: Op
+			valid: set
+			p: Properties.Property
+			fop: FontOp
+			face: Fonts.Typeface
+			size_, weight: integer
+			style: set
+	begin 
+		with msg: Properties.ControlPref do 
+			if (msg.char_ = lineChar) or (msg.char_ = esc) then
+				msg.accepts := false 
+			end 
+			if ~c.disabled & ~c.readOnly & IsShortcut(msg.char_, c) then
+				fpref.hotFocus := false
+				fpref.setFocus := false
+				fpref.atLocation := false
+				Views.HandlePropMsg(c, fpref)
+				if fpref.setFocus then
+					msg.getFocus := true 
+				end  
+			end  
+		| msg: Properties.PollMsg do 
+			ppref.valid := {link, label, notifier, guard}
+			Views.HandlePropMsg(c, ppref)
+			cp := Properties.CopyOf(c.prop)(Prop)
+			cp.valid := ppref.valid
+			cp.known := cp.valid
+			cp.readOnly := {}
+			Properties.Insert(msg.prop, cp)
+			new(stp)
+			stp.valid := {Properties.typeface..Properties.weight}
+			stp.known := stp.valid
+			if c.customFont then
+				stp.typeface := c.font.typeface 
+			else 
+				stp.typeface := Fonts.default 
+			end 
+			stp.size_ := c.font.size_
+			stp.style.val_ := c.font.style
+			stp.weight := c.font.weight
+			stp.style.mask := {Fonts.italic, Fonts.strikeout, Fonts.underline}
+			Properties.Insert(msg.prop, stp) 
+		| msg: Properties.SetMsg do 
+			p := msg.prop
+			op := nil
+			fop := nil
+			while (p # nil) & (op = nil) do 
+				with p: Prop do 
+					ppref.valid := {link, label, notifier, guard}
+					Views.HandlePropMsg(c, ppref)
+					valid := p.valid * ppref.valid
+					if valid # {} then
+						new(op)
+						op.ctrl := c
+						op.prop := Properties.CopyOf(p)(Prop)
+						op.prop.valid := valid 
+					end  
+				| p: Properties.StdProp do 
+					valid := p.valid * {Properties.typeface..Properties.weight}
+					if valid # {} then
+						new(fop)
+						fop.ctrl := c
+						face := c.font.typeface
+						size_ := c.font.size_
+						style := c.font.style
+						weight := c.font.weight
+						if Properties.typeface in p.valid then
+							face := p.typeface
+							if face = Fonts.default then
+								face := StdCFrames.defaultFont.typeface 
+							end  
+						end 
+						if Properties.size_ in p.valid then
+							size_ := p.size_ 
+						end 
+						if Properties.style in p.valid then
+							style := (p.style.val_ * p.style.mask) + (style - p.style.mask) 
+						end 
+						if Properties.weight in p.valid then
+							weight := p.weight 
+						end 
+						fop.custom := true
+						fop.font := Fonts.dir.This(face, size_, style, weight)
+						if (fop.font.typeface = StdCFrames.defaultFont.typeface) 
+							& (fop.font.size_ = StdCFrames.defaultFont.size_) 
+							& (fop.font.style = StdCFrames.defaultFont.style) 
+							& (fop.font.weight = StdCFrames.defaultFont.weight) then
+							fop.custom := false
+							fop.font := StdCFrames.defaultFont 
+						end  
+					end  
+				else  
+				end 
+				p := p.next 
+			end 
+			if op # nil then
+				Views.Do(c, "#System:SetProp", op) 
+			end 
+			if fop # nil then
+				Views.Do(c, "#System:SetProp", fop) 
+			end  
+		| msg: Properties.TypePref do 
+			if Services.Is(c, msg.type_) then
+				msg.view := c 
+			end  
+		else  
+		end 
+		c.HandlePropMsg2(msg)
+	end HandlePropMsg
+	
+	
+	// Op
+	
+	proc (op: Op) Do
+		var 
+			c: Control
+			prop: Prop
+	begin 
+		c := op.ctrl
+		prop := Properties.CopyOf(c.prop)(Prop)
+		prop.valid := op.prop.valid // fields to be restored
+		if link in op.prop.valid then
+			c.prop.link := op.prop.link 
+		end 
+		if label in op.prop.valid then
+			c.prop.label := op.prop.label 
+		end 
+		if guard in op.prop.valid then
+			c.prop.guard := op.prop.guard 
+		end 
+		if notifier in op.prop.valid then
+			c.prop.notifier := op.prop.notifier 
+		end 
+		if level in op.prop.valid then
+			c.prop.level := op.prop.level 
+		end 
+		if opt0 in op.prop.valid then
+			c.prop.opt[0] := op.prop.opt[0] 
+		end 
+		if opt1 in op.prop.valid then
+			c.prop.opt[1] := op.prop.opt[1] 
+		end 
+		if opt2 in op.prop.valid then
+			c.prop.opt[2] := op.prop.opt[2] 
+		end 
+		if opt3 in op.prop.valid then
+			c.prop.opt[3] := op.prop.opt[3] 
+		end 
+		if opt4 in op.prop.valid then
+			c.prop.opt[4] := op.prop.opt[4] 
+		end 
+		if c.prop.guard # prop.guard then
+			c.guardErr := false 
+		end 
+		if c.prop.notifier # prop.notifier then
+			c.notifyErr := false 
+		end 
+		if c.prop.link # prop.link then
+			OpenLink(c, c.prop) 
+		else 
+			CallGuard(c) 
+		end 
+		op.prop := prop
+		Views.Update(c, Views.rebuildFrames)
+	end Do
+	
+	proc (op: FontOp) Do
+		var 
+			c: Control
+			custom: boolean
+			font: Fonts.Font
+	begin 
+		c := op.ctrl
+		custom := c.customFont
+		c.customFont := op.custom
+		op.custom := custom
+		font := c.font
+		c.font := op.font
+		op.font := font
+		Views.Update(c, Views.rebuildFrames)
+	end Do
+	
+	
+	// ------------------------- standard controls -------------------------
+	
+	proc CatchCtrlMsg(c: Control; f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View) 
+	begin 
+		if ~c.disabled then
+			with f: StdCFrames.Frame do 
+				with msg: Controllers.PollCursorMsg do 
+					f.GetCursor(msg.x, msg.y, msg.modifiers, msg.cursor) 
+				| msg: Controllers.PollOpsMsg do 
+					msg.valid := {Controllers.pasteChar} 
+				| msg: Controllers.TrackMsg do 
+					f.MouseDown(msg.x, msg.y, msg.modifiers) 
+				| msg: Controllers.MarkMsg do 
+					f.Mark(msg.show, msg.focus) 
+				| msg: Controllers.WheelMsg do 
+					f.WheelMove(msg.x, msg.y, msg.op, msg.nofLines, msg.done) 
+				else  
+				end  
+			end  
+		end 
+	end CatchCtrlMsg
+	
+	
+	// Directory
+	
+	proc (d: Directory) NewPushButton*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewCheckBox*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewRadioButton*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewField*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewUpDownField*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewDateField*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewTimeField*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewColorField*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewListBox*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewSelectionBox*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewComboBox*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewCaption*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewGroup*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewTreeControl*(p: Prop): Control  end // new abstract
+	
+	
+	// PushButton
+	
+	proc Call(c: PushButton) 
+		var 
+			res: integer
+			p: Control
+			ok: boolean
+			msg: Views.NotifyMsg
+	begin 
+		if c.item.Valid() & ((c.item.obj = Meta.procObj) or (c.item.obj = Meta.varObj) & (c.item.typ = Meta.procTyp)) then
+			if cleanerInstalled = 0 then
+				Kernel.PushTrapCleaner(cleaner) 
+			end 
+			inc(cleanerInstalled)
+			p := par
+			c.item.Call(ok)
+			par := p
+			dec(cleanerInstalled)
+			if cleanerInstalled = 0 then
+				Kernel.PopTrapCleaner(cleaner) 
+			end 
+			if ~ok then
+				Dialog.ShowMsg("#System:BehaviorNotAccessible") 
+			end  
+		elsif c.prop.link # "" then 
+			if cleanerInstalled = 0 then
+				Kernel.PushTrapCleaner(cleaner) 
+			end 
+			inc(cleanerInstalled)
+			p := par
+			par := c
+			Dialog.Call(c.prop.link, " ", res)
+			par := p
+			dec(cleanerInstalled)
+			if cleanerInstalled = 0 then
+				Kernel.PopTrapCleaner(cleaner) 
+			end  
+		else 
+			Dialog.ShowMsg("#System:NoBehaviorBound") 
+		end 
+		msg.opts := {guardCheck}
+		Views.Omnicast(msg)
+	end Call
+	
+	proc Do(f: StdCFrames.PushButton) 
+	begin 
+		Call(f.view(PushButton))
+	end Do
+	
+	proc (c: PushButton) Internalize2(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+	begin 
+		rd.ReadVersion(minVersion, pbVersion, thisVersion)
+	end Internalize2
+	
+	proc (c: PushButton) Externalize2(var wr: Stores.Writer) 
+	begin 
+		wr.WriteVersion(pbVersion)
+	end Externalize2
+	
+	proc (c: PushButton) GetNewFrame(var frame: Views.Frame) 
+		var 
+			f: StdCFrames.PushButton
+	begin 
+		f := StdCFrames.dir.NewPushButton()
+		f.disabled := c.disabled
+		f.undef := c.undef
+		f.readOnly := c.readOnly
+		f.font := c.font
+		f.label := c.label
+		f.default := c.prop.opt[default]
+		f.cancel := c.prop.opt[cancel]
+		f.Do := Do
+		frame := f
+	end GetNewFrame
+	
+	proc (c: PushButton) Restore(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		with f: StdCFrames.Frame do 
+			f.Restore(l, t, r, b) 
+		end 
+	end Restore
+	
+	proc (c: PushButton) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View) 
+	begin 
+		if ~c.disabled then
+			with f: StdCFrames.Frame do 
+				with msg: Controllers.EditMsg do 
+					if (msg.op = Controllers.pasteChar) 
+						& ((msg.char_ = lineChar) 
+						or (msg.char_ = " ") 
+						or (msg.char_ = esc) & c.prop.opt[cancel] 
+						or IsShortcut(msg.char_, c)) then
+						f.KeyDown(msg.char_) 
+					end  
+				else 
+					CatchCtrlMsg(c, f, msg, focus) 
+				end  
+			end  
+		end 
+	end HandleCtrlMsg2
+	
+	proc (c: PushButton) HandlePropMsg2(var msg: Properties.Message) 
+	begin 
+		with msg: Properties.ControlPref do 
+			msg.accepts := ~c.disabled & ((msg.char_ = lineChar) & c.prop.opt[default] 
+				or (msg.char_ = esc) & c.prop.opt[cancel] 
+				or IsShortcut(msg.char_, c)) 
+		| msg: Properties.FocusPref do 
+			if ~c.disabled & ~c.readOnly then
+				msg.hotFocus := true
+				msg.setFocus := StdCFrames.setFocus 
+			end  
+		| msg: Properties.SizePref do 
+			StdCFrames.dir.GetPushButtonSize(msg.w, msg.h) 
+		| msg: PropPref do 
+			msg.valid := {link, label, guard, notifier, default, cancel} 
+		| msg: DefaultsPref do 
+			if c.prop.link # "" then
+				msg.disabled := false 
+			end  
+		else  
+		end 
+	end HandlePropMsg2
+	
+	proc (c: PushButton) Update(f: Views.Frame; op, from, to_: integer) 
+	begin 
+		f(StdCFrames.PushButton).label := c.label
+		f(StdCFrames.Frame).Update
+	end Update
+	
+	proc (c: PushButton) CheckLink(var ok: boolean) 
+	begin 
+		ok := c.item.typ = Meta.procTyp
+	end CheckLink
+	
+	
+	// CheckBox
+	
+	proc GetCheckBox(f: StdCFrames.CheckBox; var x: boolean) 
+		var 
+			c: CheckBox
+	begin 
+		x := false
+		c := f.view(CheckBox)
+		if c.item.Valid() then
+			if c.item.typ = Meta.boolTyp then
+				x := c.item.BoolVal() 
+			elsif c.item.typ = Meta.setTyp then 
+				x := c.prop.level in c.item.SetVal() 
+			end  
+		end 
+	end GetCheckBox
+	
+	proc SetCheckBox(f: StdCFrames.CheckBox; x: boolean) 
+		var 
+			c: CheckBox
+			s: set
+	begin 
+		c := f.view(CheckBox)
+		if c.item.Valid() & ~c.readOnly then
+			if c.item.typ = Meta.boolTyp then
+				c.item.PutBoolVal(x)
+				Notify(c, f, Dialog.changed, 0, 0) 
+			elsif c.item.typ = Meta.setTyp then 
+				s := c.item.SetVal()
+				if x then
+					incl(s, c.prop.level) 
+				else 
+					excl(s, c.prop.level) 
+				end 
+				c.item.PutSetVal(s)
+				if x then
+					Notify(c, f, Dialog.included, c.prop.level, c.prop.level) 
+				else 
+					Notify(c, f, Dialog.excluded, c.prop.level, c.prop.level) 
+				end  
+			end  
+		end 
+	end SetCheckBox
+	
+	proc (c: CheckBox) Internalize2(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+	begin 
+		rd.ReadVersion(minVersion, cbVersion, thisVersion)
+	end Internalize2
+	
+	proc (c: CheckBox) Externalize2(var wr: Stores.Writer) 
+	begin 
+		wr.WriteVersion(cbVersion)
+	end Externalize2
+	
+	proc (c: CheckBox) GetNewFrame(var frame: Views.Frame) 
+		var 
+			f: StdCFrames.CheckBox
+	begin 
+		f := StdCFrames.dir.NewCheckBox()
+		f.disabled := c.disabled
+		f.undef := c.undef
+		f.readOnly := c.readOnly
+		f.font := c.font
+		f.label := c.label
+		f.Get := GetCheckBox
+		f.Set := SetCheckBox
+		frame := f
+	end GetNewFrame
+	
+	proc (c: CheckBox) Restore(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		with f: StdCFrames.Frame do 
+			f.Restore(l, t, r, b) 
+		end 
+	end Restore
+	
+	proc (c: CheckBox) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View) 
+	begin 
+		if ~c.disabled & ~c.readOnly then
+			with f: StdCFrames.Frame do 
+				with msg: Controllers.EditMsg do 
+					if (msg.op = Controllers.pasteChar) 
+						& ((msg.char_ = " ") or IsShortcut(msg.char_, c)) then
+						f.KeyDown(msg.char_) 
+					end  
+				else 
+					CatchCtrlMsg(c, f, msg, focus) 
+				end  
+			end  
+		end 
+	end HandleCtrlMsg2
+	
+	proc (c: CheckBox) HandlePropMsg2(var msg: Properties.Message) 
+	begin 
+		with msg: Properties.ControlPref do 
+			if ~c.disabled & ~c.readOnly then
+				if (msg.char_ = tab) or (msg.char_ = ltab) then
+					// tabs set focus to first checkbox only
+					if (msg.focus # nil) & (msg.focus is CheckBox) 
+						& (msg.focus(CheckBox).item.adr = c.item.adr) then
+						msg.getFocus := false 
+					end  
+				elsif (msg.char_ >= arrowLeft) & (msg.char_ <= arrowDown) then 
+					// arrows set focus to next checkbox bound to same variable
+					msg.getFocus := StdCFrames.setFocus 
+						& (msg.focus # nil) 
+						& (msg.focus is CheckBox) 
+						& (msg.focus(CheckBox).item.adr = c.item.adr)
+					msg.accepts := msg.getFocus & (msg.focus # c) 
+				elsif IsShortcut(msg.char_, c) then 
+					msg.accepts := true
+					msg.getFocus := StdCFrames.setFocus 
+				elsif msg.char_ # " " then 
+					msg.accepts := false 
+				end  
+			end  
+		| msg: Properties.FocusPref do 
+			if ~c.disabled & ~c.readOnly then
+				msg.hotFocus := true
+				msg.setFocus := StdCFrames.setFocus 
+			end  
+		| msg: Properties.SizePref do 
+			StdCFrames.dir.GetCheckBoxSize(msg.w, msg.h) 
+		| msg: PropPref do 
+			msg.valid := {link, label, guard, notifier, level} 
+		else  
+		end 
+	end HandlePropMsg2
+	
+	proc (c: CheckBox) CheckLink(var ok: boolean) 
+	begin 
+		ok := (c.item.typ = Meta.boolTyp) or (c.item.typ = Meta.setTyp)
+	end CheckLink
+	
+	proc (c: CheckBox) Update(f: Views.Frame; op, from, to_: integer) 
+	begin 
+		if (op = 0) or (c.item.typ = Meta.boolTyp) or (c.prop.level = to_) then
+			f(StdCFrames.CheckBox).label := c.label
+			f(StdCFrames.Frame).Update 
+		end 
+	end Update
+	
+	
+	// RadioButton
+	
+	proc GetRadioButton(f: StdCFrames.RadioButton; var x: boolean) 
+		var 
+			c: RadioButton
+	begin 
+		x := false
+		c := f.view(RadioButton)
+		if c.item.Valid() then
+			if c.item.typ = Meta.boolTyp then
+				x := c.item.BoolVal() = (c.prop.level # 0) 
+			else 
+				x := c.item.IntVal() = c.prop.level 
+			end  
+		end 
+	end GetRadioButton
+	
+	proc SetRadioButton(f: StdCFrames.RadioButton; x: boolean) 
+		var 
+			c: RadioButton
+			old: integer
+	begin 
+		if x then
+			c := f.view(RadioButton)
+			if c.item.Valid() & ~c.readOnly then
+				if c.item.typ = Meta.boolTyp then
+					if c.item.BoolVal() then
+						old := 1 
+					else 
+						old := 0 
+					end 
+					if c.prop.level # old then
+						c.item.PutBoolVal(c.prop.level # 0)
+						Notify(c, f, Dialog.changed, old, c.prop.level) 
+					end  
+				else 
+					old := c.item.IntVal()
+					if c.prop.level # old then
+						c.item.PutIntVal(c.prop.level)
+						Notify(c, f, Dialog.changed, old, c.prop.level) 
+					end  
+				end  
+			end  
+		end 
+	end SetRadioButton
+	
+	proc (c: RadioButton) Internalize2(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+	begin 
+		rd.ReadVersion(minVersion, rbVersion, thisVersion)
+	end Internalize2
+	
+	proc (c: RadioButton) Externalize2(var wr: Stores.Writer) 
+	begin 
+		wr.WriteVersion(rbVersion)
+	end Externalize2
+	
+	proc (c: RadioButton) GetNewFrame(var frame: Views.Frame) 
+		var 
+			f: StdCFrames.RadioButton
+	begin 
+		f := StdCFrames.dir.NewRadioButton()
+		f.disabled := c.disabled
+		f.undef := c.undef
+		f.readOnly := c.readOnly
+		f.font := c.font
+		f.label := c.label
+		f.Get := GetRadioButton
+		f.Set := SetRadioButton
+		frame := f
+	end GetNewFrame
+	
+	proc (c: RadioButton) Restore(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		with f: StdCFrames.Frame do 
+			f.Restore(l, t, r, b) 
+		end 
+	end Restore
+	
+	proc (c: RadioButton) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View) 
+	begin 
+		if ~c.disabled & ~c.readOnly then
+			with f: StdCFrames.Frame do 
+				with msg: Controllers.EditMsg do 
+					if (msg.op = Controllers.pasteChar) 
+						& ((msg.char_ <= " ") or IsShortcut(msg.char_, c)) then
+						f.KeyDown(msg.char_) 
+					end  
+				else 
+					CatchCtrlMsg(c, f, msg, focus) 
+				end  
+			end  
+		end 
+	end HandleCtrlMsg2
+	
+	proc (c: RadioButton) HandlePropMsg2(var msg: Properties.Message) 
+		var 
+			hot: boolean
+	begin 
+		with msg: Properties.ControlPref do 
+			if ~c.disabled & ~c.readOnly then
+				if (msg.char_ = tab) or (msg.char_ = ltab) then
+					// tabs set focus to active radio button only
+					if c.item.Valid() then
+						if c.item.typ = Meta.boolTyp then
+							hot := c.item.BoolVal() = (c.prop.level # 0) 
+						else 
+							hot := c.item.IntVal() = c.prop.level 
+						end  
+					else 
+						hot := false 
+					end 
+					if ~hot then
+						msg.getFocus := false 
+					end  
+				elsif (msg.char_ >= arrowLeft) & (msg.char_ <= arrowDown) then 
+					// arrows set focus to next radio button bound to same variable
+					msg.getFocus := StdCFrames.setFocus 
+						& (msg.focus # nil) & (msg.focus is RadioButton) 
+						& (msg.focus(RadioButton).item.adr = c.item.adr)
+					msg.accepts := msg.getFocus & (msg.focus # c) 
+				elsif IsShortcut(msg.char_, c) then 
+					msg.accepts := true
+					msg.getFocus := StdCFrames.setFocus 
+				elsif msg.char_ # " " then 
+					msg.accepts := false 
+				end  
+			end  
+		| msg: Properties.FocusPref do 
+			if ~c.disabled & ~c.readOnly then
+				msg.hotFocus := true
+				msg.setFocus := StdCFrames.setFocus 
+			end  
+		| msg: Properties.SizePref do 
+			StdCFrames.dir.GetRadioButtonSize(msg.w, msg.h) 
+		| msg: PropPref do 
+			msg.valid := {link, label, guard, notifier, level} 
+		else  
+		end 
+	end HandlePropMsg2
+	
+	proc (c: RadioButton) CheckLink(var ok: boolean) 
+		var 
+			name: Meta.Name
+	begin 
+		GetTypeName(c.item, name)
+		if name = "List" then
+			c.item.Lookup("index", c.item) 
+		end 
+		ok := (c.item.typ >= Meta.byteTyp) & (c.item.typ <= Meta.intTyp) or (c.item.typ = Meta.boolTyp)
+	end CheckLink
+	
+	proc (c: RadioButton) Update(f: Views.Frame; op, from, to_: integer) 
+	begin 
+		if (op = 0) or (c.prop.level = to_) or (c.prop.level = from) then
+			f(StdCFrames.RadioButton).label := c.label
+			f(StdCFrames.Frame).Update 
+		end 
+	end Update
+	
+	
+	// Field
+	
+	proc LongToString(x: longint; var s: array of char) 
+		var 
+			d: array 24 of char
+			i, j: integer
+	begin 
+		if x = min(longint) then
+			s := "-9223372036854775808" 
+		else 
+			i := 0
+			j := 0
+			if x < 0 then
+				s[0] := "-"
+				i := 1
+				x := -x 
+			end 
+			repeat 
+				d[j] := chr(x mod 10 + ord("0"))
+				inc(j)
+				x := x div 10 
+			until x = 0 
+			while j > 0 do 
+				dec(j)
+				s[i] := d[j]
+				inc(i) 
+			end 
+			s[i] := 0x 
+		end 
+	end LongToString
+	
+	proc StringToLong(in s: array of char; var x: longint; var res: integer) 
+		var 
+			i, sign, d: integer
+	begin 
+		i := 0
+		sign := 1
+		x := 0
+		res := 0
+		while s[i] = " " do 
+			inc(i) 
+		end 
+		if s[i] = "-" then
+			sign := -1
+			inc(i) 
+		end 
+		while s[i] = " " do 
+			inc(i) 
+		end 
+		if s[i] = 0x then
+			res := 2 
+		end 
+		while (s[i] >= "0") & (s[i] <= "9") do 
+			d := ord(s[i]) - ord("0")
+			inc(i)
+			if x <= (max(longint) - d) div 10 then
+				x := 10 * x + d 
+			else 
+				res := 1 
+			end  
+		end 
+		x := x * sign
+		if s[i] # 0x then
+			res := 2 
+		end 
+	end StringToLong
+	
+	proc FixToInt(fix: array of char; var int_: array of char; scale: integer) 
+		var 
+			i, j: integer
+	begin 
+		if scale > 24 then
+			scale := 24 
+		elsif scale < 0 then 
+			scale := 0 
+		end 
+		i := 0
+		j := 0
+		while (fix[i] # ".") & (fix[i] # 0x) do 
+			int_[j] := fix[i]
+			inc(i)
+			inc(j) 
+		end 
+		if fix[i] = "." then
+			inc(i) 
+		end 
+		while (scale > 0) & (fix[i] >= "0") & (fix[i] <= "9") do 
+			int_[j] := fix[i]
+			inc(i)
+			inc(j)
+			dec(scale) 
+		end 
+		while scale > 0 do 
+			int_[j] := "0"
+			inc(j)
+			dec(scale) 
+		end 
+		int_[j] := 0x
+	end FixToInt
+	
+	proc IntToFix(int_: array of char; var fix: array of char; scale: integer) 
+		var 
+			i, j, n: integer
+	begin 
+		if scale > 24 then
+			scale := 24 
+		elsif scale < 0 then 
+			scale := 0 
+		end 
+		n := len(int_)
+		i := 0
+		j := 0
+		while int_[i] < "0" do 
+			fix[j] := int_[i]
+			inc(i)
+			inc(j)
+			dec(n) 
+		end 
+		if n > scale then
+			while n > scale do 
+				fix[j] := int_[i]
+				inc(i)
+				inc(j)
+				dec(n) 
+			end  
+		else 
+			fix[j] := "0"
+			inc(j) 
+		end 
+		fix[j] := "."
+		inc(j)
+		while n < scale do 
+			fix[j] := "0"
+			inc(j)
+			dec(scale) 
+		end 
+		while n > 0 do 
+			fix[j] := int_[i]
+			inc(i)
+			inc(j)
+			dec(n) 
+		end 
+		fix[j] := 0x
+	end IntToFix
+	
+	proc GetField(f: StdCFrames.Field; var x: array of char) 
+		var 
+			c: Field
+			ok: boolean
+			b, v: Meta.Item
+			mod_, name: Meta.Name
+	begin 
+		x := ""
+		c := f.view(Field)
+		if c.item.Valid() then
+			if c.item.typ = Meta.arrTyp then
+				c.item.GetStringVal(x, ok) 
+			elsif c.item.typ in {Meta.byteTyp, Meta.sIntTyp, Meta.intTyp} then 
+				Strings.IntToString(c.item.IntVal(), x)
+				if c.prop.level > 0 then
+					IntToFix(x, x, c.prop.level) 
+				end  
+			elsif c.item.typ = Meta.longTyp then 
+				LongToString(c.item.LongVal(), x)
+				if c.prop.level > 0 then
+					IntToFix(x, x, c.prop.level) 
+				end  
+			elsif c.item.typ = Meta.sRealTyp then 
+				if c.prop.level <= 0 then
+					Strings.RealToStringForm(c.item.RealVal(), 7, 0, c.prop.level, " ", x) 
+				else 
+					Strings.RealToStringForm(c.item.RealVal(), c.prop.level, 0, 1, " ", x) 
+				end  
+			elsif c.item.typ = Meta.realTyp then 
+				if c.prop.level <= 0 then
+					Strings.RealToStringForm(c.item.RealVal(), 16, 0, c.prop.level, " ", x) 
+				else 
+					Strings.RealToStringForm(c.item.RealVal(), c.prop.level, 0, 1, " ", x) 
+				end  
+			elsif c.item.typ = Meta.recTyp then 
+				c.item.GetTypeName(mod_, name)
+				if mod_ = "Dialog" then
+					if name = "Currency" then
+						c.item.Lookup("val", v)
+						c.item.Lookup("scale", b)
+						LongToString(v.LongVal(), x)
+						IntToFix(x, x, b.IntVal()) 
+					else  // Combo
+						c.item.Lookup("item", v) // Combo
+						if v.typ = Meta.arrTyp then
+							v.GetStringVal(x, ok) 
+						end  
+					end  
+				end  
+			end  
+		else 
+			x := c.label 
+		end 
+	end GetField
+	
+	proc SetField(f: StdCFrames.Field; in x: array of char) 
+		var 
+			c: Field
+			ok: boolean
+			i, res, old: integer
+			r, or_: real
+			b, v: Meta.Item
+			mod_, name: Meta.Name
+			long_, long0: longint
+			s: array 1024 of char
+	begin 
+		c := f.view(Field)
+		if c.item.Valid() & ~c.readOnly then
+			case c.item.typ of 
+				| Meta.arrTyp: 
+					c.item.GetStringVal(s, ok)
+					if ~ok or (s # x) then
+						c.item.PutStringVal(x, ok)
+						if ok then
+							Notify(c, f, Dialog.changed, 0, 0) 
+						else 
+							Dialog.Beep
+							f.Update 
+						end  
+					end  
+				| Meta.byteTyp: 
+					if x = "" then
+						i := 0
+						res := 0 
+					elsif c.prop.level > 0 then 
+						FixToInt(x, s, c.prop.level)
+						Strings.StringToInt(s, i, res) 
+					else 
+						Strings.StringToInt(x, i, res) 
+					end 
+					if (res = 0) & (i >= min(byte)) & (i <= max(byte)) then
+						old := c.item.IntVal()
+						if i # old then
+							c.item.PutIntVal(i)
+							Notify(c, f, Dialog.changed, old, i) 
+						end  
+					elsif x # "-" then 
+						Dialog.Beep
+						f.Update 
+					end  
+				| Meta.sIntTyp: 
+					if x = "" then
+						i := 0
+						res := 0 
+					elsif c.prop.level > 0 then 
+						FixToInt(x, s, c.prop.level)
+						Strings.StringToInt(s, i, res) 
+					else 
+						Strings.StringToInt(x, i, res) 
+					end 
+					if (res = 0) & (i >= min(shortint)) & (i <= max(shortint)) then
+						old := c.item.IntVal()
+						if i # old then
+							c.item.PutIntVal(i)
+							Notify(c, f, Dialog.changed, old, i) 
+						end  
+					elsif x # "-" then 
+						Dialog.Beep
+						f.Update 
+					end  
+				| Meta.intTyp: 
+					if x = "" then
+						i := 0
+						res := 0 
+					elsif c.prop.level > 0 then 
+						FixToInt(x, s, c.prop.level)
+						Strings.StringToInt(s, i, res) 
+					else 
+						Strings.StringToInt(x, i, res) 
+					end 
+					if res = 0 then
+						old := c.item.IntVal()
+						if i # old then
+							c.item.PutIntVal(i)
+							Notify(c, f, Dialog.changed, old, i) 
+						end  
+					elsif x # "-" then 
+						Dialog.Beep
+						f.Update 
+					end  
+				| Meta.longTyp: 
+					if x = "" then
+						long_ := 0
+						res := 0 
+					else 
+						FixToInt(x, s, c.prop.level)
+						StringToLong(s, long_, res) 
+					end 
+					if res = 0 then
+						long0 := c.item.LongVal()
+						if long_ # long0 then
+							c.item.PutLongVal(long_)
+							Notify(c, f, Dialog.changed, 0, 0) 
+						end  
+					elsif x # "-" then 
+						Dialog.Beep
+						f.Update 
+					end  
+				| Meta.sRealTyp: 
+					if (x = "") or (x = "-") then
+						r := 0
+						res := 0 
+					else 
+						Strings.StringToReal(x, r, res) 
+					end 
+					if (res = 0) & (r >= min(real)) & (r <= max(real)) then
+						or_ := c.item.RealVal()
+						if r # or_ then
+							c.item.PutRealVal(r)
+							Notify(c, f, Dialog.changed, 0, 0) 
+						end  
+					elsif x # "-" then 
+						Dialog.Beep
+						f.Update 
+					end  
+				| Meta.realTyp: 
+					if (x = "") or (x = "-") then
+						r := 0
+						res := 0 
+					else 
+						Strings.StringToReal(x, r, res) 
+					end 
+					if res = 0 then
+						or_ := c.item.RealVal()
+						if r # or_ then
+							c.item.PutRealVal(r)
+							Notify(c, f, Dialog.changed, 0, 0) 
+						end  
+					elsif x # "-" then 
+						Dialog.Beep
+						f.Update 
+					end  
+				| Meta.recTyp: 
+					c.item.GetTypeName(mod_, name)
+					if mod_ = "Dialog" then
+						if name = "Currency" then
+							c.item.Lookup("val", v)
+							c.item.Lookup("scale", b)
+							if x = "" then
+								long_ := 0
+								res := 0 
+							else 
+								FixToInt(x, s, b.IntVal())
+								StringToLong(s, long_, res) 
+							end 
+							if res = 0 then
+								long0 := v.LongVal()
+								if long_ # long0 then
+									v.PutLongVal(long_)
+									Notify(c, f, Dialog.changed, 0, 0) 
+								end  
+							elsif x # "-" then 
+								Dialog.Beep
+								f.Update 
+							end  
+						else  // name = "Combo"
+							c.item.Lookup("item", v)
+							if v.typ = Meta.arrTyp then
+								v.GetStringVal(s, ok)
+								if ~ok or (s # x) then
+									v.PutStringVal(x, ok)
+									if ok then
+										Notify(c, f, Dialog.changed, 0, 0) 
+									else 
+										Dialog.Beep
+										f.Update 
+									end  
+								end  
+							end  
+						end  
+					end  
+			end  
+		end 
+	end SetField
+	
+	proc EqualField(f: StdCFrames.Field; in s1, s2: array of char): boolean 
+		var 
+			c: Field
+			i1, i2, res1, res2: integer
+			r1, r2: real
+			l1, l2: longint
+			mod_, name: Meta.Name
+			t1, t2: array 64 of char
+			b: Meta.Item
+	begin 
+		c := f.view(Field)
+		case c.item.typ of 
+			| Meta.arrTyp: 
+				return s1 = s2 
+			| Meta.byteTyp, Meta.sIntTyp, Meta.intTyp: 
+				if c.prop.level > 0 then
+					FixToInt(s1, t1, c.prop.level)
+					Strings.StringToInt(t1, i1, res1)
+					FixToInt(s2, t2, c.prop.level)
+					Strings.StringToInt(t2, i2, res2) 
+				else 
+					Strings.StringToInt(s1, i1, res1)
+					Strings.StringToInt(s2, i2, res2) 
+				end 
+				return (res1 = 0) & (res2 = 0) & (i1 = i2) 
+			| Meta.longTyp: 
+				if c.prop.level > 0 then
+					FixToInt(s1, t1, c.prop.level)
+					StringToLong(t1, l1, res1)
+					FixToInt(s2, t2, c.prop.level)
+					StringToLong(t2, l2, res2) 
+				else 
+					StringToLong(s1, l1, res1)
+					StringToLong(s2, l2, res2) 
+				end 
+				return (res1 = 0) & (res2 = 0) & (l1 = l2) 
+			| Meta.sRealTyp, Meta.realTyp: 
+				Strings.StringToReal(s1, r1, res1)
+				Strings.StringToReal(s2, r2, res2)
+				return (res1 = 0) & (res2 = 0) & (r1 = r2) 
+			| Meta.recTyp: 
+				c.item.GetTypeName(mod_, name)
+				if mod_ = "Dialog" then
+					if name = "Currency" then
+						c.item.Lookup("scale", b)
+						i1 := b.IntVal()
+						FixToInt(s1, t1, i1)
+						StringToLong(t1, l1, res1)
+						FixToInt(s2, t2, i1)
+						StringToLong(t2, l2, res2)
+						return (res1 = 0) & (res2 = 0) & (l1 = l2) 
+					else  // name = "Combo"
+						return s1 = s2 
+					end  
+				end  
+		else 
+			return s1 = s2 
+		end 
+	end EqualField
+	
+	proc (c: Field) CopyFromSimpleView2(source: Control) 
+	begin 
+		with source: Field do 
+			c.maxLen := source.maxLen 
+		end 
+	end CopyFromSimpleView2
+	
+	proc (c: Field) Internalize2(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+	begin 
+		rd.ReadVersion(minVersion, fldVersion, thisVersion)
+	end Internalize2
+	
+	proc (c: Field) Externalize2(var wr: Stores.Writer) 
+	begin 
+		wr.WriteVersion(fldVersion)
+	end Externalize2
+	
+	proc (c: Field) GetNewFrame(var frame: Views.Frame) 
+		var 
+			f: StdCFrames.Field
+	begin 
+		f := StdCFrames.dir.NewField()
+		f.disabled := c.disabled
+		f.undef := c.undef
+		f.readOnly := c.readOnly
+		f.font := c.font
+		f.maxLen := c.maxLen
+		f.left := c.prop.opt[left]
+		f.right := c.prop.opt[right]
+		f.multiLine := c.prop.opt[multiLine]
+		f.password := c.prop.opt[password]
+		f.Get := GetField
+		f.Set := SetField
+		f.Equal := EqualField
+		frame := f
+	end GetNewFrame
+	
+	proc (c: Field) Restore(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		with f: StdCFrames.Frame do 
+			f.Restore(l, t, r, b) 
+		end 
+	end Restore
+	
+	proc (c: Field) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View) 
+		var 
+			ch: char
+			mod_, name: Meta.Name
+			from, to_: integer
+	begin 
+		with f: StdCFrames.Field do 
+			if ~c.disabled & ~c.readOnly then
+				with msg: Controllers.PollOpsMsg do 
+					f.GetSelection(from, to_)
+					msg.selectable := (f.Length() > 0) & (f.Length() # to_ - from)
+					if (to_ > from) & ~f.password then
+						msg.valid := {Controllers.pasteChar, Controllers.cut, Controllers.copy_, Controllers.paste} 
+					else 
+						msg.valid := {Controllers.pasteChar, Controllers.paste} 
+					end  
+				| msg: Controllers.TickMsg do 
+					f.Idle 
+				| msg: Controllers.EditMsg do 
+					if msg.op = Controllers.pasteChar then
+						ch := msg.char_
+						if (ch = ldel) or (ch = rdel) or (ch >= 10x) & (ch <= 1fx) 
+							or ("0" <= ch) & (ch <= "9") or (ch = "+") or (ch = "-") 
+							or (c.item.typ = Meta.arrTyp) 
+							or (c.item.typ in {Meta.sRealTyp, Meta.realTyp}) & ((ch = ".") or (ch = "E")) 
+							or (c.prop.level > 0) & (ch = ".") 
+							or (ch = apps) or (ch = ctrlZ) or (ch = ctrlA) 
+						then
+							f.KeyDown(ch) 
+						elsif c.item.typ = Meta.recTyp then 
+							c.item.GetTypeName(mod_, name)
+							if (mod_ = "Dialog") & (name = "Combo") or (ch = ".") then
+								f.KeyDown(ch) 
+							else 
+								Dialog.Beep 
+							end  
+						else 
+							Dialog.Beep 
+						end  
+					else 
+						f.Edit(msg.op, msg.view, msg.w, msg.h, msg.isSingle, msg.clipboard) 
+					end  
+				| msg: Controllers.SelectMsg do 
+					if msg.set_ then
+						f.Select(0, max(integer)) 
+					else 
+						f.Select(-1, -1) 
+					end  
+				| msg: Controllers.MarkMsg do 
+					f.Mark(msg.show, msg.focus)
+					if ~msg.show & msg.focus then
+						f.Update 
+					end 
+					if msg.show & msg.focus then
+						f.Select(0, max(integer)) 
+					end  
+				else 
+					CatchCtrlMsg(c, f, msg, focus) 
+				end  
+			elsif ~c.disabled then 
+				with msg: Controllers.TrackMsg do 
+					f.MouseDown(msg.x, msg.y, msg.modifiers) 
+				else  
+				end  
+			end  
+		end 
+	end HandleCtrlMsg2
+	
+	proc (c: Field) HandlePropMsg2(var msg: Properties.Message) 
+	begin 
+		with msg: Properties.ControlPref do 
+			if msg.char_ = lineChar then
+				msg.accepts := c.prop.opt[multiLine] & (msg.focus = c) 
+			elsif msg.char_ = esc then 
+				msg.accepts := false 
+			end 
+			if ~c.disabled & ~c.readOnly & IsShortcut(msg.char_, c) then
+				msg.getFocus := true 
+			end  
+		| msg: Properties.FocusPref do 
+			if ~c.disabled & ~c.readOnly then
+				msg.setFocus := true 
+			elsif ~c.disabled then 
+				msg.hotFocus := true 
+			end  
+		| msg: Properties.SizePref do 
+			StdCFrames.dir.GetFieldSize(c.maxLen, msg.w, msg.h) 
+		| msg: PropPref do 
+			msg.valid := {link, label, guard, level, notifier, left, right, multiLine, password} 
+		else  
+		end 
+	end HandlePropMsg2
+	
+	proc (c: Field) CheckLink(var ok: boolean) 
+		var 
+			t: integer
+			name: Meta.Name
+	begin 
+		GetTypeName(c.item, name)
+		t := c.item.typ
+		if (t = Meta.arrTyp) & (c.item.BaseTyp() = Meta.charTyp) then
+			c.maxLen := short(c.item.Len() - 1) 
+		elsif t = Meta.byteTyp then 
+			c.maxLen := 6 
+		elsif t = Meta.sIntTyp then 
+			c.maxLen := 9 
+		elsif t = Meta.intTyp then 
+			c.maxLen := 13 
+		elsif t = Meta.longTyp then 
+			c.maxLen := 24 
+		elsif t = Meta.sRealTyp then 
+			c.maxLen := 16 
+		elsif t = Meta.realTyp then 
+			c.maxLen := 24 
+		elsif name = "Combo" then 
+			c.maxLen := 64 
+		elsif name = "Currency" then 
+			c.maxLen := 16 
+		else 
+			ok := false 
+		end 
+	end CheckLink
+	
+	proc (c: Field) Update(f: Views.Frame; op, from, to_: integer) 
+	begin 
+		f(StdCFrames.Frame).Update
+	end Update
+	
+	
+	// UpDownField
+	
+	proc GetUpDownField(f: StdCFrames.UpDownField; var val_: integer) 
+		var 
+			c: UpDownField
+	begin 
+		val_ := 0
+		c := f.view(UpDownField)
+		if c.item.Valid() then
+			val_ := c.item.IntVal() 
+		end 
+	end GetUpDownField
+	
+	proc SetUpDownField(f: StdCFrames.UpDownField; val_: integer) 
+		var 
+			c: UpDownField
+			old: integer
+	begin 
+		c := f.view(UpDownField)
+		if c.item.Valid() & ~c.readOnly then
+			if (val_ >= c.min_) & (val_ <= c.max_) then
+				old := c.item.IntVal()
+				if old # val_ then
+					c.item.PutIntVal(val_)
+					Notify(c, f, Dialog.changed, old, val_) 
+				end  
+			else 
+				Dialog.Beep
+				f.Update 
+			end  
+		end 
+	end SetUpDownField
+	
+	proc (c: UpDownField) CopyFromSimpleView2(source: Control) 
+	begin 
+		with source: UpDownField do 
+			c.min_ := source.min_
+			c.max_ := source.max_
+			c.inc_ := source.inc_ 
+		end 
+	end CopyFromSimpleView2
+	
+	proc (c: UpDownField) Internalize2(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+	begin 
+		rd.ReadVersion(minVersion, fldVersion, thisVersion)
+	end Internalize2
+	
+	proc (c: UpDownField) Externalize2(var wr: Stores.Writer) 
+	begin 
+		wr.WriteVersion(fldVersion)
+	end Externalize2
+	
+	proc (c: UpDownField) GetNewFrame(var frame: Views.Frame) 
+		var 
+			f: StdCFrames.UpDownField
+	begin 
+		f := StdCFrames.dir.NewUpDownField()
+		f.disabled := c.disabled
+		f.undef := c.undef
+		f.readOnly := c.readOnly
+		f.font := c.font
+		f.min_ := c.min_
+		f.max_ := c.max_
+		f.inc_ := c.inc_
+		f.Get := GetUpDownField
+		f.Set := SetUpDownField
+		frame := f
+	end GetNewFrame
+	
+	proc (c: UpDownField) Restore(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		with f: StdCFrames.Frame do 
+			f.Restore(l, t, r, b) 
+		end 
+	end Restore
+	
+	proc (c: UpDownField) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View) 
+		var 
+			ch: char
+			from, to_, i: integer
+			s: array 16 of char
+	begin 
+		if ~c.disabled & ~c.readOnly then
+			with f: StdCFrames.UpDownField do 
+				with msg: Controllers.PollOpsMsg do 
+					f.GetSelection(from, to_)
+					if c.item.Valid() then
+						f.Get(f, i)
+						Strings.IntToString(i, s) 
+					else 
+						s := "" 
+					end 
+					msg.selectable := (len(s) > 0) & (len(s) # to_ - from)
+					if to_ > from then
+						msg.valid := {Controllers.pasteChar, Controllers.cut, Controllers.copy_, Controllers.paste} 
+					else 
+						msg.valid := {Controllers.pasteChar, Controllers.paste} 
+					end  
+				| msg: Controllers.TickMsg do 
+					f.Idle 
+				| msg: Controllers.EditMsg do 
+					if msg.op = Controllers.pasteChar then
+						ch := msg.char_
+						if (ch = ldel) or (ch = rdel) or (ch >= 10x) & (ch <= 1fx) 
+							or ("0" <= ch) & (ch <= "9") or (ch = "+") or (ch = "-") 
+							or (c.item.typ = Meta.arrTyp) 
+							or (ch = apps) or (ch = ctrlZ) or (ch = ctrlA) 
+						then
+							f.KeyDown(ch) 
+						else 
+							Dialog.Beep 
+						end  
+					else 
+						f.Edit(msg.op, msg.view, msg.w, msg.h, msg.isSingle, msg.clipboard) 
+					end  
+				| msg: Controllers.SelectMsg do 
+					if msg.set_ then
+						f.Select(0, max(integer)) 
+					else 
+						f.Select(-1, -1) 
+					end  
+				| msg: Controllers.MarkMsg do 
+					f.Mark(msg.show, msg.focus)
+					if msg.show & msg.focus then
+						f.Select(0, max(integer)) 
+					end  
+				else 
+					CatchCtrlMsg(c, f, msg, focus) 
+				end  
+			end  
+		end 
+	end HandleCtrlMsg2
+	
+	proc (c: UpDownField) HandlePropMsg2(var msg: Properties.Message) 
+		var 
+			m: integer
+			n: integer
+	begin 
+		with msg: Properties.ControlPref do 
+			if (msg.char_ = lineChar) or (msg.char_ = esc) then
+				msg.accepts := false 
+			end 
+			if ~c.disabled & ~c.readOnly & IsShortcut(msg.char_, c) then
+				msg.getFocus := true 
+			end  
+		| msg: Properties.FocusPref do 
+			if ~c.disabled & ~c.readOnly then
+				msg.setFocus := true 
+			end  
+		| msg: Properties.SizePref do 
+			m := -c.min_
+			if c.max_ > m then
+				m := c.max_ 
+			end 
+			n := 3
+			while m > 99 do 
+				inc(n)
+				m := m div 10 
+			end 
+			StdCFrames.dir.GetUpDownFieldSize(n, msg.w, msg.h) 
+		| msg: PropPref do 
+			msg.valid := {link, label, guard, notifier} 
+		else  
+		end 
+	end HandlePropMsg2
+	
+	proc (c: UpDownField) CheckLink(var ok: boolean) 
+	begin 
+		if c.item.typ = Meta.byteTyp then
+			c.min_ := min(byte)
+			c.max_ := max(byte) 
+		elsif c.item.typ = Meta.sIntTyp then 
+			c.min_ := min(shortint)
+			c.max_ := max(shortint) 
+		elsif c.item.typ = Meta.intTyp then 
+			c.min_ := min(integer)
+			c.max_ := max(integer) 
+		else 
+			ok := false 
+		end 
+		c.inc_ := 1
+	end CheckLink
+	
+	proc (c: UpDownField) Update(f: Views.Frame; op, from, to_: integer) 
+	begin 
+		f(StdCFrames.Frame).Update
+	end Update
+	
+	
+	// DateField
+	
+	proc GetDateField(f: StdCFrames.DateField; var date: Dates.Date) 
+		var 
+			c: DateField
+			v: Meta.Item
+	begin 
+		date.year := 1
+		date.month := 1
+		date.day := 1
+		c := f.view(DateField)
+		if c.item.Valid() then
+			c.item.Lookup("year", v)
+			if v.typ = Meta.intTyp then
+				date.year := short(v.IntVal()) 
+			end 
+			c.item.Lookup("month", v)
+			if v.typ = Meta.intTyp then
+				date.month := short(v.IntVal()) 
+			end 
+			c.item.Lookup("day", v)
+			if v.typ = Meta.intTyp then
+				date.day := short(v.IntVal()) 
+			end  
+		end 
+	end GetDateField
+	
+	proc SetDateField(f: StdCFrames.DateField; in date: Dates.Date) 
+		var 
+			c: DateField
+			v: Meta.Item
+	begin 
+		c := f.view(DateField)
+		if c.item.Valid() & ~c.readOnly then
+			c.item.Lookup("year", v)
+			if v.typ = Meta.intTyp then
+				v.PutIntVal(date.year) 
+			end 
+			c.item.Lookup("month", v)
+			if v.typ = Meta.intTyp then
+				v.PutIntVal(date.month) 
+			end 
+			c.item.Lookup("day", v)
+			if v.typ = Meta.intTyp then
+				v.PutIntVal(date.day) 
+			end 
+			Notify(c, f, Dialog.changed, 0, 0) 
+		end 
+	end SetDateField
+	
+	proc GetDateFieldSelection(f: StdCFrames.DateField; var sel: integer) 
+	begin 
+		sel := f.view(DateField).selection
+	end GetDateFieldSelection
+	
+	proc SetDateFieldSelection(f: StdCFrames.DateField; sel: integer) 
+	begin 
+		f.view(DateField).selection := sel
+	end SetDateFieldSelection
+	
+	proc (c: DateField) CopyFromSimpleView2(source: Control) 
+	begin 
+		with source: DateField do 
+			c.selection := source.selection 
+		end 
+	end CopyFromSimpleView2
+	
+	proc (c: DateField) Internalize2(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+	begin 
+		rd.ReadVersion(minVersion, dfldVersion, thisVersion)
+		c.selection := 0
+	end Internalize2
+	
+	proc (c: DateField) Externalize2(var wr: Stores.Writer) 
+	begin 
+		wr.WriteVersion(dfldVersion)
+	end Externalize2
+	
+	proc (c: DateField) GetNewFrame(var frame: Views.Frame) 
+		var 
+			f: StdCFrames.DateField
+	begin 
+		f := StdCFrames.dir.NewDateField()
+		f.disabled := c.disabled
+		f.undef := c.undef
+		f.readOnly := c.readOnly
+		f.font := c.font
+		f.Get := GetDateField
+		f.Set := SetDateField
+		f.GetSel := GetDateFieldSelection
+		f.SetSel := SetDateFieldSelection
+		frame := f
+	end GetNewFrame
+	
+	proc (c: DateField) Restore(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		with f: StdCFrames.Frame do 
+			f.Restore(l, t, r, b) 
+		end 
+	end Restore
+	
+	proc (c: DateField) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View) 
+	begin 
+		if ~c.disabled & ~c.readOnly then
+			with f: StdCFrames.DateField do 
+				with msg: Controllers.PollOpsMsg do 
+					msg.valid := {Controllers.pasteChar, Controllers.copy_} 
+				| msg: Controllers.EditMsg do 
+					if msg.op = Controllers.pasteChar then
+						f.KeyDown(msg.char_) 
+					else 
+						f.Edit(msg.op, msg.view, msg.w, msg.h, msg.isSingle, msg.clipboard) 
+					end  
+				| msg: Controllers.TickMsg do 
+					if f.mark then
+						if c.selection = 0 then
+							c.selection := 1
+							Views.Update(c, Views.keepFrames) 
+						end  
+					end  
+				else 
+					CatchCtrlMsg(c, f, msg, focus) 
+				end  
+			end  
+		end 
+	end HandleCtrlMsg2
+	
+	proc (c: DateField) HandlePropMsg2(var msg: Properties.Message) 
+	begin 
+		with msg: Properties.ControlPref do 
+			if (msg.char_ = lineChar) or (msg.char_ = esc) then
+				msg.accepts := false 
+			elsif (msg.char_ = tab) or (msg.char_ = ltab) then 
+				msg.accepts := ((msg.focus # c) & (~c.disabled & ~c.readOnly)) or 
+					(msg.focus = c) & ((msg.char_ = tab) & (c.selection # -1) or (msg.char_ = ltab) & (c.selection # 1))
+				msg.getFocus := msg.accepts 
+			end 
+			if ~c.disabled & ~c.readOnly & IsShortcut(msg.char_, c) then
+				msg.getFocus := true 
+			end  
+		| msg: Properties.FocusPref do 
+			if ~c.disabled & ~c.readOnly then
+				msg.setFocus := true 
+			end  
+		| msg: Properties.SizePref do 
+			StdCFrames.dir.GetDateFieldSize(msg.w, msg.h) 
+		| msg: PropPref do 
+			msg.valid := {link, label, guard, notifier} 
+		else  
+		end 
+	end HandlePropMsg2
+	
+	proc (c: DateField) CheckLink(var ok: boolean) 
+		var 
+			name: Meta.Name
+	begin 
+		GetTypeName(c.item, name)
+		ok := name = "Date"
+	end CheckLink
+	
+	proc (c: DateField) Update(f: Views.Frame; op, from, to_: integer) 
+	begin 
+		f(StdCFrames.Frame).Update
+	end Update
+	
+	
+	// TimeField
+	
+	proc GetTimeField(f: StdCFrames.TimeField; var time: Dates.Time) 
+		var 
+			c: TimeField
+			v: Meta.Item
+	begin 
+		time.hour := 0
+		time.minute := 0
+		time.second := 0
+		c := f.view(TimeField)
+		if c.item.Valid() then
+			c.item.Lookup("hour", v)
+			if v.typ = Meta.intTyp then
+				time.hour := short(v.IntVal()) 
+			end 
+			c.item.Lookup("minute", v)
+			if v.typ = Meta.intTyp then
+				time.minute := short(v.IntVal()) 
+			end 
+			c.item.Lookup("second", v)
+			if v.typ = Meta.intTyp then
+				time.second := short(v.IntVal()) 
+			end  
+		end 
+	end GetTimeField
+	
+	proc SetTimeField(f: StdCFrames.TimeField; in date: Dates.Time) 
+		var 
+			c: TimeField
+			v: Meta.Item
+	begin 
+		c := f.view(TimeField)
+		if c.item.Valid() & ~c.readOnly then
+			c.item.Lookup("hour", v)
+			if v.typ = Meta.intTyp then
+				v.PutIntVal(date.hour) 
+			end 
+			c.item.Lookup("minute", v)
+			if v.typ = Meta.intTyp then
+				v.PutIntVal(date.minute) 
+			end 
+			c.item.Lookup("second", v)
+			if v.typ = Meta.intTyp then
+				v.PutIntVal(date.second) 
+			end 
+			Notify(c, f, Dialog.changed, 0, 0) 
+		end 
+	end SetTimeField
+	
+	proc GetTimeFieldSelection(f: StdCFrames.TimeField; var sel: integer) 
+	begin 
+		sel := f.view(TimeField).selection
+	end GetTimeFieldSelection
+	
+	proc SetTimeFieldSelection(f: StdCFrames.TimeField; sel: integer) 
+	begin 
+		f.view(TimeField).selection := sel
+	end SetTimeFieldSelection
+	
+	proc (c: TimeField) CopyFromSimpleView2(source: Control) 
+	begin 
+		with source: TimeField do 
+			c.selection := source.selection 
+		end 
+	end CopyFromSimpleView2
+	
+	proc (c: TimeField) Internalize2(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+	begin 
+		rd.ReadVersion(minVersion, tfldVersion, thisVersion)
+		c.selection := 0
+	end Internalize2
+	
+	proc (c: TimeField) Externalize2(var wr: Stores.Writer) 
+	begin 
+		wr.WriteVersion(tfldVersion)
+	end Externalize2
+	
+	proc (c: TimeField) GetNewFrame(var frame: Views.Frame) 
+		var 
+			f: StdCFrames.TimeField
+	begin 
+		f := StdCFrames.dir.NewTimeField()
+		f.disabled := c.disabled
+		f.undef := c.undef
+		f.readOnly := c.readOnly
+		f.font := c.font
+		f.Get := GetTimeField
+		f.Set := SetTimeField
+		f.GetSel := GetTimeFieldSelection
+		f.SetSel := SetTimeFieldSelection
+		frame := f
+	end GetNewFrame
+	
+	proc (c: TimeField) Restore(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		with f: StdCFrames.Frame do 
+			f.Restore(l, t, r, b) 
+		end 
+	end Restore
+	
+	proc (c: TimeField) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View) 
+	begin 
+		if ~c.disabled & ~c.readOnly then
+			with f: StdCFrames.TimeField do 
+				with msg: Controllers.PollOpsMsg do 
+					msg.valid := {Controllers.pasteChar, Controllers.copy_} 
+				| msg: Controllers.EditMsg do 
+					if msg.op = Controllers.pasteChar then
+						f.KeyDown(msg.char_) 
+					else 
+						f.Edit(msg.op, msg.view, msg.w, msg.h, msg.isSingle, msg.clipboard) 
+					end  
+				| msg: Controllers.TickMsg do 
+					if f.mark then
+						if c.selection = 0 then
+							c.selection := 1
+							Views.Update(c, Views.keepFrames) 
+						end  
+					end  
+				else 
+					CatchCtrlMsg(c, f, msg, focus) 
+				end  
+			end  
+		end 
+	end HandleCtrlMsg2
+	
+	proc (c: TimeField) HandlePropMsg2(var msg: Properties.Message) 
+	begin 
+		with msg: Properties.ControlPref do 
+			if (msg.char_ = lineChar) or (msg.char_ = esc) then
+				msg.accepts := false 
+			elsif (msg.char_ = tab) or (msg.char_ = ltab) then 
+				msg.accepts := (msg.focus # c) or 
+					((msg.char_ = tab) & (c.selection # -1)) or ((msg.char_ = ltab) & (c.selection # 1)) 
+			end 
+			if ~c.disabled & ~c.readOnly & IsShortcut(msg.char_, c) then
+				msg.getFocus := true 
+			end  
+		| msg: Properties.FocusPref do 
+			if ~c.disabled & ~c.readOnly then
+				msg.setFocus := true 
+			end  
+		| msg: Properties.SizePref do 
+			StdCFrames.dir.GetTimeFieldSize(msg.w, msg.h) 
+		| msg: PropPref do 
+			msg.valid := {link, label, guard, notifier} 
+		else  
+		end 
+	end HandlePropMsg2
+	
+	proc (c: TimeField) CheckLink(var ok: boolean) 
+		var 
+			name: Meta.Name
+	begin 
+		GetTypeName(c.item, name)
+		ok := name = "Time"
+	end CheckLink
+	
+	proc (c: TimeField) Update(f: Views.Frame; op, from, to_: integer) 
+	begin 
+		f(StdCFrames.Frame).Update
+	end Update
+	
+	
+	// ColorField
+	
+	proc GetColorField(f: StdCFrames.ColorField; var col: integer) 
+		var 
+			c: ColorField
+			v: Meta.Item
+	begin 
+		col := Ports.defaultColor
+		c := f.view(ColorField)
+		if c.item.Valid() then
+			if c.item.typ = Meta.intTyp then
+				col := c.item.IntVal() 
+			else 
+				c.item.Lookup("val", v)
+				if v.typ = Meta.intTyp then
+					col := v.IntVal() 
+				end  
+			end  
+		end 
+	end GetColorField
+	
+	proc SetColorField(f: StdCFrames.ColorField; col: integer) 
+		var 
+			c: ColorField
+			v: Meta.Item
+			old: integer
+	begin 
+		c := f.view(ColorField)
+		if c.item.Valid() & ~c.readOnly then
+			if c.item.typ = Meta.intTyp then
+				old := c.item.IntVal()
+				if old # col then
+					c.item.PutIntVal(col)
+					Notify(c, f, Dialog.changed, old, col) 
+				end  
+			else 
+				c.item.Lookup("val", v)
+				if v.typ = Meta.intTyp then
+					old := v.IntVal()
+					if old # col then
+						v.PutIntVal(col)
+						Notify(c, f, Dialog.changed, old, col) 
+					end  
+				end  
+			end  
+		end 
+	end SetColorField
+	
+	proc (c: ColorField) Internalize2(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+	begin 
+		rd.ReadVersion(minVersion, cfldVersion, thisVersion)
+	end Internalize2
+	
+	proc (c: ColorField) Externalize2(var wr: Stores.Writer) 
+	begin 
+		wr.WriteVersion(cfldVersion)
+	end Externalize2
+	
+	proc (c: ColorField) GetNewFrame(var frame: Views.Frame) 
+		var 
+			f: StdCFrames.ColorField
+	begin 
+		f := StdCFrames.dir.NewColorField()
+		f.disabled := c.disabled
+		f.undef := c.undef
+		f.readOnly := c.readOnly
+		f.font := c.font
+		f.Get := GetColorField
+		f.Set := SetColorField
+		frame := f
+	end GetNewFrame
+	
+	proc (c: ColorField) Restore(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		with f: StdCFrames.Frame do 
+			f.Restore(l, t, r, b) 
+		end 
+	end Restore
+	
+	proc (c: ColorField) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View) 
+	begin 
+		if ~c.disabled & ~c.readOnly then
+			with f: StdCFrames.ColorField do 
+				with msg: Controllers.EditMsg do 
+					if msg.op = Controllers.pasteChar then
+						f.KeyDown(msg.char_) 
+					else 
+						f.Edit(msg.op, msg.view, msg.w, msg.h, msg.isSingle, msg.clipboard) 
+					end  
+				else 
+					CatchCtrlMsg(c, f, msg, focus) 
+				end  
+			end  
+		end 
+	end HandleCtrlMsg2
+	
+	proc (c: ColorField) HandlePropMsg2(var msg: Properties.Message) 
+	begin 
+		with msg: Properties.ControlPref do 
+			msg.accepts := ~c.disabled & ~c.readOnly & IsShortcut(msg.char_, c) 
+		| msg: Properties.FocusPref do 
+			if ~c.disabled & ~c.readOnly then
+				msg.hotFocus := true
+				msg.setFocus := StdCFrames.setFocus 
+			end  
+		| msg: Properties.SizePref do 
+			StdCFrames.dir.GetColorFieldSize(msg.w, msg.h) 
+		else  
+		end 
+	end HandlePropMsg2
+	
+	proc (c: ColorField) CheckLink(var ok: boolean) 
+		var 
+			name: Meta.Name
+	begin 
+		GetTypeName(c.item, name)
+		ok := (name = "Color") or (c.item.typ = Meta.intTyp)
+	end CheckLink
+	
+	proc (c: ColorField) Update(f: Views.Frame; op, from, to_: integer) 
+	begin 
+		f(StdCFrames.Frame).Update
+	end Update
+	
+	
+	// ListBox
+	
+	proc GetListBox(f: StdCFrames.ListBox; var i: integer) 
+		var 
+			c: ListBox
+			v: Meta.Item
+	begin 
+		i := -1
+		c := f.view(ListBox)
+		if c.item.Valid() then
+			c.item.Lookup("index", v)
+			if v.typ = Meta.intTyp then
+				i := v.IntVal() 
+			end  
+		end 
+	end GetListBox
+	
+	proc SetListBox(f: StdCFrames.ListBox; i: integer) 
+		var 
+			c: ListBox
+			v: Meta.Item
+			old: integer
+	begin 
+		c := f.view(ListBox)
+		if c.item.Valid() & ~c.readOnly then
+			c.item.Lookup("index", v)
+			if v.typ = Meta.intTyp then
+				old := v.IntVal()
+				if i # old then
+					v.PutIntVal(i)
+					Notify(c, f, Dialog.changed, old, i) 
+				end  
+			end  
+		end 
+	end SetListBox
+	
+	proc GetFName(var rec, par: ANYREC) 
+	begin 
+		with par: Param do 
+			with rec: Dialog.List do 
+				rec.GetItem(par.i, par.n) 
+			| rec: Dialog.Selection do 
+				rec.GetItem(par.i, par.n) 
+			| rec: Dialog.Combo do 
+				rec.GetItem(par.i, par.n) 
+			else 
+				par.n := "" 
+			end  
+		end 
+	end GetFName
+	
+	proc GetListName(f: StdCFrames.ListBox; i: integer; var name: array of char) 
+		var 
+			c: ListBox
+			par: Param
+	begin 
+		par.n := ""
+		c := f.view(ListBox)
+		if c.item.Valid() then
+			par.i := i
+			c.item.CallWith(GetFName, par) 
+		end 
+		name := par.n
+	end GetListName
+	
+	proc (c: ListBox) Internalize2(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+	begin 
+		rd.ReadVersion(minVersion, lbxVersion, thisVersion)
+	end Internalize2
+	
+	proc (c: ListBox) Externalize2(var wr: Stores.Writer) 
+	begin 
+		wr.WriteVersion(lbxVersion)
+	end Externalize2
+	
+	proc (c: ListBox) GetNewFrame(var frame: Views.Frame) 
+		var 
+			f: StdCFrames.ListBox
+	begin 
+		f := StdCFrames.dir.NewListBox()
+		f.disabled := c.disabled
+		f.undef := c.undef
+		f.readOnly := c.readOnly
+		f.font := c.font
+		f.sorted := c.prop.opt[sorted]
+		f.Get := GetListBox
+		f.Set := SetListBox
+		f.GetName := GetListName
+		frame := f
+	end GetNewFrame
+	
+	proc (c: ListBox) Restore(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		with f: StdCFrames.Frame do 
+			f.Restore(l, t, r, b) 
+		end 
+	end Restore
+	
+	proc (c: ListBox) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View) 
+	begin 
+		with f: StdCFrames.ListBox do 
+			if ~c.disabled & ~c.readOnly then
+				with msg: Controllers.EditMsg do 
+					if msg.op = Controllers.pasteChar then
+						f.KeyDown(msg.char_) 
+					end  
+				else 
+					CatchCtrlMsg(c, f, msg, focus) 
+				end  
+			elsif ~c.disabled then 
+				with msg: Controllers.TrackMsg do 
+					f.MouseDown(msg.x, msg.y, msg.modifiers) 
+				else  
+				end  
+			end  
+		end 
+	end HandleCtrlMsg2
+	
+	proc (c: ListBox) HandlePropMsg2(var msg: Properties.Message) 
+	begin 
+		with msg: Properties.ControlPref do 
+			if (msg.char_ = lineChar) or (msg.char_ = esc) then
+				msg.accepts := false 
+			end 
+			if ~c.disabled & ~c.readOnly & IsShortcut(msg.char_, c) then
+				msg.getFocus := true 
+			end  
+		| msg: Properties.FocusPref do 
+			if ~c.disabled & ~c.readOnly then
+				msg.setFocus := true 
+			elsif ~c.disabled then 
+				msg.hotFocus := true 
+			end  
+		| msg: Properties.SizePref do 
+			StdCFrames.dir.GetListBoxSize(msg.w, msg.h) 
+		| msg: PropPref do 
+			msg.valid := {link, label, guard, notifier, sorted} 
+		else  
+		end 
+	end HandlePropMsg2
+	
+	proc (c: ListBox) CheckLink(var ok: boolean) 
+		var 
+			name: Meta.Name
+	begin 
+		GetTypeName(c.item, name)
+		ok := name = "List"
+	end CheckLink
+	
+	proc (c: ListBox) Update(f: Views.Frame; op, from, to_: integer) 
+	begin 
+		f(StdCFrames.Frame).Update
+	end Update
+	
+	proc (c: ListBox) UpdateList(f: Views.Frame) 
+	begin 
+		f(StdCFrames.Frame).UpdateList
+	end UpdateList
+	
+	
+	// SelectionBox
+	
+	proc InLargeSet(var rec, par: ANYREC) 
+	begin 
+		with par: Param do 
+			with rec: Dialog.Selection do 
+				if rec.In(par.i) then
+					par.i := 1 
+				else 
+					par.i := 0 
+				end  
+			else 
+				par.i := 0 
+			end  
+		end 
+	end InLargeSet
+	
+	proc GetSelectionBox(f: StdCFrames.SelectionBox; i: integer; var in_: boolean) 
+		var 
+			c: SelectionBox
+			lv: SelectValue
+			par: Param
+	begin 
+		in_ := false
+		c := f.view(SelectionBox)
+		if c.item.Valid() then
+			if c.item.Is(lv) then
+				par.i := i
+				c.item.CallWith(InLargeSet, par)
+				in_ := par.i # 0 
+			end  
+		end 
+	end GetSelectionBox
+	
+	proc InclLargeSet(var rec, par: ANYREC) 
+	begin 
+		with par: Param do 
+			with rec: Dialog.Selection do 
+				if (par.from # par.to_) or ~rec.In(par.from) then
+					rec.Incl(par.from, par.to_)
+					par.i := 1 
+				else 
+					par.i := 0 
+				end  
+			else 
+				par.i := 0 
+			end  
+		end 
+	end InclLargeSet
+	
+	proc InclSelectionBox(f: StdCFrames.SelectionBox; from, to_: integer) 
+		var 
+			c: SelectionBox
+			lv: SelectValue
+			par: Param
+	begin 
+		c := f.view(SelectionBox)
+		if c.item.Valid() & ~c.readOnly then
+			if c.item.Is(lv) then
+				par.from := from
+				par.to_ := to_
+				c.item.CallWith(InclLargeSet, par)
+				if par.i # 0 then
+					Notify(c, f, Dialog.included, from, to_) 
+				end  
+			end  
+		end 
+	end InclSelectionBox
+	
+	proc ExclLargeSet(var rec, par: ANYREC) 
+	begin 
+		with par: Param do 
+			with rec: Dialog.Selection do 
+				if (par.from # par.to_) or rec.In(par.from) then
+					rec.Excl(par.from, par.to_)
+					par.i := 1 
+				else 
+					par.i := 0 
+				end  
+			else 
+				par.i := 0 
+			end  
+		end 
+	end ExclLargeSet
+	
+	proc ExclSelectionBox(f: StdCFrames.SelectionBox; from, to_: integer) 
+		var 
+			c: SelectionBox
+			lv: SelectValue
+			par: Param
+	begin 
+		c := f.view(SelectionBox)
+		if c.item.Valid() & ~c.readOnly then
+			if c.item.Is(lv) then
+				par.from := from
+				par.to_ := to_
+				c.item.CallWith(ExclLargeSet, par)
+				if par.i # 0 then
+					Notify(c, f, Dialog.excluded, from, to_) 
+				end  
+			end  
+		end 
+	end ExclSelectionBox
+	
+	proc SetSelectionBox(f: StdCFrames.SelectionBox; from, to_: integer) 
+		var 
+			c: SelectionBox
+			lv: SelectValue
+			par: Param
+	begin 
+		c := f.view(SelectionBox)
+		if c.item.Valid() & ~c.readOnly then
+			if c.item.Is(lv) then
+				par.from := 0
+				par.to_ := max(integer)
+				c.item.CallWith(ExclLargeSet, par)
+				par.from := from
+				par.to_ := to_
+				c.item.CallWith(InclLargeSet, par)
+				Notify(c, f, Dialog.set_, from, to_) 
+			end  
+		end 
+	end SetSelectionBox
+	
+	proc GetSelName(f: StdCFrames.SelectionBox; i: integer; var name: array of char) 
+		var 
+			c: SelectionBox
+			par: Param
+	begin 
+		par.n := ""
+		c := f.view(SelectionBox)
+		if c.item.Valid() then
+			par.i := i
+			c.item.CallWith(GetFName, par) 
+		end 
+		name := par.n
+	end GetSelName
+	
+	proc (c: SelectionBox) Internalize2(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+	begin 
+		rd.ReadVersion(minVersion, sbxVersion, thisVersion)
+	end Internalize2
+	
+	proc (c: SelectionBox) Externalize2(var wr: Stores.Writer) 
+	begin 
+		wr.WriteVersion(sbxVersion)
+	end Externalize2
+	
+	proc (c: SelectionBox) GetNewFrame(var frame: Views.Frame) 
+		var 
+			f: StdCFrames.SelectionBox
+	begin 
+		f := StdCFrames.dir.NewSelectionBox()
+		f.disabled := c.disabled
+		f.undef := c.undef
+		f.readOnly := c.readOnly
+		f.font := c.font
+		f.sorted := c.prop.opt[sorted]
+		f.Get := GetSelectionBox
+		f.Incl := InclSelectionBox
+		f.Excl := ExclSelectionBox
+		f.Set := SetSelectionBox
+		f.GetName := GetSelName
+		frame := f
+	end GetNewFrame
+	
+	proc (c: SelectionBox) Restore(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		with f: StdCFrames.Frame do 
+			f.Restore(l, t, r, b) 
+		end 
+	end Restore
+	
+	proc (c: SelectionBox) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View) 
+	begin 
+		with f: StdCFrames.SelectionBox do 
+			if ~c.disabled & ~c.readOnly then
+				with msg: Controllers.EditMsg do 
+					if msg.op = Controllers.pasteChar then
+						f.KeyDown(msg.char_) 
+					end  
+				| msg: Controllers.SelectMsg do 
+					if msg.set_ then
+						f.Select(0, max(integer)) 
+					else 
+						f.Select(-1, -1) 
+					end  
+				else 
+					CatchCtrlMsg(c, f, msg, focus) 
+				end  
+			elsif ~c.disabled then 
+				with msg: Controllers.TrackMsg do 
+					f.MouseDown(msg.x, msg.y, msg.modifiers) 
+				else  
+				end  
+			end  
+		end 
+	end HandleCtrlMsg2
+	
+	proc (c: SelectionBox) HandlePropMsg2(var msg: Properties.Message) 
+	begin 
+		with msg: Properties.ControlPref do 
+			if (msg.char_ = lineChar) or (msg.char_ = esc) then
+				msg.accepts := false 
+			end 
+			if ~c.disabled & ~c.readOnly & IsShortcut(msg.char_, c) or msg.getFocus then
+				msg.getFocus := StdCFrames.setFocus 
+			end  
+		| msg: Properties.FocusPref do 
+			if ~c.disabled & ~c.readOnly then
+				msg.setFocus := true 
+			elsif ~c.disabled then 
+				msg.hotFocus := true 
+			end  
+		| msg: Properties.SizePref do 
+			StdCFrames.dir.GetSelectionBoxSize(msg.w, msg.h) 
+		| msg: PropPref do 
+			msg.valid := {link, label, guard, notifier, sorted} 
+		else  
+		end 
+	end HandlePropMsg2
+	
+	proc (c: SelectionBox) CheckLink(var ok: boolean) 
+		var 
+			name: Meta.Name
+	begin 
+		GetTypeName(c.item, name)
+		ok := name = "Selection"
+	end CheckLink
+	
+	proc (c: SelectionBox) Update(f: Views.Frame; op, from, to_: integer) 
+	begin 
+		if (op >= Dialog.included) & (op <= Dialog.set_) then
+			f(StdCFrames.SelectionBox).UpdateRange(op, from, to_) 
+		else 
+			f(StdCFrames.Frame).Update 
+		end 
+	end Update
+	
+	proc (c: SelectionBox) UpdateList(f: Views.Frame) 
+	begin 
+		f(StdCFrames.Frame).UpdateList
+	end UpdateList
+	
+	
+	// ComboBox
+	
+	proc GetComboBox(f: StdCFrames.ComboBox; var x: array of char) 
+		var 
+			c: ComboBox
+			ok: boolean
+			v: Meta.Item
+	begin 
+		x := ""
+		c := f.view(ComboBox)
+		if c.item.Valid() then
+			c.item.Lookup("item", v)
+			if v.typ = Meta.arrTyp then
+				v.GetStringVal(x, ok) 
+			end  
+		end 
+	end GetComboBox
+	
+	proc SetComboBox(f: StdCFrames.ComboBox; in x: array of char) 
+		var 
+			c: ComboBox
+			ok: boolean
+			v: Meta.Item
+			s: array 1024 of char
+	begin 
+		c := f.view(ComboBox)
+		if c.item.Valid() & ~c.readOnly then
+			c.item.Lookup("item", v)
+			if v.typ = Meta.arrTyp then
+				v.GetStringVal(s, ok)
+				if ~ok or (s # x) then
+					v.PutStringVal(x, ok)
+					if ok then
+						Notify(c, f, Dialog.changed, 0, 0) 
+					end  
+				end  
+			end  
+		end 
+	end SetComboBox
+	
+	proc GetComboName(f: StdCFrames.ComboBox; i: integer; var name: array of char) 
+		var 
+			c: ComboBox
+			par: Param
+	begin 
+		par.n := ""
+		c := f.view(ComboBox)
+		if c.item.Valid() then
+			par.i := i
+			c.item.CallWith(GetFName, par) 
+		end 
+		name := par.n
+	end GetComboName
+	
+	proc (c: ComboBox) Internalize2(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+	begin 
+		rd.ReadVersion(minVersion, cbxVersion, thisVersion)
+	end Internalize2
+	
+	proc (c: ComboBox) Externalize2(var wr: Stores.Writer) 
+	begin 
+		wr.WriteVersion(cbxVersion)
+	end Externalize2
+	
+	proc (c: ComboBox) GetNewFrame(var frame: Views.Frame) 
+		var 
+			f: StdCFrames.ComboBox
+	begin 
+		f := StdCFrames.dir.NewComboBox()
+		f.disabled := c.disabled
+		f.undef := c.undef
+		f.readOnly := c.readOnly
+		f.font := c.font
+		f.sorted := c.prop.opt[sorted]
+		f.Get := GetComboBox
+		f.Set := SetComboBox
+		f.GetName := GetComboName
+		frame := f
+	end GetNewFrame
+	
+	proc (c: ComboBox) Restore(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		with f: StdCFrames.Frame do 
+			f.Restore(l, t, r, b) 
+		end 
+	end Restore
+	
+	proc (c: ComboBox) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View) 
+		var 
+			from, to_: integer
+	begin 
+		with f: StdCFrames.ComboBox do 
+			if ~c.disabled & ~c.readOnly then
+				with msg: Controllers.PollOpsMsg do 
+					f.GetSelection(from, to_)
+					msg.selectable := (f.Length() > 0) & (f.Length() # to_ - from)
+					if to_ > from then
+						msg.valid := {Controllers.pasteChar, Controllers.cut, Controllers.copy_, Controllers.paste} 
+					else 
+						msg.valid := {Controllers.pasteChar, Controllers.paste} 
+					end  
+				| msg: Controllers.TickMsg do 
+					f.Idle 
+				| msg: Controllers.EditMsg do 
+					if msg.op = Controllers.pasteChar then
+						f.KeyDown(msg.char_) 
+					else 
+						f.Edit(msg.op, msg.view, msg.w, msg.h, msg.isSingle, msg.clipboard) 
+					end  
+				| msg: Controllers.SelectMsg do 
+					if msg.set_ then
+						f.Select(0, max(integer)) 
+					else 
+						f.Select(-1, -1) 
+					end  
+				| msg: Controllers.MarkMsg do 
+					f.Mark(msg.show, msg.focus)
+					if msg.show & msg.focus then
+						f.Select(0, max(integer)) 
+					end  
+				| msg: Controllers.TrackMsg do 
+					f.MouseDown(msg.x, msg.y, msg.modifiers) 
+				else 
+					CatchCtrlMsg(c, f, msg, focus) 
+				end  
+			end  
+		end 
+	end HandleCtrlMsg2
+	
+	proc (c: ComboBox) HandlePropMsg2(var msg: Properties.Message) 
+	begin 
+		with msg: Properties.ControlPref do 
+			if (msg.char_ = lineChar) or (msg.char_ = esc) then
+				msg.accepts := false 
+			end 
+			if ~c.disabled & ~c.readOnly & IsShortcut(msg.char_, c) then
+				msg.getFocus := true 
+			end  
+		| msg: Properties.FocusPref do 
+			if ~c.disabled & ~c.readOnly then
+				msg.setFocus := true 
+			end  
+		| msg: Properties.SizePref do 
+			StdCFrames.dir.GetComboBoxSize(msg.w, msg.h) 
+		| msg: PropPref do 
+			msg.valid := {link, label, guard, notifier, sorted} 
+		else  
+		end 
+	end HandlePropMsg2
+	
+	proc (c: ComboBox) CheckLink(var ok: boolean) 
+		var 
+			name: Meta.Name
+	begin 
+		GetTypeName(c.item, name)
+		ok := name = "Combo"
+	end CheckLink
+	
+	proc (c: ComboBox) Update(f: Views.Frame; op, from, to_: integer) 
+	begin 
+		f(StdCFrames.Frame).Update
+	end Update
+	
+	proc (c: ComboBox) UpdateList(f: Views.Frame) 
+	begin 
+		f(StdCFrames.Frame).UpdateList
+	end UpdateList
+	
+	
+	// Caption
+	
+	proc (c: Caption) Internalize2(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+	begin 
+		rd.ReadVersion(minVersion, capVersion, thisVersion)
+		if thisVersion < 1 then
+			c.prop.opt[left] := true 
+		end 
+	end Internalize2
+	
+	proc (c: Caption) Externalize2(var wr: Stores.Writer) 
+	begin 
+		// Save old version for captions that are compatible with the old version
+		if c.prop.opt[left] then
+			wr.WriteVersion(0) 
+		else 
+			wr.WriteVersion(capVersion) 
+		end 
+	end Externalize2
+	
+	proc (c: Caption) GetNewFrame(var frame: Views.Frame) 
+		var 
+			f: StdCFrames.Caption
+	begin 
+		f := StdCFrames.dir.NewCaption()
+		f.disabled := c.disabled
+		f.undef := c.undef
+		f.readOnly := c.readOnly
+		f.font := c.font
+		f.label := c.label
+		f.left := c.prop.opt[left]
+		f.right := c.prop.opt[right]
+		frame := f
+	end GetNewFrame
+	
+	proc (c: Caption) Restore(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		with f: StdCFrames.Frame do 
+			f.Restore(l, t, r, b) 
+		end 
+	end Restore
+	
+	proc (c: Caption) HandlePropMsg2(var msg: Properties.Message) 
+	begin 
+		with msg: Properties.SizePref do 
+			StdCFrames.dir.GetCaptionSize(msg.w, msg.h) 
+		| msg: PropPref do 
+			msg.valid := {link, label, guard, left, right} 
+		| msg: DefaultsPref do 
+			if c.prop.link = "" then
+				msg.disabled := false 
+			end  
+		else  
+		end 
+	end HandlePropMsg2
+	
+	proc (c: Caption) Update(f: Views.Frame; op, from, to_: integer) 
+	begin 
+		f(StdCFrames.Caption).label := c.label
+		f(StdCFrames.Frame).Update
+	end Update
+	
+	
+	// Group
+	
+	proc (c: Group) Internalize2(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+	begin 
+		rd.ReadVersion(minVersion, grpVersion, thisVersion)
+	end Internalize2
+	
+	proc (c: Group) Externalize2(var wr: Stores.Writer) 
+	begin 
+		wr.WriteVersion(grpVersion)
+	end Externalize2
+	
+	proc (c: Group) GetNewFrame(var frame: Views.Frame) 
+		var 
+			f: StdCFrames.Group
+	begin 
+		f := StdCFrames.dir.NewGroup()
+		f.disabled := c.disabled
+		f.undef := c.undef
+		f.readOnly := c.readOnly
+		f.font := c.font
+		f.label := c.label
+		frame := f
+	end GetNewFrame
+	
+	proc (c: Group) Restore(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		with f: StdCFrames.Frame do 
+			f.Restore(l, t, r, b) 
+		end 
+	end Restore
+	
+	proc (c: Group) HandlePropMsg2(var msg: Properties.Message) 
+	begin 
+		with msg: Properties.SizePref do 
+			StdCFrames.dir.GetGroupSize(msg.w, msg.h) 
+		| msg: PropPref do 
+			msg.valid := {link, label, guard} 
+		| msg: DefaultsPref do 
+			if c.prop.link = "" then
+				msg.disabled := false 
+			end  
+		else  
+		end 
+	end HandlePropMsg2
+	
+	proc (c: Group) Update(f: Views.Frame; op, from, to_: integer) 
+	begin 
+		f(StdCFrames.Group).label := c.label
+		f(StdCFrames.Frame).Update
+	end Update
+	
+	
+	// TreeControl
+	
+	proc (c: TreeControl) Internalize2(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+	begin 
+		rd.ReadVersion(minVersion, tfVersion, thisVersion)
+	end Internalize2
+	
+	proc (c: TreeControl) Externalize2(var wr: Stores.Writer) 
+	begin 
+		wr.WriteVersion(tfVersion)
+	end Externalize2
+	
+	proc TVNofNodesF(var rec, par: ANYREC) 
+	begin 
+		with par: TVParam do 
+			with rec: Dialog.Tree do 
+				par.l := rec.NofNodes() 
+			else 
+				par.l := 0 
+			end  
+		end 
+	end TVNofNodesF
+	
+	proc TVNofNodes(f: StdCFrames.TreeFrame): integer 
+		var 
+			c: TreeControl
+			par: TVParam
+	begin 
+		c := f.view(TreeControl)
+		par.l := 0
+		if c.item.Valid() then
+			c.item.CallWith(TVNofNodesF, par) 
+		end 
+		return par.l
+	end TVNofNodes
+	
+	proc TVChildF(var rec, par: ANYREC) 
+	begin 
+		with par: TVParam do 
+			with rec: Dialog.Tree do 
+				par.nodeOut := rec.Child(par.nodeIn, Dialog.firstPos) 
+			else 
+				par.nodeOut := nil 
+			end  
+		end 
+	end TVChildF
+	
+	proc TVChild(f: StdCFrames.TreeFrame; node: Dialog.TreeNode): Dialog.TreeNode 
+		var 
+			c: TreeControl
+			par: TVParam
+	begin 
+		c := f.view(TreeControl)
+		par.nodeIn := node
+		par.nodeOut := nil
+		if c.item.Valid() then
+			c.item.CallWith(TVChildF, par) 
+		end 
+		return par.nodeOut
+	end TVChild
+	
+	proc TVParentF(var rec, par: ANYREC) 
+	begin 
+		with par: TVParam do 
+			with rec: Dialog.Tree do 
+				par.nodeOut := rec.Parent(par.nodeIn) 
+			else 
+				par.nodeOut := nil 
+			end  
+		end 
+	end TVParentF
+	
+	proc TVParent(f: StdCFrames.TreeFrame; node: Dialog.TreeNode): Dialog.TreeNode 
+		var 
+			c: TreeControl
+			par: TVParam
+	begin 
+		c := f.view(TreeControl)
+		par.nodeIn := node
+		par.nodeOut := nil
+		if c.item.Valid() then
+			c.item.CallWith(TVParentF, par) 
+		end 
+		return par.nodeOut
+	end TVParent
+	
+	proc TVNextF(var rec, par: ANYREC) 
+	begin 
+		with par: TVParam do 
+			with rec: Dialog.Tree do 
+				par.nodeOut := rec.Next(par.nodeIn) 
+			else 
+				par.nodeOut := nil 
+			end  
+		end 
+	end TVNextF
+	
+	proc TVNext(f: StdCFrames.TreeFrame; node: Dialog.TreeNode): Dialog.TreeNode 
+		var 
+			c: TreeControl
+			par: TVParam
+	begin 
+		c := f.view(TreeControl)
+		par.nodeIn := node
+		par.nodeOut := nil
+		if c.item.Valid() then
+			c.item.CallWith(TVNextF, par) 
+		end 
+		return par.nodeOut
+	end TVNext
+	
+	proc TVSelectF(var rec, par: ANYREC) 
+	begin 
+		with par: TVParam do 
+			with rec: Dialog.Tree do 
+				rec.Select(par.nodeIn) 
+			end  
+		end 
+	end TVSelectF
+	
+	proc TVSelect(f: StdCFrames.TreeFrame; node: Dialog.TreeNode) 
+		var 
+			c: TreeControl
+			par: TVParam
+	begin 
+		c := f.view(TreeControl)
+		par.nodeIn := node
+		if c.item.Valid() then
+			c.item.CallWith(TVSelectF, par)
+			Notify(c, f, Dialog.changed, 0, 0) 
+		end 
+	end TVSelect
+	
+	proc TVSelectedF(var rec, par: ANYREC) 
+	begin 
+		with par: TVParam do 
+			with rec: Dialog.Tree do 
+				par.nodeOut := rec.Selected() 
+			else 
+				par.nodeOut := nil 
+			end  
+		end 
+	end TVSelectedF
+	
+	proc TVSelected(f: StdCFrames.TreeFrame): Dialog.TreeNode 
+		var 
+			c: TreeControl
+			par: TVParam
+	begin 
+		c := f.view(TreeControl)
+		par.nodeOut := nil
+		if c.item.Valid() then
+			c.item.CallWith(TVSelectedF, par) 
+		end 
+		return par.nodeOut
+	end TVSelected
+	
+	proc TVSetExpansionF(var rec, par: ANYREC) 
+	begin 
+		with par: TVParam do 
+			par.nodeIn.SetExpansion(par.e) 
+		end 
+	end TVSetExpansionF
+	
+	proc TVSetExpansion(f: StdCFrames.TreeFrame; tn: Dialog.TreeNode; expanded: boolean) 
+		var 
+			c: TreeControl
+			par: TVParam
+	begin 
+		c := f.view(TreeControl)
+		par.e := expanded
+		par.nodeIn := tn
+		if c.item.Valid() then
+			c.item.CallWith(TVSetExpansionF, par) 
+		end 
+	end TVSetExpansion
+	
+	proc (c: TreeControl) GetNewFrame(var frame: Views.Frame) 
+		var 
+			f: StdCFrames.TreeFrame
+	begin 
+		f := StdCFrames.dir.NewTreeFrame()
+		f.disabled := c.disabled
+		f.undef := c.undef
+		f.readOnly := c.readOnly
+		f.font := c.font
+		f.sorted := c.prop.opt[sorted]
+		f.haslines := c.prop.opt[haslines]
+		f.hasbuttons := c.prop.opt[hasbuttons]
+		f.atroot := c.prop.opt[atroot]
+		f.foldericons := c.prop.opt[foldericons]
+		f.NofNodes := TVNofNodes
+		f.Child := TVChild
+		f.Parent := TVParent
+		f.Next := TVNext
+		f.Select := TVSelect
+		f.Selected := TVSelected
+		f.SetExpansion := TVSetExpansion
+		frame := f
+	end GetNewFrame
+	
+	proc (c: TreeControl) UpdateList(f: Views.Frame) 
+	begin 
+		f(StdCFrames.Frame).UpdateList()
+	end UpdateList
+	
+	proc (c: TreeControl) Restore(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		with f: StdCFrames.Frame do 
+			f.Restore(l, t, r, b) 
+		end 
+	end Restore
+	
+	proc (c: TreeControl) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View) 
+	begin 
+		with f: StdCFrames.TreeFrame do 
+			if ~c.disabled & ~c.readOnly then
+				with msg: Controllers.EditMsg do 
+					if (msg.op = Controllers.pasteChar) then
+						f.KeyDown(msg.char_) 
+					end  
+				else 
+					CatchCtrlMsg(c, f, msg, focus) 
+				end  
+			elsif ~c.disabled then 
+				with msg: Controllers.TrackMsg do 
+					f.MouseDown(msg.x, msg.y, msg.modifiers) 
+				else  
+				end  
+			end  
+		end 
+	end HandleCtrlMsg2
+	
+	proc (c: TreeControl) HandlePropMsg2(var msg: Properties.Message) 
+	begin 
+		with msg: Properties.ControlPref do 
+			if (msg.char_ = lineChar) or (msg.char_ = esc) then
+				msg.accepts := false 
+			end 
+			if ~c.disabled & ~c.readOnly & IsShortcut(msg.char_, c) or msg.getFocus then
+				msg.getFocus := StdCFrames.setFocus 
+			end  
+		| msg: Properties.FocusPref do 
+			if ~c.disabled & ~c.readOnly then
+				msg.setFocus := true 
+			elsif ~c.disabled then 
+				msg.hotFocus := true 
+			end  
+		| msg: Properties.SizePref do 
+			StdCFrames.dir.GetTreeFrameSize(msg.w, msg.h) 
+		| msg: PropPref do 
+			msg.valid := {link, label, guard, notifier, sorted, haslines, hasbuttons, atroot, foldericons} 
+		| msg: Properties.ResizePref do 
+			msg.horFitToWin := true
+			msg.verFitToWin := true 
+		else  
+		end 
+	end HandlePropMsg2
+	
+	proc (c: TreeControl) CheckLink(var ok: boolean) 
+		var 
+			name: Meta.Name
+	begin 
+		GetTypeName(c.item, name)
+		ok := name = "Tree"
+	end CheckLink
+	
+	proc (c: TreeControl) Update(f: Views.Frame; op, from, to_: integer) 
+	begin 
+		f(StdCFrames.Frame).Update
+	end Update
+	
+	
+	// StdDirectory
+	
+	proc (d: StdDirectory) NewPushButton(p: Prop): Control 
+		var 
+			c: PushButton
+	begin 
+		new(c)
+		OpenLink(c, p)
+		return c
+	end NewPushButton
+	
+	proc (d: StdDirectory) NewCheckBox(p: Prop): Control 
+		var 
+			c: CheckBox
+	begin 
+		new(c)
+		OpenLink(c, p)
+		return c
+	end NewCheckBox
+	
+	proc (d: StdDirectory) NewRadioButton(p: Prop): Control 
+		var 
+			c: RadioButton
+	begin 
+		new(c)
+		OpenLink(c, p)
+		return c
+	end NewRadioButton
+	
+	proc (d: StdDirectory) NewField(p: Prop): Control 
+		var 
+			c: Field
+	begin 
+		new(c)
+		OpenLink(c, p)
+		return c
+	end NewField
+	
+	proc (d: StdDirectory) NewUpDownField(p: Prop): Control 
+		var 
+			c: UpDownField
+	begin 
+		new(c)
+		OpenLink(c, p)
+		return c
+	end NewUpDownField
+	
+	proc (d: StdDirectory) NewDateField(p: Prop): Control 
+		var 
+			c: DateField
+	begin 
+		new(c)
+		OpenLink(c, p)
+		return c
+	end NewDateField
+	
+	proc (d: StdDirectory) NewTimeField(p: Prop): Control 
+		var 
+			c: TimeField
+	begin 
+		new(c)
+		OpenLink(c, p)
+		return c
+	end NewTimeField
+	
+	proc (d: StdDirectory) NewColorField(p: Prop): Control 
+		var 
+			c: ColorField
+	begin 
+		new(c)
+		OpenLink(c, p)
+		return c
+	end NewColorField
+	
+	proc (d: StdDirectory) NewListBox(p: Prop): Control 
+		var 
+			c: ListBox
+	begin 
+		new(c)
+		OpenLink(c, p)
+		return c
+	end NewListBox
+	
+	proc (d: StdDirectory) NewSelectionBox(p: Prop): Control 
+		var 
+			c: SelectionBox
+	begin 
+		new(c)
+		OpenLink(c, p)
+		return c
+	end NewSelectionBox
+	
+	proc (d: StdDirectory) NewComboBox(p: Prop): Control 
+		var 
+			c: ComboBox
+	begin 
+		new(c)
+		OpenLink(c, p)
+		return c
+	end NewComboBox
+	
+	proc (d: StdDirectory) NewCaption(p: Prop): Control 
+		var 
+			c: Caption
+	begin 
+		new(c)
+		OpenLink(c, p)
+		return c
+	end NewCaption
+	
+	proc (d: StdDirectory) NewGroup(p: Prop): Control 
+		var 
+			c: Group
+	begin 
+		new(c)
+		OpenLink(c, p)
+		return c
+	end NewGroup
+	
+	proc (d: StdDirectory) NewTreeControl(p: Prop): Control 
+		var 
+			c: TreeControl
+	begin 
+		new(c)
+		OpenLink(c, p)
+		return c
+	end NewTreeControl
+	
+	proc SetDir*(d: Directory) 
+	begin 
+		assert(d # nil, 20)
+		dir := d
+	end SetDir
+	
+	proc InitProp(var p: Prop) 
+	begin 
+		new(p)
+		p.link := ""
+		p.label := ""
+		p.guard := ""
+		p.notifier := ""
+		p.level := 0
+		p.opt[0] := false
+		p.opt[1] := false
+		p.opt[2] := false
+		p.opt[3] := false
+		p.opt[4] := false
+	end InitProp
+	
+	proc DepositPushButton*
+		var 
+			p: Prop
+	begin 
+		InitProp(p)
+		p.label := "#System:untitled"
+		Views.Deposit(dir.NewPushButton(p))
+	end DepositPushButton
+	
+	proc DepositCheckBox*
+		var 
+			p: Prop
+	begin 
+		InitProp(p)
+		p.label := "#System:untitled"
+		Views.Deposit(dir.NewCheckBox(p))
+	end DepositCheckBox
+	
+	proc DepositRadioButton*
+		var 
+			p: Prop
+	begin 
+		InitProp(p)
+		p.label := "#System:untitled"
+		Views.Deposit(dir.NewRadioButton(p))
+	end DepositRadioButton
+	
+	proc DepositField*
+		var 
+			p: Prop
+	begin 
+		InitProp(p)
+		p.opt[left] := true
+		Views.Deposit(dir.NewField(p))
+	end DepositField
+	
+	proc DepositUpDownField*
+		var 
+			p: Prop
+	begin 
+		InitProp(p)
+		Views.Deposit(dir.NewUpDownField(p))
+	end DepositUpDownField
+	
+	proc DepositDateField*
+		var 
+			p: Prop
+	begin 
+		InitProp(p)
+		Views.Deposit(dir.NewDateField(p))
+	end DepositDateField
+	
+	proc DepositTimeField*
+		var 
+			p: Prop
+	begin 
+		InitProp(p)
+		Views.Deposit(dir.NewTimeField(p))
+	end DepositTimeField
+	
+	proc DepositColorField*
+		var 
+			p: Prop
+	begin 
+		InitProp(p)
+		Views.Deposit(dir.NewColorField(p))
+	end DepositColorField
+	
+	proc DepositListBox*
+		var 
+			p: Prop
+	begin 
+		InitProp(p)
+		Views.Deposit(dir.NewListBox(p))
+	end DepositListBox
+	
+	proc DepositSelectionBox*
+		var 
+			p: Prop
+	begin 
+		InitProp(p)
+		Views.Deposit(dir.NewSelectionBox(p))
+	end DepositSelectionBox
+	
+	proc DepositComboBox*
+		var 
+			p: Prop
+	begin 
+		InitProp(p)
+		Views.Deposit(dir.NewComboBox(p))
+	end DepositComboBox
+	
+	proc DepositCancelButton*
+		var 
+			p: Prop
+	begin 
+		InitProp(p)
+		p.link := "StdCmds.CloseDialog"
+		p.label := "#System:Cancel"
+		p.opt[cancel] := true
+		Views.Deposit(dir.NewPushButton(p))
+	end DepositCancelButton
+	
+	proc DepositCaption*
+		var 
+			p: Prop
+	begin 
+		InitProp(p)
+		p.opt[left] := true
+		p.label := "#System:Caption"
+		Views.Deposit(dir.NewCaption(p))
+	end DepositCaption
+	
+	proc DepositGroup*
+		var 
+			p: Prop
+	begin 
+		InitProp(p)
+		p.label := "#System:Caption"
+		Views.Deposit(dir.NewGroup(p))
+	end DepositGroup
+	
+	proc DepositTreeControl*
+		var 
+			p: Prop
+	begin 
+		InitProp(p)
+		p.opt[haslines] := true
+		p.opt[hasbuttons] := true
+		p.opt[atroot] := true
+		p.opt[foldericons] := true
+		Views.Deposit(dir.NewTreeControl(p))
+	end DepositTreeControl
+	
+	proc Relink*
+		var 
+			msg: UpdateCachesMsg
+	begin 
+		inc(stamp)
+		Views.Omnicast(msg)
+	end Relink
+	
+	
+	proc Init
+		var 
+			d: StdDirectory
+	begin 
+		par := nil
+		stamp := 0
+		new(d)
+		stdDir := d
+		dir := d
+		new(cleaner)
+		cleanerInstalled := 0
+	end Init
+	
+	
+	// check guards action
+	
+	proc (a: Action) Do
+		var 
+			msg: Views.NotifyMsg
+	begin 
+		if Windows.dir # nil then
+			if a.w # nil then
+				inc(a.cnt)
+				msg.id0 := 0
+				msg.id1 := 0
+				msg.opts := {guardCheck}
+				if a.w.seq # nil then
+					a.w.seq.Handle(msg) 
+				end 
+				a.w := Windows.dir.Next(a.w)
+				while (a.w # nil) & a.w.sub do 
+					a.w := Windows.dir.Next(a.w) 
+				end  
+			else 
+				if a.cnt = 0 then
+					a.resolution := Services.resolution 
+				else 
+					a.resolution := Services.resolution div a.cnt div 2 
+				end 
+				a.cnt := 0
+				a.w := Windows.dir.First()
+				while (a.w # nil) & a.w.sub do 
+					a.w := Windows.dir.Next(a.w) 
+				end  
+			end  
+		end 
+		Services.DoLater(a, Services.Ticks() + a.resolution)
+	end Do
+
+begin
+	Init
+	new(action)
+	action.w := nil
+	action.cnt := 0
+	Services.DoLater(action, Services.now)
+(* CLOSE
+	Services.RemoveAction(action) *) 
+end Controls

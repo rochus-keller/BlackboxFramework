@@ -1,0 +1,800 @@
+module FormModels
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   purpose	= ""
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Ports, Stores, Models, Views, Properties, Containers
+	
+	const 
+		minViewSize* = 4 * Ports.point // size of smallest embedded view
+		maxViewSize* = 1000 * Ports.mm // size of largest embedded view
+		// range of currently supported versions
+		minVersion = 0
+		maxBaseVersion = 0
+		maxStdVersion = 0
+	
+	type 
+		// interface types
+		
+		Model* = pointer to (* abstract *) record (Containers.Model) end 
+		
+		Directory* = pointer to (* abstract *) record end 
+		
+		Context* = pointer to (* abstract *) record (Models.Context) end 
+		
+		
+		Reader* = pointer to (* abstract *) record 
+				view*: Views.View // most recently read view
+				l*, t*, r*, b*: integer  // bounding box of most recently read view
+			end 
+		
+		Writer* = pointer to (* abstract *) record end 
+		
+		
+		UpdateMsg* = record (Models.UpdateMsg) 
+				// the receiver of this message must not switch on any marks
+				l*, t*, r*, b*: integer  // (l < r) & (b < t)
+			end 
+		
+		
+		// concrete types
+		
+		StdDirectory = pointer to record (Directory) end 
+		
+		StdModel = pointer to record (Model) 
+				contexts: StdContext  // list of views in form, ordered from bottom to top
+			end 
+		
+		StdContext = pointer to record (Context) 
+				next: StdContext // next upper view
+				form: StdModel // form # NIL
+				view: Views.View // view # NIL
+				l, t, r, b: integer  // (r - l >= minViewSize) & (b - t >= minViewSize)
+			end 
+		
+		StdReader = pointer to record (Reader) 
+				form: StdModel // form # NIL
+				pos: StdContext  // next ReadView: read view above pos
+			end 
+		
+		StdWriter = pointer to record (Writer) 
+				form: StdModel // form # NIL
+				pos: StdContext  // next WriteView: insert view above pos
+			end 
+		
+		
+		FormOp = pointer to record (Stores.Operation) 
+				del, ins: StdContext // ((del = NIL) # (ins = NIL)) OR (del = ins)
+				pos: StdContext  // ins # NIL => next Do: insert ins above pos
+			end 
+		
+		ResizeOp = pointer to record (Stores.Operation) 
+				context: StdContext // context # NIL
+				l, t, r, b: integer  // (r - l >= minViewSize) & (b - t >= minViewSize)
+			end 
+		
+		ReplaceViewOp = pointer to record (Stores.Operation) 
+				context: StdContext // context # NIL
+				view: Views.View  // view # NIL
+			end 
+	
+	
+	var  // (dir # NIL) & (stdDir # NIL)
+		dir-, stdDir-: Directory
+	
+	
+	// Model
+	
+	proc (f: Model) GetEmbeddingLimits*(var minW, maxW, 
+		minH, maxH: integer)  // extensible
+	begin 
+		minH := minViewSize
+		minW := minViewSize
+		maxH := maxViewSize
+		maxW := maxViewSize
+	end GetEmbeddingLimits
+	
+	proc (f: Model) Insert*(v: Views.View; l, t, r, b: integer)  end // new abstract
+	(* v # NIL	20
+	   v.init	21
+	   v.context = NIL	22
+	   l <= r	23
+	   t <= b	24 *)
+	
+	
+	
+	proc (f: Model) Delete*(v: Views.View)  end // new abstract
+	// v in f	20
+	
+	proc (f: Model) Resize*(v: Views.View; l, t, r, b: integer)  end // new abstract
+	(* v in f	20
+	   l <= r	21
+	   t <= b	22 *)
+	
+	
+	
+	proc (f: Model) Top*(): Views.View  end // new abstract
+	
+	proc (f: Model) PutAbove*(v, pos: Views.View)  end // new abstract
+	(* v in f	20
+	   (pos = NIL) OR (pos in f)	21 *)
+	
+	
+	
+	proc (f: Model) Move*(v: Views.View; dx, dy: integer)  end // new abstract
+	// v in f	20
+	
+	proc (f: Model) Copy*(var v: Views.View; dx, dy: integer)  end // new abstract
+	// v in f	20
+	
+	proc (f: Model) NewReader*(old: Reader): Reader  end // new abstract
+	
+	proc (f: Model) NewWriter*(old: Writer): Writer  end // new abstract
+	
+	proc (f: Model) ViewAt*(x, y: integer): Views.View  end // new abstract
+	
+	proc (f: Model) NofViews*(): integer  end // new abstract
+	
+	
+	// Directory
+	
+	proc (d: Directory) New*(): Model  end // new abstract
+	
+	
+	// Context
+	
+	proc (c: Context) ThisModel*(): Model  end // abstract
+	
+	proc (c: Context) GetRect*(var l, t, r, b: integer)  end // new abstract
+	
+	
+	// Reader
+	
+	proc (rd: Reader) Set*(pos: Views.View)  end // new abstract
+	// (pos = NIL) OR (pos in r's form)	20
+	
+	proc (rd: Reader) ReadView*(var v: Views.View)  end // new abstract
+	
+	
+	// Writer
+	
+	proc (wr: Writer) Set*(pos: Views.View)  end // new abstract
+	// (pos = NIL) OR (pos in w's form)	20
+	
+	proc (wr: Writer) WriteView*(v: Views.View; l, t, r, b: integer)  end // new abstract
+	(* v # NIL	20
+	   v.init	21
+	   v.context = NIL	22
+	   l <= r	23
+	   t <= b	24 *)
+	
+	
+	
+	
+	// StdModel
+	
+	proc ThisContext(f: StdModel; view: Views.View): StdContext 
+		var 
+			c: StdContext
+	begin 
+		c := f.contexts
+		while (c # nil) & (c.view # view) do 
+			c := c.next 
+		end 
+		return c
+	end ThisContext
+	
+	proc NewContext(form: StdModel; view: Views.View; l, t, r, b: integer): StdContext 
+		var 
+			c: StdContext
+	begin 
+		assert(form # nil, 100)
+		assert(view.context = nil, 101)
+		if r - l < minViewSize then
+			r := l + minViewSize 
+		end 
+		if b - t < minViewSize then
+			b := t + minViewSize 
+		end 
+		new(c)
+		c.form := form
+		c.view := view
+		c.l := l
+		c.t := t
+		c.r := r
+		c.b := b
+		Stores.Join(form, view)
+		view.InitContext(c)
+		return c
+	end NewContext
+	
+	proc InsertAbove(c, pos: StdContext) 
+	begin 
+		if pos = nil then
+			c.next := nil
+			c.form.contexts := c 
+		else 
+			c.next := pos.next
+			pos.next := c 
+		end 
+	end InsertAbove
+	
+	proc (f: StdModel) Internalize(var rd: Stores.Reader) 
+		var 
+			thisVersion, l, t, r, b, x: integer
+			top, h: StdContext
+			v: Views.View
+	begin 
+		rd.ReadVersion(minVersion, maxStdVersion, thisVersion)
+		if ~rd.cancelled then
+			rd.ReadVersion(0, 0, thisVersion) // backward compatibility with Rel. 1.3
+			rd.ReadInt(x)
+			Views.ReadView(rd, v)
+			top := nil
+			while v # nil do 
+				rd.ReadInt(l)
+				rd.ReadInt(t)
+				rd.ReadInt(r)
+				rd.ReadInt(b)
+				h := NewContext(f, v, l, t, r, b)
+				InsertAbove(h, top)
+				top := h
+				Views.ReadView(rd, v) 
+			end  
+		end 
+	end Internalize
+	
+	proc (f: StdModel) Externalize(var wr: Stores.Writer) 
+		var 
+			c: StdContext
+	begin 
+		wr.WriteVersion(maxStdVersion)
+		wr.WriteVersion(0) // backward compatibility with Rel. 1.3
+		wr.WriteInt(0)
+		c := f.contexts
+		while c # nil do 
+			if Stores.ExternalizeProxy(c.view) # nil then
+				Views.WriteView(wr, c.view)
+				wr.WriteInt(c.l)
+				wr.WriteInt(c.t)
+				wr.WriteInt(c.r)
+				wr.WriteInt(c.b) 
+			end 
+			c := c.next 
+		end 
+		wr.WriteStore(nil)
+	end Externalize
+	
+	proc (f: StdModel) CopyFrom(source: Stores.Store) 
+		var 
+			c, top, h: StdContext
+	begin 
+		with source: StdModel do 
+			c := source.contexts
+			top := nil
+			while c # nil do 
+				h := NewContext(f, Views.CopyOf(c.view, Views.deep), c.l, c.t, c.r, c.b)
+				InsertAbove(h, top)
+				top := h
+				c := c.next 
+			end  
+		end 
+	end CopyFrom
+	
+	proc (f: StdModel) InitFrom(source: Containers.Model) 
+	begin 
+		f.contexts := nil
+	end InitFrom
+	
+	proc (f: StdModel) ReplaceView(old, new_: Views.View) 
+		var 
+			op: ReplaceViewOp
+			c: StdContext
+	begin 
+		c := ThisContext(f, old)
+		assert(c # nil, 20)
+		assert(new_ # nil, 21)
+		assert((new_.context = nil) or (new_.context = c), 23)
+		if old # new_ then(* Stores.InitDomain(new, f.domain); *)
+			Stores.Join(f, new_)
+			new_.InitContext(c) // both views share same context
+			new(op)
+			op.context := c
+			op.view := new_
+			Models.Do(f, "#System:ReplaceView", op) 
+		end 
+	end ReplaceView
+	
+	proc (f: StdModel) Insert(v: Views.View; l, t, r, b: integer) 
+		var 
+			op: FormOp
+			c, h, top: StdContext
+	begin 
+		assert(v # nil, 20)
+		assert(v.context = nil, 22)
+		assert(l <= r, 23)
+		assert(t <= b, 24)
+		h := f.contexts
+		top := nil
+		while h # nil do 
+			top := h
+			h := h.next 
+		end 
+		c := NewContext(f, v, l, t, r, b)
+		new(op)
+		op.del := nil
+		op.ins := c
+		op.pos := top
+		Models.Do(f, "#System:Insertion", op)
+	end Insert
+	
+	proc (f: StdModel) Delete(v: Views.View) 
+		var 
+			op: FormOp
+			c: StdContext
+	begin 
+		c := ThisContext(f, v)
+		assert(c # nil, 20)
+		new(op)
+		op.del := c
+		op.ins := nil
+		op.pos := nil
+		Models.Do(f, "#System:Deletion", op)
+	end Delete
+	
+	proc (f: StdModel) Resize(v: Views.View; l, t, r, b: integer) 
+		var 
+			op: ResizeOp
+			c: StdContext
+	begin 
+		c := ThisContext(f, v)
+		assert(c # nil, 20)
+		assert(r >= l, 21)
+		assert(b >= t, 22)
+		if r - l < minViewSize then
+			r := l + minViewSize 
+		end 
+		if b - t < minViewSize then
+			b := t + minViewSize 
+		end 
+		new(op)
+		op.context := c
+		op.l := l
+		op.t := t
+		op.r := r
+		op.b := b
+		Models.Do(f, "#System:Resizing", op)
+	end Resize
+	
+	proc (f: StdModel) Top(): Views.View 
+		var 
+			h, top: StdContext
+	begin 
+		top := nil
+		h := f.contexts
+		while h # nil do 
+			top := h
+			h := h.next 
+		end 
+		if top # nil then
+			return top.view 
+		else 
+			return nil 
+		end 
+	end Top
+	
+	proc (f: StdModel) PutAbove(v, pos: Views.View) 
+		var 
+			op: FormOp
+			c, d: StdContext
+	begin 
+		c := ThisContext(f, v)
+		assert(c # nil, 20)
+		d := ThisContext(f, pos)
+		assert((pos = nil) or (d # nil), 21)
+		if v # pos then
+			new(op)
+			op.del := c
+			op.ins := c
+			op.pos := d
+			Models.Do(f, "#Form:ChangeZOrder", op) 
+		end 
+	end PutAbove
+	
+	proc (f: StdModel) Move(v: Views.View; dx, dy: integer) 
+		var 
+			op: ResizeOp
+			c: StdContext
+	begin 
+		c := ThisContext(f, v)
+		assert(c # nil, 20)
+		if (dx # 0) or (dy # 0) then
+			new(op)
+			op.context := c
+			op.l := c.l + dx
+			op.t := c.t + dy
+			op.r := c.r + dx
+			op.b := c.b + dy
+			Models.Do(f, "#System:Moving", op) 
+		end 
+	end Move
+	
+	proc (f: StdModel) Copy(var v: Views.View; dx, dy: integer) 
+		var 
+			op: FormOp
+			c, h, top: StdContext
+	begin 
+		c := ThisContext(f, v)
+		assert(c # nil, 20)
+		h := f.contexts
+		top := nil
+		while h # nil do 
+			top := h
+			h := h.next 
+		end 
+		h := NewContext(f, Views.CopyOf(v, Views.deep), c.l + dx, c.t + dy, c.r + dx, c.b + dy)
+		new(op)
+		op.del := nil
+		op.ins := h
+		op.pos := top
+		Models.Do(f, "#System:Copying", op)
+		v := h.view
+	end Copy
+	
+	proc (f: StdModel) NewReader(old: Reader): Reader 
+		var 
+			r: StdReader
+	begin 
+		if (old = nil) or ~(old is StdReader) then
+			new(r) 
+		else 
+			r := old(StdReader) 
+		end 
+		r.view := nil
+		r.l := 0
+		r.t := 0
+		r.r := 0
+		r.b := 0
+		r.form := f
+		r.pos := nil
+		return r
+	end NewReader
+	
+	proc (f: StdModel) NewWriter(old: Writer): Writer 
+		var 
+			w: StdWriter
+	begin 
+		if (old = nil) or ~(old is StdWriter) then
+			new(w) 
+		else 
+			w := old(StdWriter) 
+		end 
+		w.form := f
+		w.pos := nil
+		return w
+	end NewWriter
+	
+	proc (f: StdModel) ViewAt(x, y: integer): Views.View 
+		var 
+			c, top: StdContext
+	begin 
+		c := f.contexts
+		top := nil
+		while c # nil do 
+			if (x >= c.l) & (y >= c.t) & (x < c.r) & (y < c.b) then
+				top := c 
+			end 
+			c := c.next 
+		end 
+		if top = nil then
+			return nil 
+		else 
+			return top.view 
+		end 
+	end ViewAt
+	
+	proc (f: StdModel) NofViews(): integer 
+		var 
+			c: StdContext
+			n: integer
+	begin 
+		n := 0
+		c := f.contexts
+		while c # nil do 
+			inc(n)
+			c := c.next 
+		end 
+		return n
+	end NofViews
+	
+	
+	// StdContext
+	
+	proc (c: StdContext) ThisModel(): Model 
+	begin 
+		return c.form
+	end ThisModel
+	
+	proc (c: StdContext) GetSize(var w, h: integer) 
+	begin 
+		w := c.r - c.l
+		h := c.b - c.t
+	end GetSize
+	
+	proc (c: StdContext) SetSize(w, h: integer) 
+		var 
+			w0, h0: integer
+	begin 
+		w0 := c.r - c.l
+		h0 := c.b - c.t
+		assert(w0 > 0, 100)
+		assert(h0 > 0, 101)
+		Properties.PreferredSize(
+		c.view, minViewSize, maxViewSize, minViewSize, maxViewSize, w0, h0, w, h)
+		if (w # w0) or (h # h0) then
+			c.form.Resize(c.view, c.l, c.t, c.l + w, c.t + h) 
+		end 
+	end SetSize
+	
+	proc (c: StdContext) Normalize(): boolean 
+	begin 
+		return false
+	end Normalize
+	
+	proc (c: StdContext) GetRect(var l, t, r, b: integer) 
+	begin 
+		l := c.l
+		t := c.t
+		r := c.r
+		b := c.b
+	end GetRect
+	
+	
+	// StdDirectory
+	
+	proc (d: StdDirectory) New(): Model 
+		var 
+			f: StdModel
+	begin 
+		new(f)
+		return f
+	end New
+	
+	
+	// StdReader
+	
+	proc (rd: StdReader) Set(pos: Views.View) 
+		var 
+			c: StdContext
+	begin 
+		if pos = nil then
+			c := nil 
+		else 
+			c := ThisContext(rd.form, pos)
+			assert(c # nil, 20) 
+		end 
+		rd.view := nil
+		rd.l := 0
+		rd.t := 0
+		rd.r := 0
+		rd.b := 0
+		rd.pos := c
+	end Set
+	
+	proc (rd: StdReader) ReadView(var v: Views.View) 
+		var 
+			c: StdContext
+	begin 
+		c := rd.pos
+		if c = nil then
+			c := rd.form.contexts 
+		else 
+			c := c.next 
+		end 
+		if c # nil then
+			rd.view := c.view
+			rd.l := c.l
+			rd.t := c.t
+			rd.r := c.r
+			rd.b := c.b
+			rd.pos := c 
+		else 
+			rd.view := nil
+			rd.l := 0
+			rd.t := 0
+			rd.r := 0
+			rd.b := 0 
+		end 
+		v := rd.view
+	end ReadView
+	
+	
+	// StdWriter
+	
+	proc (wr: StdWriter) Set(pos: Views.View) 
+		var 
+			c: StdContext
+	begin 
+		if pos = nil then
+			c := nil 
+		else 
+			c := ThisContext(wr.form, pos)
+			assert(c # nil, 20) 
+		end 
+		wr.pos := c
+	end Set
+	
+	proc (wr: StdWriter) WriteView(v: Views.View; l, t, r, b: integer) 
+		var 
+			op: FormOp
+			c: StdContext
+	begin 
+		assert(v # nil, 20)
+		assert(v.context = nil, 22)
+		assert(l <= r, 23)
+		assert(t <= b, 24)
+		c := NewContext(wr.form, v, l, t, r, b)
+		new(op)
+		op.del := nil
+		op.ins := c
+		op.pos := wr.pos
+		wr.pos := c
+		Models.Do(wr.form, "#System:Insertion", op)
+	end WriteView
+	
+	
+	// operations
+	
+	proc Update(c: StdContext) 
+		var 
+			msg: UpdateMsg
+	begin 
+		msg.l := c.l
+		msg.t := c.t
+		msg.r := c.r
+		msg.b := c.b
+		Models.Broadcast(c.form, msg)
+	end Update
+	
+	proc (op: FormOp) Do
+		var 
+			f: StdModel
+			c, p, pos: StdContext
+	begin 
+		// delete
+		pos := nil
+		c := op.del
+		if c # nil then
+			f := c.form
+			assert(f # nil, 100)
+			p := f.contexts
+			assert(p # nil, 101)
+			if p = c then
+				f.contexts := c.next 
+			else 
+				while p.next # c do 
+					p := p.next
+					assert(p # nil, 102) 
+				end 
+				pos := p
+				p.next := c.next 
+			end 
+			c.next := nil
+			Update(c) 
+		end 
+		// insert
+		c := op.ins
+		if c # nil then
+			f := c.form
+			assert(f # nil, 103)
+			p := f.contexts
+			if op.pos = nil then
+				c.next := f.contexts
+				f.contexts := c 
+			else 
+				c.next := op.pos.next
+				op.pos.next := c 
+			end 
+			Update(c) 
+		end 
+		// swap ins and del for undo
+		p := op.del
+		op.del := op.ins
+		op.ins := p
+		op.pos := pos
+	end Do
+	
+	proc (op: ResizeOp) Do
+		var 
+			c: StdContext
+			l, t, r, b: integer
+	begin 
+		c := op.context
+		// save old state of context
+		l := c.l
+		t := c.t
+		r := c.r
+		b := c.b
+		Update(c)
+		// set new state of context
+		c.l := op.l
+		c.t := op.t
+		c.r := op.r
+		c.b := op.b
+		Update(c)
+		// old state is new undo state
+		op.l := l
+		op.t := t
+		op.r := r
+		op.b := b
+	end Do
+	
+	proc (op: ReplaceViewOp) Do
+		var 
+			c: StdContext
+			view: Views.View
+	begin 
+		c := op.context
+		// save old state of context
+		view := c.view
+		// set new state of context
+		c.view := op.view
+		Update(c)
+		// old state is new undo state
+		op.view := view
+	end Do
+	
+	
+	// miscellaneous
+	
+	proc New*(): Model 
+	begin 
+		return dir.New()
+	end New
+	
+	proc CloneOf*(source: Model): Model 
+	begin 
+		assert(source # nil, 20)
+		return Containers.CloneOf(source)(Model)
+	end CloneOf
+	
+	proc Copy*(source: Model): Model 
+	begin 
+		assert(source # nil, 20)
+		return Stores.CopyOf(source)(Model)
+	end Copy
+	
+	proc SetDir*(d: Directory) 
+	// d # NIL	20
+	begin 
+		assert(d # nil, 20)
+		dir := d
+	end SetDir
+	
+	proc Init
+		var 
+			d: StdDirectory
+	begin 
+		new(d)
+		dir := d
+		stdDir := d
+	end Init
+
+begin
+	Init
+end FormModels

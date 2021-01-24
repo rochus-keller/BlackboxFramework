@@ -1,0 +1,1073 @@
+module FormControllers
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   purpose	= ""
+	   changes	= "##=>
+	   
+	   - 20080904, mf, StdController.IsSelected: conformance with contract improved
+	   - 20160719, center #117, fixes for non-local drop behavior
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		Services, Ports, Stores, Models, Views, Controllers, Properties, Containers, 
+		FormModels, FormViews
+	
+	const 
+		noSelection* = Containers.noSelection
+		noFocus* = Containers.noFocus
+		rdel = 7x
+		ldel = 8x
+		arrowLeft = 1cx
+		arrowRight = 1dx
+		arrowUp = 1ex
+		arrowDown = 1fx
+		// range of currently supported versions
+		minVersion = 0
+		maxBaseVersion = 0
+		maxStdVersion = 0
+	
+	type 
+		Controller* = pointer to (* abstract *) record (Containers.Controller) 
+				form-: FormModels.Model
+				view-: FormViews.View 
+			end 
+		
+		Directory* = pointer to (* abstract *) record (Containers.Directory) end 
+		
+		List* = pointer to record 
+				next*: List
+				view*: Views.View 
+			end 
+		
+		
+		StdController = pointer to record (Controller) 
+				sel: List // (sel = NIL) OR (c.ThisFocus() = NIL)
+				reader: FormModels.Reader
+				lastX, lastY: integer 
+			end 
+		
+		StdDirectory = pointer to record (Directory) end 
+		
+		MarkMsg = record (Views.Message) 
+				list: List
+				show: boolean 
+			end 
+		
+		PollFocusMsg = record (Controllers.PollFocusMsg) 
+				c: Controller 
+			end 
+	
+	
+	var 
+		dir-, stdDir-: Directory
+	
+	
+	// Controller
+	
+	proc (c: Controller) Internalize2-(var rd: Stores.Reader)  // extensible
+		var 
+			thisVersion: integer
+	begin 
+		rd.ReadVersion(minVersion, maxBaseVersion, thisVersion)
+	end Internalize2
+	
+	proc (c: Controller) Externalize2-(var wr: Stores.Writer)  // extensible
+	begin 
+		wr.WriteVersion(maxBaseVersion)
+	end Externalize2
+	
+	proc (c: Controller) InitView2*(view: Views.View)  // extensible
+	begin 
+		if view # nil then
+			assert(view is FormViews.View, 25)
+			c.view := view(FormViews.View)
+			c.form := c.view.ThisModel() 
+		else 
+			c.form := nil
+			c.view := nil 
+		end 
+	end InitView2
+	
+	proc (c: Controller) ThisView*(): FormViews.View  // extensible
+	begin 
+		return c.view
+	end ThisView
+	
+	proc (c: Controller) Select*(view: Views.View)  end // new abstract
+	
+	proc (c: Controller) Deselect*(view: Views.View)  end // new abstract
+	
+	proc (c: Controller) IsSelected*(view: Views.View): boolean  end // new abstract
+	
+	proc (c: Controller) GetSelection*(): List  end // new abstract
+	
+	proc (c: Controller) SetSelection*(l: List)  end // new abstract
+	
+	
+	// Directory
+	
+	proc (d: Directory) NewController*(opts: set): Controller  end // abstract
+	
+	proc (d: Directory) New*(): Controller  // extensible
+	begin 
+		return d.NewController({})
+	end New
+	
+	
+	// auxiliary procedures
+	
+	proc MarkList(c: StdController; f: Views.Frame; h: List; show: boolean) 
+		var 
+			l, t, r, b, s: integer
+	begin 
+		if ~(Containers.noSelection in c.opts) then
+			s := 2 * f.unit
+			while h # nil do 
+				c.view.GetRect(f, h.view, l, t, r, b)
+				f.MarkRect(l - s, t - s, r + s, b + s, s, Ports.hilite, show)
+				h := h.next 
+			end  
+		end 
+	end MarkList
+	
+	proc Toggle(c: StdController; view: Views.View) 
+	begin 
+		if c.IsSelected(view) then
+			c.Deselect(view) 
+		else 
+			c.Select(view) 
+		end 
+	end Toggle
+	
+	
+	// StdController
+	
+	proc (c: StdController) Internalize2(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+	begin 
+		c.Internalize2^(rd)
+		if ~rd.cancelled then
+			rd.ReadVersion(minVersion, maxStdVersion, thisVersion)
+			c.sel := nil
+			c.lastX := -1 
+		end 
+	end Internalize2
+	
+	proc (c: StdController) Externalize2(var wr: Stores.Writer) 
+	begin 
+		c.Externalize2^(wr)
+		wr.WriteVersion(maxStdVersion)
+	end Externalize2
+	
+	proc (c: StdController) CopyFrom(source: Stores.Store) 
+	begin 
+		c.CopyFrom^(source)
+		c.sel := nil
+		c.lastX := -1
+	end CopyFrom
+	
+	proc (c: StdController) RestoreMarks2(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		if (c.lastX <= f.l) or (c.lastX >= f.r) or (c.lastY <= f.t) or (c.lastY >= f.b) then
+			c.lastX := (f.l + f.r) div 2
+			c.lastY := (f.t + f.b) div 2 
+		end 
+	end RestoreMarks2
+	
+	proc (c: StdController) HandleViewMsg(f: Views.Frame; var msg: Views.Message) 
+	begin 
+		with msg: MarkMsg do 
+			MarkList(c, f, msg.list, msg.show) 
+		else 
+			c.HandleViewMsg^(f, msg) 
+		end 
+	end HandleViewMsg
+	
+	proc (c: StdController) HandleCtrlMsg(f: Views.Frame; var msg: Views.CtrlMessage
+		var focus: Views.View) 
+	begin 
+		with msg: PollFocusMsg do 
+			c.HandleCtrlMsg^(f, msg, focus)
+			msg.c := c 
+		else 
+			c.HandleCtrlMsg^(f, msg, focus) 
+		end 
+	end HandleCtrlMsg
+	
+	
+	// subclass hooks
+	
+	proc (c: StdController) GetContextType(var type_: Stores.TypeName) 
+	begin 
+		type_ := "FormViews.View"
+	end GetContextType
+	
+	proc (c: StdController) GetValidOps(var valid: set) 
+	begin 
+		valid := {Controllers.pasteChar, Controllers.paste}
+		if c.sel # nil then
+			valid := valid + {Controllers.cut, Controllers.copy_} 
+		end 
+	end GetValidOps
+	
+	proc (c: StdController) NativeModel(model: Models.Model): boolean 
+	begin 
+		assert(model # nil, 20)
+		return model is FormModels.Model
+	end NativeModel
+	
+	proc (c: StdController) NativeView(view: Views.View): boolean 
+	begin 
+		assert(view # nil, 20)
+		return view is FormViews.View
+	end NativeView
+	
+	proc (c: StdController) NativeCursorAt(f: Views.Frame; x, y: integer): integer 
+	begin 
+		assert(f # nil, 20)
+		return Ports.graphicsCursor
+	end NativeCursorAt
+	
+	proc (c: StdController) MakeViewVisible(v: Views.View) 
+		var 
+			l, t, r, b: integer
+	begin 
+		assert(v # nil, 20)
+		assert(v.context # nil, 21)
+		assert(v.context.ThisModel() = c.form, 22)
+		v.context(FormModels.Context).GetRect(l, t, r, b)
+		c.view.context.MakeVisible(l, t, r, b)
+	end MakeViewVisible
+	
+	proc (c: StdController) GetFirstView(selection: boolean; var v: Views.View) 
+		var 
+			rd: FormModels.Reader
+	begin 
+		if selection then
+			if c.sel # nil then
+				v := c.sel.view 
+			else 
+				v := nil 
+			end  
+		else 
+			rd := c.form.NewReader(c.reader)
+			c.reader := rd
+			rd.ReadView(v) 
+		end 
+	end GetFirstView
+	
+	proc (c: StdController) GetNextView(selection: boolean; var v: Views.View) 
+		var 
+			h: List
+			rd: FormModels.Reader
+	begin  // could be optimized
+		assert(v # nil, 20)
+		if selection then
+			h := c.sel
+			while (h # nil) & (h.view # v) do 
+				h := h.next 
+			end 
+			assert(h # nil, 21)
+			if h.next # nil then
+				v := h.next.view 
+			else 
+				v := nil 
+			end  
+		else 
+			rd := c.form.NewReader(c.reader)
+			c.reader := rd
+			rd.Set(v)
+			rd.ReadView(v) 
+		end 
+	end GetNextView
+	
+	proc (c: StdController) GetSelectionBounds(f: Views.Frame; var x, y, w, h: integer) 
+		var 
+			g: Views.Frame
+			sel: List
+			l, t, r, b, gw, gh, border: integer
+	begin 
+		if c.Singleton() # nil then
+			c.GetSelectionBounds^(f, x, y, w, h) 
+		else 
+			l := max(integer)
+			t := max(integer)
+			r := min(integer)
+			b := min(integer)
+			sel := c.sel
+			while sel # nil do 
+				g := Views.ThisFrame(f, sel.view)
+				if g # nil then
+					sel.view.context.GetSize(gw, gh)
+					if g.gx < l then
+						l := g.gx 
+					end 
+					if g.gy < t then
+						t := g.gy 
+					end 
+					if g.gx + gw > r then
+						r := g.gx + gw 
+					end 
+					if g.gy + gh > b then
+						b := g.gy + gh 
+					end  
+				end 
+				sel := sel.next 
+			end 
+			if (l < r) & (t < b) then
+				border := c.view.Border()
+				x := l - f.gx - border
+				y := t - f.gy - border
+				w := r - l + 2 * border
+				h := b - t + 2 * border 
+			else 
+				x := 0
+				y := 0
+				w := 0
+				h := 0 
+			end  
+		end 
+	end GetSelectionBounds
+	
+	proc (c: StdController) MarkDropTarget(src, dst: Views.Frame
+		sx, sy, dx, dy, w, h, rx, ry: integer
+		type_: Stores.TypeName
+		isSingle, show: boolean) 
+		const 
+			dm = 4 * Ports.point
+			dp = 18 * Ports.point
+		var 
+			vx, vy, l, t, r, b: integer
+			sc: Containers.Controller
+			s: Views.View
+	begin  // cf. Drop
+		if ~isSingle & (src # nil) & (src.view is FormViews.View) then // mark local form selection
+			vx := dx - sx
+			vy := dy - sy
+			sc := src.view(FormViews.View).ThisController()
+			if sc # nil then
+				with sc: Controller do 
+					sc.GetFirstView(Containers.selection, s)
+					while s # nil do 
+						s.context(FormModels.Context).GetRect(l, t, r, b)
+						w := r - l
+						h := b - t
+						inc(l, vx)
+						inc(t, vy)
+						FormViews.RoundToGrid(c.view, l, t)
+						dst.MarkRect(l, t, l + w, t + h, 0, Ports.invert, show)
+						sc.GetNextView(Containers.selection, s) 
+					end  
+				end  
+			end  
+		elsif (w > 0) & (h > 0) then  // mark non-local form or singleton selection
+			vx := dx - rx
+			vy := dy - ry
+			FormViews.RoundToGrid(c.view, vx, vy)
+			if ~isSingle & Services.Extends(type_, "FormViews.View") then // general form selection
+				dst.MarkRect(vx - dm, vy, vx + dp, vy + dst.unit, 0, Ports.invert, show)
+				dst.MarkRect(vx, vy - dm, vx + dst.unit, vy + dp, 0, Ports.invert, show)
+				inc(vx, w)
+				inc(vy, h)
+				dst.MarkRect(vx - dp, vy, vx + dm, vy + dst.unit, 0, Ports.invert, show)
+				dst.MarkRect(vx, vy - dp, vx + dst.unit, vy + dm, 0, Ports.invert, show) 
+			else  // singleton selection
+				dst.MarkRect(vx, vy, vx + w, vy + h, 0, Ports.invert, show) 
+			end  
+		else  // cross-hair mark for non-form, non-singleton selections
+			FormViews.RoundToGrid(c.view, dx, dy)
+			dst.MarkRect(dx - dm, dy, dx + dp, dy + dst.unit, 0, Ports.invert, show)
+			dst.MarkRect(dx, dy - dm, dx + dst.unit, dy + dp, 0, Ports.invert, show) 
+		end 
+	end MarkDropTarget
+	
+	proc (c: StdController) TrackMarks(f: Views.Frame; x, y: integer
+		units, extend, add: boolean) 
+		var 
+			dx, dy, x0, y0, dx0, dy0: integer
+			isDown: boolean
+			h: Views.View
+			m: set
+		
+		proc InvertRect(f: Views.Frame; x, y, dx, dy: integer) 
+			var 
+				l, t, r, b: integer
+		begin 
+			if dx >= 0 then
+				l := x
+				r := x + dx 
+			else 
+				l := x + dx
+				r := x 
+			end 
+			if dy >= 0 then
+				t := y
+				b := y + dy 
+			else 
+				t := y + dy
+				b := y 
+			end 
+			f.MarkRect(l, t, r, b, 0, Ports.dim50, true)
+		end InvertRect
+		
+		proc SelectArea(c: StdController; l, t, r, b: integer; toggle: boolean) 
+			var 
+				h: integer
+				rd: FormModels.Reader
+				v: Views.View
+				p, q: List
+				empty: boolean
+		begin 
+			if l > r then
+				h := l
+				l := r
+				r := h 
+			end 
+			if t > b then
+				h := t
+				t := b
+				b := h 
+			end 
+			rd := c.form.NewReader(c.reader)
+			c.reader := rd
+			rd.ReadView(v)
+			p := nil
+			empty := c.sel = nil
+			while v # nil do 
+				if (rd.l < r) & (rd.t < b) & (rd.r > l) & (rd.b > t) then
+					if toggle then
+						Toggle(c, v) 
+					elsif ~empty then 
+						c.Select(v) 
+					else 
+						new(q)
+						q.next := p
+						p := q
+						q.view := v 
+					end  
+				end 
+				rd.ReadView(v) 
+			end 
+			// this optimization prevents the appearance of a temporary singleton
+			if ~toggle & empty then
+				c.SetSelection(p) 
+			end 
+		end SelectArea
+	
+	begin 
+		dx := 0 // vector from (x, y)
+		dy := 0
+		InvertRect(f, x, y, dx, dy)
+		repeat 
+			f.Input(x0, y0, m, isDown)
+			dx0 := x0 - x
+			dy0 := y0 - y
+			if (dx0 # dx) or (dy0 # dy) then
+				InvertRect(f, x, y, dx, dy)
+				dx := dx0
+				dy := dy0
+				InvertRect(f, x, y, dx, dy) 
+			end  
+		until ~isDown 
+		InvertRect(f, x, y, dx, dy)
+		c.lastX := x0
+		c.lastY := y0
+		if (dx # 0) or (dy # 0) then
+			SelectArea(c, x, y, x + dx, y + dy, extend or add) 
+		else 
+			h := c.form.ViewAt(x, y)
+			if h # nil then
+				if extend or add then
+					Toggle(c, h) 
+				else 
+					c.Select(h) 
+				end  
+			end  
+		end 
+	end TrackMarks
+	
+	proc (c: StdController) Resize(view: Views.View; l, t, r, b: integer) 
+	begin 
+		c.form.Resize(view, l, t, r, b)
+	end Resize
+	
+	proc (c: StdController) DeleteSelection
+		var 
+			script: Stores.Operation
+			h: List
+	begin 
+		Models.BeginScript(c.form, "#System:Deletion", script)
+		h := c.sel
+		while h # nil do 
+			c.form.Delete(h.view)
+			h := h.next 
+		end 
+		Models.EndScript(c.form, script)
+	end DeleteSelection
+	
+	proc MoveRelativeLocalSel(c: StdController; src, dst: Views.Frame
+		dx, dy: integer; grid: boolean) 
+		var 
+			script: Stores.Operation
+			sel, h: List
+			l, t, r, b, newl, newt: integer
+	begin 
+		if (dx # 0) or (dy # 0) then
+			sel := c.GetSelection()
+			Models.BeginScript(c.form, "#System:Moving", script)
+			h := sel
+			while h # nil do 
+				h.view.context(FormModels.Context).GetRect(l, t, r, b)
+				newl := l + dx
+				newt := t + dy
+				if grid then
+					FormViews.RoundToGrid(c.view, newl, newt) 
+				end 
+				c.form.Move(h.view, newl - l, newt - t)
+				h := h.next 
+			end 
+			Models.EndScript(c.form, script)
+			c.SetSelection(sel) 
+		end 
+	end MoveRelativeLocalSel
+	
+	proc (c: StdController) MoveLocalSelection(src, dst: Views.Frame; sx, sy, 
+		dx, dy: integer) 
+	begin 
+		MoveRelativeLocalSel(c, src, dst, dx - sx, dy - sy, true)
+	end MoveLocalSelection
+	
+	proc (c: StdController) CopyLocalSelection(src, dst: Views.Frame; sx, sy, 
+		dx, dy: integer) 
+		var 
+			script: Stores.Operation
+			q: Views.View
+			h, s, t: List
+	begin 
+		dx := dx - sx
+		dy := dy - sy
+		if (dx # 0) or (dy # 0) then
+			FormViews.RoundToGrid(c.view, dx, dy)
+			Models.BeginScript(c.form, "#System:Copying", script)
+			h := c.GetSelection()
+			s := nil
+			while h # nil do 
+				q := h.view
+				c.form.Copy(q, dx, dy)
+				new(t)
+				t.next := s
+				s := t
+				t.view := q
+				h := h.next 
+			end 
+			Models.EndScript(c.form, script)
+			c.SetSelection(s) 
+		end 
+	end CopyLocalSelection
+	
+	proc (c: StdController) SelectionCopy(): Containers.Model 
+		var 
+			f: FormModels.Model
+			rd: FormModels.Reader
+			wr: FormModels.Writer
+			v: Views.View
+			dx, dy: integer
+		
+		proc GetOffset(p: List; border: integer; var dx, dy: integer) 
+			var 
+				l, t, vl, vt, vr, vb: integer
+		begin 
+			if p # nil then
+				l := max(integer)
+				t := max(integer)
+				while p # nil do 
+					p.view.context(FormModels.Context).GetRect(vl, vt, vr, vb)
+					if vl < l then
+						l := vl 
+					end 
+					if vt < t then
+						t := vt 
+					end 
+					p := p.next 
+				end 
+				dx := l - border
+				dy := t - border 
+			else 
+				dx := 0
+				dy := 0 
+			end 
+		end GetOffset
+	
+	begin 
+		f := FormModels.CloneOf(c.form)
+		GetOffset(c.sel, c.view.Border(), dx, dy)
+		rd := c.form.NewReader(nil)
+		wr := f.NewWriter(nil)
+		rd.ReadView(v)
+		while v # nil do 
+			if c.IsSelected(v) then
+				wr.WriteView(Views.CopyOf(v, Views.deep), rd.l - dx, rd.t - dy, rd.r - dx, rd.b - dy) 
+			end 
+			rd.ReadView(v) 
+		end 
+		return f
+	end SelectionCopy
+	
+	proc (c: StdController) NativePaste(m: Models.Model; f: Views.Frame) 
+		var 
+			x, y, cw, ch: integer
+			v: Views.View
+			rd: FormModels.Reader
+			wr: FormModels.Writer
+			n, i: integer
+			script: Stores.Operation
+	begin 
+		x := c.lastX
+		y := c.lastY
+		c.view.context.GetSize(cw, ch)
+		if (x <= f.l) or (x >= f.r) or (y <= f.t) or (y >= f.b) then
+			x := (f.l + f.r) div 2
+			y := (f.r + f.b) div 2 
+		end 
+		c.lastX := x
+		c.lastY := y
+		FormViews.RoundToGrid(c.view, x, y)
+		with m: FormModels.Model do 
+			Models.BeginScript(c.form, "#System:Insertion", script)
+			rd := m.NewReader(nil)
+			wr := c.form.NewWriter(nil)
+			wr.Set(c.form.Top())
+			rd.ReadView(v)
+			n := 0
+			while v # nil do 
+				wr.WriteView(Views.CopyOf(v, Views.shallow), x + rd.l, y + rd.t, x + rd.r, y + rd.b)
+				inc(n)
+				rd.ReadView(v) 
+			end 
+			Models.EndScript(c.form, script)
+			// n views have been inserted at the top => select them
+			c.SelectAll(Containers.deselect)
+			i := c.form.NofViews() - n
+			assert(i >= 0, 100)
+			rd := c.form.NewReader(rd)
+			while i # 0 do  // skip old views
+				rd.ReadView(v)
+				dec(i) 
+			end 
+			while n # 0 do 
+				rd.ReadView(v)
+				c.Select(v)
+				dec(n) 
+			end  
+		end 
+	end NativePaste
+	
+	proc (c: StdController) ArrowChar(f: Views.Frame; ch: char; units, select: boolean) 
+		var 
+			d: integer
+	begin 
+		if units then
+			d := c.view.Grid() 
+		else 
+			d := f.unit 
+		end 
+		if ch = arrowLeft then
+			MoveRelativeLocalSel(c, f, f, -d, 0, units) 
+		elsif ch = arrowRight then 
+			MoveRelativeLocalSel(c, f, f, +d, 0, units) 
+		elsif ch = arrowUp then 
+			MoveRelativeLocalSel(c, f, f, 0, -d, units) 
+		elsif ch = arrowDown then 
+			MoveRelativeLocalSel(c, f, f, 0, +d, units) 
+		end 
+	end ArrowChar
+	
+	proc (c: StdController) ControlChar(f: Views.Frame; ch: char) 
+	begin 
+		if (ch = ldel) or (ch = rdel) then
+			c.DeleteSelection 
+		end 
+	end ControlChar
+	
+	proc (c: StdController) PasteChar(ch: char) 
+	end PasteChar
+	
+	proc (c: StdController) PasteView(f: Views.Frame; v: Views.View; w, h: integer) 
+		var 
+			minW, maxW, minH, maxH, x, y: integer
+	begin 
+		x := c.lastX
+		y := c.lastY
+		if (x <= f.l) or (x >= f.r) or (y <= f.t) or (y >= f.b) then
+			x := (f.l + f.r) div 2
+			y := (f.t + f.b) div 2 
+		end 
+		c.lastX := x
+		c.lastY := y
+		FormViews.RoundToGrid(c.view, x, y)
+		c.form.GetEmbeddingLimits(minW, maxW, minH, maxH)
+		Properties.PreferredSize(v, minW, maxW, minH, maxH, minW, minH, w, h)
+		c.form.Insert(v, x, y, x + w, y + h)
+		c.Select(v)
+	end PasteView
+	
+	proc (c: StdController) Drop(src, dst: Views.Frame; sx, sy, dx, dy, 
+		w, h, rx, ry: integer; v: Views.View; isSingle: boolean) 
+		var 
+			minW, maxW, minH, maxH, l, t, sw, sh: integer
+			s: Views.View
+			p, q: List
+			m: FormModels.Model
+			rd: FormModels.Reader
+			wr: FormModels.Writer
+			script: Stores.Operation
+	begin  // cf. MarkDropTarget
+		dec(dx, rx)
+		dec(dy, ry)
+		if ~isSingle & (v is FormViews.View) then
+			Models.BeginScript(c.form, "#System:Insertion", script)
+			m := v(FormViews.View).ThisModel()
+			rd := m.NewReader(nil)
+			wr := c.form.NewWriter(nil)
+			rd.ReadView(s)
+			p := nil
+			while s # nil do 
+				l := rd.l + dx
+				t := rd.t + dy
+				sw := rd.r - rd.l
+				sh := rd.b - rd.t
+				FormViews.RoundToGrid(c.view, l, t)
+				s := Views.CopyOf(s, Views.shallow)
+				wr.WriteView(s, l, t, l + sw, t + sh)
+				new(q)
+				q.next := p
+				p := q
+				q.view := s
+				rd.ReadView(s) 
+			end 
+			Models.EndScript(c.form, script) // this line was added
+			c.SetSelection(p) 
+		else 
+			FormViews.RoundToGrid(c.view, dx, dy)
+			c.form.GetEmbeddingLimits(minW, maxW, minH, maxH)
+			Properties.PreferredSize(v, minW, maxW, minH, maxH, minW, minH, w, h)
+			c.form.Insert(v, dx, dy, dx + w, dy + h)
+			c.Select(v) 
+		end 
+	end Drop
+	
+	
+	// selection
+	
+	proc (c: StdController) HasSelection(): boolean 
+	begin 
+		return c.sel # nil
+	end HasSelection
+	
+	proc (c: StdController) Selectable(): boolean 
+	begin 
+		return c.form.NofViews() # 0
+	end Selectable
+	
+	proc (c: StdController) SetSingleton(s: Views.View) 
+		var 
+			l: List
+	begin 
+		c.SetSingleton^(s)
+		if s # nil then
+			new(l)
+			l.view := s
+			c.sel := l 
+		else 
+			c.sel := nil 
+		end 
+	end SetSingleton
+	
+	proc (c: StdController) SelectAll(select: boolean) 
+		var 
+			s: FormModels.Reader
+			v: Views.View
+			l, h: List
+			msg: MarkMsg
+	begin 
+		if select then
+			assert(~(Containers.noSelection in c.opts), 20)
+			c.SetFocus(nil)
+			s := c.form.NewReader(c.reader)
+			c.reader := s
+			s.Set(nil)
+			s.ReadView(v)
+			if c.form.NofViews() = 1 then
+				assert(v # nil, 100)
+				c.SetSingleton(v) 
+			else 
+				if (c.sel # nil) & (c.sel.next = nil) then
+					c.SetSingleton(nil) 
+				end 
+				l := nil
+				while v # nil do 
+					if ~c.IsSelected(v) then
+						new(h)
+						h.next := l
+						l := h
+						h.view := v 
+					end 
+					s.ReadView(v) 
+				end 
+				msg.list := l
+				h := c.sel
+				while (h # nil) & (h.next # nil) do 
+					h := h.next 
+				end 
+				if h = nil then
+					c.sel := l 
+				else 
+					h.next := l 
+				end 
+				if msg.list # nil then
+					msg.show := true
+					Views.Broadcast(c.view, msg) 
+				end  
+			end  
+		elsif c.sel # nil then 
+			if c.sel.next = nil then // singleton
+				c.SetSingleton(nil) 
+			else 
+				msg.list := c.sel
+				c.sel := nil
+				msg.show := false
+				Views.Broadcast(c.view, msg) 
+			end  
+		end 
+	end SelectAll
+	
+	proc (c: StdController) InSelection(f: Views.Frame; x, y: integer): boolean 
+		var 
+			g: Views.Frame
+	begin 
+		g := Views.FrameAt(f, x, y)
+		if g # nil then
+			return c.IsSelected(g.view) 
+		else 
+			return false 
+		end 
+	end InSelection
+	
+	proc (c: StdController) MarkSelection(f: Views.Frame; show: boolean) 
+	begin 
+		if c.sel = nil then  // skip
+		elsif c.sel.next = nil then 
+			Containers.MarkSingleton(c, f, show) 
+		else 
+			MarkList(c, f, c.sel, show) 
+		end 
+	end MarkSelection
+	
+	
+	// caret
+	
+	proc (c: StdController) HasCaret(): boolean 
+	begin 
+		return true
+	end HasCaret
+	
+	proc (c: StdController) MarkCaret(f: Views.Frame; show: boolean) 
+	end MarkCaret
+	
+	
+	// FormController protocol
+	
+	proc (c: StdController) Select(view: Views.View) 
+		var 
+			l, h, sel: List
+			msg: MarkMsg
+	begin 
+		assert(view # nil, 20)
+		assert(view.context.ThisModel() = c.form, 21)
+		assert(~(Containers.noSelection in c.opts), 22)
+		l := c.sel
+		while (l # nil) & (l.view # view) do 
+			l := l.next 
+		end 
+		if l = nil then // view is not yet selected
+			sel := c.sel
+			if sel = nil then
+				c.SetSingleton(view) 
+			else 
+				new(l)
+				l.view := view
+				if sel.next = nil then
+					c.SetSingleton(nil)
+					assert(c.sel = nil, 100)
+					l.next := sel
+					c.sel := l
+					msg.list := l 
+				else 
+					l.next := sel
+					c.sel := l
+					new(h)
+					h.view := view
+					msg.list := h 
+				end 
+				msg.show := true
+				Views.Broadcast(c.view, msg) 
+			end  
+		end 
+	end Select
+	
+	proc (c: StdController) Deselect(view: Views.View) 
+		var 
+			l, h: List
+			msg: MarkMsg
+	begin 
+		assert(view # nil, 20)
+		assert(view.context.ThisModel() = c.form, 21)
+		l := c.sel
+		h := nil
+		while (l # nil) & (l.view # view) do 
+			h := l
+			l := l.next 
+		end 
+		if l # nil then // l is selection node of view, h its predecessor
+			if (h = nil) & (l.next = nil) then // singleton
+				c.SetSingleton(nil) 
+			else 
+				if h = nil then
+					c.sel := l.next 
+				else 
+					h.next := l.next 
+				end 
+				msg.list := l
+				l.next := nil
+				msg.show := false
+				Views.Broadcast(c.view, msg)
+				if (c.sel # nil) & (c.sel.next = nil) then // singleton
+					view := c.sel.view
+					msg.list := c.sel
+					c.sel := nil
+					msg.show := true
+					Views.Broadcast(c.view, msg)
+					c.SetSingleton(view) 
+				end  
+			end  
+		end 
+	end Deselect
+	
+	proc (c: StdController) IsSelected(view: Views.View): boolean 
+		var 
+			l: List
+	begin 
+		if view # nil then
+			assert(view.context.ThisModel() = c.form, 20)
+			l := c.sel
+			while (l # nil) & (l.view # view) do 
+				l := l.next 
+			end 
+			return l # nil 
+		else 
+			return false 
+		end 
+	end IsSelected
+	
+	proc (c: StdController) GetSelection(): List 
+		var 
+			l, h, s: List
+	begin 
+		l := nil
+		s := c.sel
+		while s # nil do 
+			new(h)
+			h.next := l
+			l := h
+			h.view := s.view
+			s := s.next 
+		end 
+		return l
+	end GetSelection
+	
+	proc (c: StdController) SetSelection(l: List) 
+		var 
+			msg: MarkMsg
+	begin 
+		c.SelectAll(false)
+		assert(c.sel = nil, 100)
+		if l = nil then  // skip
+		elsif l.next = nil then 
+			c.SetSingleton(l.view) 
+		else 
+			msg.list := l
+			c.sel := l
+			msg.show := true
+			Views.Broadcast(c.view, msg) 
+		end 
+	end SetSelection
+	
+	
+	// StdDirectory
+	
+	proc (d: StdDirectory) NewController(opts: set): Controller 
+		var 
+			c: StdController
+	begin 
+		new(c)
+		c.SetOpts(opts)
+		return c
+	end NewController
+	
+	
+	// miscellaneous
+	
+	proc Focus*(): Controller 
+		var 
+			msg: PollFocusMsg
+	begin 
+		msg.c := nil
+		Controllers.Forward(msg)
+		return msg.c
+	end Focus
+	
+	proc Insert*(c: Controller; view: Views.View; l, t, r, b: integer) 
+		var 
+			w, h: integer
+	begin 
+		w := r - l
+		h := b - t
+		FormViews.RoundToGrid(c.view, l, t)
+		c.form.Insert(view, l, t, l + w, t + h)
+	end Insert
+	
+	proc SetDir*(d: Directory) 
+	begin 
+		assert(d # nil, 20)
+		dir := d
+	end SetDir
+	
+	proc Install*
+	begin 
+		FormViews.SetCtrlDir(dir)
+	end Install
+	
+	proc Init
+		var 
+			d: StdDirectory
+	begin 
+		new(d)
+		SetDir(d)
+		stdDir := d
+	end Init
+
+begin
+	Init
+end FormControllers

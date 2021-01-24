@@ -1,0 +1,28 @@
+definition LinLibW
+
+	(* GNU/Linux
+	   i386 *)
+	
+	import Libc:= LinLibc
+	
+	const 
+		LC_ALL = 6
+	
+	type 
+		// int, wchar_t, wint_t, size_t, mbstate_t
+		int_ = integer
+		wchar_t = integer
+		wint_t = integer
+		
+	
+	proc setlocale(category: int_; locale: Libc.PtrSTR): Libc.PtrSTR 
+	
+		
+	proc iswalpha(wc: wint_t): int_ 
+	proc iswlower(wc: wint_t): int_ 
+	proc iswupper(wc: wint_t): int_ 
+	proc towlower(wc: wint_t): wint_t 
+	proc towupper(wc: wint_t): wint_t 
+	
+
+end LinLibW

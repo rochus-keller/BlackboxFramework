@@ -1,0 +1,2137 @@
+module HostFiles
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	(* A. V. Shiryaev, 2012.11: filenames encoding translation implemented
+	   A. V. Shiryaev, 2016.11: sychronized with BlackBox-1.7.1-a1-710 *)
+	
+	
+	
+	import SYSTEM, Kernel, Files, LinLibc, Iconv:= LinIconv
+	
+	const 
+		tempName = "odcxxxxx"
+		docType = "odc"
+		
+		serverVersion = true
+		
+		pathLen* = 260
+		
+		nofbufs = 4 // max number of buffers per file
+		bufsize = 2 * 1024 // size of each buffer
+		
+		invalid = LinLibc.NULL
+		
+		temp = 0 // file states
+		new_ = 1
+		shared = 2
+		hidden = 3
+		exclusive = 4
+		closed = 5
+		create = -1
+		
+		ok = 0
+		invalidName = 1
+		invalidNameErr = max(integer) // On Windows this is 123
+		notFound = 2
+		fileNotFoundErr = LinLibc.ENOENT
+		pathNotFoundErr = LinLibc.ENOENT
+		existsAlready = 3
+		fileExistsErr = LinLibc.EEXIST
+		alreadyExistsErr = LinLibc.EEXIST // is alreadyExistsErr needed?
+		writeProtected = 4
+		writeProtectedErr = LinLibc.EACCES
+		ioError = 5 // same as LinLibc.EIO
+		accessDenied = 6
+		accessDeniedErr = LinLibc.EACCES
+		sharingErr = LinLibc.EACCES
+		netAccessDeniedErr = LinLibc.EACCES
+		notEnoughMem = 80
+		notEnoughMemoryErr = LinLibc.ENOMEM
+		notEnoughDisk = 81
+		diskFullErr = LinLibc.EDQUOT
+		tooManyOpenFilesErr = LinLibc.EMFILE
+		
+		noMoreFilesErr = 18
+		
+		cancel = -8
+		retry = -9
+	
+	type 
+		FullName* = array pathLen of char
+		
+		Locator* = pointer to record (Files.Locator) 
+				path-: FullName // without trailing "/"
+				maxLen-: integer // maximum name length
+				caseSens-: boolean // case sensitive file compares
+				rootLen-: integer  // for network version
+			end 
+		
+		Buffer = pointer to record 
+				dirty: boolean
+				org, len_: integer
+				data: array bufsize of byte 
+			end 
+		
+		File = pointer to record (Files.File) 
+				state: integer
+				name: FullName
+				ref: LinLibc.PtrFILE
+				loc: Locator
+				swapper: integer // index into file table / next buffer to swap
+				len_: integer
+				bufs: array nofbufs of Buffer
+				t: longint  // time stamp of last file operation
+			end 
+		
+		Reader = pointer to record (Files.Reader) 
+				base: File
+				org, offset: integer
+				buf: Buffer 
+			end 
+		
+		Writer = pointer to record (Files.Writer) 
+				base: File
+				org, offset: integer
+				buf: Buffer 
+			end 
+		
+		Directory = pointer to record (Files.Directory) 
+				temp, startup: Locator 
+			end 
+		
+		Identifier = record (Kernel.Identifier) 
+				name: FullName 
+			end 
+		
+		Searcher = record (Kernel.Identifier) 
+				t0: integer
+				f: File 
+			end 
+		
+		Counter = record (Kernel.Identifier) 
+				count: integer 
+			end 
+		
+		ShortName = array pathLen * 4 of char
+		
+		Encoding = array 32 of char
+	
+	var 
+		MapParamString*: proc (in_, p0, p1, p2: array of char; var out: array of char)
+		ignoreAsk-: boolean // file/directory operations ignore the 'ask' parameter and don't ask; used for scripting
+		dir: Directory
+		wildcard: Files.Type
+		startupDir: FullName
+		startupLen: integer
+		res: integer
+		e, d: Iconv.iconv_t
+	
+	// debugging functions
+	
+	proc Msg(in str: array of char) 
+		var 
+			ss: array 1024 of char
+			res, l: integer
+	begin 
+		ss := short(str)
+		l := len(ss)
+		ss[l] := 0ax
+		ss[l + 1] := 0x
+		res := LinLibc.printf(ss)
+		res := LinLibc.fflush(0)
+	end Msg
+	
+	proc Int(x: longint) 
+		var 
+			j, k: integer
+			ch: char
+			a, s: array 32 of char
+	begin 
+		if x # min(longint) then
+			if x < 0 then
+				s[0] := "-"
+				k := 1
+				x := -x 
+			else 
+				k := 0 
+			end 
+			j := 0
+			repeat 
+				a[j] := chr(x mod 10 + ord("0"))
+				x := x div 10
+				inc(j) 
+			until x = 0  
+		else 
+			a := "8085774586302733229"
+			s[0] := "-"
+			k := 1
+			j := 0
+			while a[j] # 0x do 
+				inc(j) 
+			end  
+		end 
+		assert(k + j < len(s), 20)
+		repeat 
+			dec(j)
+			ch := a[j]
+			s[k] := ch
+			inc(k) 
+		until j = 0 
+		s[k] := 0x
+		Msg(s)
+	end Int
+	
+	// end of debugging functions
+	
+	// encoding translation
+	
+	proc GetEnc(var enc: Encoding; var ok: boolean) 
+		var 
+			env: LinLibc.PtrSTR
+			i, j: integer
+		
+		proc IsSLetter(c: char): boolean 
+		begin 
+			return (c >= 'a') & (c <= 'z')
+		end IsSLetter
+		
+		proc IsBLetter(c: char): boolean 
+		begin 
+			return (c >= 'A') & (c <= 'Z')
+		end IsBLetter
+		
+		proc IsValidEncChar(x: char): boolean 
+		begin 
+			return ((x >= 'A') & (x <= 'Z')) or ((x >= '0') & (x <= '9')) or (x = '-') or (x = '_') 
+				or ((x >= 'a') & (x <= 'z'))
+		end IsValidEncChar
+	
+	begin 
+		env := LinLibc.getenv("LANG")
+		if env # nil then
+			if env = "C" then
+				enc := "ASCII"
+				ok := true 
+			else 
+				if IsSLetter(env[0]) & IsSLetter(env[1]) & (env[2] = '_') 
+					& IsBLetter(env[3]) & IsBLetter(env[4]) & (env[5] = '.') then
+					i := 6
+					j := 0
+					while IsValidEncChar(env[i]) & (j < len(enc) - 1) do 
+						enc[j] := env[i]
+						inc(j)
+						inc(i) 
+					end 
+					if (env[i] = 0x) & (j < len(enc)) then
+						enc[j] := 0x
+						ok := true 
+					else 
+						ok := false 
+					end  
+				else 
+					ok := false 
+				end  
+			end  
+		else 
+			ok := false 
+		end 
+	end GetEnc
+	
+	proc InitConv
+		var 
+			enc: Encoding
+			ok: boolean
+	begin 
+		GetEnc(enc, ok)
+		if ok then
+			if Kernel.littleEndian then
+				e := Iconv.iconv_open(enc, "UCS-2LE")
+				d := Iconv.iconv_open("UCS-2LE", enc) 
+			else 
+				e := Iconv.iconv_open(enc, "UCS-2BE")
+				d := Iconv.iconv_open("UCS-2BE", enc) 
+			end  
+		else 
+			e := -1
+			d := -1 
+		end 
+	end InitConv
+	
+	proc CloseConv
+		var 
+			res: integer
+	begin 
+		if e # -1 then
+			res := Iconv.iconv_close(e)
+			e := -1 
+		end 
+		if d # -1 then
+			res := Iconv.iconv_close(d)
+			d := -1 
+		end 
+	end CloseConv
+	
+	proc ResetCodec(c: Iconv.iconv_t): boolean 
+		var 
+			res, fLen, tLen: Iconv.size_t
+	begin 
+		assert(c # -1, 20)
+		fLen := 0
+		tLen := 0
+		res := Iconv.iconv(c, nil, fLen, nil, tLen)
+		return res # -1
+	end ResetCodec
+	
+	proc Short(in f: FullName; var t: ShortName; var ok: boolean) 
+		var 
+			fR, fLen, tLen: integer
+			from: Iconv.PtrLSTR
+			to_: Iconv.PtrSTR
+			res: Iconv.size_t
+	begin 
+		// do not use encoder for basic set of chars
+		fR := 0
+		while (f[fR] >= ' ') & (f[fR] <= '~') do 
+			t[fR] := short(f[fR])
+			inc(fR) 
+		end 
+		if f[fR] = 0x then
+			t[fR] := 0x
+			ok := true 
+		elsif (e # -1) & ResetCodec(e) then 
+			from := f // 2
+			to_ := t
+			fLen := len(f) * size(char)
+			tLen := len(t) - 1
+			res := Iconv.iconv_encode(e, from, fLen, to_, tLen)
+			if (res >= 0) & (fLen = 0) & (tLen >= 0) then
+				to_[0] := 0x
+				ok := true 
+			else 
+				t[0] := 0x
+				ok := false 
+			end  
+		else 
+			t[0] := 0x
+			ok := false 
+		end 
+	end Short
+	
+	proc Long(in f: array of char; var t: FullName; var ok: boolean) 
+		var 
+			fR, fLen, tLen: integer
+			from: Iconv.PtrSTR
+			to_: Iconv.PtrLSTR
+			res: Iconv.size_t
+	begin 
+		// do not use decoder for basic set of chars
+		fR := 0
+		while (f[fR] >= ' ') & (f[fR] <= '~') & (fR < len(t) - 1) do 
+			t[fR] := f[fR]
+			inc(fR) 
+		end 
+		if f[fR] = 0x then
+			if fR < len(t) then
+				t[fR] := 0x
+				ok := true 
+			else  // f is too long
+				t[0] := 0x
+				ok := false 
+			end  
+		elsif (d # -1) & ResetCodec(d) then 
+			from := f // 2
+			to_ := t
+			fLen := len(f)
+			tLen := (len(t) - 1) * size(char)
+			res := Iconv.iconv_decode(d, from, fLen, to_, tLen)
+			if (res >= 0) & (fLen = 0) & (tLen >= 0) then
+				to_[0] := 0x
+				ok := true 
+			else 
+				t[0] := 0x
+				ok := false 
+			end  
+		else 
+			t[0] := 0x
+			ok := false 
+		end 
+	end Long
+	
+	// end of encoding translation
+	
+	
+	// get error num from linux
+	proc LinLibc_errno(): integer 
+		var 
+			addr, errno: integer
+	begin 
+		addr := LinLibc.__errno_location()
+		SYSTEM.GET(addr, errno)
+		return errno
+	end LinLibc_errno
+	
+	proc Error(n: integer): integer 
+		var 
+			res: integer
+	begin 
+		if n = ok then
+			res := ok 
+		elsif n = invalidNameErr then 
+			res := invalidName 
+		elsif (n = fileNotFoundErr) or (n = pathNotFoundErr) then 
+			res := notFound 
+		elsif (n = fileExistsErr) or (n = alreadyExistsErr) then 
+			res := existsAlready 
+		elsif n = writeProtectedErr then 
+			res := writeProtected 
+		elsif (n = sharingErr) or (n = accessDeniedErr) or (n = netAccessDeniedErr) then 
+			res := accessDenied 
+		elsif n = notEnoughMemoryErr then 
+			res := notEnoughMem 
+		elsif (n = diskFullErr) or (n = tooManyOpenFilesErr) then 
+			res := notEnoughDisk 
+		else 
+			res := -n 
+		end 
+		return res
+	end Error
+	
+	proc Diff(in a, b: array of char; caseSens: boolean): integer 
+		var 
+			i: integer
+			cha, chb: char
+	begin 
+		i := 0
+		repeat 
+			cha := a[i]
+			chb := b[i]
+			inc(i)
+			if cha # chb then
+				if ~caseSens then
+					cha := Kernel.Upper(cha)
+					chb := Kernel.Upper(chb) 
+				end 
+				if cha = "\" then
+					cha := "/" 
+				end 
+				if chb = "\" then
+					chb := "/" 
+				end 
+				if cha # chb then
+					return ord(cha) - ord(chb) 
+				end  
+			end  
+		until cha = 0x 
+		return 0
+	end Diff
+	
+	proc Stat(in fname: FullName; var buf: LinLibc.stat_t; var res: integer) 
+		var 
+			s: ShortName
+			ok1: boolean
+	begin 
+		Short(fname, s, ok1)
+		res := LinLibc.__xstat(LinLibc._STAT_VER_LINUX, s, buf) // macro expansion of "stat"
+	end Stat
+	
+	proc ModeToAttr(mode: set; var attr: set; var isDir: boolean) 
+		const  // bits for permissions for the current user (see man chmod)
+			read = 8
+			write = 7
+			execute = 6
+			file = 15
+	begin 
+		attr := {}
+		if ~(write in mode) then
+			incl(attr, Files.readOnly) 
+		end 
+		isDir := ~(file in mode) // see "man 2 stat" for details
+	end ModeToAttr
+	
+	proc NewLocator*(in fname: array of char): Locator 
+		var 
+			loc: Locator
+			i: integer
+	begin 
+		new(loc)
+		loc.path := fname
+		i := len(loc.path)
+		if (i > 1) & ((loc.path[i - 1] = "/") or (loc.path[i - 1] = "\")) then
+			loc.path[i - 1] := 0x 
+		end 
+		loc.maxLen := LinLibc.NAME_MAX
+		loc.caseSens := true
+		return loc
+	end NewLocator
+	
+	proc GetType(in name: array of char; var type_: Files.Type) 
+		var 
+			i, j: integer
+			ch: char
+	begin 
+		i := 0
+		j := 0
+		while name[i] # 0x do 
+			inc(i) 
+		end 
+		while (i > 0) & (name[i] # ".") do 
+			dec(i) 
+		end 
+		if i > 0 then
+			inc(i)
+			ch := name[i]
+			while (j < len(type_) - 1) & (ch # 0x) do 
+				ch := Kernel.Lower(ch)
+				type_[j] := ch
+				inc(j)
+				inc(i)
+				ch := name[i] 
+			end  
+		end 
+		type_[j] := 0x
+	end GetType
+	
+	proc Append(in path, name: array of char; type_: Files.Type; max_: integer
+		var res: array of char
+		) 
+		var 
+			i, j, n, m, dot: integer
+			ch: char
+	begin 
+		i := 0
+		while path[i] # 0x do 
+			res[i] := path[i]
+			inc(i) 
+		end 
+		if (path # "") & ((path # "/") or (path # "\")) then
+			assert((res[i - 1] # "/") & (res[i - 1] # "\"), 100)
+			res[i] := "/"
+			inc(i) 
+		end 
+		j := 0
+		ch := name[0]
+		n := 0
+		m := max_
+		dot := -1
+		if max_ = 12 then
+			m := 8 
+		end 
+		while (i < len(res) - 1) & (ch # 0x) do 
+			if (ch = "/") or (ch = "\") then
+				res[i] := ch
+				inc(i)
+				n := 0
+				m := max_
+				dot := -1
+				if max_ = 12 then
+					m := 8 
+				end  
+			elsif (n < m) or (ch = ".") & (n = 8) then 
+				res[i] := ch
+				inc(i)
+				inc(n)
+				if ch = "." then
+					dot := n
+					if max_ = 12 then
+						m := n + 3 
+					end  
+				end  
+			end 
+			inc(j)
+			ch := name[j] 
+		end 
+		if (dot = -1) & (type_ # "") then
+			if max_ = 12 then
+				m := n + 4 
+			end 
+			if (n < m) & (i < len(res) - 1) then
+				res[i] := "."
+				inc(i)
+				inc(n)
+				dot := n 
+			end  
+		end 
+		if n = dot then
+			j := 0
+			while (n < m) & (i < len(res) - 1) & (type_[j] # 0x) do 
+				res[i] := type_[j]
+				inc(i)
+				inc(j) 
+			end  
+		end 
+		res[i] := 0x
+	end Append
+	
+	proc CloseFileHandle(f: File; var res: integer) 
+	begin 
+		if (f.ref = invalid) or (LinLibc.fclose(f.ref) = 0) then // !!!
+			res := ok 
+		else 
+			res := LinLibc_errno() 
+		end 
+		f.ref := invalid
+	end CloseFileHandle
+	
+	proc CloseFile(f: File; var res: integer) 
+		var 
+			s: integer
+			n: ShortName
+			ok1: boolean
+	begin 
+		if f.state = exclusive then
+			f.Flush
+			res := LinLibc.fflush(f.ref) 
+		end 
+		s := f.state
+		f.state := closed
+		CloseFileHandle(f, res)
+		if (s in {temp, new_, hidden}) & (f.name # "") then
+			Short(f.name, n, ok1)
+			res := LinLibc.remove(n) 
+		end 
+	end CloseFile
+	
+	proc (f: File) FINALIZE
+		var 
+			res: integer
+	begin 
+		if f.state # closed then
+			CloseFile(f, res) 
+		end 
+	end FINALIZE
+	
+	proc (var id: Identifier) Identified(): boolean 
+		var 
+			f: File
+	begin 
+		f := id.obj(File)
+		return (f.state in {shared, exclusive}) & (Diff(f.name, id.name, f.loc.caseSens) = 0)
+	end Identified
+	
+	proc ThisFile(in name: FullName): File 
+		var 
+			id: Identifier
+			p: ANYPTR
+	begin 
+		id.typ := SYSTEM.TYP(File)
+		id.name := name
+		p := Kernel.ThisFinObj(id)
+		if p # nil then
+			return p(File) 
+		else 
+			return nil 
+		end 
+	end ThisFile
+	
+	proc (var s: Searcher) Identified(): boolean 
+		var 
+			f: File
+	begin 
+		f := s.obj(File)
+		if (f.ref # invalid) & ((s.f = nil) or (f.t < s.f.t)) then
+			s.f := f 
+		end 
+		return false
+	end Identified
+	
+	proc SearchFileToClose
+		var  // res: LONGINT;
+			s: Searcher
+			p: ANYPTR
+	begin 
+		s.typ := SYSTEM.TYP(File)
+		s.f := nil
+		p := Kernel.ThisFinObj(s)
+		if s.f # nil then
+			res := LinLibc.fclose(s.f.ref)
+			s.f.ref := invalid
+			if res = 0 then
+				res := LinLibc_errno()
+				halt(100) 
+			end  
+		end 
+	end SearchFileToClose
+	
+	proc ExistingFile(var n: ShortName): boolean 
+		var 
+			f: LinLibc.PtrFILE
+			ret: boolean
+			res: integer
+	begin 
+		f := LinLibc.fopen(n, "r")
+		if f # LinLibc.NULL then
+			res := LinLibc.fclose(f)
+			ret := true 
+		else 
+			ret := false 
+		end 
+		return ret
+	end ExistingFile
+	
+	proc MoveFile(var old, new_: ShortName; var res: integer)  // as the WinApi.MoveFile
+	begin 
+		if ExistingFile(new_) then
+			res := fileExistsErr 
+		else 
+			if LinLibc.rename(old, new_) = 0 then
+				res := ok 
+			else 
+				res := LinLibc_errno() 
+			end  
+		end 
+	end MoveFile
+	
+	proc NewFileRef(state: integer; var name: FullName; var ref, res: integer) 
+		var 
+			n: ShortName
+			ok1: boolean
+	begin 
+		Short(name, n, ok1)
+		if state = create then // Create should fail if file already exists
+			if ExistingFile(n) then
+				ref := invalid
+				res := fileExistsErr 
+			else 
+				ref := LinLibc.fopen(n, "w+")
+				if ref = invalid then
+					res := LinLibc_errno() 
+				else 
+					res := ok 
+				end  
+			end  
+		elsif state = shared then 
+			ref := LinLibc.fopen(n, "r")
+			if ref = invalid then
+				res := LinLibc_errno() 
+			else 
+				res := ok 
+			end  
+		else 
+			ref := LinLibc.fopen(n, "r+")
+			if ref = invalid then
+				res := LinLibc_errno() 
+			else 
+				res := ok 
+			end  
+		end 
+	end NewFileRef
+	
+	proc OpenFile(state: integer; var name: FullName; var ref, res: integer) 
+	begin 
+		NewFileRef(state, name, ref, res)
+		if ref = invalid then
+			if res = tooManyOpenFilesErr then
+				Kernel.Collect
+				NewFileRef(state, name, ref, res)
+				if ref = invalid then
+					res := LinLibc_errno()
+					if res = tooManyOpenFilesErr then
+						SearchFileToClose
+						NewFileRef(state, name, ref, res) 
+					end  
+				else 
+					res := ok 
+				end  
+			end  
+		else 
+			res := ok 
+		end 
+	end OpenFile
+	
+	proc GetTempFileName(in path: FullName; var name: FullName; num: integer) 
+		var 
+			i: integer
+			str: array 16 of char
+	begin 
+		str := tempName
+		i := 7
+		while i > 2 do 
+			str[i] := chr(num mod 10 + ord("0"))
+			dec(i)
+			num := num div 10 
+		end 
+		Append(path, str, "", 8, name)
+	end GetTempFileName
+	
+	proc CreateFile(f: File; var res: integer) 
+		var 
+			num, n: integer
+	begin 
+		if f.name = "" then
+			num := LinLibc.clock()
+			n := 200
+			repeat 
+				GetTempFileName(f.loc.path, f.name, num)
+				inc(num)
+				dec(n)
+				OpenFile(create, f.name, f.ref, res) 
+			until (res # fileExistsErr) or (n = 0)  
+		else 
+			OpenFile(f.state, f.name, f.ref, res) 
+		end 
+	end CreateFile
+	
+	proc Delete(in fname, path: FullName; var res: integer) 
+		var 
+			num, n: integer
+			f: File
+			new_: FullName
+			attr: set
+			fn, nn: ShortName
+			buf: LinLibc.stat_t
+			isDir: boolean
+			ok1: boolean
+	begin 
+		assert(fname # "", 100)
+		f := ThisFile(fname)
+		Short(fname, fn, ok1)
+		if f = nil then
+			if LinLibc.remove(fn) = 0 then
+				res := ok 
+			else 
+				res := LinLibc.fflush(0)
+				if LinLibc.remove(fn) = 0 then
+					res := ok 
+				else 
+					res := LinLibc_errno() 
+				end  
+			end  
+		else  // still in use => make it anonymous
+			if f.ref # invalid then // !!!
+				res := LinLibc.fclose(f.ref)
+				f.ref := invalid 
+			end 
+			Stat(f.name, buf, res)
+			ModeToAttr(buf.st_mode, attr, isDir)
+			if (res = ok) & ~(Files.readOnly in attr) then
+				num := LinLibc.clock()
+				n := 200
+				repeat 
+					GetTempFileName(path, new_, num)
+					inc(num)
+					dec(n)
+					Short(new_, nn, ok1)
+					MoveFile(fn, nn, res) 
+				until (res # fileExistsErr) or (n = 0) 
+				if res = ok then
+					f.state := hidden
+					f.name := new_ 
+				end  
+			else 
+				res := writeProtectedErr 
+			end  
+		end 
+	end Delete
+	
+	proc FlushBuffer(f: File; i: integer) 
+		var 
+			buf: Buffer
+			res: integer
+	begin 
+		buf := f.bufs[i]
+		if (buf # nil) & buf.dirty then
+			if f.ref = invalid then // ASSERT(res = ok, 100)
+				CreateFile(f, res) 
+			end 
+			if f.ref # invalid then
+				res := LinLibc.fseek(f.ref, buf.org, LinLibc.SEEK_SET)
+				if LinLibc.fwrite(SYSTEM.ADR(buf.data), 1, buf.len_, f.ref) < buf.len_ then
+					res := LinLibc_errno()
+					halt(101) 
+				end 
+				res := LinLibc.fflush(f.ref)
+				buf.dirty := false
+				f.t := Kernel.Time() 
+			end  
+		end 
+	end FlushBuffer
+	
+	// File
+	
+	proc (f: File) NewReader(old: Files.Reader): Files.Reader 
+		var 
+			r: Reader
+	begin  // portable
+		assert(f.state # closed, 20)
+		if (old # nil) & (old is Reader) then
+			r := old(Reader) 
+		else 
+			new(r) 
+		end 
+		if r.base # f then
+			r.base := f
+			r.buf := nil
+			r.SetPos(0) 
+		end 
+		r.eof := false
+		return r
+	end NewReader
+	
+	proc (f: File) NewWriter(old: Files.Writer): Files.Writer 
+		var 
+			w: Writer
+	begin  // portable
+		assert(f.state # closed, 20)
+		assert(f.state # shared, 21)
+		if (old # nil) & (old is Writer) then
+			w := old(Writer) 
+		else 
+			new(w) 
+		end 
+		if w.base # f then
+			w.base := f
+			w.buf := nil
+			w.SetPos(f.len_) 
+		end 
+		return w
+	end NewWriter
+	
+	proc (f: File) Length(): integer 
+	begin  // portable
+		return f.len_
+	end Length
+	
+	proc (f: File) Flush
+		var 
+			i: integer
+	begin  // portable
+		i := 0
+		while i # nofbufs do 
+			FlushBuffer(f, i)
+			inc(i) 
+		end 
+	end Flush
+	
+	proc GetPath(in fname: FullName; var path: FullName) 
+		var 
+			i: integer
+	begin 
+		path := fname
+		i := len(path)
+		while (i > 0) & (path[i] # "\") & (path[i] # "/") & (path[i - 1] # ":") do 
+			dec(i) 
+		end 
+		path[i] := 0x
+	end GetPath
+	
+	proc CreateDir(var path: FullName; var res: integer) 
+		var  // sec: KERNEL32.SecurityAttributes;
+			p: FullName
+			s: ShortName
+			ok1: boolean
+	begin 
+		assert(path # "", 100)
+		Short(path, s, ok1)
+		res := LinLibc.mkdir(s, {0..max(set)}) // full rights are masked with the umask, is this correct?
+		if res # ok then
+			res := LinLibc_errno()
+			if (res = LinLibc.ENOTDIR) or (res = LinLibc.ENOENT) then
+				GetPath(path, p)
+				if path # p then
+					CreateDir(p, res) // recursive call
+					if res = ok then
+						res := LinLibc.mkdir(s, {0..max(set)}) // full rights are masked with the umask, is this correct?
+						if res # ok then
+							res := LinLibc_errno() 
+						end  
+					end  
+				end  
+			end  
+		end 
+	end CreateDir
+	
+	proc CheckPath(var path: FullName; ask: boolean; var res: integer) 
+		var 
+			s: array 300 of char
+			t: array 32 of char
+	begin 
+		if ask & ~ignoreAsk then
+			if MapParamString # nil then
+				MapParamString("#Host:CreateDir", path, "", "", s)
+				MapParamString("#Host:MissingDirectory", "", "", "", t) 
+			else 
+				s := path
+				t := "Missing Directory" 
+			end 
+			res := Kernel.MessageBox(t, s, {Kernel.mbOk, Kernel.mbCancel}) 
+		else 
+			res := Kernel.mbOk 
+		end 
+		if res = Kernel.mbOk then
+			CreateDir(path, res) 
+		elsif res = Kernel.mbCancel then 
+			res := cancel 
+		end 
+	end CheckPath
+	
+	proc CheckDelete(in fname, path: FullName; ask: boolean; var res: integer) 
+		var 
+			s: array 300 of char
+			t: array 16 of char
+	begin 
+		repeat 
+			Delete(fname, path, res)
+			if (res = writeProtectedErr) 
+				or (res = sharingErr) 
+				or (res = accessDeniedErr) 
+				or (res = netAccessDeniedErr) 
+			then
+				if ask & ~ignoreAsk then
+					if MapParamString # nil then
+						if res = writeProtectedErr then
+							MapParamString("#Host:ReplaceWriteProtected", fname, 0dx, "", s) 
+						elsif (res = accessDeniedErr) or (res = netAccessDeniedErr) then 
+							MapParamString("#Host:ReplaceAccessDenied", fname, 0dx, "", s) 
+						else 
+							MapParamString("#Host:ReplaceInUse", fname, 0dx, "", s) 
+						end 
+						MapParamString("#Host:FileError", "", "", "", t) 
+					else 
+						s := fname
+						t := "File Error" 
+					end 
+					res := Kernel.MessageBox(t, s, {Kernel.mbRetry, Kernel.mbCancel})
+					if res = Kernel.mbCancel then
+						res := cancel 
+					elsif res = Kernel.mbRetry then 
+						res := retry 
+					end  
+				else 
+					res := cancel 
+				end  
+			else 
+				res := ok 
+			end  
+		until res # retry 
+	end CheckDelete
+	
+	proc (f: File) Register(name: Files.Name; type_: Files.Type; ask: boolean; var res: integer) 
+		var 
+			b: integer
+			fname: FullName
+			fn, nn: ShortName
+			ok1: boolean
+	begin 
+		assert(f.state = new_, 20)
+		assert(name # "", 21)
+		Append(f.loc.path, name, type_, f.loc.maxLen, fname)
+		CheckDelete(fname, f.loc.path, ask, res)
+		assert(res # 87, 100)
+		if res = ok then
+			if f.name = "" then
+				f.name := fname
+				OpenFile(create, f.name, f.ref, res)
+				if res = ok then
+					f.state := exclusive
+					CloseFile(f, res)
+					Short(f.name, fn, ok1) 
+				end  
+			else 
+				f.state := exclusive
+				CloseFile(f, res)
+				Short(f.name, fn, ok1)
+				Short(fname, nn, ok1)
+				MoveFile(fn, nn, res)
+				if res = ok then
+					f.name := fname
+					Short(f.name, fn, ok1) 
+				else 
+					assert(res # 87, 101)
+					Short(f.name, fn, ok1)
+					b := LinLibc.remove(fn) 
+				end  
+			end  
+		end 
+		res := Error(res)
+	end Register
+	
+	proc (f: File) Close
+		var 
+			res: integer
+	begin  // portable
+		if f.state # closed then
+			(* IF f.state = exclusive THEN
+			   CloseFile(f, res)
+			   ELSE
+			   CloseFileHandle(f, res)
+			   END *)
+			
+			
+			CloseFile(f, res) 
+		end 
+	end Close
+	
+	proc (f: File) Closed(): boolean 
+	begin 
+		return f.state = closed
+	end Closed
+	
+	proc (f: File) Shared(): boolean 
+	begin 
+		return f.state = shared
+	end Shared
+	
+	// Locator
+	
+	proc (loc: Locator) This*(in path: array of char): Locator 
+		var 
+			new_: Locator
+			i: integer
+	begin 
+		if path = "" then
+			new(new_)
+			new_^ := loc^ 
+		elsif path[0] = "/" then  // absolute path
+			new_ := NewLocator(path)
+			new_.rootLen := 0 
+		elsif (path[0] = "\") or (path[0] = "/") then 
+			if (path[1] = "\") or (path[1] = "/") then // network path
+				new_ := NewLocator(path)
+				new_.rootLen := 0 
+			else 
+				new(new_)
+				new_^ := dir.startup^
+				new_.res := invalidName
+				return new_ 
+			end  
+		else 
+			new(new_)
+			Append(loc.path, path, "", loc.maxLen, new_.path)
+			i := 0
+			while new_.path[i] # 0x do 
+				inc(i) 
+			end 
+			if (new_.path[i - 1] = "/") or (new_.path[i - 1] = "\") then
+				new_.path[i - 1] := 0x 
+			end 
+			new_.maxLen := loc.maxLen
+			new_.caseSens := loc.caseSens
+			new_.rootLen := loc.rootLen 
+		end 
+		new_.res := ok
+		return new_
+	end This
+	
+	// Reader
+	
+	proc (r: Reader) Base(): Files.File 
+	begin  // portable
+		return r.base
+	end Base
+	
+	proc (r: Reader) SetPos(pos: integer) 
+		var 
+			f: File
+			org, offset, i, count, res: integer
+			buf: Buffer
+	begin 
+		f := r.base
+		assert(f # nil, 20)
+		assert(f.state # closed, 25)
+		assert(pos >= 0, 22)
+		assert(pos <= f.len_, 21)
+		offset := pos mod bufsize
+		org := pos - offset
+		i := 0
+		while (i # nofbufs) & (f.bufs[i] # nil) & (org # f.bufs[i].org) do 
+			inc(i) 
+		end 
+		if i # nofbufs then
+			buf := f.bufs[i]
+			if buf = nil then // create new buffer
+				new(buf)
+				f.bufs[i] := buf
+				buf.org := -1 
+			end  
+		else  // choose an existing buffer
+			f.swapper := (f.swapper + 1) mod nofbufs
+			FlushBuffer(f, f.swapper)
+			buf := f.bufs[f.swapper]
+			buf.org := -1 
+		end 
+		if buf.org # org then
+			if org + bufsize > f.len_ then
+				buf.len_ := f.len_ - org 
+			else 
+				buf.len_ := bufsize 
+			end 
+			count := buf.len_
+			if count > 0 then
+				if f.ref = invalid then // ASSERT(res = ok, 100)
+					CreateFile(f, res) 
+				end 
+				if f.ref # invalid then
+					if LinLibc.fseek(f.ref, org, LinLibc.SEEK_SET) # 0 then
+						res := LinLibc_errno()
+						halt(101) 
+					end 
+					if LinLibc.fread(SYSTEM.ADR(buf.data), 1, count, f.ref) < count then
+						res := LinLibc_errno()
+						halt(102) 
+					end 
+					f.t := Kernel.Time() 
+				end  
+			end 
+			buf.org := org
+			buf.dirty := false 
+		end 
+		r.buf := buf
+		r.org := org
+		r.offset := offset
+		r.eof := false
+	// 0<= r.org <= r.base.len
+	// 0 <= r.offset < bufsize
+	// 0 <= r.buf.len <= bufsize
+	// r.offset <= r.base.len
+	// r.offset <= r.buf.len
+	end SetPos
+	
+	proc (r: Reader) Pos(): integer 
+	begin  // portable
+		assert(r.base # nil, 20)
+		return r.org + r.offset
+	end Pos
+	
+	proc (r: Reader) ReadByte(var x: byte) 
+	begin  // portable
+		if (r.org # r.buf.org) or (r.offset >= bufsize) then
+			r.SetPos(r.org + r.offset) 
+		end 
+		if r.offset < r.buf.len_ then
+			x := r.buf.data[r.offset]
+			inc(r.offset) 
+		else 
+			x := 0
+			r.eof := true 
+		end 
+	end ReadByte
+	
+	proc (r: Reader) ReadBytes(var x: array of byte; beg, len_: integer) 
+		var 
+			from, to_, count, restInBuf: integer
+	begin  // portable
+		assert(beg >= 0, 21)
+		if len_ > 0 then
+			assert(beg + len_ <= len(x), 23)
+			while len_ # 0 do 
+				if (r.org # r.buf.org) or (r.offset >= bufsize) then
+					r.SetPos(r.org + r.offset) 
+				end 
+				restInBuf := r.buf.len_ - r.offset
+				if restInBuf = 0 then
+					r.eof := true
+					return  
+				elsif restInBuf <= len_ then 
+					count := restInBuf 
+				else 
+					count := len_ 
+				end 
+				from := SYSTEM.ADR(r.buf.data[r.offset])
+				to_ := SYSTEM.ADR(x) + beg
+				SYSTEM.MOVE(from, to_, count)
+				inc(r.offset, count)
+				inc(beg, count)
+				dec(len_, count) 
+			end 
+			r.eof := false 
+		else 
+			assert(len_ = 0, 22) 
+		end 
+	end ReadBytes
+	
+	// Writer
+	
+	proc (w: Writer) Base(): Files.File 
+	begin  // portable
+		return w.base
+	end Base
+	
+	proc (w: Writer) SetPos(pos: integer) 
+		var 
+			f: File
+			org, offset, i, count, res: integer
+			buf: Buffer
+	begin 
+		f := w.base
+		assert(f # nil, 20)
+		assert(f.state # closed, 25)
+		assert(pos >= 0, 22)
+		assert(pos <= f.len_, 21)
+		offset := pos mod bufsize
+		org := pos - offset
+		i := 0
+		while (i # nofbufs) & (f.bufs[i] # nil) & (org # f.bufs[i].org) do 
+			inc(i) 
+		end 
+		if i # nofbufs then
+			buf := f.bufs[i]
+			if buf = nil then // create new buffer
+				new(buf)
+				f.bufs[i] := buf
+				buf.org := -1 
+			end  
+		else  // choose an existing buffer
+			f.swapper := (f.swapper + 1) mod nofbufs
+			FlushBuffer(f, f.swapper)
+			buf := f.bufs[f.swapper]
+			buf.org := -1 
+		end 
+		if buf.org # org then
+			if org + bufsize > f.len_ then
+				buf.len_ := f.len_ - org 
+			else 
+				buf.len_ := bufsize 
+			end 
+			count := buf.len_
+			if count > 0 then
+				if f.ref = invalid then // ASSERT(res = ok, 100)
+					CreateFile(f, res) 
+				end 
+				if f.ref # invalid then
+					if LinLibc.fseek(f.ref, org, LinLibc.SEEK_SET) # 0 then
+						res := LinLibc_errno()
+						halt(101) 
+					end 
+					if LinLibc.fread(SYSTEM.ADR(buf.data), 1, count, f.ref) < count then
+						res := LinLibc_errno()
+						halt(102) 
+					end 
+					f.t := Kernel.Time() 
+				end  
+			end 
+			buf.org := org
+			buf.dirty := false 
+		end 
+		w.buf := buf
+		w.org := org
+		w.offset := offset
+	// 0<= w.org <= w.base.len
+	// 0 <= w.offset < bufsize
+	// 0 <= w.buf.len <= bufsize
+	// w.offset <= w.base.len
+	// w.offset <= w.buf.len
+	end SetPos
+	
+	proc (w: Writer) Pos(): integer 
+	begin  // portable
+		assert(w.base # nil, 20)
+		return w.org + w.offset
+	end Pos
+	
+	proc (w: Writer) WriteByte(x: byte) 
+	begin  // portable
+		assert(w.base.state # closed, 25)
+		if (w.org # w.buf.org) or (w.offset >= bufsize) then
+			w.SetPos(w.org + w.offset) 
+		end 
+		w.buf.data[w.offset] := x
+		w.buf.dirty := true
+		if w.offset = w.buf.len_ then
+			inc(w.buf.len_)
+			inc(w.base.len_) 
+		end 
+		inc(w.offset)
+	end WriteByte
+	
+	proc (w: Writer) WriteBytes(in x: array of byte; beg, len_: integer) 
+		var 
+			from, to_, count, restInBuf: integer
+	begin  // portable
+		assert(beg >= 0, 21)
+		assert(w.base.state # closed, 25)
+		if len_ > 0 then
+			assert(beg + len_ <= len(x), 23)
+			while len_ # 0 do 
+				if (w.org # w.buf.org) or (w.offset >= bufsize) then
+					w.SetPos(w.org + w.offset) 
+				end 
+				restInBuf := bufsize - w.offset
+				if restInBuf <= len_ then
+					count := restInBuf 
+				else 
+					count := len_ 
+				end 
+				from := SYSTEM.ADR(x) + beg
+				to_ := SYSTEM.ADR(w.buf.data[w.offset])
+				SYSTEM.MOVE(from, to_, count)
+				inc(w.offset, count)
+				inc(beg, count)
+				dec(len_, count)
+				if w.offset > w.buf.len_ then
+					inc(w.base.len_, w.offset - w.buf.len_)
+					w.buf.len_ := w.offset 
+				end 
+				w.buf.dirty := true 
+			end  
+		else 
+			assert(len_ = 0, 22) 
+		end 
+	end WriteBytes
+	
+	// Directory
+	
+	proc (d: Directory) This(in path: array of char): Files.Locator 
+	begin 
+		return d.startup.This(path)
+	end This
+	
+	proc (d: Directory) New(loc: Files.Locator; ask: boolean): Files.File 
+		var 
+			f: File
+			res: integer
+			attr: set
+			isDir: boolean
+			buf: LinLibc.stat_t
+	begin 
+		assert(loc # nil, 20)
+		f := nil
+		res := ok
+		with loc: Locator do 
+			if loc.path # "" then
+				Stat(loc.path, buf, res)
+				if res # ok then
+					if loc.res = 76 then
+						CreateDir(loc.path, res) 
+					else 
+						CheckPath(loc.path, ask, res) 
+					end  
+				else 
+					ModeToAttr(buf.st_mode, attr, isDir)
+					if ~isDir then
+						res := fileExistsErr 
+					end  
+				end  
+			end 
+			if res = ok then
+				new(f)
+				f.loc := loc
+				f.name := ""
+				f.state := new_
+				f.swapper := -1
+				f.len_ := 0
+				f.ref := invalid 
+			end  
+		else 
+			res := invalidNameErr 
+		end 
+		loc.res := Error(res)
+		return f
+	end New
+	
+	proc (d: Directory) Temp(): Files.File 
+		var 
+			f: File
+	begin 
+		new(f)
+		f.loc := d.temp
+		f.name := ""
+		f.state := temp
+		f.swapper := -1
+		f.len_ := 0
+		f.ref := invalid
+		return f
+	end Temp
+	
+	proc GetShadowDir(loc: Locator; var dir: FullName) 
+		var 
+			i, j: integer
+	begin 
+		dir := startupDir
+		i := startupLen
+		j := loc.rootLen
+		while loc.path[j] # 0x do 
+			dir[i] := loc.path[j]
+			inc(i)
+			inc(j) 
+		end 
+		dir[i] := 0x
+	end GetShadowDir
+	
+	proc (d: Directory) Old(loc: Files.Locator; name: Files.Name; shrd: boolean): Files.File 
+		var 
+			res: integer
+			f: File
+			ref: LinLibc.PtrFILE
+			fname: FullName
+			type_: Files.Type
+			s: byte
+			buf: LinLibc.stat_t
+	begin 
+		assert(loc # nil, 20)
+		assert(name # "", 21)
+		res := ok
+		f := nil
+		with loc: Locator do 
+			Append(loc.path, name, "", loc.maxLen, fname)
+			f := ThisFile(fname)
+			if f # nil then
+				if ~shrd or (f.state = exclusive) then
+					loc.res := Error(sharingErr)
+					return nil 
+				else 
+					loc.res := ok
+					return f 
+				end  
+			end 
+			if shrd then
+				s := shared 
+			else 
+				s := exclusive 
+			end 
+			OpenFile(s, fname, ref, res)
+			if ((res = fileNotFoundErr) or (res = pathNotFoundErr)) & (loc.rootLen > 0) then
+				GetShadowDir(loc, fname)
+				Append(fname, name, "", loc.maxLen, fname)
+				f := ThisFile(fname)
+				if f # nil then
+					if ~shrd or (f.state = exclusive) then
+						loc.res := Error(sharingErr)
+						return nil 
+					else 
+						loc.res := ok
+						return f 
+					end  
+				end 
+				OpenFile(s, fname, ref, res) 
+			end 
+			if res = ok then
+				new(f)
+				f.loc := loc
+				f.swapper := -1
+				GetType(name, type_)
+				f.InitType(type_)
+				assert(ref # invalid, 107)
+				f.ref := ref
+				f.name := fname
+				f.state := s
+				f.t := Kernel.Time()
+				Stat(f.name, buf, res)
+				f.len_ := buf.st_size
+				res := LinLibc.fseek(ref, 0, LinLibc.SEEK_SET) 
+			end  
+		end 
+		loc.res := Error(res)
+		return f
+	end Old
+	
+	proc (d: Directory) Delete*(loc: Files.Locator; name: Files.Name) 
+		var 
+			res: integer
+			fname: FullName
+	begin 
+		assert(loc # nil, 20)
+		with loc: Locator do 
+			Append(loc.path, name, "", loc.maxLen, fname)
+			Delete(fname, loc.path, res) 
+		else 
+			res := invalidNameErr 
+		end 
+		loc.res := Error(res)
+	end Delete
+	
+	proc (d: Directory) Rename*(loc: Files.Locator; old, new_: Files.Name; ask: boolean) 
+		var 
+			res, i: integer
+			oldname, newname: FullName
+			f: File
+			on, nn, tn: ShortName
+			buf: LinLibc.stat_t
+			ok1: boolean
+			tName: FullName
+	begin 
+		assert(loc # nil, 20)
+		with loc: Locator do 
+			Append(loc.path, old, "", loc.maxLen, oldname)
+			Append(loc.path, new_, "", loc.maxLen, newname)
+			Short(oldname, on, ok1)
+			Short(newname, nn, ok1)
+			Stat(oldname, buf, res)
+			if res = ok then
+				f := ThisFile(oldname)
+				if (f # nil) & (f.ref # invalid) then
+					res := LinLibc.fclose(f.ref)
+					f.ref := invalid 
+				end 
+				if Diff(oldname, newname, loc.caseSens) # 0 then
+					CheckDelete(newname, loc.path, ask, res)
+					if res = ok then
+						if LinLibc.rename(on, nn) = 0 then
+							if f # nil then // still in use => update file table
+								f.name := newname 
+							end  
+						else 
+							res := LinLibc_errno() 
+						end  
+					end  
+				else  // destination is same file as source
+					tName := oldname
+					i := len(tName) - 1
+					repeat 
+						tName[i] := chr(ord(tName[i]) + 1)
+						Short(tName, tn, ok1)
+						MoveFile(on, tn, res) 
+					until (res # fileExistsErr) & (res # alreadyExistsErr) & (res # 87) 
+					if res = ok then
+						MoveFile(tn, nn, res) 
+					end  
+				end  
+			else 
+				res := fileNotFoundErr 
+			end  
+		else 
+			res := invalidNameErr 
+		end 
+		loc.res := Error(res)
+	end Rename
+	
+	proc (d: Directory) SameFile*(loc0: Files.Locator; name0: Files.Name
+		loc1: Files.Locator; name1: Files.Name
+		): boolean 
+		var 
+			p0, p1: FullName
+	begin 
+		assert(loc0 # nil, 20)
+		assert(loc1 # nil, 21)
+		with loc0: Locator do 
+			Append(loc0.path, name0, "", loc0.maxLen, p0) 
+		end 
+		with loc1: Locator do 
+			Append(loc1.path, name1, "", loc1.maxLen, p1) 
+		end 
+		return Diff(p0, p1, loc0(Locator).caseSens) = 0
+	end SameFile
+	
+	proc (d: Directory) FileList*(loc: Files.Locator): Files.FileInfo 
+		var 
+			diff, res, firstRes: integer
+			first, last, info: Files.FileInfo
+			s: FullName
+			ss, fname: ShortName
+			dirp: LinLibc.PtrDIR
+			dp: LinLibc.PtrDirent
+			buf: LinLibc.stat_t
+			tm: LinLibc.tm
+			isDir: boolean
+			attr: set
+			ok1: boolean
+			dName: FullName
+	begin 
+		assert(loc # nil, 20)
+		first := nil
+		last := nil
+		with loc: Locator do 
+			Short(loc.path, ss, ok1)
+			dirp := LinLibc.opendir(ss)
+			if dirp # LinLibc.NULL then
+				dp := LinLibc.readdir(dirp)
+				while dp # nil do 
+					Long(dp.d_name, dName, ok1)
+					if ok1 & (dp.d_name # ".") & (dp.d_name # "..") & (len(dName) < len(info.name)) then
+						fname := ss + "/" + dp.d_name
+						res := LinLibc.__xstat(LinLibc._STAT_VER_LINUX, fname, buf) // macro expansion of "stat"
+						ModeToAttr(buf.st_mode, attr, isDir)
+						if ~isDir then
+							info := first
+							last := nil
+							s := dName
+							while (info # nil) & (Diff(info.name, s, loc.caseSens) < 0) do 
+								last := info
+								info := info.next 
+							end 
+							new(info)
+							info.name := dName
+							GetType(info.name, info.type_)
+							info.length := buf.st_size
+							tm := LinLibc.localtime(buf.st_mtim.tv_sec)
+							if tm # nil then
+								info.modified.year := tm.tm_year + 1900
+								info.modified.month := tm.tm_mon + 1
+								info.modified.day := tm.tm_mday
+								info.modified.hour := tm.tm_hour
+								info.modified.minute := tm.tm_min
+								info.modified.second := tm.tm_sec 
+							end 
+							info.attr := attr
+							if last = nil then
+								info.next := first
+								first := info 
+							else 
+								info.next := last.next
+								last.next := info 
+							end  
+						end  
+					end 
+					dp := LinLibc.readdir(dirp) 
+				end 
+				res := LinLibc.closedir(dirp) 
+			else 
+				res := LinLibc_errno() 
+			end 
+			firstRes := res
+			// check startup directory
+			if (loc.rootLen > 0) & ((res = ok) or (res = fileNotFoundErr) or (res = pathNotFoundErr)) then
+				GetShadowDir(loc, s)
+				Short(s, ss, ok1)
+				dirp := LinLibc.opendir(ss)
+				if dirp # LinLibc.NULL then
+					dp := LinLibc.readdir(dirp)
+					while dp # nil do 
+						Long(dp.d_name, dName, ok1)
+						if ok1 & (dp.d_name # ".") & (dp.d_name # "..") & (len(dName) < len(info.name)) then
+							fname := ss + "/" + dp.d_name
+							res := LinLibc.__xstat(LinLibc._STAT_VER_LINUX, fname, buf) // macro expansion of "stat"
+							ModeToAttr(buf.st_mode, attr, isDir)
+							if ~isDir then
+								info := first
+								last := nil
+								s := dName
+								if info # nil then
+									diff := Diff(info.name, s, loc.caseSens) 
+								end 
+								while (info # nil) & (diff < 0) do 
+									last := info
+									info := info.next
+									if info # nil then
+										diff := Diff(info.name, s, loc.caseSens) 
+									end  
+								end 
+								if (info = nil) or (diff # 0) then
+									new(info)
+									info.name := dName
+									GetType(info.name, info.type_)
+									info.length := buf.st_size
+									tm := LinLibc.localtime(buf.st_mtim.tv_sec)
+									if tm # nil then
+										info.modified.year := tm.tm_year + 1900
+										info.modified.month := tm.tm_mon + 1
+										info.modified.day := tm.tm_mday
+										info.modified.hour := tm.tm_hour
+										info.modified.minute := tm.tm_min
+										info.modified.second := tm.tm_sec 
+									end 
+									info.attr := attr
+									if last = nil then
+										info.next := first
+										first := info 
+									else 
+										info.next := last.next
+										last.next := info 
+									end  
+								end  
+							end  
+						end 
+						dp := LinLibc.readdir(dirp) 
+					end 
+					res := LinLibc.closedir(dirp) 
+				else 
+					res := LinLibc_errno() 
+				end  
+			end 
+			if (res = fileNotFoundErr) or (res = pathNotFoundErr) then
+				res := firstRes 
+			end 
+			loc.res := Error(res) 
+		else 
+			loc.res := invalidName 
+		end 
+		return first
+	end FileList
+	
+	proc (d: Directory) LocList*(loc: Files.Locator): Files.LocInfo 
+		var 
+			diff, res, firstRes: integer
+			first, last, info: Files.LocInfo
+			s: FullName
+			isDir: boolean
+			attr: set
+			ss, fname: ShortName
+			dirp: LinLibc.PtrDIR
+			dp: LinLibc.PtrDirent
+			buf: LinLibc.stat_t
+			ok1: boolean
+			dName: FullName
+	begin 
+		assert(loc # nil, 20)
+		first := nil
+		last := nil
+		with loc: Locator do 
+			Short(loc.path, ss, ok1)
+			dirp := LinLibc.opendir(ss)
+			if dirp # LinLibc.NULL then
+				dp := LinLibc.readdir(dirp)
+				while dp # nil do 
+					Long(dp.d_name, dName, ok1)
+					if ok1 & (dp.d_name # ".") & (dp.d_name # "..") & (len(dName) < len(info.name)) then
+						fname := ss + "/" + dp.d_name
+						res := LinLibc.__xstat(LinLibc._STAT_VER_LINUX, fname, buf) // macro expansion of "stat"
+						ModeToAttr(buf.st_mode, attr, isDir)
+						if isDir then
+							info := first
+							last := nil
+							s := dName
+							while (info # nil) & (Diff(info.name, s, loc.caseSens) < 0) do 
+								last := info
+								info := info.next 
+							end 
+							new(info)
+							info.name := dName
+							info.attr := attr
+							if last = nil then
+								info.next := first
+								first := info 
+							else 
+								info.next := last.next
+								last.next := info 
+							end  
+						end  
+					end 
+					dp := LinLibc.readdir(dirp) 
+				end 
+				res := LinLibc.closedir(dirp) 
+			else 
+				res := LinLibc_errno() 
+			end 
+			firstRes := res
+			// check startup directory
+			if (loc.rootLen > 0) & ((res = ok) or (res = fileNotFoundErr) or (res = pathNotFoundErr)) then
+				GetShadowDir(loc, s)
+				Short(s, ss, ok1)
+				dirp := LinLibc.opendir(ss)
+				if dirp # LinLibc.NULL then
+					dp := LinLibc.readdir(dirp)
+					while dp # nil do 
+						Long(dp.d_name, dName, ok1)
+						if ok1 & (dp.d_name # ".") & (dp.d_name # "..") & (len(dName) < len(info.name)) then
+							fname := ss + "/" + dp.d_name
+							res := LinLibc.__xstat(LinLibc._STAT_VER_LINUX, fname, buf) // macro expansion of "stat"
+							ModeToAttr(buf.st_mode, attr, isDir)
+							if isDir then
+								info := first
+								last := nil
+								s := dName
+								if info # nil then
+									diff := Diff(info.name, s, loc.caseSens) 
+								end 
+								while (info # nil) & (diff < 0) do 
+									last := info
+									info := info.next
+									if info # nil then
+										diff := Diff(info.name, s, loc.caseSens) 
+									end  
+								end 
+								if (info = nil) or (diff # 0) then
+									new(info)
+									info.name := dName
+									info.attr := attr
+									if last = nil then
+										info.next := first
+										first := info 
+									else 
+										info.next := last.next
+										last.next := info 
+									end  
+								end  
+							end  
+						end 
+						dp := LinLibc.readdir(dirp) 
+					end 
+					res := LinLibc.closedir(dirp) 
+				else 
+					res := LinLibc_errno() 
+				end  
+			end 
+			if (res = fileNotFoundErr) or (res = pathNotFoundErr) then
+				res := firstRes 
+			end 
+			loc.res := Error(res) 
+		else 
+			loc.res := invalidName 
+		end 
+		return first
+	end LocList
+	
+	proc (d: Directory) GetFileName(name: Files.Name; type_: Files.Type; var filename: Files.Name) 
+	begin 
+		Append("", name, type_, len(filename), filename)
+	end GetFileName
+	
+	// Miscellaneous
+	
+	proc (var id: Counter) Identified(): boolean 
+		var 
+			f: File
+	begin 
+		f := id.obj(File)
+		if f.state # closed then
+			inc(id.count) 
+		end 
+		return false
+	end Identified
+	
+	proc NofFiles*(): integer 
+		var 
+			p: ANYPTR
+			cnt: Counter
+	begin 
+		cnt.typ := SYSTEM.TYP(File)
+		cnt.count := 0
+		p := Kernel.ThisFinObj(cnt)
+		return cnt.count
+	end NofFiles
+	
+	proc GetModDate*(f: Files.File; var year, month, day, hour, minute, second: integer) 
+		var 
+			buf: LinLibc.stat_t
+			tm: LinLibc.tm
+	begin 
+		assert(f is File, 20)
+		Stat(f(File).name, buf, res)
+		if res = ok then
+			tm := LinLibc.localtime(buf.st_mtim.tv_sec)
+			if tm # nil then
+				year := tm.tm_year + 1900
+				month := tm.tm_mon + 1
+				day := tm.tm_mday
+				hour := tm.tm_hour
+				minute := tm.tm_min
+				second := tm.tm_sec 
+			else 
+				res := -1 
+			end  
+		end 
+		if res # ok then
+			year := 0
+			month := 0
+			day := 0
+			hour := 0
+			minute := 0
+			second := 0 
+		end 
+	end GetModDate
+	
+	proc SetRootDir*(path: array of char) 
+		var 
+			i: integer
+	begin 
+		dir.startup := NewLocator(path)
+		dir.startup.rootLen := 0
+		i := 0
+		while startupDir[i] # 0x do 
+			inc(i) 
+		end 
+		startupLen := i
+	end SetRootDir
+	
+	(* PROCEDURE GetName (VAR p: ARRAY OF CHAR; VAR i: INTEGER; OUT name, opt: FullName);
+	   VAR ch, tch: CHAR; j: INTEGER;
+	   BEGIN
+	   j := 0; ch := p[i]; tch := " ";
+	   WHILE ch = " " DO INC(i); ch := p[i] END;
+	   IF (ch = "'") OR (ch = '"') THEN tch := ch; INC(i); ch := p[i] END;
+	   WHILE (ch >= " ") & (ch # tch) DO
+	   name[j] := ch;
+	   IF Kernel.IsLower(ch) THEN ch := Kernel.Upper(ch)
+	   ELSIF ch = "-" THEN ch := "/"
+	   END;
+	   opt[j] := ch; INC(j); INC(i); ch := p[i]
+	   END;
+	   IF ch > " " THEN INC(i); ch := p[i] END;
+	   WHILE (ch # 0X) & (ch <= " ") DO INC(i); ch := p[i] END;
+	   name[j] := 0X; opt[j] := 0X
+	   END GetName;
+	   
+	   PROCEDURE Init;
+	   VAR res, i, slp: INTEGER; path, opt: FullName; attr: SET; p: LinLibc.PtrSTR; str: ARRAY 256 OF CHAR;
+	   buf: LinLibc.stat_t; isDir: BOOLEAN;
+	   BEGIN
+	   (*
+	   TODO:
+	   Instead of using getcwd below to find the local path it would be better to use Kernel.bootinfo.argv[0].
+	   But this only works if the PATH variable of the shell is not set to hold the BlackBox directory. In that
+	   case all directories in the PATH variable has to be searched for the blackbox executable:
+	   if (argv[0][0] == '/')
+	   s = argv[0]
+	   else {
+	   str = getenv( "PATH" ); len = strlen( str );
+	   for ( i = 0, s = 0; i < len; i++ )
+	   if ( str[i] == ':' ) {
+	   str[i] = '\0';
+	   if ( checkpath( str + s, argv[0] ) ) break;
+	   else s = i + 1;
+	   }
+	   }
+	   *)
+	   wildcard := "*"; NEW(dir);
+	   str := Kernel.cmdLine$;
+	   i := 0; slp := -1;
+	   WHILE (str[i] # " ") & (str[i] # 0X) DO
+	   startupDir[i] := str[i];
+	   IF str[i] = "/" THEN slp := i END;
+	   INC(i)
+	   END;
+	   startupDir[i] := 0X;
+	   IF slp < 0 THEN
+	   appName := startupDir;
+	   p := NIL;
+	   p := LinLibc.getcwd(p, 0);
+	   startupDir := p$;
+	   LinLibc.free(SYSTEM.VAL(LinLibc.PtrVoid, p));
+	   i := 0;
+	   WHILE startupDir[i] # 0X DO INC(i) END;
+	   startupLen := i;
+	   ELSE
+	   i := slp  + 1;
+	   WHILE startupDir[i] # 0X DO appName[i - slp - 1] := startupDir[i]; INC(i) END;
+	   startupDir[slp] := 0X;
+	   startupLen := slp;
+	   END;
+	   dir.startup := NewLocator(startupDir);
+	   dir.startup.rootLen := 0;
+	   (*
+	   p := NIL;
+	   p := LinLibc.getcwd(p, 0);
+	   startupDir := p$; LinLibc.free(SYSTEM.VAL(LinLibc.PtrVoid, p));
+	   dir.startup := NewLocator(startupDir);
+	   dir.startup.rootLen := 0; i := 0;
+	   WHILE startupDir[i] # 0X DO INC(i) END;
+	   startupLen := i;
+	   str := Kernel.cmdLine$;
+	   *)
+	   (*
+	   i := 0;
+	   WHILE (str[i] # " ") & (str[i] # 0X) DO appName[i] := str[i]; INC(i) END;
+	   appName[i] := 0X;
+	   *)
+	   i := 0; res := 1;
+	   REPEAT
+	   GetName(str, i, path, opt);
+	   IF opt = "/USE" THEN
+	   GetName(str, i, path, opt);
+	   Stat(path, buf, res);
+	   IF res =ok THEN
+	   ModeToAttr(buf.st_mode, attr, isDir);
+	   IF isDir THEN res := ok ELSE res := invalidName END
+	   END
+	   END
+	   UNTIL (res = 0) OR (str[i] < " ");
+	   IF serverVersion & (res = 0) THEN
+	   i := 0; WHILE path[i] # 0X DO INC(i) END;
+	   IF (path[i-1] = "/") OR (path[i-1] = "\") THEN DEC(i); path[i] := 0X END;
+	   dir.startup := NewLocator(path);
+	   dir.startup.rootLen := SHORT(i)
+	   END;
+	   dir.temp := NewLocator(LinLibc.P_tmpdir);
+	   Files.SetDir(dir)
+	   END Init; *)
+	
+	
+	
+	proc Init
+		const 
+			bbServerDir = "BB_PRIMARY_DIR"
+			bbWorkDir = "BB_SECONDARY_DIR"
+		var 
+			res: integer
+			attr: set
+			p: LinLibc.PtrSTR
+			buf: LinLibc.stat_t
+			isDir, def1: boolean
+			ok1: boolean
+			fname: FullName
+	begin 
+		ignoreAsk := false
+		
+		InitConv
+		
+		wildcard := "*"
+		new(dir)
+		
+		p := LinLibc.getenv(bbServerDir) // p = NIL -> undefined
+		def1 := false
+		if p # nil then
+			Long(p, fname, ok1)
+			if ok1 then
+				Stat(fname, buf, res)
+				if res = ok then
+					ModeToAttr(buf.st_mode, attr, isDir)
+					def1 := isDir 
+				end  
+			end 
+			if ~def1 then
+				Msg("HostFiles: Value of " + bbServerDir + " isn't directory, using cwd") 
+			end  
+		end 
+		if ~def1 then
+			p := nil
+			p := LinLibc.getcwd(p, 0)
+			Long(p, fname, ok1)
+			if ~ok1 then
+				fname := "." 
+			end 
+			LinLibc.free(SYSTEM.VAL(LinLibc.PtrVoid, p)) 
+		end 
+		startupDir := fname
+		startupLen := len(startupDir)
+		dir.startup := NewLocator(startupDir)
+		dir.startup.rootLen := 0
+		
+		p := LinLibc.getenv(bbWorkDir) // p = NIL -> undefined
+		if def1 & (p # nil) then
+			Long(p, fname, ok1)
+			if ok1 then
+				Stat(fname, buf, res)
+				ok1 := res = ok
+				if ok1 then
+					ModeToAttr(buf.st_mode, attr, isDir)
+					ok1 := isDir 
+				end  
+			end 
+			if ~serverVersion then 
+			// -
+			elsif ok1 then 
+				dir.startup := NewLocator(fname)
+				dir.startup.rootLen := len(fname) 
+			else 
+				Msg("HostFiles: Value of " + bbWorkDir + " isn't directory, server configuration isn't enabled") 
+			end  
+		end 
+		
+		dir.temp := NewLocator(LinLibc.P_tmpdir)
+		Files.SetDir(dir)
+	end Init
+	
+	(* use this mode e.g. for scripting, i.e. when modal dialog boxes are not appropriate;
+	   implicitly uses OK in OK/Cancel dialogs and Cancel in Retry/Cancel dialogs *)
+	proc IgnoreAsk*
+	begin 
+		ignoreAsk := true
+	end IgnoreAsk
+	
+	(* use this mode for interactive usage of BlackBox, i.e. when modal dialog boxes are appropriate;
+	   this is the default behavior. *)
+	proc UseAsk*
+	begin 
+		ignoreAsk := false
+	end UseAsk
+
+begin
+	Init
+(* CLOSE
+	CloseConv *) 
+end HostFiles

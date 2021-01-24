@@ -1,0 +1,3003 @@
+module TextModels
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	// re-check alien attributes: project to base attributes?
+	// support *lists* of attribute extensions?
+	(* support for enumeration of texts within embedded views
+	   - generally: support for enumeration of X-views within a recursive scheme?
+	   - however: Containers already provides a general iteration scheme
+	   -> could add recursion support to Reader later *)
+	
+	
+	import 
+		Files, Services, Fonts, Ports, Stores, Models, Views, Properties, Containers
+	
+	(* text file format:
+	   
+	   text = 0					  CHAR
+	   textoffset			INTEGER (> 0)
+	   { run }
+	   -1					CHAR
+	   { char }
+	   
+	   run = attrno				 BYTE (0..32)
+	   [ attr ]			    attr.Internalize
+	   ( piece | lpiece | viewref )
+	   
+	   piece = length			   INTEGER (> 0)
+	   
+	   lpiece = -length		     INTEGER (< 0, length MOD 2 = 0)
+	   
+	   viewref = 0				   INTEGER
+	   w					  INTEGER
+	   h					   INTEGER
+	   view				   view.Internalize *)
+	
+	
+	const 
+		// unicode* = 1X;
+		viewcode* = 2x // code for embedded views
+		tab* = 9x // tabulator; line and paragraph separator
+		line* = 0dx
+		para* = 0ex
+		zwspace* = 8bx
+		nbspace* = 0a0x
+		digitspace* = 8fx
+		hyphen* = 90x
+		nbhyphen* = 91x
+		softhyphen* = 0adx
+		
+		// Pref.opts, options of text-aware views
+		maskChar* = 0
+		hideable* = 1
+		
+		// Prop.known/valid/readOnly
+		offset* = 0
+		code* = 1
+		
+		// InfoMsg.op
+		store* = 0
+		
+		// UpdateMsg.op
+		replace* = 0
+		insert* = 1
+		delete* = 2
+		
+		// EditOp.mode
+		deleteRange = 0
+		moveBuf = 1
+		writeSChar = 2
+		writeChar = 3
+		writeView = 4
+		
+		dictSize = 32
+		
+		point = Ports.point
+		defW = 64 * point
+		defH = 32 * point
+		
+		// embedding limits - don't increase maxHeight w/o checking TextViews.StdView
+		minWidth = 5 * point
+		maxWidth = max(integer) div 2
+		minHeight = 5 * point
+		maxHeight = 1500 * point
+		
+		minVersion = 0
+		maxAttrVersion = 0
+		maxModelVersion = 0
+		noLCharStdModelVersion = 0
+		maxStdModelVersion = 1
+		
+		cacheWidth = 8
+		cacheLen = 4096
+		cacheLine = 128
+	
+	type 
+		Model* = pointer to (* abstract *) record (Containers.Model) end 
+		
+		Attributes* = pointer to (* extensible *) record (Stores.Store) 
+				init-: boolean // immutable once init is set
+				color-: Ports.Color
+				font-: Fonts.Font
+				offset-: integer 
+			end 
+		
+		AlienAttributes* = pointer to record (Attributes) 
+				store-: Stores.Alien 
+			end 
+		
+		Prop* = pointer to record (Properties.Property) 
+				offset*: integer
+				code*: char 
+			end 
+		
+		
+		Context* = pointer to (* abstract *) record (Models.Context) end 
+		
+		Pref* = record (Properties.Preference) 
+				opts*: set // preset to {}
+				mask*: char  // valid if maskChar IN opts
+			end 
+		
+		
+		Reader* = pointer to (* abstract *) record 
+				eot*: boolean
+				attr*: Attributes
+				char_*: char
+				view*: Views.View
+				w*, h*: integer 
+			end 
+		
+		Writer* = pointer to (* abstract *) record 
+				attr-: Attributes 
+			end 
+		
+		
+		InfoMsg* = record (Models.Message) 
+				op*: integer 
+			end 
+		
+		UpdateMsg* = record (Models.UpdateMsg) 
+				op*: integer
+				beg*, end_*, delta*: integer  // range: [beg, end); length = length' + delta
+			end 
+		
+		
+		Directory* = pointer to (* abstract *) record 
+				attr-: Attributes 
+			end 
+		
+		
+		Run = pointer to (* extensible *) record 
+				prev, next: Run
+				len_: integer
+				attr: Attributes 
+			end 
+		
+		LPiece = pointer to (* extensible *) record (Run) 
+				file: Files.File
+				org: integer 
+			end 
+		
+		Piece = pointer to record (LPiece) end  // u IS Piece => CHAR run
+		
+		ViewRef = pointer to record (Run)  // u IS ViewRef => View run
+				w, h: integer
+				view: Views.View  // embedded view
+			end 
+		
+		
+		PieceCache = record 
+				org: integer
+				prev: Run  // Org(prev.next) = org
+			end 
+		
+		SpillFile = pointer to record 
+				file: Files.File // valid if file # NIL
+				len_: integer // len = file.Length()
+				writer: Files.Writer  // writer.Base() = file
+			end 
+		
+		AttrDict = record 
+				len_: byte
+				attr: array dictSize of Attributes 
+			end 
+		
+		StdModel = pointer to record (Model) 
+				len_: integer // len = sum(u : [trailer.next, trailer) : u.len)
+				//id: integer // unique (could use SYSTEM.ADR instead ...)
+				//era: integer // stable era >= k
+				trailer: Run // init => trailer # NIL
+				pc: PieceCache
+				spill: SpillFile // spill file, created lazily, shared with clones
+				rd: Reader  // reader cache
+			end 
+		
+		StdContext = pointer to record (Context) 
+				text: StdModel
+				ref: ViewRef 
+			end 
+		
+		StdReader = pointer to record (Reader) 
+				base: StdModel // base = Base()
+				pos: integer // pos = Pos()
+				era: integer
+				run: Run // era = base.era => Pos(run) + off = pos
+				off: integer // era = base.era => 0 <= off < run.len
+				reader: Files.Reader  // file reader cache
+			end 
+		
+		StdWriter = pointer to record (Writer) 
+				base: StdModel // base = Base()
+				// hasSequencer := base.Domain() = NIL  OR  base.Domain().GetSequencer() = NIL
+				pos: integer // pos = Pos()
+				era: integer // relevant iff hasSequencer
+				run: Run  // hasSequencer  &  era = base.era  =>  Pos(run) = pos
+			end 
+		
+		StdDirectory = pointer to record (Directory) end 
+		
+		
+		MoveOp = pointer to record (Stores.Operation)  // MoveStretchFrom
+				// move src.[beg, end) to dest.pos
+				src: StdModel
+				beg, end_: integer
+				dest: StdModel
+				pos: integer 
+			end 
+		
+		EditOp = pointer to record (Stores.Operation)  // CopyStretchFrom, Delete, WriteXXX
+				mode: integer
+				canBunch: boolean
+				text: StdModel
+				beg, end_: integer // op = deleteRange: move text.[beg, end) to <first, last>
+				pos: integer
+				first, last: Run (* op = moveBuf: move <first, last> to text.pos;
+				   op = writeView: insert <first> at text.pos *)
+				
+				len_: integer (* op = moveBuf: length of <first, last>;
+				   op = write[L]Char: length of spill file before writing new [long] char *)
+				
+				attr: Attributes  // op = write[L]Char
+			end 
+		
+		AttrList = pointer to record 
+				next: AttrList
+				len_: integer
+				attr: Attributes 
+			end 
+		
+		SetAttrOp = pointer to record (Stores.Operation)  // SetAttr, Modify
+				text: StdModel
+				beg: integer
+				list: AttrList 
+			end 
+		
+		ResizeViewOp = pointer to record (Stores.Operation)  // ResizeView
+				text: StdModel
+				pos: integer
+				ref: ViewRef
+				w, h: integer 
+			end 
+		
+		ReplaceViewOp = pointer to record (Stores.Operation)  // ReplaceView
+				text: StdModel
+				pos: integer
+				ref: ViewRef
+				new_: Views.View 
+			end 
+		
+		TextCache = record 
+				id: integer // id of the text block served by this cache block
+				beg, end_: integer // [beg .. end) cached, 0 <= end - beg < cacheLen
+				buf: array cacheLen of byte  // [beg MOD cacheLen .. end MOD cacheLen)
+			end 
+		Cache = array cacheWidth of TextCache
+	
+	var 
+		dir-, stdDir-: Directory
+		
+		stdProp: Properties.StdProp // temp for NewColor, ... NewWeight
+		prop: Prop // temp for NewOffset
+		nextId: integer
+		cache: Cache
+	
+	
+	// Model
+	
+	proc (m: Model) Internalize-(var rd: Stores.Reader)  // extensible
+		var 
+			thisVersion: integer
+	begin 
+		m.Internalize^(rd)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minVersion, maxModelVersion, thisVersion)
+	end Internalize
+	
+	proc (m: Model) Externalize-(var wr: Stores.Writer)  // extensible
+	begin 
+		m.Externalize^(wr)
+		wr.WriteVersion(maxModelVersion)
+	end Externalize
+	
+	
+	proc (m: Model) Length*(): integer  end // new abstract
+	proc (m: Model) NewReader*(old: Reader): Reader  end // new abstract
+	proc (m: Model) NewWriter*(old: Writer): Writer  end // new abstract
+	proc (m: Model) InsertCopy*(pos: integer; m0: Model; beg0, end0: integer)  end // new abstract
+	proc (m: Model) Insert*(pos: integer; m0: Model; beg0, end0: integer)  end // new abstract
+	proc (m: Model) Delete*(beg, end_: integer)  end // new abstract
+	proc (m: Model) SetAttr*(beg, end_: integer; attr: Attributes)  end // new abstract
+	proc (m: Model) Prop*(beg, end_: integer): Properties.Property  end // new abstract
+	proc (m: Model) Modify*(beg, end_: integer; old, p: Properties.Property)  end // new abstract
+	proc (m: Model) ReplaceView*(old, new_: Views.View)  end // abstract
+	
+	proc (m: Model) Append*(m0: Model)  end // new abstract
+	(* BEGIN
+	   ASSERT(m # m0, 20);
+	   m.Insert(m.Length(), m0, 0, m0.Length())
+	   END Append; *)
+	
+	
+	proc (m: Model) Replace*(beg, end_: integer; m0: Model; beg0, end0: integer)  end // new abstract
+	
+	(* VAR script: Stores.Operation; delta: INTEGER;
+	   BEGIN
+	   Models.BeginScript(m, "#System:Replacing", script);
+	   m.Delete(beg, end);
+	   IF beg0 >
+	   m.Insert(beg, m0, beg0, end0);
+	   Models.EndScript(m, script)
+	   END Replace; *)
+	
+	
+	
+	// Attributes
+	
+	proc (a: Attributes) CopyFrom-(source: Stores.Store)  // extensible
+	// pre: ~a.init, source.init
+	// post: a.init
+	begin 
+		with source: Attributes do 
+			assert(~a.init, 20)
+			assert(source.init, 21)
+			a.init := true
+			a.color := source.color
+			a.font := source.font
+			a.offset := source.offset 
+		end 
+	end CopyFrom
+	
+	proc (a: Attributes) Internalize-(var rd: Stores.Reader)  // extensible
+		// pre: ~a.init
+		// post: a.init
+		var 
+			thisVersion: integer
+			fprint: integer
+			face: Fonts.Typeface
+			size_: integer
+			style: set
+			weight: integer
+	begin 
+		assert(~a.init, 20)
+		a.init := true
+		a.Internalize^(rd)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minVersion, maxAttrVersion, thisVersion)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadInt(a.color)
+		rd.ReadInt(fprint)
+		rd.ReadXString(face)
+		rd.ReadInt(size_)
+		rd.ReadSet(style)
+		rd.ReadXInt(weight)
+		a.font := Fonts.dir.This(face, size_, style, weight)
+		if a.font.IsAlien() then
+			Stores.Report("#System:AlienFont", face, "", "") 
+		// ELSIF a.font.Fingerprint() # fprint THEN Stores.Report("#System:AlienFontVersion", face, "", "")
+		
+		
+		end 
+		rd.ReadInt(a.offset)
+	end Internalize
+	
+	proc (a: Attributes) Externalize-(var wr: Stores.Writer)  // extensible
+		// pre: a.init
+		var 
+			f: Fonts.Font
+	begin 
+		assert(a.init, 20)
+		a.Externalize^(wr)
+		wr.WriteVersion(maxAttrVersion)
+		wr.WriteInt(a.color)
+		f := a.font
+		// wr.WriteInt(f.Fingerprint());
+		
+		
+		wr.WriteInt(0)
+		wr.WriteXString(f.typeface)
+		wr.WriteInt(f.size_)
+		wr.WriteSet(f.style)
+		wr.WriteXInt(f.weight)
+		wr.WriteInt(a.offset)
+	end Externalize
+	
+	proc (a: Attributes) InitFromProp*(p: Properties.Property)  // new extensible
+		// pre: ~a.init
+		// post: a.init, x IN p.valid => x set in a, else x defaults in a
+		var 
+			def: Fonts.Font
+			face: Fonts.Typeface
+			size_: integer
+			style: set
+			weight: integer
+	begin 
+		assert(~a.init, 20)
+		a.init := true
+		def := Fonts.dir.Default()
+		face := def.typeface
+		size_ := def.size_
+		style := def.style
+		weight := def.weight
+		a.color := Ports.defaultColor
+		a.offset := 0
+		while p # nil do 
+			with p: Properties.StdProp do 
+				if Properties.color in p.valid then
+					a.color := p.color.val_ 
+				end 
+				if Properties.typeface in p.valid then
+					face := p.typeface 
+				end 
+				if (Properties.size_ in p.valid) 
+					& (Ports.point <= p.size_) & (p.size_ <= 32767 * Ports.point) then
+					size_ := p.size_ 
+				end 
+				if Properties.style in p.valid then
+					style := style - p.style.mask + p.style.val_ * p.style.mask 
+				end 
+				if (Properties.weight in p.valid) & (1 <= p.weight) & (p.weight <= 1000) then
+					weight := p.weight 
+				end  
+			| p: Prop do 
+				if offset in p.valid then
+					a.offset := p.offset 
+				end  
+			else  
+			end 
+			p := p.next 
+		end 
+		a.font := Fonts.dir.This(face, size_, style, weight)
+	end InitFromProp
+	
+	proc (a: Attributes) Equals*(b: Attributes): boolean  // new extensible
+	// pre: a.init, b.init
+	begin 
+		assert(a.init, 20)
+		assert((b # nil) & b.init, 21)
+		return (a = b) 
+			or (Services.SameType(a, b)) 
+			& (a.color = b.color) & (a.font = b.font) & (a.offset = b.offset)
+	end Equals
+	
+	proc (a: Attributes) Prop*(): Properties.Property  // new extensible
+		// pre: a.init
+		var 
+			p: Properties.Property
+			sp: Properties.StdProp
+			tp: Prop
+	begin 
+		assert(a.init, 20)
+		new(sp)
+		sp.known := {Properties.color..Properties.weight}
+		sp.valid := sp.known
+		sp.color.val_ := a.color
+		sp.typeface := a.font.typeface
+		sp.size_ := a.font.size_
+		sp.style.mask := {Fonts.italic, Fonts.underline, Fonts.strikeout}
+		sp.style.val_ := a.font.style * sp.style.mask
+		sp.weight := a.font.weight
+		new(tp)
+		tp.known := {offset}
+		tp.valid := tp.known
+		tp.offset := a.offset
+		Properties.Insert(p, tp)
+		Properties.Insert(p, sp)
+		return p
+	end Prop
+	
+	proc (a: Attributes) ModifyFromProp-(p: Properties.Property)  // new extensible
+		// pre: ~a.init
+		var 
+			face: Fonts.Typeface
+			size_: integer
+			style: set
+			weight: integer
+			valid: set
+	begin 
+		face := a.font.typeface
+		size_ := a.font.size_
+		style := a.font.style
+		weight := a.font.weight
+		while p # nil do 
+			valid := p.valid
+			with p: Properties.StdProp do 
+				if Properties.color in valid then
+					a.color := p.color.val_ 
+				end 
+				if Properties.typeface in valid then
+					face := p.typeface 
+				end 
+				if (Properties.size_ in valid) 
+					& (Ports.point <= p.size_) & (p.size_ <= 32767 * Ports.point) then
+					size_ := p.size_ 
+				else 
+					excl(valid, Properties.size_) 
+				end 
+				if Properties.style in valid then
+					style := style - p.style.mask + p.style.val_ * p.style.mask 
+				end 
+				if (Properties.weight in valid) & (1 <= p.weight) & (p.weight <= 1000) then
+					weight := p.weight 
+				else 
+					excl(valid, Properties.weight) 
+				end 
+				if valid - {Properties.typeface..Properties.weight} # valid then
+					a.font := Fonts.dir.This(face, size_, style, weight) 
+				end  
+			| p: Prop do 
+				if offset in valid then
+					a.offset := p.offset 
+				end  
+			else  
+			end 
+			p := p.next 
+		end 
+	end ModifyFromProp
+	
+	
+	proc ReadAttr*(var rd: Stores.Reader; var a: Attributes) 
+		var 
+			st: Stores.Store
+			alien: AlienAttributes
+	begin 
+		rd.ReadStore(st)
+		assert(st # nil, 20)
+		if st is Stores.Alien then
+			new(alien)
+			alien.store := st(Stores.Alien)
+			Stores.Join(alien, alien.store)
+			alien.InitFromProp(nil)
+			a := alien
+			Stores.Report("#Text:AlienAttributes", "", "", "") 
+		else 
+			a := st(Attributes) 
+		end 
+	end ReadAttr
+	
+	proc WriteAttr*(var wr: Stores.Writer; a: Attributes) 
+	begin 
+		assert(a # nil, 20)
+		assert(a.init, 21)
+		with a: AlienAttributes do 
+			wr.WriteStore(a.store) 
+		else 
+			wr.WriteStore(a) 
+		end 
+	end WriteAttr
+	
+	proc ModifiedAttr*(a: Attributes; p: Properties.Property): Attributes 
+		// pre: a.init
+		// post: x IN p.valid => x in new attr set to value in p, else set to value in a
+		var 
+			h: Attributes
+	begin 
+		assert(a.init, 20)
+		h := Stores.CopyOf(a)(Attributes)
+		h.ModifyFromProp(p)
+		return h
+	end ModifiedAttr
+	
+	
+	// AlienAttributes
+	
+	proc (a: AlienAttributes) Externalize-(var wr: Stores.Writer) 
+	begin 
+		halt(100)
+	end Externalize
+	
+	proc (a: AlienAttributes) CopyFrom-(source: Stores.Store) 
+	begin 
+		a.CopyFrom^(source)
+		a.store := Stores.CopyOf(source(AlienAttributes).store)(Stores.Alien)
+		Stores.Join(a, a.store)
+	end CopyFrom
+	
+	proc (a: AlienAttributes) Prop*(): Properties.Property 
+	begin 
+		return nil
+	end Prop
+	
+	proc (a: AlienAttributes) ModifyFromProp-(p: Properties.Property) 
+	end ModifyFromProp
+	
+	
+	// Prop
+	
+	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean) 
+		var 
+			valid: set
+	begin 
+		with q: Prop do 
+			valid := p.valid * q.valid
+			equal := true
+			if p.offset # q.offset then
+				excl(valid, offset) 
+			end 
+			if p.code # q.code then
+				excl(valid, code) 
+			end 
+			if p.valid # valid then
+				p.valid := valid
+				equal := false 
+			end  
+		end 
+	end IntersectWith
+	
+	
+	// Context
+	
+	proc (c: Context) ThisModel*(): Model  end // abstract
+	proc (c: Context) Pos*(): integer  end // new abstract
+	proc (c: Context) Attr*(): Attributes  end // new abstract
+	
+	
+	// Reader
+	
+	proc (rd: Reader) Base*(): Model  end // new abstract
+	proc (rd: Reader) SetPos*(pos: integer)  end // new abstract
+	proc (rd: Reader) Pos*(): integer  end // new abstract
+	proc (rd: Reader) Read* end // new abstract
+	proc (rd: Reader) ReadPrev* end // new abstract
+	
+	proc (rd: Reader) ReadChar*(var ch: char)  end // new abstract
+	(* BEGIN
+	   rd.Read; ch := rd.char
+	   END ReadChar; *)
+	
+	
+	proc (rd: Reader) ReadPrevChar*(var ch: char)  end // new abstract
+	(* BEGIN
+	   rd.ReadPrev; ch := rd.char
+	   END ReadPrevChar; *)
+	
+	
+	proc (rd: Reader) ReadView*(var v: Views.View)  end // new abstract
+	(* BEGIN
+	   REPEAT rd.Read UNTIL (rd.view # NIL) OR rd.eot;
+	   v := rd.view
+	   END ReadView; *)
+	
+	
+	proc (rd: Reader) ReadPrevView*(var v: Views.View)  end // new abstract
+	(* BEGIN
+	   REPEAT rd.ReadPrev UNTIL (rd.view # NIL) OR rd.eot;
+	   v := rd.view
+	   END ReadPrevView; *)
+	
+	
+	proc (rd: Reader) ReadRun*(var attr: Attributes)  end // new abstract
+	// post: rd.eot OR a # NIL, rd.view = ViewAt(rd.Pos() - 1)
+	(* VAR a: Attributes;
+	   BEGIN
+	   a := rd.attr;
+	   REPEAT rd.Read UNTIL (rd.attr # a) OR (rd.view # NIL) OR rd.eot;
+	   IF rd.eot THEN attr := NIL ELSE attr := rd.attr END
+	   END ReadRun; *)
+	
+	
+	proc (rd: Reader) ReadPrevRun*(var attr: Attributes)  end // new abstract
+	// post: rd.eot OR a # NIL, rd.view = ViewAt(rd.Pos())
+	(* VAR a: Attributes;
+	   BEGIN
+	   a := rd.attr;
+	   REPEAT rd.ReadPrev UNTIL (rd.attr # a) OR (rd.view # NIL) OR rd.eot;
+	   IF rd.eot THEN attr := NIL ELSE attr := rd.attr END
+	   END ReadPrevRun; *)
+	
+	
+	
+	// Writer
+	
+	proc (wr: Writer) Base*(): Model  end // new abstract
+	proc (wr: Writer) SetPos*(pos: integer)  end // new abstract
+	proc (wr: Writer) Pos*(): integer  end // new abstract
+	// PROCEDURE (wr: Writer) WriteSChar* (ch: SHORTCHAR), NEW, ABSTRACT;
+	proc (wr: Writer) WriteChar*(ch: char)  end // new abstract
+	proc (wr: Writer) WriteView*(view: Views.View; w, h: integer)  end // new abstract
+	
+	proc (wr: Writer) SetAttr*(attr: Attributes)  // new // , EXTENSIBLE
+	begin 
+		assert(attr # nil, 20)
+		assert(attr.init, 21)
+		wr.attr := attr
+	end SetAttr
+	
+	
+	// Directory
+	
+	proc (d: Directory) New*(): Model  end // new abstract
+	
+	proc (d: Directory) NewFromString*(s: array of char): Model  // new extensible
+		var 
+			m: Model
+			w: Writer
+			i: integer
+	begin 
+		m := d.New()
+		w := m.NewWriter(nil)
+		i := 0
+		while s[i] # 0x do 
+			w.WriteChar(s[i])
+			inc(i) 
+		end 
+		return m
+	end NewFromString
+	
+	proc (d: Directory) SetAttr*(attr: Attributes)  // new extensible
+	begin 
+		assert(attr.init, 20)
+		d.attr := attr
+	end SetAttr
+	
+	
+	// StdModel - foundation
+	
+	proc OpenSpill(s: SpillFile) 
+	begin 
+		s.file := Files.dir.Temp()
+		s.len_ := 0
+		s.writer := s.file.NewWriter(nil)
+	end OpenSpill
+	
+	proc Find(t: StdModel; var pos: integer; var u: Run; var off: integer) 
+		// post: 0 <= pos <= t.len, 0 <= off < u.len, Pos(u) + off = pos
+		// Read/Write rely on Find to force pos into the legal range
+		var 
+			v: Run
+			m: integer
+	begin 
+		if pos < 0 then
+			pos := 0 
+		end 
+		if pos >= t.len_ then
+			u := t.trailer
+			off := 0
+			t.pc.prev := t.trailer
+			t.pc.org := 0 
+		else 
+			v := t.pc.prev.next
+			m := pos - t.pc.org
+			if m >= 0 then
+				while m >= v.len_ do 
+					dec(m, v.len_)
+					v := v.next 
+				end  
+			else 
+				while m < 0 do 
+					v := v.prev
+					inc(m, v.len_) 
+				end  
+			end 
+			u := v
+			off := m
+			t.pc.prev := v.prev
+			t.pc.org := pos - m 
+		end 
+	end Find
+	
+	proc Split(off: integer; var u, un: Run) 
+		// pre: 0 <= off <= u.len
+		// post: u.len = off, u.len + un.len = u'.len, Pos(u) + u.len = Pos(un)
+		var 
+			lp: LPiece
+			sp: Piece
+	begin 
+		if off = 0 then // "split" at left edge of run
+			un := u
+			u := un.prev 
+		elsif off < u.len_ then  // u.len > 1 => u IS LPiece; true split
+			with u: Piece do 
+				new(sp)
+				sp^ := u^
+				inc(sp.org, off)
+				un := sp 
+			else  // u IS LPiece) & ~(u IS Piece)
+				new(lp)
+				lp.prev := u.prev
+				lp.next := u.next
+				lp.len_ := u.len_
+				lp.attr := u.attr
+				lp.file := u(LPiece).file
+				lp.org := u(LPiece).org
+				inc(lp.org, 2 * off)
+				un := lp 
+			end 
+			dec(un.len_, off)
+			dec(u.len_, un.len_)
+			un.prev := u
+			un.next := u.next
+			un.next.prev := un
+			u.next := un 
+		elsif off = u.len_ then  // "split" at right edge of run
+			un := u.next 
+		else 
+			halt(100) 
+		end 
+	end Split
+	
+	proc Merge(t: StdModel; u: Run; var v: Run) 
+		var 
+			p, q: LPiece
+	begin 
+		with u: Piece do 
+			if (v is Piece) & ((u.attr = v.attr) or u.attr.Equals(v.attr)) then
+				p := u
+				q := v(Piece)
+				if (p.file = q.file) & (p.org + p.len_ = q.org) then
+					if t.pc.prev = p then
+						inc(t.pc.org, q.len_) 
+					elsif t.pc.prev = q then 
+						t.pc.prev := t.trailer
+						t.pc.org := 0 
+					end 
+					inc(p.len_, q.len_)
+					v := v.next 
+				end  
+			end  
+		| u: LPiece do  // ~(u IS Piece)
+			if (v is LPiece) & ~(v is Piece) & ((u.attr = v.attr) or u.attr.Equals(v.attr)) then
+				p := u(LPiece)
+				q := v(LPiece)
+				if (p.file = q.file) & (p.org + 2 * p.len_ = q.org) then
+					if t.pc.prev = p then
+						inc(t.pc.org, q.len_) 
+					elsif t.pc.prev = q then 
+						t.pc.prev := t.trailer
+						t.pc.org := 0 
+					end 
+					inc(p.len_, q.len_)
+					v := v.next 
+				end  
+			end  
+		else   // ignore: can't merge ViewRef runs
+		end 
+	end Merge
+	
+	proc Splice(un, v, w: Run)  // (u, un) -> (u, v ... w, un)
+		var 
+			u: Run
+	begin 
+		if v # w.next then // non-empty stretch v ... w
+			u := un.prev
+			u.next := v
+			v.prev := u
+			un.prev := w
+			w.next := un 
+		end 
+	end Splice
+	
+	proc NewContext(r: ViewRef; text: StdModel): StdContext 
+		var 
+			c: StdContext
+	begin 
+		new(c)
+		c.text := text
+		c.ref := r
+		Stores.Join(text, r.view)
+		return c
+	end NewContext
+	
+	proc CopyOfPiece(p: LPiece): LPiece 
+		var 
+			lp: LPiece
+			sp: Piece
+	begin 
+		with p: Piece do 
+			new(sp)
+			sp^ := p^
+			return sp 
+		else 
+			new(lp)
+			lp.prev := p.prev
+			lp.next := p.next
+			lp.len_ := p.len_
+			lp.attr := p.attr
+			lp.file := p(LPiece).file
+			lp.org := p(LPiece).org
+			return lp 
+		end 
+	end CopyOfPiece
+	
+	proc CopyOfViewRef(r: ViewRef; text: StdModel): ViewRef 
+		var 
+			v: ViewRef
+	begin 
+		new(v)
+		v^ := r^
+		v.view := Views.CopyOf(r.view, Views.deep)
+		v.view.InitContext(NewContext(v, text))
+		return v
+	end CopyOfViewRef
+	
+	proc InvalCache(t: StdModel; pos: integer) 
+		var 
+			n: integer
+	begin 
+		n := t.id mod cacheWidth
+		if cache[n].id = t.id then
+			if pos <= cache[n].beg then
+				cache[n].beg := 0
+				cache[n].end_ := 0 
+			elsif pos < cache[n].end_ then 
+				cache[n].end_ := pos 
+			end  
+		end 
+	end InvalCache
+	
+	proc StdInit(t: StdModel) 
+		var 
+			u: Run
+	begin 
+		if t.trailer = nil then
+			new(u)
+			u.len_ := max(integer)
+			u.attr := nil
+			u.next := u
+			u.prev := u
+			t.len_ := 0
+			t.id := nextId
+			inc(nextId)
+			t.era := 0
+			t.trailer := u
+			t.pc.prev := u
+			t.pc.org := 0
+			if t.spill = nil then
+				new(t.spill) 
+			end  
+		end 
+	end StdInit
+	
+	proc CopyOf(src: StdModel; beg, end_: integer; dst: StdModel): StdModel 
+		var 
+			buf: StdModel
+			u, v, r, z, zn: Run
+			ud, vd: integer
+	begin 
+		assert(beg < end_, 20)
+		buf := Containers.CloneOf(dst)(StdModel)
+		assert(buf.Domain() = nil, 100)
+		Find(src, beg, u, ud)
+		Find(src, end_, v, vd)
+		z := buf.trailer
+		r := u
+		while r # v do 
+			with r: LPiece do  // Piece or LPiece
+				zn := CopyOfPiece(r)
+				dec(zn.len_, ud)
+				if zn is Piece then
+					inc(zn(LPiece).org, ud) 
+				else 
+					inc(zn(LPiece).org, 2 * ud) 
+				end  
+			| r: ViewRef do 
+				zn := CopyOfViewRef(r, buf) 
+			else   // ignore
+			end 
+			z.next := zn
+			zn.prev := z
+			z := zn
+			r := r.next
+			ud := 0 
+		end 
+		if vd > 0 then // v IS LPiece
+			zn := CopyOfPiece(v(LPiece))
+			zn.len_ := vd - ud
+			if zn is Piece then
+				inc(zn(LPiece).org, ud) 
+			else 
+				inc(zn(LPiece).org, 2 * ud) 
+			end 
+			z.next := zn
+			zn.prev := z
+			z := zn 
+		end 
+		z.next := buf.trailer
+		buf.trailer.prev := z
+		buf.len_ := end_ - beg
+		return buf
+	end CopyOf
+	
+	proc ProjectionOf(src: Model; beg, end_: integer; dst: StdModel): StdModel 
+		// rider-conversion to eliminate covariance conflicts in binary operations
+		var 
+			buf: StdModel
+			rd: Reader
+			wr: Writer
+	begin 
+		rd := src.NewReader(nil)
+		rd.SetPos(beg)
+		buf := Containers.CloneOf(dst)(StdModel)
+		assert(buf.Domain() = nil, 100)
+		wr := buf.NewWriter(nil)
+		while beg < end_ do 
+			inc(beg)
+			rd.Read
+			wr.SetAttr(rd.attr)
+			if rd.view # nil then
+				wr.WriteView(Views.CopyOf(rd.view, Views.deep), rd.w, rd.h) 
+			else 
+				wr.WriteChar(rd.char_) 
+			end  
+		end 
+		return buf
+	end ProjectionOf
+	
+	proc Move(src: StdModel; beg, end_: integer; dest: StdModel; pos: integer) 
+		var 
+			pc: PieceCache
+			view: Views.View
+			u, un, v, vn, w, wn: Run
+			ud, vd, wd: integer
+			// initDom: BOOLEAN; newDom, dom: Stores.Domain;
+			upd: UpdateMsg
+			neut: Models.NeutralizeMsg
+	begin 
+		Models.Broadcast(src, neut)
+		Find(src, beg, u, ud)
+		Split(ud, u, un)
+		pc := src.pc
+		Find(src, end_, v, vd)
+		Split(vd, v, vn)
+		src.pc := pc
+		Merge(src, u, vn)
+		u.next := vn
+		vn.prev := u
+		dec(src.len_, end_ - beg)
+		InvalCache(src, beg)
+		inc(src.era)
+		upd.op := delete
+		upd.beg := beg
+		upd.end_ := beg + 1
+		upd.delta := beg - end_
+		Models.Broadcast(src, upd)
+		if src = dest then
+			if pos > end_ then
+				dec(pos, end_ - beg) 
+			end  
+		else 
+			// newDom := dest.Domain(); initDom := (src.Domain() = NIL) & (newDom # NIL);
+			w := un
+			while w # vn do 
+				(* IF initDom THEN
+				   dom := w.attr.Domain();
+				   IF (dom # NIL) & (dom # newDom) THEN w.attr := Stores.CopyOf(w.attr)(Attributes) END;
+				   Stores.InitDomain(w.attr, newDom)
+				   END; *)
+				
+				
+				if ~Stores.Joined(dest, w.attr) then
+					if ~Stores.Unattached(w.attr) then
+						w.attr := Stores.CopyOf(w.attr)(Attributes) 
+					end 
+					Stores.Join(dest, w.attr) 
+				end 
+				with w: ViewRef do 
+					view := w.view
+					// IF initDom THEN Stores.InitDomain(view, newDom) END;
+					Stores.Join(dest, view)
+					view.context(StdContext).text := dest 
+				else  
+				end 
+				w := w.next 
+			end  
+		end 
+		Find(dest, pos, w, wd)
+		Split(wd, w, wn)
+		Splice(wn, un, v)
+		v := wn.prev
+		Merge(dest, v, wn)
+		v.next := wn
+		wn.prev := v
+		wn := w.next
+		Merge(dest, w, wn)
+		w.next := wn
+		wn.prev := w
+		inc(dest.len_, end_ - beg)
+		InvalCache(dest, pos)
+		inc(dest.era)
+		upd.op := insert
+		upd.beg := pos
+		upd.end_ := pos + end_ - beg
+		upd.delta := end_ - beg
+		Models.Broadcast(dest, upd)
+	end Move
+	
+	
+	// StdModel - operations
+	
+	proc (op: MoveOp) Do
+		var 
+			src, dest: StdModel
+			beg, end_, pos: integer
+			neut: Models.NeutralizeMsg
+	begin 
+		src := op.src
+		beg := op.beg
+		end_ := op.end_
+		dest := op.dest
+		pos := op.pos
+		if src = dest then
+			if pos < beg then
+				op.pos := end_
+				op.beg := pos
+				op.end_ := pos + end_ - beg 
+			else 
+				op.pos := beg
+				op.beg := pos - (end_ - beg)
+				op.end_ := pos 
+			end  
+		else 
+			Models.Broadcast(op.src, neut) // destination is neutralized by sequencer
+			op.dest := src
+			op.src := dest
+			op.pos := beg
+			op.beg := pos
+			op.end_ := pos + end_ - beg 
+		end 
+		Move(src, beg, end_, dest, pos)
+	end Do
+	
+	proc DoMove(name: Stores.OpName
+		src: StdModel; beg, end_: integer
+		dest: StdModel; pos: integer
+		) 
+		var 
+			op: MoveOp
+	begin 
+		if (beg < end_) & ((src # dest) or ~((beg <= pos) & (pos <= end_))) then
+			new(op)
+			op.src := src
+			op.beg := beg
+			op.end_ := end_
+			op.dest := dest
+			op.pos := pos
+			Models.Do(dest, name, op) 
+		end 
+	end DoMove
+	
+	
+	proc (op: EditOp) Do
+		var  // newDom, dom: Stores.Domain;
+			text: StdModel
+			pc: PieceCache
+			u, un, v, vn: Run
+			sp: Piece
+			lp: LPiece
+			r: ViewRef
+			ud, vd, beg, end_, pos, len_: integer
+			w, h: integer
+			upd: UpdateMsg
+	begin 
+		text := op.text
+		case op.mode of 
+			deleteRange: 
+				beg := op.beg
+				end_ := op.end_
+				len_ := end_ - beg
+				Find(text, beg, u, ud)
+				Split(ud, u, un)
+				pc := text.pc
+				Find(text, end_, v, vd)
+				Split(vd, v, vn)
+				text.pc := pc
+				Merge(text, u, vn)
+				u.next := vn
+				vn.prev := u
+				dec(text.len_, len_)
+				InvalCache(text, beg)
+				inc(text.era)
+				op.mode := moveBuf
+				op.canBunch := false
+				op.pos := beg
+				op.first := un
+				op.last := v
+				op.len_ := len_
+				upd.op := delete
+				upd.beg := beg
+				upd.end_ := beg + 1
+				upd.delta := -len_
+				Models.Broadcast(text, upd) 
+			| moveBuf: 
+				pos := op.pos
+				Find(text, pos, u, ud)
+				Split(ud, u, un)
+				Splice(un, op.first, op.last)
+				inc(text.len_, op.len_)
+				InvalCache(text, pos)
+				inc(text.era)
+				op.mode := deleteRange
+				op.beg := pos
+				op.end_ := pos + op.len_
+				upd.op := insert
+				upd.beg := pos
+				upd.end_ := pos + op.len_
+				upd.delta := op.len_
+				Models.Broadcast(text, upd) 
+			| writeSChar: 
+				pos := op.pos
+				InvalCache(text, pos)
+				Find(text, pos, u, ud)
+				Split(ud, u, un)
+				if (u.attr = op.attr) & (u is Piece) & (u(Piece).file = text.spill.file) 
+					& (u(Piece).org + u.len_ = op.len_) then
+					inc(u.len_)
+					if text.pc.org >= pos then
+						inc(text.pc.org) 
+					end  
+				else 
+					(* newDom := text.Domain();
+					   IF newDom # NIL THEN
+					   dom := op.attr.Domain();
+					   IF (dom # NIL) & (dom # newDom) THEN
+					   op.attr := Stores.CopyOf(op.attr)(Attributes)
+					   END;
+					   Stores.InitDomain(op.attr, newDom)
+					   END; *)
+					
+					
+					if ~Stores.Joined(text, op.attr) then
+						if ~Stores.Unattached(op.attr) then
+							op.attr := Stores.CopyOf(op.attr)(Attributes) 
+						end 
+						Stores.Join(text, op.attr) 
+					end 
+					new(sp)
+					u.next := sp
+					sp.prev := u
+					sp.next := un
+					un.prev := sp
+					sp.len_ := 1
+					sp.attr := op.attr
+					sp.file := text.spill.file
+					sp.org := op.len_
+					if text.pc.org > pos then
+						inc(text.pc.org) 
+					end  
+				end 
+				inc(text.len_)
+				inc(text.era)
+				op.mode := deleteRange
+				upd.op := insert
+				upd.beg := pos
+				upd.end_ := pos + 1
+				upd.delta := 1
+				Models.Broadcast(text, upd) 
+			| writeChar: 
+				pos := op.pos
+				InvalCache(text, pos)
+				Find(text, pos, u, ud)
+				Split(ud, u, un)
+				if (u.attr = op.attr) & (u is LPiece) & ~(u is Piece) & (u(LPiece).file = text.spill.file) 
+					& (u(LPiece).org + 2 * u.len_ = op.len_) then
+					inc(u.len_)
+					if text.pc.org >= pos then
+						inc(text.pc.org) 
+					end  
+				else 
+					(* newDom := text.Domain();
+					   IF newDom # NIL THEN
+					   dom := op.attr.Domain();
+					   IF (dom # NIL) & (dom # newDom) THEN
+					   op.attr := Stores.CopyOf(op.attr)(Attributes)
+					   END;
+					   Stores.InitDomain(op.attr, newDom)
+					   END; *)
+					
+					
+					if ~Stores.Joined(text, op.attr) then
+						if ~Stores.Unattached(op.attr) then
+							op.attr := Stores.CopyOf(op.attr)(Attributes) 
+						end 
+						Stores.Join(text, op.attr) 
+					end 
+					new(lp)
+					u.next := lp
+					lp.prev := u
+					lp.next := un
+					un.prev := lp
+					lp.len_ := 1
+					lp.attr := op.attr
+					lp.file := text.spill.file
+					lp.org := op.len_
+					if text.pc.org > pos then
+						inc(text.pc.org) 
+					end  
+				end 
+				inc(text.len_)
+				inc(text.era)
+				op.mode := deleteRange
+				upd.op := insert
+				upd.beg := pos
+				upd.end_ := pos + 1
+				upd.delta := 1
+				Models.Broadcast(text, upd) 
+			| writeView: 
+				pos := op.pos
+				r := op.first(ViewRef)
+				InvalCache(text, pos)
+				Find(text, pos, u, ud)
+				Split(ud, u, un)
+				u.next := r
+				r.prev := u
+				r.next := un
+				un.prev := r
+				inc(text.len_)
+				inc(text.era)
+				r.view.InitContext(NewContext(r, text))
+				// Stores.InitDomain(r.view, text.Domain());
+				Stores.Join(text, r.view)
+				w := r.w
+				h := r.h
+				r.w := defW
+				r.h := defH
+				Properties.PreferredSize(r.view, minWidth, maxWidth, minHeight, maxHeight, defW, defH, 
+				w, h
+				)
+				r.w := w
+				r.h := h
+				op.mode := deleteRange
+				upd.op := insert
+				upd.beg := pos
+				upd.end_ := pos + 1
+				upd.delta := 1
+				Models.Broadcast(text, upd) 
+		end 
+	end Do
+	
+	proc GetWriteOp(t: StdModel; pos: integer; var op: EditOp; var bunch: boolean) 
+		var 
+			last: Stores.Operation
+	begin 
+		last := Models.LastOp(t)
+		if (last # nil) & (last is EditOp) then
+			op := last(EditOp)
+			bunch := op.canBunch & (op.end_ = pos) 
+		else 
+			bunch := false 
+		end 
+		if bunch then
+			inc(op.end_) 
+		else 
+			new(op)
+			op.canBunch := true
+			op.text := t
+			op.beg := pos
+			op.end_ := pos + 1 
+		end 
+		op.pos := pos
+	end GetWriteOp
+	
+	
+	proc SetPreferredSize(t: StdModel; v: Views.View) 
+		var 
+			minW, maxW, minH, maxH, w, h: integer
+	begin 
+		t.GetEmbeddingLimits(minW, maxW, minH, maxH)
+		v.context.GetSize(w, h)
+		Properties.PreferredSize(v, minW, maxW, minH, maxH, w, h, w, h)
+		v.context.SetSize(w, h)
+	end SetPreferredSize
+	
+	proc (op: SetAttrOp) Do
+		var  // checkDom: BOOLEAN;
+			t: StdModel
+			attr: Attributes
+			z: AttrList
+			pc: PieceCache
+			u, un, v, vn: Run
+			ud, vd, pos, next: integer
+			upd: UpdateMsg
+	begin 
+		t := op.text // checkDom := t.Domain() # NIL;
+		z := op.list
+		pos := op.beg
+		while z # nil do 
+			next := pos + z.len_
+			if z.attr # nil then
+				Find(t, pos, u, ud)
+				Split(ud, u, un)
+				pc := t.pc
+				Find(t, next, v, vd)
+				Split(vd, v, vn)
+				t.pc := pc
+				attr := un.attr
+				while un # vn do 
+					un.attr := z.attr
+					(* IF checkDom & (un.attr.Domain() # t.Domain()) THEN
+					   IF un.attr.Domain() # NIL THEN un.attr := Stores.CopyOf(un.attr)(Attributes) END;
+					   Stores.InitDomain(un.attr, t.Domain())
+					   END; *)
+					
+					
+					if ~Stores.Joined(t, un.attr) then
+						if ~Stores.Unattached(un.attr) then
+							un.attr := Stores.CopyOf(un.attr)(Attributes) 
+						end 
+						Stores.Join(t, un.attr) 
+					end 
+					Merge(t, u, un)
+					with un: ViewRef do 
+						SetPreferredSize(t, un.view) 
+					else  
+					end 
+					if u.next = un then
+						u := un
+						un := un.next 
+					else 
+						u.next := un
+						un.prev := u 
+					end  
+				end 
+				Merge(t, u, un)
+				u.next := un
+				un.prev := u
+				z.attr := attr 
+			end 
+			pos := next
+			z := z.next 
+		end 
+		inc(t.era)
+		upd.op := replace
+		upd.beg := op.beg
+		upd.end_ := pos
+		upd.delta := 0
+		Models.Broadcast(t, upd)
+	end Do
+	
+	
+	proc (op: ResizeViewOp) Do
+		var 
+			r: ViewRef
+			w, h: integer
+			upd: UpdateMsg
+	begin 
+		r := op.ref
+		w := op.w
+		h := op.h
+		op.w := r.w
+		op.h := r.h
+		r.w := w
+		r.h := h
+		inc(op.text.era)
+		upd.op := replace
+		upd.beg := op.pos
+		upd.end_ := op.pos + 1
+		upd.delta := 0
+		Models.Broadcast(op.text, upd)
+	end Do
+	
+	
+	proc (op: ReplaceViewOp) Do
+		var 
+			new_: Views.View
+			upd: UpdateMsg
+	begin 
+		new_ := op.new_
+		op.new_ := op.ref.view
+		op.ref.view := new_
+		inc(op.text.era)
+		upd.op := replace
+		upd.beg := op.pos
+		upd.end_ := op.pos + 1
+		upd.delta := 0
+		Models.Broadcast(op.text, upd)
+	end Do
+	
+	
+	// StdModel
+	
+	proc (t: StdModel) InitFrom(source: Containers.Model) 
+	begin 
+		with source: StdModel do 
+			assert(source.trailer # nil, 20)
+			t.spill := source.spill // reduce no of temp files: share spill files among clones
+			StdInit(t) 
+		end 
+	end InitFrom
+	
+	proc WriteCharacters(t: StdModel; var wr: Stores.Writer) 
+		var 
+			r: Files.Reader
+			u: Run
+			len_: integer
+			// sp: Properties.StorePref;
+			
+			
+			buf: array 1024 of byte
+	begin 
+		r := nil
+		u := t.trailer.next
+		while u # t.trailer do 
+			with u: Piece do 
+				r := u.file.NewReader(r)
+				r.SetPos(u.org)
+				len_ := u.len_
+				while len_ > len(buf) do 
+					r.ReadBytes(buf, 0, len(buf))
+					wr.rider.WriteBytes(buf, 0, len(buf))
+					dec(len_, len(buf)) 
+				end 
+				r.ReadBytes(buf, 0, len_)
+				wr.rider.WriteBytes(buf, 0, len_) 
+			| u: LPiece do  // ~(u IS Piece)
+				r := u.file.NewReader(r)
+				r.SetPos(u.org)
+				len_ := 2 * u.len_
+				while len_ > len(buf) do 
+					r.ReadBytes(buf, 0, len(buf))
+					wr.rider.WriteBytes(buf, 0, len(buf))
+					dec(len_, len(buf)) 
+				end 
+				r.ReadBytes(buf, 0, len_)
+				wr.rider.WriteBytes(buf, 0, len_) 
+			| u: ViewRef do 
+				(* sp.view := u.view; Views.HandlePropMsg(u.view, sp);
+				   IF sp.view # NIL THEN wr.WriteSChar(viewcode) END *)
+				
+				
+				if Stores.ExternalizeProxy(u.view) # nil then
+					wr.WriteSChar(viewcode) 
+				end  
+			end 
+			u := u.next 
+		end 
+	end WriteCharacters
+	
+	proc WriteAttributes(var wr: Stores.Writer; t: StdModel
+		a: Attributes; var dict: AttrDict
+		) 
+		var 
+			k, len_: byte
+	begin 
+		len_ := dict.len_
+		k := 0
+		while (k # len_) & ~a.Equals(dict.attr[k]) do 
+			inc(k) 
+		end 
+		wr.WriteByte(k)
+		if k = len_ then
+			if len_ < dictSize then
+				dict.attr[len_] := a
+				inc(dict.len_) 
+			end 
+			// ASSERT(Stores.Joined(t, a)); but bkwd-comp:
+			// IF a.Domain() # d THEN always copy: bkwd-comp hack to avoid link
+			a := Stores.CopyOf(a)(Attributes) // Stores.InitDomain(a, d);
+			Stores.Join(t, a)
+			// END;
+			WriteAttr(wr, a) 
+		end 
+	end WriteAttributes
+	
+	proc (t: StdModel) Externalize(var wr: Stores.Writer) 
+		var  // dom: Stores.Domain;
+			u, v, un: Run
+			attr: Attributes
+			dict: AttrDict
+			org, runlen, pos: integer
+			lchars: boolean
+			inf: InfoMsg
+	begin 
+		t.Externalize^(wr)
+		StdInit(t) // dom := t.Domain();
+		wr.WriteVersion(0)
+		wr.WriteInt(0)
+		org := wr.Pos()
+		u := t.trailer.next
+		v := t.trailer
+		dict.len_ := 0
+		lchars := false
+		while u # v do 
+			attr := u.attr
+			with u: Piece do 
+				runlen := u.len_
+				un := u.next
+				while (un is Piece) & un.attr.Equals(attr) do 
+					inc(runlen, un.len_)
+					un := un.next 
+				end 
+				WriteAttributes(wr, t, attr, dict)
+				wr.WriteInt(runlen) 
+			| u: LPiece do  // ~(u IS Piece)
+				runlen := 2 * u.len_
+				un := u.next
+				while (un is LPiece) & ~(un is Piece) & un.attr.Equals(attr) do 
+					inc(runlen, 2 * un.len_)
+					un := un.next 
+				end 
+				WriteAttributes(wr, t, attr, dict)
+				wr.WriteInt(-runlen)
+				lchars := true 
+			| u: ViewRef do 
+				if Stores.ExternalizeProxy(u.view) # nil then
+					WriteAttributes(wr, t, attr, dict)
+					wr.WriteInt(0)
+					wr.WriteInt(u.w)
+					wr.WriteInt(u.h)
+					Views.WriteView(wr, u.view) 
+				end 
+				un := u.next 
+			end 
+			u := un 
+		end 
+		wr.WriteByte(-1)
+		pos := wr.Pos()
+		wr.SetPos(org - 5)
+		if lchars then
+			wr.WriteVersion(maxStdModelVersion) 
+		else  // version 0 did not support LONGCHAR
+			wr.WriteVersion(noLCharStdModelVersion) 
+		end 
+		wr.WriteInt(pos - org)
+		wr.SetPos(pos)
+		WriteCharacters(t, wr)
+		inf.op := store
+		Models.Broadcast(t, inf)
+	end Externalize
+	
+	proc (t: StdModel) Internalize(var rd: Stores.Reader) 
+		var 
+			u, un: Run
+			sp: Piece
+			lp: LPiece
+			v: ViewRef
+			org, len_: integer
+			ano: byte
+			thisVersion: integer
+			attr: Attributes
+			dict: AttrDict
+	begin 
+		assert(t.Domain() = nil, 20)
+		assert(t.len_ = 0, 21)
+		t.Internalize^(rd)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minVersion, maxStdModelVersion, thisVersion)
+		if rd.cancelled then
+			return  
+		end 
+		StdInit(t)
+		dict.len_ := 0
+		u := t.trailer
+		rd.ReadInt(len_)
+		org := rd.Pos() + len_
+		rd.ReadByte(ano)
+		while ano # -1 do 
+			if ano = dict.len_ then
+				ReadAttr(rd, attr)
+				Stores.Join(t, attr)
+				if dict.len_ < dictSize then
+					dict.attr[dict.len_] := attr
+					inc(dict.len_) 
+				end  
+			else 
+				attr := dict.attr[ano] 
+			end 
+			rd.ReadInt(len_)
+			if len_ > 0 then // piece
+				new(sp)
+				sp.len_ := len_
+				sp.attr := attr
+				sp.file := rd.rider.Base()
+				sp.org := org
+				un := sp
+				inc(org, len_) 
+			elsif len_ < 0 then  // longchar piece
+				len_ := -len_
+				assert(~odd(len_), 100)
+				new(lp)
+				lp.len_ := len_ div 2
+				lp.attr := attr
+				lp.file := rd.rider.Base()
+				lp.org := org
+				un := lp
+				inc(org, len_) 
+			else  // len = 0  =>  embedded view
+				new(v)
+				v.len_ := 1
+				v.attr := attr
+				rd.ReadInt(v.w)
+				rd.ReadInt(v.h)
+				Views.ReadView(rd, v.view)
+				v.view.InitContext(NewContext(v, t))
+				un := v
+				inc(org) 
+			end 
+			inc(t.len_, un.len_)
+			u.next := un
+			un.prev := u
+			u := un
+			rd.ReadByte(ano) 
+		end 
+		rd.SetPos(org)
+		u.next := t.trailer
+		t.trailer.prev := u
+	end Internalize
+	
+	(* PROCEDURE (t: StdModel) PropagateDomain;
+	   VAR u: Run; dom: Stores.Domain;
+	   BEGIN
+	   IF t.Domain() # NIL THEN
+	   u := t.trailer.next;
+	   WHILE u # t.trailer DO
+	   dom := u.attr.Domain();
+	   IF (dom # NIL) & (dom # t.Domain()) THEN u.attr := Stores.CopyOf(u.attr)(Attributes) END;
+	   Stores.InitDomain(u.attr, t.Domain());
+	   WITH u: ViewRef DO Stores.InitDomain(u.view, t.Domain()) ELSE END;
+	   u := u.next
+	   END
+	   END
+	   END PropagateDomain; *)
+	
+	
+	
+	proc (t: StdModel) GetEmbeddingLimits(var minW, maxW, minH, maxH: integer) 
+	begin 
+		minW := minWidth
+		maxW := maxWidth
+		minH := minHeight
+		maxH := maxHeight
+	end GetEmbeddingLimits
+	
+	
+	proc (t: StdModel) Length(): integer 
+	begin 
+		StdInit(t)
+		return t.len_
+	end Length
+	
+	proc (t: StdModel) NewReader(old: Reader): Reader 
+		var 
+			rd: StdReader
+	begin 
+		StdInit(t)
+		if (old # nil) & (old is StdReader) then
+			rd := old(StdReader) 
+		else 
+			new(rd) 
+		end 
+		if rd.base # t then
+			rd.base := t
+			rd.era := -1
+			rd.SetPos(0) 
+		elsif rd.pos > t.len_ then 
+			rd.SetPos(t.len_) 
+		end 
+		rd.eot := false
+		return rd
+	end NewReader
+	
+	proc (t: StdModel) NewWriter(old: Writer): Writer 
+		var 
+			wr: StdWriter
+	begin 
+		StdInit(t)
+		if (old # nil) & (old is StdWriter) then
+			wr := old(StdWriter) 
+		else 
+			new(wr) 
+		end 
+		if (wr.base # t) or (wr.pos > t.len_) then
+			wr.base := t
+			wr.era := -1
+			wr.SetPos(t.len_) 
+		end 
+		wr.SetAttr(dir.attr)
+		return wr
+	end NewWriter
+	
+	proc (t: StdModel) InsertCopy(pos: integer; t0: Model; beg0, end0: integer) 
+		var 
+			buf: StdModel
+	begin 
+		StdInit(t)
+		assert(0 <= pos, 21)
+		assert(pos <= t.len_, 22)
+		assert(0 <= beg0, 23)
+		assert(beg0 <= end0, 24)
+		assert(end0 <= t0.Length(), 25)
+		if beg0 < end0 then
+			with t0: StdModel do 
+				buf := CopyOf(t0, beg0, end0, t) 
+			else 
+				buf := ProjectionOf(t0, beg0, end0, t) 
+			end 
+			// IF t.Domain() # NIL THEN Stores.InitDomain(buf,t.Domain()) END;
+			Stores.Join(t, buf)
+			DoMove("#System:Copying", buf, 0, buf.len_, t, pos) 
+		end 
+	end InsertCopy
+	
+	proc (t: StdModel) Insert(pos: integer; t0: Model; beg, end_: integer) 
+	begin 
+		StdInit(t)
+		assert(0 <= pos, 21)
+		assert(pos <= t.len_, 22)
+		assert(0 <= beg, 23)
+		assert(beg <= end_, 24)
+		assert(end_ <= t0.Length(), 25)
+		if beg < end_ then
+			if (t.Domain() # nil) & (t0 is StdModel) & (t0.Domain() = t.Domain()) then
+				DoMove("#System:Moving", t0(StdModel), beg, end_, t, pos) 
+			else  // moving across domains
+				t.InsertCopy(pos, t0, beg, end_)
+				t0.Delete(beg, end_) 
+			end  
+		end 
+	end Insert
+	
+	proc (t: StdModel) Append(t0: Model) 
+		var 
+			len0: integer
+	begin 
+		StdInit(t)
+		assert(t # t0, 20)
+		len0 := t0.Length()
+		if len0 > 0 then
+			if (t.Domain() # nil) & (t0 is StdModel) & (t0.Domain() = t.Domain()) then
+				DoMove("#Text:Appending", t0(StdModel), 0, len0, t, t.len_) 
+			else  // moving across domains
+				t.InsertCopy(t.len_, t0, 0, len0)
+				t0.Delete(0, len0) 
+			end  
+		end 
+	end Append
+	
+	proc (t: StdModel) Delete(beg, end_: integer) 
+		var 
+			op: EditOp
+	begin 
+		StdInit(t)
+		assert(0 <= beg, 20)
+		assert(beg <= end_, 21)
+		assert(end_ <= t.len_, 22)
+		if beg < end_ then
+			new(op)
+			op.mode := deleteRange
+			op.canBunch := false
+			op.text := t
+			op.beg := beg
+			op.end_ := end_
+			Models.Do(t, "#System:Deleting", op) 
+		end 
+	end Delete
+	
+	proc (t: StdModel) SetAttr(beg, end_: integer; attr: Attributes) 
+		var 
+			op: SetAttrOp
+			zp, z: AttrList
+			u, v, w: Run
+			ud, vd: integer
+			modified: boolean
+	begin 
+		StdInit(t)
+		assert(0 <= beg, 20)
+		assert(beg <= end_, 21)
+		assert(end_ <= t.len_, 22)
+		if beg < end_ then
+			new(op)
+			op.text := t
+			op.beg := beg
+			Find(t, beg, u, ud)
+			Find(t, end_, v, vd)
+			if vd > 0 then
+				w := v.next 
+			else 
+				w := v 
+			end 
+			zp := nil
+			modified := false
+			while u # w do 
+				if u = v then
+					inc(ud, v.len_ - vd) 
+				end 
+				new(z)
+				z.len_ := u.len_ - ud
+				z.attr := attr
+				if zp = nil then
+					op.list := z 
+				else 
+					zp.next := z 
+				end 
+				zp := z
+				modified := modified or ~u.attr.Equals(attr)
+				u := u.next
+				ud := 0 
+			end 
+			if modified then
+				Models.Do(t, "#Text:AttributeChange", op) 
+			end  
+		end 
+	end SetAttr
+	
+	proc (t: StdModel) Prop(beg, end_: integer): Properties.Property 
+		var 
+			p, q: Properties.Property
+			tp: Prop
+			u, v, w: Run
+			ud, vd: integer
+			equal: boolean
+			rd: Reader
+	begin 
+		StdInit(t)
+		assert(0 <= beg, 20)
+		assert(beg <= end_, 21)
+		assert(end_ <= t.len_, 22)
+		if beg < end_ then
+			Find(t, beg, u, ud)
+			Find(t, end_, v, vd)
+			if vd > 0 then
+				w := v.next 
+			else 
+				w := v 
+			end 
+			p := u.attr.Prop()
+			u := u.next
+			while u # w do 
+				Properties.Intersect(p, u.attr.Prop(), equal)
+				u := u.next 
+			end 
+			if beg + 1 = end_ then
+				t.rd := t.NewReader(t.rd)
+				rd := t.rd
+				rd.SetPos(beg)
+				rd.Read
+				if (rd.view = nil) or (rd.char_ # viewcode) then
+					q := p
+					while (q # nil) & ~(q is Prop) do 
+						q := q.next 
+					end 
+					if q # nil then
+						tp := q(Prop) 
+					else 
+						new(tp)
+						Properties.Insert(p, tp) 
+					end 
+					incl(tp.valid, code)
+					incl(tp.known, code)
+					incl(tp.readOnly, code)
+					tp.code := rd.char_ 
+				end  
+			end  
+		else 
+			p := nil 
+		end 
+		return p
+	end Prop
+	
+	proc (t: StdModel) Modify(beg, end_: integer; old, p: Properties.Property) 
+		var 
+			op: SetAttrOp
+			zp, z: AttrList
+			u, v, w: Run
+			ud, vd: integer
+			equal, modified: boolean
+			q: Properties.Property
+	begin 
+		StdInit(t)
+		assert(0 <= beg, 20)
+		assert(beg <= end_, 21)
+		assert(end_ <= t.len_, 22)
+		if (beg < end_) & (p # nil) then
+			new(op)
+			op.text := t
+			op.beg := beg
+			Find(t, beg, u, ud)
+			Find(t, end_, v, vd)
+			if vd > 0 then
+				w := v.next 
+			else 
+				w := v 
+			end 
+			zp := nil
+			modified := false
+			while u # w do 
+				if u = v then
+					inc(ud, v.len_ - vd) 
+				end 
+				if old # nil then
+					q := u.attr.Prop()
+					Properties.Intersect(q, old, equal) // q := q * old
+					Properties.Intersect(q, old, equal)  // equal := q = old
+				end 
+				new(z)
+				z.len_ := u.len_ - ud
+				if (old = nil) or equal then
+					z.attr := ModifiedAttr(u.attr, p)
+					modified := modified or ~u.attr.Equals(z.attr) 
+				end 
+				if zp = nil then
+					op.list := z 
+				else 
+					zp.next := z 
+				end 
+				zp := z
+				u := u.next
+				ud := 0 
+			end 
+			if modified then
+				Models.Do(t, "#System:Modifying", op) 
+			end  
+		end 
+	end Modify
+	
+	proc (t: StdModel) ReplaceView(old, new_: Views.View) 
+		var 
+			c: StdContext
+			op: ReplaceViewOp
+	begin 
+		StdInit(t)
+		assert(old.context # nil, 20)
+		assert(old.context is StdContext, 21)
+		assert(old.context(StdContext).text = t, 22)
+		assert((new_.context = nil) or (new_.context = old.context), 24)
+		if new_ # old then
+			c := old.context(StdContext)
+			if new_.context = nil then
+				new_.InitContext(c) 
+			end 
+			// Stores.InitDomain(new, t.Domain());
+			Stores.Join(t, new_)
+			new(op)
+			op.text := t
+			op.pos := c.Pos()
+			op.ref := c.ref
+			op.new_ := new_
+			Models.Do(t, "#System:Replacing", op) 
+		end 
+	end ReplaceView
+	
+	proc (t: StdModel) CopyFrom-(source: Stores.Store) 
+	begin 
+		StdInit(t)
+		with source: StdModel do 
+			t.InsertCopy(0, source, 0, source.len_) 
+		end 
+	end CopyFrom
+	
+	proc (t: StdModel) Replace(beg, end_: integer; t0: Model; beg0, end0: integer) 
+		var 
+			script: Stores.Operation
+	begin 
+		StdInit(t)
+		assert(0 <= beg, 20)
+		assert(beg <= end_, 21)
+		assert(end_ <= t.len_, 22)
+		assert(0 <= beg0, 23)
+		assert(beg0 <= end0, 24)
+		assert(end0 <= t0.Length(), 25)
+		assert(t # t0, 26)
+		Models.BeginScript(t, "#System:Replacing", script)
+		t.Delete(beg, end_)
+		t.Insert(beg, t0, beg0, end0)
+		Models.EndScript(t, script)
+	end Replace
+	
+	
+	// StdContext
+	
+	proc (c: StdContext) ThisModel(): Model 
+	begin 
+		return c.text
+	end ThisModel
+	
+	proc (c: StdContext) GetSize(var w, h: integer) 
+	begin 
+		w := c.ref.w
+		h := c.ref.h
+	end GetSize
+	
+	proc (c: StdContext) SetSize(w, h: integer) 
+		var 
+			t: StdModel
+			r: ViewRef
+			op: ResizeViewOp
+	begin 
+		t := c.text
+		r := c.ref
+		if w = Views.undefined then
+			w := r.w 
+		end 
+		if h = Views.undefined then
+			h := r.h 
+		end 
+		Properties.PreferredSize(r.view, minWidth, maxWidth, minHeight, maxHeight, r.w, r.h, w, h)
+		if (w # r.w) or (h # r.h) then
+			new(op)
+			op.text := t
+			op.pos := c.Pos()
+			op.ref := r
+			op.w := w
+			op.h := h
+			Models.Do(t, "#System:Resizing", op) 
+		end 
+	end SetSize
+	
+	proc (c: StdContext) Normalize(): boolean 
+	begin 
+		return false
+	end Normalize
+	
+	proc (c: StdContext) Pos(): integer 
+		var 
+			t: StdModel
+			u, r, w: Run
+			pos: integer
+	begin 
+		t := c.text
+		r := c.ref
+		if t.pc.prev.next # r then
+			u := t.trailer.next
+			w := t.trailer
+			pos := 0
+			while (u # r) & (u # w) do 
+				inc(pos, u.len_)
+				u := u.next 
+			end 
+			assert(u = r, 20)
+			t.pc.prev := r.prev
+			t.pc.org := pos 
+		end 
+		return t.pc.org
+	end Pos
+	
+	proc (c: StdContext) Attr(): Attributes 
+	begin 
+		return c.ref.attr
+	end Attr
+	
+	
+	// StdReader
+	
+	proc RemapView(rd: StdReader) 
+		var 
+			p: Pref
+	begin 
+		p.opts := {}
+		Views.HandlePropMsg(rd.view, p)
+		if maskChar in p.opts then
+			rd.char_ := p.mask 
+		else 
+			rd.char_ := viewcode 
+		end 
+	end RemapView
+	
+	proc Reset(rd: StdReader) 
+		var 
+			t: StdModel
+	begin 
+		t := rd.base
+		Find(t, rd.pos, rd.run, rd.off)
+		rd.era := t.era
+	end Reset
+	
+	
+	proc (rd: StdReader) Base(): Model 
+	begin 
+		return rd.base
+	end Base
+	
+	proc (rd: StdReader) SetPos(pos: integer) 
+	begin 
+		assert(pos >= 0, 20)
+		assert(rd.base # nil, 21)
+		assert(pos <= rd.base.len_, 22)
+		rd.eot := false
+		rd.attr := nil
+		rd.char_ := 0x
+		rd.view := nil
+		if (rd.pos # pos) or (rd.run = rd.base.trailer) then
+			rd.pos := pos
+			rd.era := -1 
+		end 
+	end SetPos
+	
+	proc (rd: StdReader) Pos(): integer 
+	begin 
+		return rd.pos
+	end Pos
+	
+	proc (rd: StdReader) Read
+		var 
+			t: StdModel
+			u: Run
+			n, pos, len_: integer
+			lc: array 2 of byte
+	begin 
+		t := rd.base
+		n := t.id mod cacheWidth
+		if rd.era # t.era then
+			Reset(rd) 
+		end 
+		u := rd.run
+		with u: Piece do 
+			rd.attr := u.attr
+			pos := rd.pos mod cacheLen
+			if ~((cache[n].id = t.id) & (cache[n].beg <= rd.pos) & (rd.pos < cache[n].end_)) then
+				// cache miss
+				if cache[n].id # t.id then
+					cache[n].id := t.id
+					cache[n].beg := 0
+					cache[n].end_ := 0 
+				end 
+				len_ := cacheLine
+				if len_ > cacheLen - pos then
+					len_ := cacheLen - pos 
+				end 
+				if len_ > u.len_ - rd.off then
+					len_ := u.len_ - rd.off 
+				end 
+				rd.reader := u.file.NewReader(rd.reader)
+				rd.reader.SetPos(u.org + rd.off)
+				rd.reader.ReadBytes(cache[n].buf, pos, len_)
+				if rd.pos = cache[n].end_ then
+					cache[n].end_ := rd.pos + len_
+					// INC(cache[n].end, len);
+					
+					
+					if cache[n].end_ - cache[n].beg >= cacheLen then
+						cache[n].beg := cache[n].end_ - (cacheLen - 1) 
+					end  
+				else 
+					cache[n].beg := rd.pos
+					cache[n].end_ := rd.pos + len_ 
+				end  
+			end 
+			rd.char_ := chr(cache[n].buf[pos] mod 256)
+			rd.view := nil
+			inc(rd.pos)
+			inc(rd.off)
+			if rd.off = u.len_ then
+				rd.run := u.next
+				rd.off := 0 
+			end  
+		| u: LPiece do  // ~(u IS Piece)
+			rd.attr := u.attr
+			rd.reader := u.file.NewReader(rd.reader)
+			rd.reader.SetPos(u.org + rd.off * 2)
+			rd.reader.ReadBytes(lc, 0, 2)
+			rd.char_ := chr(lc[0] mod 256 + 256 * (lc[1] + 128))
+			rd.view := nil
+			if (cache[n].id = t.id) & (rd.pos = cache[n].end_) then
+				cache[n].end_ := cache[n].end_ + 1
+				if cache[n].end_ - cache[n].beg >= cacheLen then
+					cache[n].beg := cache[n].beg + 1 
+				end  
+			(* INC(cache[n].end);
+			   IF cache[n].end - cache[n].beg >= cacheLen THEN INC(cache[n].beg) END *)
+			
+			
+			end 
+			inc(rd.pos)
+			inc(rd.off)
+			if rd.off = u.len_ then
+				rd.run := u.next
+				rd.off := 0 
+			end  
+		| u: ViewRef do 
+			rd.attr := u.attr
+			rd.view := u.view
+			rd.w := u.w
+			rd.h := u.h
+			RemapView(rd)
+			if (cache[n].id = t.id) & (rd.pos = cache[n].end_) then
+				cache[n].end_ := cache[n].end_ + 1
+				if cache[n].end_ - cache[n].beg >= cacheLen then
+					cache[n].beg := cache[n].beg + 1 
+				end  
+			(* INC(cache[n].end);
+			   IF cache[n].end - cache[n].beg >= cacheLen THEN INC(cache[n].beg) END *)
+			
+			
+			end 
+			inc(rd.pos)
+			rd.run := u.next
+			rd.off := 0 
+		else 
+			rd.eot := true
+			rd.attr := nil
+			rd.char_ := 0x
+			rd.view := nil 
+		end 
+	end Read
+	
+	proc (rd: StdReader) ReadPrev
+		var 
+			t: StdModel
+			u: Run
+			n, pos, len_: integer
+			lc: array 2 of byte
+	begin 
+		t := rd.base
+		n := t.id mod cacheWidth
+		if rd.era # t.era then
+			Reset(rd) 
+		end 
+		if rd.off > 0 then
+			dec(rd.off) 
+		elsif rd.pos > 0 then 
+			rd.run := rd.run.prev
+			rd.off := rd.run.len_ - 1 
+		else 
+			rd.run := t.trailer 
+		end 
+		u := rd.run
+		with u: Piece do 
+			rd.attr := u.attr
+			dec(rd.pos)
+			pos := rd.pos mod cacheLen
+			if ~((cache[n].id = t.id) & (cache[n].beg <= rd.pos) & (rd.pos < cache[n].end_)) then
+				// cache miss
+				if cache[n].id # t.id then
+					cache[n].id := t.id
+					cache[n].beg := 0
+					cache[n].end_ := 0 
+				end 
+				len_ := cacheLine
+				if len_ > pos + 1 then
+					len_ := pos + 1 
+				end 
+				if len_ > rd.off + 1 then
+					len_ := rd.off + 1 
+				end 
+				rd.reader := u.file.NewReader(rd.reader)
+				rd.reader.SetPos(u.org + rd.off - (len_ - 1))
+				rd.reader.ReadBytes(cache[n].buf, pos - (len_ - 1), len_)
+				if rd.pos = cache[n].beg - 1 then
+					cache[n].beg := cache[n].beg - len_
+					// DEC(cache[n].beg, len);
+					
+					
+					if cache[n].end_ - cache[n].beg >= cacheLen then
+						cache[n].end_ := cache[n].beg + (cacheLen - 1) 
+					end  
+				else 
+					cache[n].beg := rd.pos - (len_ - 1)
+					cache[n].end_ := rd.pos + 1 
+				end  
+			end 
+			rd.char_ := chr(cache[n].buf[pos] mod 256)
+			rd.view := nil 
+		| u: LPiece do  // ~(u IS Piece)
+			rd.attr := u.attr
+			rd.reader := u.file.NewReader(rd.reader)
+			rd.reader.SetPos(u.org + 2 * rd.off)
+			rd.reader.ReadBytes(lc, 0, 2)
+			rd.char_ := chr(lc[0] mod 256 + 256 * (lc[1] + 128))
+			rd.view := nil
+			if (cache[n].id = t.id) & (rd.pos = cache[n].beg) then
+				cache[n].beg := cache[n].beg - 1
+				if cache[n].end_ - cache[n].beg >= cacheLen then
+					cache[n].end_ := cache[n].end_ - 1 
+				end  
+			(* DEC(cache[n].beg);
+			   IF cache[n].end - cache[n].beg >= cacheLen THEN DEC(cache[n].end) END *)
+			
+			
+			end 
+			dec(rd.pos) 
+		| u: ViewRef do 
+			rd.attr := u.attr
+			rd.view := u.view
+			rd.w := u.w
+			rd.h := u.h
+			RemapView(rd)
+			if (cache[n].id = t.id) & (rd.pos = cache[n].beg) then
+				cache[n].beg := cache[n].beg - 1
+				if cache[n].end_ - cache[n].beg >= cacheLen then
+					cache[n].end_ := cache[n].end_ - 1 
+				end  
+			(* DEC(cache[n].beg);
+			   IF cache[n].end - cache[n].beg >= cacheLen THEN DEC(cache[n].end) END *)
+			
+			
+			end 
+			dec(rd.pos) 
+		else 
+			rd.eot := true
+			rd.attr := nil
+			rd.char_ := 0x
+			rd.view := nil 
+		end 
+	end ReadPrev
+	
+	proc (rd: StdReader) ReadChar(var ch: char) 
+	begin 
+		rd.Read
+		ch := rd.char_
+	end ReadChar
+	
+	proc (rd: StdReader) ReadPrevChar(var ch: char) 
+	begin 
+		rd.ReadPrev
+		ch := rd.char_
+	end ReadPrevChar
+	
+	proc (rd: StdReader) ReadView(var v: Views.View) 
+		var 
+			t: StdModel
+			u: Run
+	begin 
+		t := rd.base
+		if rd.era # t.era then
+			Reset(rd) 
+		end 
+		dec(rd.pos, rd.off)
+		u := rd.run
+		while u is LPiece do 
+			inc(rd.pos, u.len_)
+			u := u.next 
+		end 
+		with u: ViewRef do 
+			inc(rd.pos)
+			rd.run := u.next
+			rd.off := 0
+			rd.attr := u.attr
+			rd.view := u.view
+			rd.w := u.w
+			rd.h := u.h
+			RemapView(rd) 
+		else  // u = t.trailer
+			assert(u = t.trailer, 100)
+			rd.run := u
+			rd.off := 0
+			rd.eot := true
+			rd.attr := nil
+			rd.char_ := 0x
+			rd.view := nil 
+		end 
+		v := rd.view
+	end ReadView
+	
+	proc (rd: StdReader) ReadPrevView(var v: Views.View) 
+		var 
+			t: StdModel
+			u: Run
+	begin 
+		t := rd.base
+		if rd.era # t.era then
+			Reset(rd) 
+		end 
+		dec(rd.pos, rd.off)
+		u := rd.run.prev
+		while u is LPiece do 
+			dec(rd.pos, u.len_)
+			u := u.prev 
+		end 
+		rd.run := u
+		rd.off := 0
+		with u: ViewRef do 
+			dec(rd.pos)
+			rd.attr := u.attr
+			rd.view := u.view
+			rd.w := u.w
+			rd.h := u.h
+			RemapView(rd) 
+		else  // u = t.trailer
+			assert(u = t.trailer, 100)
+			rd.eot := true
+			rd.attr := nil
+			rd.char_ := 0x
+			rd.view := nil 
+		end 
+		v := rd.view
+	end ReadPrevView
+	
+	proc (rd: StdReader) ReadRun(var attr: Attributes) 
+		var 
+			t: StdModel
+			a0: Attributes
+			u, trailer: Run
+			pos: integer
+	begin 
+		t := rd.base
+		if rd.era # t.era then
+			Reset(rd) 
+		end 
+		a0 := rd.attr
+		u := rd.run
+		pos := rd.pos - rd.off
+		trailer := t.trailer
+		while (u.attr = a0) & ~(u is ViewRef) & (u # trailer) do 
+			inc(pos, u.len_)
+			u := u.next 
+		end 
+		rd.run := u
+		rd.pos := pos
+		rd.off := 0
+		rd.Read
+		attr := rd.attr
+	end ReadRun
+	
+	proc (rd: StdReader) ReadPrevRun(var attr: Attributes) 
+		var 
+			t: StdModel
+			a0: Attributes
+			u, trailer: Run
+			pos: integer
+	begin 
+		t := rd.base
+		if rd.era # t.era then
+			Reset(rd) 
+		end 
+		a0 := rd.attr
+		u := rd.run
+		pos := rd.pos - rd.off
+		trailer := t.trailer
+		if u # trailer then
+			u := u.prev
+			dec(pos, u.len_) 
+		end 
+		while (u.attr = a0) & ~(u is ViewRef) & (u # trailer) do 
+			u := u.prev
+			dec(pos, u.len_) 
+		end 
+		if u # trailer then
+			rd.run := u.next
+			rd.pos := pos + u.len_
+			rd.off := 0 
+		else 
+			rd.run := trailer
+			rd.pos := 0
+			rd.off := 0 
+		end 
+		rd.ReadPrev
+		attr := rd.attr
+	end ReadPrevRun
+	
+	
+	// StdWriter
+	
+	proc WriterReset(wr: StdWriter) 
+		var 
+			t: StdModel
+			u: Run
+			uo: integer
+	begin 
+		t := wr.base
+		Find(t, wr.pos, u, uo)
+		Split(uo, u, wr.run)
+		wr.era := t.era
+	end WriterReset
+	
+	proc (wr: StdWriter) Base(): Model 
+	begin 
+		return wr.base
+	end Base
+	
+	proc (wr: StdWriter) SetPos(pos: integer) 
+	begin 
+		assert(pos >= 0, 20)
+		assert(wr.base # nil, 21)
+		assert(pos <= wr.base.len_, 22)
+		if wr.pos # pos then
+			wr.pos := pos
+			wr.era := -1 
+		end 
+	end SetPos
+	
+	proc (wr: StdWriter) Pos(): integer 
+	begin 
+		return wr.pos
+	end Pos
+	
+	proc WriteSChar(wr: StdWriter; ch: char) 
+		var 
+			t: StdModel
+			u, un: Run
+			p: Piece
+			pos, spillPos: integer
+			op: EditOp
+			bunch: boolean
+	begin 
+		t := wr.base
+		pos := wr.pos
+		if t.spill.file = nil then
+			OpenSpill(t.spill) 
+		end 
+		t.spill.writer.WriteByte(short(ord(ch)))
+		spillPos := t.spill.len_
+		t.spill.len_ := spillPos + 1
+		if (t.Domain() = nil) or (t.Domain().GetSequencer() = nil) then
+			// optimized for speed - writing to unbound text
+			InvalCache(t, pos)
+			if wr.era # t.era then
+				WriterReset(wr) 
+			end 
+			un := wr.run
+			u := un.prev
+			if (u.attr # nil) & u.attr.Equals(wr.attr) & (u is Piece) & (u(Piece).file = t.spill.file) 
+				& (u(Piece).org + u.len_ = spillPos) then
+				inc(u.len_)
+				if t.pc.org >= pos then
+					inc(t.pc.org) 
+				end  
+			else 
+				new(p)
+				u.next := p
+				p.prev := u
+				p.next := un
+				un.prev := p
+				p.len_ := 1
+				p.attr := wr.attr
+				p.file := t.spill.file
+				p.org := spillPos
+				if t.pc.org > pos then
+					inc(t.pc.org) 
+				end 
+				if ~Stores.Joined(t, p.attr) then
+					if ~Stores.Unattached(p.attr) then
+						p.attr := Stores.CopyOf(p.attr)(Attributes) 
+					end 
+					Stores.Join(t, p.attr) 
+				end  
+			end 
+			inc(t.era)
+			inc(t.len_)
+			inc(wr.era) 
+		else 
+			GetWriteOp(t, pos, op, bunch)
+			if (op.attr = nil) or ~op.attr.Equals(wr.attr) then
+				op.attr := wr.attr 
+			end 
+			op.mode := writeSChar // op.attr := wr.attr;
+			op.len_ := spillPos
+			if bunch then
+				Models.Bunch(t) 
+			else 
+				Models.Do(t, "#System:Inserting", op) 
+			end  
+		end 
+		wr.pos := pos + 1
+	end WriteSChar
+	
+	proc (wr: StdWriter) WriteChar(ch: char) 
+		var 
+			t: StdModel
+			u, un: Run
+			lp: LPiece
+			pos, spillPos: integer
+			fw: Files.Writer
+			op: EditOp
+			bunch: boolean
+	begin 
+		if (ch >= 20x) & (ch < 7fx) 
+			or (ch = tab) or (ch = line) or (ch = para) 
+			or (ch = zwspace) or (ch = digitspace) 
+			or (ch = hyphen) or (ch = nbhyphen) or (ch >= 0a0x) & (ch < 100x) then
+			WriteSChar(wr, short(ch))  // could inline!
+		elsif ch = 200bx then 
+			wr.WriteChar(zwspace) 
+		elsif ch = 2010x then 
+			wr.WriteChar(hyphen) 
+		elsif ch = 2011x then 
+			wr.WriteChar(nbhyphen) 
+		elsif ch >= 100x then 
+			t := wr.base
+			pos := wr.pos
+			if t.spill.file = nil then
+				OpenSpill(t.spill) 
+			end 
+			fw := t.spill.writer
+			fw.WriteByte(short(short(ord(ch))))
+			fw.WriteByte(short(short(ord(ch) div 256 - 128)))
+			spillPos := t.spill.len_
+			t.spill.len_ := spillPos + 2
+			if (t.Domain() = nil) or (t.Domain().GetSequencer() = nil) then
+				// optimized for speed - writing to unbound text
+				InvalCache(t, pos)
+				if wr.era # t.era then
+					WriterReset(wr) 
+				end 
+				un := wr.run
+				u := un.prev
+				if (u.attr # nil) & u.attr.Equals(wr.attr) & (u is LPiece) & ~(u is Piece) & (u(LPiece).file = t.spill.file) 
+					& (u(LPiece).org + 2 * u.len_ = spillPos) then
+					inc(u.len_)
+					if t.pc.org >= pos then
+						inc(t.pc.org) 
+					end  
+				else 
+					new(lp)
+					u.next := lp
+					lp.prev := u
+					lp.next := un
+					un.prev := lp
+					lp.len_ := 1
+					lp.attr := wr.attr
+					lp.file := t.spill.file
+					lp.org := spillPos
+					if t.pc.org > pos then
+						inc(t.pc.org) 
+					end 
+					if ~Stores.Joined(t, lp.attr) then
+						if ~Stores.Unattached(lp.attr) then
+							lp.attr := Stores.CopyOf(lp.attr)(Attributes) 
+						end 
+						Stores.Join(t, lp.attr) 
+					end  
+				end 
+				inc(t.era)
+				inc(t.len_)
+				inc(wr.era) 
+			else 
+				GetWriteOp(t, pos, op, bunch)
+				if (op.attr = nil) or ~op.attr.Equals(wr.attr) then
+					op.attr := wr.attr 
+				end 
+				op.mode := writeChar // op.attr := wr.attr;
+				op.len_ := spillPos
+				if bunch then
+					Models.Bunch(t) 
+				else 
+					Models.Do(t, "#System:Inserting", op) 
+				end  
+			end 
+			wr.pos := pos + 1 
+		end 
+	end WriteChar
+	
+	proc (wr: StdWriter) WriteView(view: Views.View; w, h: integer) 
+		var 
+			t: StdModel
+			u, un: Run
+			r: ViewRef
+			pos: integer
+			op: EditOp
+			bunch: boolean
+	begin 
+		assert(view # nil, 20)
+		assert(view.context = nil, 21)
+		t := wr.base
+		pos := wr.pos
+		Stores.Join(t, view)
+		if (t.Domain() = nil) or (t.Domain().GetSequencer() = nil) then
+			// optimized for speed - writing to unbound text
+			if wr.era # t.era then
+				WriterReset(wr) 
+			end 
+			InvalCache(t, pos)
+			new(r)
+			r.len_ := 1
+			r.attr := wr.attr
+			r.view := view
+			r.w := defW
+			r.h := defH
+			un := wr.run
+			u := un.prev
+			u.next := r
+			r.prev := u
+			r.next := un
+			un.prev := r
+			if t.pc.org > pos then
+				inc(t.pc.org) 
+			end 
+			inc(t.era)
+			inc(t.len_)
+			view.InitContext(NewContext(r, t))
+			Properties.PreferredSize(view, minWidth, maxWidth, minHeight, maxHeight, defW, defH, 
+			w, h
+			)
+			r.w := w
+			r.h := h
+			inc(wr.era) 
+		else 
+			new(r)
+			r.len_ := 1
+			r.attr := wr.attr
+			r.view := view
+			r.w := w
+			r.h := h
+			GetWriteOp(t, pos, op, bunch)
+			op.mode := writeView
+			op.first := r
+			if bunch then
+				Models.Bunch(t) 
+			else 
+				Models.Do(t, "#System:Inserting", op) 
+			end  
+		end 
+		inc(wr.pos)
+	end WriteView
+	
+	
+	// StdDirectory
+	
+	proc (d: StdDirectory) New(): Model 
+		var 
+			t: StdModel
+	begin 
+		new(t)
+		StdInit(t)
+		return t
+	end New
+	
+	
+	// miscellaneous procedures
+	(* PROCEDURE DumpRuns* (t: Model);
+	   VAR u: Run; n, i, beg, end: INTEGER; name: ARRAY 64 OF CHAR; r: Files.Reader; b: BYTE;
+	   BEGIN
+	   Sub.synch := FALSE;
+	   WITH t: StdModel DO
+	   u := t.trailer.next;
+	   REPEAT
+	   WITH u: Piece DO
+	   Sub.String("short");
+	   Sub.Int(u.len);
+	   Sub.Char(" "); Sub.IntForm(SYSTEM.ADR(u.file^), 16, 8, "0", FALSE);
+	   Sub.Int(u.org); Sub.Char(" ");
+	   r := u.file.NewReader(NIL); r.SetPos(u.org); i := 0;
+	   WHILE i < 16 DO r.ReadByte(b); Sub.Char(CHR(b)); INC(i) END;
+	   Sub.Ln
+	   | u: LPiece DO	(* ~(u IS Piece) *)
+	   Sub.String("long");
+	   Sub.Int(-u.len);
+	   Sub.Char(" "); Sub.IntForm(SYSTEM.ADR(u.file^), 16, 8, "0", FALSE);
+	   Sub.Int(u.org); Sub.Char(" ");
+	   r := u.file.NewReader(NIL); r.SetPos(u.org); i := 0;
+	   WHILE i < 16 DO r.ReadByte(b); Sub.Char(CHR(b)); INC(i) END;
+	   Sub.Ln
+	   | u: ViewRef DO
+	   Sub.String("view");
+	   Services.GetTypeName(u.view, name);
+	   Sub.String(name); Sub.Int(u.w); Sub.Int(u.h); Sub.Ln
+	   ELSE
+	   Sub.Char("?"); Sub.Ln
+	   END;
+	   u := u.next
+	   UNTIL u = t.trailer;
+	   n := t.id MOD cacheWidth;
+	   IF cache[n].id = t.id THEN
+	   beg := cache[n].beg; end := cache[n].end;
+	   Sub.Int(beg); Sub.Int(end); Sub.Ln;
+	   Sub.Char("{");
+	   WHILE beg < end DO Sub.Char(CHR(cache[n].buf[beg MOD cacheLen])); INC(beg) END;
+	   Sub.Char("}"); Sub.Ln
+	   ELSE Sub.String("not cached"); Sub.Ln
+	   END
+	   END
+	   END DumpRuns; *)
+	
+	
+	
+	proc NewColor*(a: Attributes; color: Ports.Color): Attributes 
+	begin 
+		assert(a # nil, 20)
+		assert(a.init, 21)
+		stdProp.valid := {Properties.color}
+		stdProp.color.val_ := color
+		return ModifiedAttr(a, stdProp)
+	end NewColor
+	
+	proc NewFont*(a: Attributes; font: Fonts.Font): Attributes 
+	begin 
+		assert(a # nil, 20)
+		assert(a.init, 21)
+		stdProp.valid := {Properties.typeface..Properties.weight}
+		stdProp.typeface := font.typeface
+		stdProp.size_ := font.size_
+		stdProp.style.val_ := font.style
+		stdProp.style.mask := {Fonts.italic, Fonts.underline, Fonts.strikeout}
+		stdProp.weight := font.weight
+		return ModifiedAttr(a, stdProp)
+	end NewFont
+	
+	proc NewOffset*(a: Attributes; offset: integer): Attributes 
+	begin 
+		assert(a # nil, 20)
+		assert(a.init, 21)
+		prop.valid := {0(* global constant offset masked by param :-( *)}
+		prop.offset := offset
+		return ModifiedAttr(a, prop)
+	end NewOffset
+	
+	proc NewTypeface*(a: Attributes; typeface: Fonts.Typeface): Attributes 
+	begin 
+		assert(a # nil, 20)
+		assert(a.init, 21)
+		stdProp.valid := {Properties.typeface}
+		stdProp.typeface := typeface
+		return ModifiedAttr(a, stdProp)
+	end NewTypeface
+	
+	proc NewSize*(a: Attributes; size_: integer): Attributes 
+	begin 
+		assert(a # nil, 20)
+		assert(a.init, 21)
+		stdProp.valid := {Properties.size_}
+		stdProp.size_ := size_
+		return ModifiedAttr(a, stdProp)
+	end NewSize
+	
+	proc NewStyle*(a: Attributes; style: set): Attributes 
+	begin 
+		assert(a # nil, 20)
+		assert(a.init, 21)
+		stdProp.valid := {Properties.style}
+		stdProp.style.val_ := style
+		stdProp.style.mask := -{}
+		return ModifiedAttr(a, stdProp)
+	end NewStyle
+	
+	proc NewWeight*(a: Attributes; weight: integer): Attributes 
+	begin 
+		assert(a # nil, 20)
+		assert(a.init, 21)
+		stdProp.valid := {Properties.weight}
+		stdProp.weight := weight
+		return ModifiedAttr(a, stdProp)
+	end NewWeight
+	
+	
+	proc WriteableChar*(ch: char): boolean 
+	// must be identical to test in (StdWriter)WriteChar - inlined there for efficiency
+	begin 
+		return 
+			(ch >= 20x) & (ch < 7fx) or 
+			(ch = tab) or (ch = line) or (ch = para) or 
+			(ch = zwspace) or (ch = digitspace) or 
+			(ch = hyphen) or (ch = nbhyphen) or 
+			(ch >= 0a0x) // need to augment with test for valid Unicode
+	end WriteableChar
+	
+	
+	proc CloneOf*(source: Model): Model 
+	begin 
+		assert(source # nil, 20)
+		return Containers.CloneOf(source)(Model)
+	end CloneOf
+	
+	
+	proc SetDir*(d: Directory) 
+	begin 
+		assert(d # nil, 20)
+		assert(d.attr # nil, 21)
+		assert(d.attr.init, 22)
+		dir := d
+	end SetDir
+	
+	
+	proc Init
+		var 
+			d: StdDirectory
+			a: Attributes
+	begin 
+		new(a)
+		a.InitFromProp(nil)
+		new(stdProp)
+		stdProp.known := -{}
+		new(prop)
+		prop.known := -{}
+		new(d)
+		stdDir := d
+		dir := d
+		d.SetAttr(a)
+	end Init
+
+begin
+	Init
+end TextModels

@@ -1,0 +1,36 @@
+definition LinDl
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/AboutBB"
+	   copyright	= "System/Rsrc/AboutBB"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+		
+	const 
+		// dlOpen mode parameters
+		RTLD_LAZY = 01h // Lazy function call binding.
+		RTLD_NOW = 02h // Immediate function call binding.
+		RTLD_BINDING_MASK = 03h // Mask of binding time value.
+		RTLD_NOLOAD = 04h // Do not load the object.
+		RTLD_LOCAL = 0
+		RTLD_GLOBAL = 100h
+		
+		NULL = 0
+	
+	type 
+		PtrVoid = integer
+		HANDLE = PtrVoid
+		PtrSTR = unsafe pointer to carray of char
+	
+	proc dlopen(file: PtrSTR; mode: integer): HANDLE 
+	proc dlsym(handle: HANDLE; name: PtrSTR): HANDLE 
+
+end LinDl

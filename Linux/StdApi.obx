@@ -1,0 +1,392 @@
+module StdApi
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20070430, mf, OpenBrowser: allowDuplicates parameter set to FALSE in call to StdDialog.Open
+	   - 20080317, mf, OpenBrowser: allowDuplicates parameter set to TRUE in call to StdDialog.Open
+	   - 20141027, center #19, full Unicode support for Component Pascal identifiers added
+	   - 20150329, center #34, fixing the reuse of open documents
+	   - 20151201, center #88, support for localizable documentation
+	   - 20150114, center #93, Opening a Form with a Tab View
+	   - 20161216, center #144, inconsistent docu and usage of Files.Locator error codes
+	   - 20200120, dia, remember converter for files opened in browser mode
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		Kernel, Views, Files, Dialog, Converters, Windows, Sequencers, Stores, Meta, 
+		Containers, StdDialog, Documents, Strings
+	
+	var 
+		modeHook*: proc (c: Containers.Controller) // for setting nested forms to the container's mode
+	
+	// Auxiliary procedures
+	
+	proc CheckQualident(var str, mod_, name: array of char) 
+		var 
+			i, j: integer
+			ch: char
+	begin 
+		i := 0
+		repeat 
+			ch := str[i]
+			mod_[i] := ch
+			inc(i) 
+		until (i = len(str)) or (i = len(mod_)) or ~Strings.IsIdent(ch) 
+		if ch = "." then
+			mod_[i - 1] := 0x
+			j := 0
+			repeat 
+				ch := str[i]
+				name[j] := ch
+				inc(i)
+				inc(j) 
+			until (i = len(str)) or (j = len(name)) or ~Strings.IsIdent(ch) 
+			if ch # 0x then
+				mod_[0] := 0x
+				name[0] := 0x 
+			end  
+		else 
+			mod_[0] := 0x
+			name[0] := 0x 
+		end 
+	end CheckQualident
+	
+	proc FileExists(loc: Files.Locator; in name: array of char): boolean 
+		var 
+			fi: Files.FileInfo
+			found: boolean
+	begin 
+		fi := Files.dir.FileList(loc)
+		found := false
+		while (fi # nil) & ~found do 
+			found := fi.name = name
+			fi := fi.next 
+		end 
+		return found
+	end FileExists
+	
+	proc PathToSpec(in path: array of char; var loc: Files.Locator; var name: Files.Name
+		useLang: boolean) 
+		var 
+			i, j: integer
+			ch: char
+			nameUpper, fn: Files.Name
+			langParent: Files.Locator
+	begin 
+		i := 0
+		j := 0
+		loc := Files.dir.This("")
+		langParent := nil
+		while (loc.res = 0) & (i < len(path) - 1) & (j < len(name) - 1) & (path[i] # 0x) do 
+			ch := path[i]
+			inc(i)
+			if (j > 0) & ((ch = "/") or (ch = "\")) then
+				name[j] := 0x
+				j := 0
+				if (loc = langParent) & (name = "en") then // map ".../Docu/en/..." to ".../Docu/..."
+					langParent := nil 
+				else 
+					loc := loc.This(name) 
+				end 
+				if useLang & (langParent = nil) then
+					Strings.ToUpper(name, nameUpper)
+					if nameUpper = "DOCU" then
+						langParent := loc 
+					end  
+				end  
+			else 
+				name[j] := ch
+				inc(j) 
+			end  
+		end 
+		if path[i] = 0x then
+			name[j] := 0x
+			if (loc = langParent) & (Dialog.language # "") & (Dialog.language # "en") then // use Dialog.language
+				loc := loc.This(Dialog.language)
+				fn := name
+				Kernel.MakeFileName(fn, "")
+				if ~FileExists(loc, fn) then
+					loc := langParent 
+				end  
+			end  
+		else 
+			loc.res := 1
+			name := "" 
+		end 
+	end PathToSpec
+	
+	proc ThisDialog(dialog: array of char; useLang: boolean): Views.View 
+		var 
+			fname, submod, sub, mod_: Files.Name
+			canCreate: boolean
+			conv: Converters.Converter
+			loc: Files.Locator
+			file: Files.File
+			v: Views.View
+			s: Stores.Store
+			var_: Meta.Item
+	begin 
+		assert(dialog # "", 20)
+		v := nil
+		file := nil
+		canCreate := false
+		CheckQualident(dialog, submod, fname)
+		if submod # "" then // is qualident
+			Meta.LookupPath(dialog, var_)
+			if var_.obj = Meta.varObj then // variable exists
+				canCreate := true
+				Kernel.SplitName(submod, sub, mod_)
+				loc := Files.dir.This(sub)
+				if loc.res = 0 then
+					Kernel.MakeFileName(fname, "")
+					loc := loc.This("Rsrc")
+					if loc.res = 0 then
+						file := Files.dir.Old(loc, fname, Files.shared) 
+					end 
+					if (file = nil) & (sub = "") then
+						loc := Files.dir.This("System")
+						if loc.res = 0 then
+							loc := loc.This("Rsrc")
+							if loc.res = 0 then
+								file := Files.dir.Old(loc, fname, Files.shared) 
+							end  
+						end  
+					end  
+				end  
+			end  
+		end 
+		if (file = nil) & ~canCreate then // try file name
+			PathToSpec(dialog, loc, fname, useLang)
+			if loc.res = 0 then
+				Kernel.MakeFileName(fname, "")
+				file := Files.dir.Old(loc, fname, Files.shared) 
+			end  
+		end 
+		if file # nil then
+			Kernel.MakeFileName(fname, "")
+			conv := nil
+			Converters.Import(loc, fname, conv, s)
+			if s # nil then
+				v := s(Views.View) 
+			end  
+		else 
+			Dialog.ShowParamMsg("#System:FileNotFound", dialog, "", "") 
+		end 
+		return v
+	end ThisDialog
+	
+	proc ThisMask(param: array of char; useLang: boolean): Views.View 
+		var 
+			v: Views.View
+			c: Containers.Controller
+	begin 
+		v := ThisDialog(param, useLang)
+		if v # nil then
+			with v: Containers.View do 
+				c := v.ThisController()
+				if c # nil then
+					c.SetOpts(c.opts - {Containers.noFocus} + {Containers.noCaret, Containers.noSelection})
+					if modeHook # nil then
+						modeHook(c) 
+					end  
+				else 
+					Dialog.ShowMsg("#System:NotEditable") 
+				end  
+			else 
+				Dialog.ShowMsg("#System:ContainerExpected") 
+			end  
+		end 
+		return v
+	end ThisMask
+	
+	// Interface procedures
+	
+	proc CloseDialog*(var closedView: Views.View) 
+		const 
+			canClose = {Windows.neverDirty, Windows.isTool, Windows.isAux}
+		var 
+			w: Windows.Window
+			msg: Sequencers.CloseMsg
+	begin 
+		closedView := nil
+		w := Windows.dir.First()
+		if w # nil then
+			if w.sub then
+				closedView := w.frame.view
+				Windows.dir.Close(w) 
+			elsif (w.flags * canClose = {}) & w.seq.Dirty() then 
+				Dialog.ShowMsg("#System:CannotCloseDirtyWindow") 
+			else 
+				msg.sticky := false
+				w.seq.Notify(msg)
+				if ~msg.sticky then
+					closedView := w.frame.view
+					Windows.dir.Close(w) 
+				end  
+			end  
+		end 
+	end CloseDialog
+	
+	proc OpenAux*(file, title: array of char; var v: Views.View) 
+		var 
+			loc: Files.Locator
+			name: Files.Name
+			t: Views.Title
+	begin 
+		PathToSpec(file, loc, name, false)
+		if loc.res = 0 then
+			loc.res := 77
+			v := Views.OldView(loc, name)
+			loc.res := 0
+			if v # nil then
+				t := title
+				Views.OpenAux(v, t) 
+			else 
+				Dialog.ShowParamMsg("#System:FileNotFound", file, "", "") 
+			end  
+		else 
+			Dialog.ShowParamMsg("#System:FileNotFound", file, "", "") 
+		end 
+	end OpenAux
+	
+	proc OpenAuxDialog*(file, title: array of char; var v: Views.View) 
+		var 
+			t0: Views.Title
+			done: boolean
+	begin 
+		Dialog.MapString(title, t0)
+		Windows.SelectByTitle(nil, {Windows.isAux}, t0, done)
+		if ~done then
+			v := ThisMask(file, true)
+			if v # nil then
+				StdDialog.Open(v, title, nil, "", nil, false, true, true, false, true) 
+			end  
+		end 
+	end OpenAuxDialog
+	
+	(* Opening a file in 'Browser' mode is used mainly for online help files.
+	   In that case, but also in others, it is convenient to bring an existing window to the front in case the
+	   same file is browsed again. This behavior is the same as with opening a file as a normal window.
+	   In order to be able to browse and edit at the same time, i.e. in two different domains, the
+	   isAux flag is used to distinguish between both. *)
+	
+	proc OpenBrowser*(file, title: array of char; var v: Views.View) 
+		var 
+			loc: Files.Locator
+			name: Files.Name
+			t: Views.Title
+			c: Containers.Controller
+			w: Windows.Window
+			conv: Converters.Converter
+	begin 
+		PathToSpec(file, loc, name, true)
+		if loc.res = 0 then
+			w := Windows.GetBySpec(loc, name, Converters.list, {Windows.isAux})
+			if w # nil then // bring to front; avoid re-loading the document
+				Windows.dir.Select(w, Windows.lazy)
+				v := w.doc.ThisView() 
+			else  // load document and open reusable aux window in Browser mode
+				loc.res := 77
+				v := Views.Old(Views.dontAsk, loc, name, conv)
+				loc.res := 0
+				if v # nil then
+					with v: Containers.View do 
+						c := v.ThisController()
+						if c # nil then
+							c.SetOpts(c.opts - {Containers.noFocus, Containers.noSelection} + {Containers.noCaret}) 
+						end  
+					else  
+					end 
+					t := title
+					StdDialog.Open(v, t, loc, name, conv, false, true, false, false, false) 
+				else 
+					Dialog.ShowParamMsg("#System:FileNotFound", file, "", "") 
+				end  
+			end  
+		else 
+			Dialog.ShowParamMsg("#System:FileNotFound", file, "", "") 
+		end 
+	end OpenBrowser
+	
+	proc OpenDoc*(file: array of char; var v: Views.View) 
+		var 
+			loc: Files.Locator
+			name: Files.Name
+			conv: Converters.Converter
+	begin 
+		PathToSpec(file, loc, name, false)
+		if loc.res = 0 then
+			conv := nil
+			v := Views.Old(Views.dontAsk, loc, name, conv)
+			if loc.res = 78 then // stationery
+				loc := nil
+				name := "" 
+			end 
+			if v # nil then
+				Views.Open(v, loc, name, conv) 
+			else 
+				Dialog.ShowParamMsg("#System:FileNotFound", file, "", "") 
+			end  
+		else 
+			Dialog.ShowParamMsg("#System:FileNotFound", file, "", "") 
+		end 
+	end OpenDoc
+	
+	proc OpenCopyOf*(file: array of char; var v: Views.View) 
+		var 
+			loc: Files.Locator
+			name: Files.Name
+			conv: Converters.Converter
+	begin 
+		PathToSpec(file, loc, name, false)
+		if loc.res = 0 then
+			conv := nil
+			v := Views.Old(Views.dontAsk, loc, name, conv)
+			if loc.res = 78 then // stationary
+				loc := nil
+				name := "" 
+			end 
+			if v # nil then
+				if v.context # nil then
+					v := Views.CopyOf(v.context(Documents.Context).ThisDoc(), Views.deep)
+					Stores.InitDomain(v) 
+				else 
+					v := Views.CopyOf(v, Views.deep) 
+				end 
+				Views.Open(v, nil, "", conv) 
+			else 
+				Dialog.ShowParamMsg("#System:FileNotFound", file, "", "") 
+			end  
+		else 
+			Dialog.ShowParamMsg("#System:FileNotFound", file, "", "") 
+		end 
+	end OpenCopyOf
+	
+	proc OpenToolDialog*(file, title: array of char; var v: Views.View) 
+		var 
+			t0: Views.Title
+			done: boolean
+	begin 
+		Dialog.MapString(title, t0)
+		Windows.SelectByTitle(nil, {Windows.isTool}, t0, done)
+		if ~done then
+			v := ThisMask(file, false)
+			if v # nil then
+				StdDialog.Open(v, title, nil, "", nil, true, false, true, false, true) 
+			end  
+		end 
+	end OpenToolDialog
+
+end StdApi

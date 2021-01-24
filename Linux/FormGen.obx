@@ -1,0 +1,349 @@
+module FormGen
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   purpose	= ""
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		Strings, Meta, Dates, Files, Ports, Views, Properties, Dialog, Containers, Documents, 
+		Controls, StdDialog, StdCmds, FormModels, FormViews, FormControllers
+	
+	const 
+		defaultDelta = 4 * Ports.point
+		minW = 10 * Ports.mm
+		minH = 4 * Ports.mm
+		maxW = 200 * Ports.mm
+		maxH = 50 * Ports.mm
+	
+	type 
+		ProcVal = record (Meta.Value) 
+				p: proc  
+			end 
+	
+	var 
+		new_*: record 
+				link*: Dialog.String 
+			end 
+		
+		list: record (Meta.Value) p*: pointer to Dialog.List end 
+		select: record (Meta.Value) p*: pointer to Dialog.Selection end 
+		combo: record (Meta.Value) p*: pointer to Dialog.Combo end 
+		date: record (Meta.Value) p*: pointer to Dates.Date end 
+		time: record (Meta.Value) p*: pointer to Dates.Time end 
+		color: record (Meta.Value) p*: pointer to Dialog.Color end 
+		currency: record (Meta.Value) p*: pointer to Dialog.Currency end 
+		tree: record (Meta.Value) p*: pointer to Dialog.Tree end 
+	
+	
+	proc GetSize(v: Views.View; var w, h: integer) 
+	begin 
+		w := Views.undefined
+		h := Views.undefined
+		Properties.PreferredSize(v, minW, maxW, minH, maxH, minW, minH, w, h)
+	end GetSize
+	
+	proc Gen(f: FormModels.Model; fv: FormViews.View; var path, name: array of char
+		wr: FormModels.Writer; var_: Meta.Item; var x, y, max_: integer; var first: boolean) 
+		var 
+			v, str: Views.View
+			dummy, delta, x0, y0, m, w, h, i: integer
+			n: Meta.Name
+			p: Controls.Prop
+			s: Meta.Scanner
+			elem: Meta.Item
+			ok, back: boolean
+			pv: ProcVal
+	begin 
+		dummy := 0
+		delta := defaultDelta
+		FormViews.RoundToGrid(fv, dummy, delta)
+		new(p)
+		p.guard := ""
+		p.notifier := ""
+		p.label := ""
+		p.level := 0
+		p.opt[0] := false
+		p.opt[1] := false
+		p.opt[2] := false
+		p.opt[3] := false
+		p.opt[4] := false
+		back := false
+		FormViews.RoundToGrid(fv, x, y)
+		v := nil
+		w := Views.undefined
+		x0 := x
+		y0 := y
+		if (name[0] >= "0") & (name[0] <= "9") then
+			p.link := path + "[" + name + "]" 
+		elsif name # "" then 
+			p.link := path + "." + name 
+		else 
+			p.link := path 
+		end 
+		if var_.obj = Meta.modObj then // traverse module
+			s.ConnectTo(var_)
+			s.Scan
+			m := 0
+			while ~s.eos do 
+				s.GetObjName(n)
+				Gen(f, fv, p.link, n, wr, s.this, x, y, m, first)
+				s.Scan 
+			end 
+			if m > max_ then
+				max_ := m 
+			end  
+		elsif var_.obj = Meta.procObj then 
+			var_.GetVal(pv, ok)
+			if ok then // command
+				if first then
+					p.opt[Controls.default] := true 
+				end 
+				p.label := name
+				v := Controls.dir.NewPushButton(p)
+				p.opt[Controls.default] := false
+				first := false 
+			end  
+		elsif var_.obj = Meta.varObj then 
+			if (var_.typ in {Meta.byteTyp, Meta.sIntTyp, Meta.longTyp, Meta.intTyp, Meta.sRealTyp, Meta.realTyp}) 
+				or (var_.typ = Meta.arrTyp) & (var_.BaseTyp() = Meta.charTyp) then
+				p.opt[Controls.left] := true
+				v := Controls.dir.NewField(p) 
+			elsif var_.typ = Meta.boolTyp then 
+				p.label := name
+				v := Controls.dir.NewCheckBox(p) 
+			elsif var_.typ = Meta.procTyp then 
+				var_.GetVal(pv, ok)
+				if ok then // command
+					if first then
+						p.opt[Controls.default] := true 
+					end 
+					p.label := name
+					v := Controls.dir.NewPushButton(p)
+					p.opt[Controls.default] := false
+					first := false 
+				end  
+			elsif var_.typ = Meta.recTyp then 
+				if var_.Is(list) then
+					v := Controls.dir.NewListBox(p) 
+				elsif var_.Is(select) then 
+					v := Controls.dir.NewSelectionBox(p) 
+				elsif var_.Is(combo) then 
+					v := Controls.dir.NewComboBox(p) 
+				elsif var_.Is(date) then 
+					v := Controls.dir.NewDateField(p) 
+				elsif var_.Is(time) then 
+					v := Controls.dir.NewTimeField(p) 
+				elsif var_.Is(color) then 
+					v := Controls.dir.NewColorField(p) 
+				elsif var_.Is(currency) then 
+					p.opt[Controls.left] := true
+					v := Controls.dir.NewField(p) 
+				elsif var_.Is(tree) then 
+					p.opt[Controls.haslines] := true
+					p.opt[Controls.hasbuttons] := true
+					p.opt[Controls.atroot] := true
+					p.opt[Controls.foldericons] := true
+					v := Controls.dir.NewTreeControl(p) 
+				else  // traverse record
+					s.ConnectTo(var_)
+					s.Scan
+					m := 0
+					if name # "" then
+						inc(x, delta)
+						inc(y, 4 * delta) 
+					end 
+					while ~s.eos do 
+						s.GetObjName(n)
+						Gen(f, fv, p.link, n, wr, s.this, x, y, m, first)
+						s.Scan 
+					end 
+					if m > max_ then
+						max_ := m 
+					end 
+					if (name # "") & (m > 0) then // insert group
+						p.label := name
+						v := Controls.dir.NewGroup(p)
+						w := m
+						x := x0
+						h := y + delta - y0
+						y := y0
+						back := true 
+					end  
+				end  
+			elsif var_.typ = Meta.arrTyp then  // traverse array
+				i := 0
+				m := 0
+				if name # "" then
+					inc(x, delta)
+					inc(y, 4 * delta) 
+				end 
+				while i < var_.Len() do 
+					var_.Index(i, elem)
+					Strings.IntToString(i, n)
+					Gen(f, fv, p.link, n, wr, elem, x, y, m, first)
+					inc(i) 
+				end 
+				if m > max_ then
+					max_ := m 
+				end 
+				if (name # "") & (m > 0) then // insert group
+					p.label := name
+					v := Controls.dir.NewGroup(p)
+					w := m
+					x := x0
+					h := y + delta - y0
+					y := y0
+					back := true 
+				end  
+			end  
+		end 
+		if v # nil then
+			if (name # "") & (p.label = "") then
+				p.label := name
+				str := Controls.dir.NewCaption(p)
+				GetSize(str, w, h)
+				wr.WriteView(str, x, y, x + w, y + h)
+				inc(x, w + delta)
+				FormViews.RoundToGrid(fv, x, y) 
+			end 
+			if ~back then
+				GetSize(v, w, h) 
+			end 
+			wr.WriteView(v, x, y, x + w, y + h)
+			inc(x, w + delta)
+			if back then
+				f.PutAbove(v, nil) 
+			end 
+			y := y + h + delta 
+		end 
+		if x > max_ then
+			max_ := x 
+		end 
+		x := x0
+	end Gen
+	
+	proc NewDialog(name: array of char): Views.View 
+		var 
+			var_: Meta.Item
+			x, y, max_: integer
+			wr: FormModels.Writer
+			d: Documents.Document
+			f: FormModels.Model
+			v: FormViews.View
+			first: boolean
+			n: array 4 of char
+			c: Containers.Controller
+	begin 
+		f := nil
+		v := nil
+		Meta.LookupPath(name, var_)
+		if (var_.obj = Meta.varObj) or (var_.obj = Meta.modObj) then
+			x := defaultDelta
+			y := defaultDelta
+			max_ := 50 * Ports.point
+			first := true
+			f := FormModels.dir.New()
+			v := FormViews.dir.New(f)
+			c := v.ThisController()
+			if c # nil then
+				c.SetOpts(Containers.layout) 
+			else 
+				v.SetController(FormControllers.dir.NewController(Containers.layout)) 
+			end 
+			wr := f.NewWriter(nil)
+			wr.Set(nil)
+			n := ""
+			Gen(f, v, name, n, wr, var_, x, y, max_, first)
+			d := Documents.dir.New(v, max_, y) 
+		else 
+			Dialog.ShowParamMsg("#Form:VariableNotFound", name, "", "") 
+		end 
+		return v
+	end NewDialog
+	
+	proc Create*
+		var 
+			v: Views.View
+			i, j: integer
+			mod_, name: Files.Name
+			loc: Files.Locator
+			w: FormViews.View
+			c: Containers.Controller
+	begin 
+		v := nil
+		if new_.link = "" then
+			w := FormViews.dir.New(FormModels.dir.New())
+			c := w.ThisController()
+			if c # nil then
+				c.SetOpts({FormControllers.noFocus}) 
+			else 
+				w.SetController(FormControllers.dir.NewController({FormControllers.noFocus})) 
+			end 
+			v := w 
+		else 
+			v := NewDialog(new_.link) 
+		end 
+		if v # nil then
+			mod_ := new_.link
+			new_.link := ""
+			name := ""
+			StdCmds.CloseDialog
+			if mod_ # "" then
+				i := 0
+				while (mod_[i] # 0x) & (mod_[i] # ".") do 
+					inc(i) 
+				end 
+				if mod_[i] # 0x then // module.variable
+					mod_[i] := 0x
+					inc(i)
+					j := 0
+					while mod_[i] # 0x do 
+						name[j] := mod_[i]
+						inc(i)
+						inc(j) 
+					end 
+					name[j] := 0x 
+				end 
+				StdDialog.GetSubLoc(mod_, "Rsrc", loc, mod_)
+				if name = "" then
+					name := mod_ 
+				end 
+				loc.res := 77 
+			else 
+				loc := nil
+				name := "" 
+			end 
+			Views.Open(v, loc, name, nil)
+			Views.BeginModification(Views.notUndoable, v)
+			Views.EndModification(Views.notUndoable, v) 
+		end 
+	end Create
+	
+	proc Empty*
+	begin 
+		new_.link := ""
+		Create
+	end Empty
+	
+	proc CreateGuard*(var par: Dialog.Par) 
+	begin 
+		if new_.link = "" then
+			par.disabled := true 
+		end 
+	end CreateGuard
+
+end FormGen

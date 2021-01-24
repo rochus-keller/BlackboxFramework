@@ -1,0 +1,1126 @@
+module StdTabViews
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20150114, center #93, Opening a Form with a Tab View
+	   - 20160118, center #79, bug fixes in StdTabViews
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		Kernel, Dialog, FormViews, StdCFrames, Stores, Views, Controllers, Ports, 
+		Properties, Containers, Services, Models, Fonts, Meta, StdApi
+	
+	const 
+		minVersion = 1
+		maxVersion = 1
+		noTab* = -1
+	
+	type 
+		Directory* = pointer to (* abstract *) record end 
+		
+		StdDirectory = pointer to record (Directory) end 
+		
+		TabInfo = record 
+				label: Dialog.String
+				view: Views.View 
+			end 
+		
+		Tabs = pointer to array of TabInfo
+		
+		View* = pointer to (* limited *) record (Views.View) 
+				dispX, dispY, dispW, dispH: integer
+				deposited: boolean
+				tabs: Tabs
+				font: Fonts.Font
+				index, nofTabs, scriptLevel: integer
+				notifier: Dialog.String
+				ba: BalanceAction; tc: TrapCleaner 
+			end 
+		
+		TabContext = pointer to record (Models.Context) 
+				w, h: integer 
+			end 
+		
+		Frame* = pointer to (* abstract *) record (StdCFrames.Frame) end 
+		
+		FrameDirectory* = pointer to (* abstract *) record end 
+		
+		FocusMsg = record (Controllers.Message) view: View end 
+		
+		SetItemOp = pointer to record (Stores.Operation) 
+				tv: View
+				label: Dialog.String
+				v: Views.View
+				i, oldLen: integer
+				set_: boolean 
+			end 
+		
+		DeleteOp = pointer to record (Stores.Operation) 
+				tv: View
+				label: Dialog.String
+				v: Views.View
+				i: integer
+				set_: boolean 
+			end 
+		
+		FontOp = pointer to record (Stores.Operation) 
+				v: View
+				font: Fonts.Font 
+			end 
+		
+		SetNotifierOp = pointer to record (Stores.Operation) 
+				notifier: Dialog.String
+				v: View 
+			end 
+		
+		NotifyProc = record (Meta.Value) p*: proc (tv: View; from, to_: integer) end 
+		
+		BalanceAction = pointer to record (Services.Action) v: View end 
+		
+		TrapCleaner = pointer to record (Kernel.TrapCleaner) v: View end 
+		
+		NotifierProc* = proc (tv: View; from, to_: integer)
+	
+	var 
+		dir-, stdDir-: Directory
+		d: StdDirectory
+		setFocus*: boolean
+		frameDir-, frameStdDir-: FrameDirectory
+		dlg*: record 
+				name*, notifier*: Dialog.String
+				opt*, index: integer
+				tab, ntab: View 
+			end 
+		nv: View
+		oldModeHook: proc (c: Containers.Controller)
+	
+	// Auxiliary procedures
+	
+	proc LayoutMode(view: Views.View) 
+		var 
+			c: Containers.Controller
+	begin 
+		with view: Containers.View do 
+			c := view.ThisController()
+			// set view in layout mode
+			c.SetOpts(c.opts - {Containers.noSelection, Containers.noCaret} + {Containers.noFocus}) 
+		else  
+		end 
+	end LayoutMode
+	
+	proc MaskMode(view: Views.View) 
+		var 
+			c: Containers.Controller
+	begin 
+		with view: Containers.View do 
+			c := view.ThisController()
+			// set view in mask mode
+			c.SetOpts(c.opts - {Containers.noFocus} + {Containers.noSelection, Containers.noCaret}) 
+		else  
+		end 
+	end MaskMode
+	
+	proc ExecNotifier(from, to_, nop: integer) 
+		var 
+			i: Meta.Item
+			p: NotifyProc
+			ok: boolean
+	begin 
+		assert(nv # nil, 20)
+		Meta.LookupPath(nv.notifier, i)
+		if i.obj # Meta.undef then
+			i.GetVal(p, ok)
+			if ok then
+				p.p(nv, from, to_) 
+			else 
+				Dialog.ShowParamMsg("#System:HasWrongType", nv.notifier, "", "") 
+			end  
+		else 
+			Dialog.ShowMsg(nv.notifier + ' is not a valid notifier for StdTabViews.View') 
+		end 
+	end ExecNotifier
+	
+	proc CallNotifier(tv: View; from, to_: integer) 
+	begin 
+		if tv.notifier # "" then
+			nv := tv
+			Kernel.Try(ExecNotifier, from, to_, 0)
+			nv := nil 
+		end 
+	end CallNotifier
+	
+	
+	// Frame
+	
+	proc (f: Frame) InDispArea*(x, y: integer): boolean  end // new abstract
+	proc (f: Frame) GetDispSize*(var x, y, w, h: integer)  end // new abstract
+	
+	proc (f: Frame) SetIndex*(i: integer)  // new
+		var 
+			from: integer
+			tv: View
+	begin 
+		tv := f.view(View)
+		from := tv.index
+		tv.Neutralize // avoids blocking controls in nested forms, in particular list boxes
+		tv.SetIndex(i)
+		CallNotifier(tv, from, i)
+	end SetIndex
+	
+	
+	// FrameDirectory
+	
+	proc (d: FrameDirectory) GetTabSize*(var w, h: integer)  end // new abstract
+	proc (d: FrameDirectory) New*(): Frame  end // new abstract
+	
+	proc SetFrameDir*(d: FrameDirectory) 
+	begin 
+		assert(d # nil, 20)
+		frameDir := d
+		if frameStdDir = nil then
+			frameStdDir := d 
+		end 
+	end SetFrameDir
+	
+	
+	// View
+	
+	proc (tv: View) Update()  // new
+	begin 
+		if tv.scriptLevel = 0 then
+			Views.Update(tv, Views.rebuildFrames) 
+		end 
+	end Update
+	
+	proc (tv: View) Reset()  // new
+	begin 
+		tv.scriptLevel := 0
+		if tv.tc # nil then
+			Kernel.PopTrapCleaner(tv.tc)
+			tv.tc := nil 
+		end 
+		if tv.ba # nil then
+			Services.RemoveAction(tv.ba)
+			tv.ba := nil 
+		end 
+		tv.Update
+	end Reset
+	
+	proc (tv: View) SetNofTabs*(nofTabs: integer)  // new
+		var 
+			i: integer
+			nt: Tabs
+	begin 
+		assert(nofTabs >= 0, 20)
+		if nofTabs = 0 then
+			tv.nofTabs := 0
+			tv.tabs := nil
+			tv.index := 0 
+		else 
+			new(nt, nofTabs)
+			if tv.tabs # nil then
+				for i:= 0 to min(nofTabs, tv.nofTabs) - 1 do 
+					nt[i].label := tv.tabs[i].label
+					nt[i].view := tv.tabs[i].view 
+				end  
+			end 
+			tv.tabs := nt
+			tv.nofTabs := nofTabs
+			tv.index := min(tv.index, tv.nofTabs - 1) 
+		end 
+		tv.Update
+	end SetNofTabs
+	
+	proc (tv: View) NofTabs*(): integer  // new
+	begin 
+		if tv.tabs = nil then
+			return 0 
+		end 
+		return max(0, tv.nofTabs)
+	end NofTabs
+	
+	proc (tv: View) Index*(): integer  // new
+	begin 
+		return max(0, min(tv.index, tv.NofTabs() - 1))
+	end Index
+	
+	proc (tv: View) SetItem*(i: integer; in label: Dialog.String; v: Views.View)  // new
+		var 
+			sop: SetItemOp
+	begin 
+		assert(i >= 0, 20)
+		assert(label # "", 21)
+		assert(v # nil, 22)
+		new(sop)
+		sop.tv := tv
+		sop.i := i
+		sop.v := v
+		sop.label := label
+		sop.set_ := true
+		Views.Do(tv, "#Std:TabSetItem", sop)
+	end SetItem
+	
+	proc (tv: View) GetItem*(i: integer; var label: Dialog.String; var v: Views.View)  // new
+	begin 
+		assert((i >= 0) & (i < tv.NofTabs()), 21)
+		label := tv.tabs[i].label
+		v := tv.tabs[i].view
+	end GetItem
+	
+	proc (tv: View) View(i: integer): Views.View  // new
+	begin 
+		assert((i >= 0) & (i < tv.NofTabs()), 20)
+		return tv.tabs[i].view
+	end View
+	
+	proc (tv: View) SetIndex*(i: integer)  // new
+	begin 
+		assert((i >= 0) & (i < tv.NofTabs()), 20)
+		tv.index := i
+		tv.Update
+	end SetIndex
+	
+	proc (tv: View) SetNotifier*(in notifier: array of char)  // new
+		var 
+			o: SetNotifierOp
+	begin 
+		new(o)
+		o.v := tv
+		o.notifier := notifier
+		Views.Do(tv, "Set Notifier", o)
+	end SetNotifier
+	
+	proc (tv: View) GetNotifier*(var notifier: Dialog.String)  // new
+	begin 
+		notifier := tv.notifier
+	end GetNotifier
+	
+	proc (tv: View) Externalize-(var wr: Stores.Writer) 
+		var 
+			l: Dialog.String
+			i: integer
+			v: Views.View
+	begin 
+		tv.Externalize^(wr)
+		wr.WriteVersion(maxVersion)
+		wr.WriteInt(tv.NofTabs())
+		wr.WriteInt(tv.Index())
+		wr.WriteString(tv.notifier)
+		for i:= 0 to tv.NofTabs() - 1 do 
+			tv.GetItem(i, l, v)
+			wr.WriteString(l)
+			Views.WriteView(wr, v) 
+		end 
+		wr.WriteString(tv.font.typeface)
+		wr.WriteInt(tv.font.size_)
+		wr.WriteSet(tv.font.style)
+		wr.WriteInt(tv.font.weight)
+	end Externalize
+	
+	proc (tv: View) Internalize-(var rd: Stores.Reader) 
+		var 
+			thisVersion, i, size_, weight: integer
+			l: Dialog.String
+			v: Views.View
+			face: Fonts.Typeface
+			style: set
+	begin 
+		assert(frameStdDir # nil, 20)
+		tv.Internalize^(rd)
+		rd.ReadVersion(minVersion, maxVersion, thisVersion)
+		if (thisVersion >= minVersion) & (thisVersion <= maxVersion) then
+			rd.ReadInt(i)
+			tv.SetNofTabs(i)
+			rd.ReadInt(tv.index)
+			rd.ReadString(tv.notifier)
+			for i:= 0 to tv.NofTabs() - 1 do 
+				rd.ReadString(l)
+				Views.ReadView(rd, v)
+				tv.SetItem(i, l, v) 
+			end 
+			rd.ReadString(face)
+			rd.ReadInt(size_)
+			rd.ReadSet(style)
+			rd.ReadInt(weight)
+			tv.font := Fonts.dir.This(face, size_, style, weight)
+			CallNotifier(tv, noTab, tv.index) 
+		end 
+	end Internalize
+	
+	proc (tv: View) CopyFromSimpleView-(source: Views.View) 
+		var 
+			l: Dialog.String
+			v: Views.View
+			i: integer
+	begin 
+		with source: View do 
+			tv.notifier := source.notifier
+			tv.SetNofTabs(source.NofTabs())
+			for i:= 0 to tv.NofTabs() - 1 do 
+				source.GetItem(i, l, v)
+				v := Views.CopyOf(v, Views.deep)
+				tv.SetItem(i, l, v) 
+			end 
+			tv.font := Fonts.dir.This(source.font.typeface, source.font.size_, source.font.style, source.font.weight)
+			tv.SetIndex(source.Index()) 
+		end 
+	end CopyFromSimpleView
+	
+	proc (tv: View) GetNewFrame*(var frame: Views.Frame) 
+		var 
+			f: Frame
+	begin 
+		f := frameDir.New()
+		f.font := tv.font
+		frame := f
+	end GetNewFrame
+	
+	proc (tv: View) Restore*(f: Views.Frame; l, t, r, b: integer) 
+		var 
+			v: Views.View
+			label: Dialog.String
+	begin 
+		with f: Frame do 
+			if (~f.InDispArea(l, t) or ~f.InDispArea(r, b)) then
+				// redraw is not completely within the display area so the control itself also needs to be restored
+				f.UpdateList()
+				f.Restore(l, t, r, b) 
+			end 
+			f.GetDispSize(tv.dispX, tv.dispY, tv.dispW, tv.dispH)
+			if tv.NofTabs() > 0 then
+				tv.GetItem(tv.Index(), label, v)
+				Dialog.MapString(label, label)
+				if (label # "") & (v # nil) & (Views.ThisFrame(f, v) = nil) then
+					v.context.SetSize(tv.dispW, tv.dispH)
+					Views.InstallFrame(f, v, tv.dispX, tv.dispY, 0, true) 
+				end  
+			end  
+		end 
+	end Restore
+	
+	proc (tv: View) HandleCtrlMsg*(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View) 
+		var 
+			sp: Properties.SizeProp
+	begin 
+		with f: Frame do 
+			with msg: Controllers.TrackMsg do 
+				if (tv.NofTabs() > 0) & (f.InDispArea(msg.x, msg.y)) then
+					focus := tv.View(tv.Index()) 
+				else 
+					f.MouseDown(msg.x, msg.y, msg.modifiers) 
+				end  
+			| msg: FocusMsg do 
+				msg.view := tv 
+			| msg: Properties.PollPickMsg do 
+				msg.dest := f
+				if (tv.NofTabs() > 0) & (f.InDispArea(msg.x, msg.y)) then
+					focus := tv.View(tv.Index()) 
+				end  
+			| msg: Properties.PickMsg do 
+				new(sp)
+				sp.known := {Properties.width, Properties.height}
+				sp.valid := sp.known
+				tv.context.GetSize(sp.width, sp.height)
+				Properties.Insert(msg.prop, sp)
+				if (tv.NofTabs() > 0) & (f.InDispArea(msg.x, msg.y)) then
+					focus := tv.View(tv.Index()) 
+				end  
+			| msg: Controllers.PollCursorMsg do 
+				if (tv.NofTabs() > 0) & (f.InDispArea(msg.x, msg.y)) then
+					focus := tv.View(tv.Index()) 
+				else 
+					f.GetCursor(msg.x, msg.y, msg.modifiers, msg.cursor) 
+				end  
+			else 
+				if tv.NofTabs() > 0 then
+					focus := tv.View(tv.Index()) 
+				else 
+					with msg: Controllers.PollOpsMsg do 
+						msg.valid := {Controllers.pasteChar} 
+					| msg: Controllers.MarkMsg do 
+						f.Mark(msg.show, msg.focus) 
+					else  
+					end  
+				end  
+			end  
+		end 
+	end HandleCtrlMsg
+	
+	proc BeginChanges*(tv: View) 
+	begin 
+		assert(tv.scriptLevel >= 0, 20)
+		if tv.tc = nil then
+			new(tv.tc)
+			tv.tc.v := tv
+			Kernel.PushTrapCleaner(tv.tc) 
+		end 
+		if tv.ba = nil then
+			new(tv.ba)
+			tv.ba.v := tv
+			Services.DoLater(tv.ba, Services.now) 
+		end 
+		inc(tv.scriptLevel)
+	end BeginChanges
+	
+	proc EndChanges*(tv: View) 
+	begin 
+		assert(tv.scriptLevel > 0, 20)
+		dec(tv.scriptLevel)
+		if tv.scriptLevel = 0 then
+			tv.Reset 
+		end 
+	end EndChanges
+	
+	proc ModeHook(c: Containers.Controller) 
+		var 
+			v, w: Views.View
+			i: integer
+			label: Dialog.String
+	begin 
+		if oldModeHook # nil then
+			oldModeHook(c) 
+		end 
+		c.GetFirstView(false, v)
+		while v # nil do 
+			with v: View do 
+				for i:= 0 to v.NofTabs() - 1 do 
+					v.GetItem(i, label, w)
+					with w: Containers.View do 
+						w.ThisController().SetOpts(c.opts)
+						StdApi.modeHook(w.ThisController()) 
+					else  
+					end  
+				end  
+			else  
+			end 
+			c.GetNextView(false, v) 
+		end 
+	end ModeHook
+	
+	// TrapCleaner
+	
+	proc (t: TrapCleaner) Cleanup
+	begin 
+		t.v.tc := nil
+		t.v.Reset
+	end Cleanup
+	
+	
+	// Actions and Operations
+	
+	proc (a: BalanceAction) Do-
+	begin 
+		a.v.Reset()
+		halt(100) // Unbalanced call to BeginChanges/EndChanges
+	end Do
+	
+	proc (o: SetNotifierOp) Do
+		var 
+			old: Dialog.String
+	begin 
+		old := o.v.notifier
+		o.v.notifier := o.notifier
+		o.notifier := old
+	end Do
+	
+	proc (o: FontOp) Do
+		var 
+			f: Fonts.Font
+	begin 
+		f := o.v.font
+		o.v.font := o.font
+		o.font := f
+		o.v.Update
+	end Do
+	
+	proc (o: SetItemOp) Do
+		var 
+			tc: TabContext
+			label: Dialog.String
+			view: Views.View
+	begin 
+		if o.set_ then
+			o.set_ := false
+			o.oldLen := o.tv.NofTabs()
+			view := Views.CopyOf(o.v, Views.deep)
+			Stores.Join(o.tv, view)
+			label := o.label
+			if o.i >= o.oldLen then
+				o.tv.SetNofTabs(o.i + 1) 
+			else 
+				o.tv.GetItem(o.i, o.label, o.v) 
+			end 
+			new(tc)
+			view.InitContext(tc)
+			o.tv.tabs[o.i].label := label
+			o.tv.tabs[o.i].view := view 
+		else 
+			o.set_ := true
+			if o.i >= o.oldLen then
+				o.tv.SetNofTabs(o.oldLen) 
+			else 
+				view := o.v
+				label := o.label
+				o.tv.GetItem(o.i, o.label, o.v)
+				o.tv.tabs[o.i].label := label
+				o.tv.tabs[o.i].view := view 
+			end  
+		end 
+		o.tv.Update
+	end Do
+	
+	proc (o: DeleteOp) Do
+		var 
+			j: integer
+	begin 
+		if o.set_ then
+			assert(o.i < o.tv.NofTabs(), 20)
+			o.set_ := false
+			o.tv.GetItem(o.i, o.label, o.v)
+			for j:= o.i to o.tv.NofTabs() - 2 do 
+				o.tv.tabs[j].label := o.tv.tabs[j + 1].label
+				o.tv.tabs[j].view := o.tv.tabs[j + 1].view 
+			end 
+			o.tv.SetNofTabs(o.tv.NofTabs() - 1) 
+		else 
+			assert(o.i <= o.tv.NofTabs(), 21)
+			o.set_ := true
+			o.tv.SetNofTabs(o.tv.NofTabs() + 1)
+			for j:= o.tv.NofTabs() - 1 to o.i + 1 by -1 do 
+				o.tv.tabs[j].label := o.tv.tabs[j - 1].label
+				o.tv.tabs[j].view := o.tv.tabs[j - 1].view 
+			end 
+			o.tv.tabs[o.i].label := o.label
+			o.tv.tabs[o.i].view := o.v 
+		end 
+		o.tv.Update
+	end Do
+	
+	proc (tv: View) HandlePropMsg-(var msg: Properties.Message) 
+		var 
+			stp: Properties.StdProp
+			p: Properties.Property
+			face: Fonts.Typeface
+			size_, weight, i, w, h, asc, dsc: integer
+			style: set
+			smsg: Properties.SizePref
+			fo: FontOp
+			v: Views.View
+			label: Dialog.String
+	begin 
+		with msg: Properties.ControlPref do 
+			if tv.NofTabs() = 0 then
+				if msg.getFocus then
+					msg.getFocus := StdCFrames.setFocus 
+				end  
+			else 
+				msg.focus := tv.View(tv.Index())
+				Views.HandlePropMsg(msg.focus, msg) 
+			end  
+		| msg: Properties.FocusPref do 
+			if (tv.NofTabs() = 0) or (msg.atLocation & (msg.y < tv.dispY)) then
+				msg.hotFocus := true 
+			else 
+				if msg.atLocation then
+					msg.x := msg.x - tv.dispX
+					msg.y := msg.y - tv.dispY 
+				end 
+				Views.HandlePropMsg(tv.View(tv.Index()), msg) 
+			end  
+		| msg: Properties.SizePref do 
+			if (msg.w = Views.undefined) or (msg.h = Views.undefined) then
+				if tv.deposited or (tv.NofTabs() = 0) then
+					frameDir.GetTabSize(msg.w, msg.h) 
+				else 
+					w := 0
+					h := 0
+					for i:= 0 to tv.NofTabs() - 1 do 
+						tv.GetItem(i, label, v)
+						Dialog.MapString(label, label)
+						if (label # "") & (v # nil) then
+							smsg.w := Views.undefined
+							smsg.h := Views.undefined
+							Views.HandlePropMsg(v, smsg)
+							w := max(smsg.w, w)
+							h := max(smsg.h, h) 
+						end  
+					end 
+					if (w = 0) or (h = 0) then
+						frameDir.GetTabSize(msg.w, msg.h) 
+					else 
+						// add some constants to compensate for the tab view itself.
+						msg.w := w + 2 * Ports.mm
+						tv.font.GetBounds(asc, dsc, w)
+						msg.h := h + asc + dsc + 4 * Ports.mm
+						if msg.h < 0 then
+							msg.h := max(integer) 
+						end  
+					end  
+				end  
+			end  
+		| msg: Properties.ResizePref do 
+			msg.horFitToWin := true
+			msg.verFitToWin := true 
+		| msg: Properties.PollMsg do 
+			new(stp)
+			stp.valid := {Properties.typeface..Properties.weight}
+			stp.known := stp.valid
+			stp.typeface := tv.font.typeface
+			stp.size_ := tv.font.size_
+			stp.style.val_ := tv.font.style
+			stp.weight := tv.font.weight
+			stp.style.mask := {Fonts.italic, Fonts.strikeout, Fonts.underline}
+			Properties.Insert(msg.prop, stp) 
+		| msg: Properties.SetMsg do 
+			p := msg.prop
+			while (p # nil) do 
+				with p: Properties.StdProp do 
+					if (p.valid * {Properties.typeface..Properties.weight}) # {} then
+						face := tv.font.typeface
+						size_ := tv.font.size_
+						style := tv.font.style
+						weight := tv.font.weight
+						if Properties.typeface in p.valid then
+							face := p.typeface
+							if face = Fonts.default then
+								face := StdCFrames.defaultFont.typeface 
+							end  
+						end 
+						if Properties.size_ in p.valid then
+							size_ := p.size_ 
+						end 
+						if Properties.style in p.valid then
+							style := (p.style.val_ * p.style.mask) + (style - p.style.mask) 
+						end 
+						if Properties.weight in p.valid then
+							weight := p.weight 
+						end 
+						new(fo)
+						fo.v := tv
+						fo.font := Fonts.dir.This(face, size_, style, weight)
+						Views.Do(tv, "#System:SetProp", fo) 
+					end  
+				else  
+				end 
+				p := p.next 
+			end  
+		| msg: Containers.DropPref do 
+			msg.okToDrop := true 
+		else 
+			if tv.NofTabs() > 0 then
+				Views.HandlePropMsg(tv.View(tv.Index()), msg) 
+			end  
+		end 
+	end HandlePropMsg
+	
+	proc (tv: View) Neutralize*
+		var 
+			v: Views.View
+	begin 
+		if (tv.scriptLevel = 0) & (tv.NofTabs() > 0) then
+			v := tv.View(tv.Index())
+			if v # nil then
+				v.Neutralize 
+			end  
+		end 
+	end Neutralize
+	
+	// Tab context
+	
+	proc (c: TabContext) ThisModel(): Models.Model 
+	begin 
+		return nil
+	end ThisModel
+	
+	proc (c: TabContext) GetSize(var w, h: integer) 
+	begin 
+		w := c.w
+		h := c.h
+	end GetSize
+	
+	proc (c: TabContext) SetSize(w, h: integer) 
+	begin 
+		c.w := w
+		c.h := h
+	end SetSize
+	
+	proc (c: TabContext) Normalize(): boolean 
+	begin 
+		return false
+	end Normalize
+	
+	
+	// Directory
+	
+	proc (d: Directory) New*(): View  end // new abstract
+	
+	proc SetDir*(d: Directory) 
+	begin 
+		assert(d # nil, 20)
+		dir := d
+	end SetDir
+	
+	
+	// StdDirectory
+	
+	proc (d: StdDirectory) New(): View 
+		var 
+			tv: View
+	begin 
+		assert(frameStdDir # nil, 20)
+		new(tv)
+		tv.deposited := false
+		tv.scriptLevel := 0
+		tv.nofTabs := 0
+		tv.index := 0
+		tv.notifier := ""
+		tv.ba := nil
+		tv.tc := nil
+		tv.font := StdCFrames.defaultFont
+		return tv
+	end New
+	
+	proc Deposit*
+		var 
+			tv: View
+			fv: FormViews.View
+	begin 
+		tv := dir.New()
+		tv.deposited := true
+		fv := FormViews.New()
+		LayoutMode(fv)
+		tv.SetItem(0, "Tab1", fv)
+		fv := FormViews.New()
+		LayoutMode(fv)
+		tv.SetItem(1, "Tab2", fv)
+		Views.Deposit(tv)
+	end Deposit
+	
+	
+	// Procedures to find tab views
+	
+	proc This*(v: Views.View): View 
+		var 
+			c: Containers.Controller
+			v0: Views.View
+			v1: View
+	begin 
+		assert(v # nil, 20)
+		if v is View then
+			return v(View) 
+		elsif v is Containers.View then 
+			c := v(Containers.View).ThisController()
+			assert(c # nil, 100)
+			c.GetFirstView(Containers.any, v0)
+			if v0 # nil then
+				v1 := This(v0) 
+			end 
+			while (v0 # nil) & (v1 = nil) do 
+				c.GetNextView(Containers.any, v0)
+				if v0 # nil then
+					v1 := This(v0) 
+				end  
+			end 
+			return v1 
+		else 
+			return nil 
+		end 
+	end This
+	
+	proc Focus*(): View 
+		var 
+			msg: FocusMsg
+	begin 
+		msg.view := nil
+		Controllers.Forward(msg)
+		return msg.view
+	end Focus
+	
+	
+	// The property editor
+	
+	proc SingleView(): View 
+		var 
+			v: Views.View
+	begin 
+		v := Containers.FocusSingleton()
+		if v = nil then
+			v := Focus() 
+		end 
+		if (v # nil) & (v is View) then
+			return v(View) 
+		else 
+			return nil 
+		end 
+	end SingleView
+	
+	proc Right*
+		var 
+			label1, label2: Dialog.String
+			v1, v2: Views.View
+			iv: View
+			script: Stores.Operation
+	begin 
+		iv := SingleView()
+		if (iv # nil) & (iv.Index() < (iv.NofTabs() - 1)) then
+			Views.BeginScript(iv, "Shift tab right", script)
+			iv.GetItem(iv.Index(), label1, v1)
+			iv.GetItem(iv.Index() + 1, label2, v2)
+			iv.SetItem(iv.Index(), label2, v2)
+			iv.SetItem(iv.Index() + 1, label1, v1)
+			Views.EndScript(iv, script)
+			iv.SetIndex(iv.Index() + 1)
+			Dialog.Update(iv) 
+		end 
+	end Right
+	
+	proc Left*
+		var 
+			label1, label2: Dialog.String
+			v1, v2: Views.View
+			iv: View
+	begin 
+		iv := SingleView()
+		if (iv # nil) & (iv.Index() > 0) then
+			iv.GetItem(iv.Index(), label1, v1)
+			iv.GetItem(iv.Index() - 1, label2, v2)
+			iv.SetItem(iv.Index(), label2, v2)
+			iv.SetItem(iv.Index() - 1, label1, v1)
+			iv.SetIndex(iv.Index() - 1)
+			Dialog.Update(iv) 
+		end 
+	end Left
+	
+	proc AddTab*
+		var 
+			v: View
+			fv: FormViews.View
+	begin 
+		assert(dlg.name # "", 20)
+		v := SingleView()
+		if v # nil then
+			fv := FormViews.New()
+			LayoutMode(fv)
+			v.SetItem(v.NofTabs(), dlg.name, fv) 
+		end 
+	end AddTab
+	
+	proc Rename*
+		var 
+			v: View
+	begin 
+		assert(dlg.name # "", 20)
+		v := SingleView()
+		if (v # nil) & (v.NofTabs() > 0) then
+			v.SetItem(v.Index(), dlg.name, v.View(v.Index())) 
+		end 
+	end Rename
+	
+	proc Delete*
+		var 
+			v: View
+			dop: DeleteOp
+	begin 
+		v := SingleView()
+		if (v # nil) & (v.NofTabs() > 0) then
+			new(dop)
+			dop.tv := v
+			dop.i := v.Index()
+			dop.set_ := true
+			Views.Do(v, "#Std:TabDeleteItem", dop) 
+		end 
+	end Delete
+	
+	proc ModeNotifier*(op, from, to_: integer) 
+		var 
+			tv: View
+			i: integer
+	begin 
+		if op in {Dialog.changed} then
+			tv := SingleView()
+			if (tv # nil) & (tv.NofTabs() > 0) then
+				if to_ = 0 then
+					for i:= 0 to tv.NofTabs() - 1 do 
+						LayoutMode(tv.View(i)) 
+					end  
+				else 
+					for i:= 0 to tv.NofTabs() - 1 do 
+						MaskMode(tv.View(i)) 
+					end  
+				end  
+			end  
+		end 
+	end ModeNotifier
+	
+	proc SetNotifier*
+		var 
+			v: View
+			o: SetNotifierOp
+	begin 
+		v := SingleView()
+		if v # nil then
+			new(o)
+			o.v := v
+			o.notifier := dlg.notifier
+			Views.Do(v, "Set Notifier", o) 
+		end 
+	end SetNotifier
+	
+	proc NewGuard*(var par: Dialog.Par) 
+		var 
+			v: View
+	begin 
+		v := SingleView()
+		par.disabled := (v = nil) or (dlg.name = "")
+	end NewGuard
+	
+	proc RenameGuard*(var par: Dialog.Par) 
+		var 
+			v: View
+	begin 
+		v := SingleView()
+		par.disabled := (v = nil) or (dlg.name = "")
+	end RenameGuard
+	
+	proc DeleteGuard*(var par: Dialog.Par) 
+		var 
+			v: View
+	begin 
+		v := SingleView()
+		par.disabled := (v = nil) or (v.NofTabs() < 1)
+	end DeleteGuard
+	
+	proc LabelGuard*(var par: Dialog.Par) 
+		var 
+			v: View
+			vv: Views.View
+	begin 
+		v := SingleView()
+		if v # nil then
+			if (v # dlg.tab) or (v.Index() # dlg.index) then
+				par.disabled := false
+				v.GetItem(v.Index(), dlg.name, vv)
+				dlg.tab := v
+				dlg.index := v.Index()
+				Dialog.Update(dlg) 
+			end  
+		else 
+			dlg.tab := nil
+			dlg.index := -1
+			par.label := ""
+			par.disabled := true 
+		end 
+	end LabelGuard
+	
+	proc NotifierGuard*(var par: Dialog.Par) 
+		var 
+			v: View
+	begin 
+		v := SingleView()
+		if v # nil then
+			if v # dlg.ntab then
+				par.disabled := false
+				dlg.notifier := v.notifier
+				dlg.ntab := v
+				Dialog.Update(dlg) 
+			end  
+		else 
+			dlg.ntab := nil
+			par.label := ""
+			par.disabled := true 
+		end 
+	end NotifierGuard
+	
+	proc SetGuard*(var par: Dialog.Par) 
+		var 
+			v: View
+	begin 
+		v := SingleView()
+		par.disabled := v = nil
+	end SetGuard
+	
+	proc ModeGuard(var par: Dialog.Par; layout: boolean) 
+		const 
+			mode = {Containers.noSelection, Containers.noFocus, Containers.noCaret}
+		var 
+			tv: View
+			i, l, m: integer
+			c: Containers.Controller
+	begin 
+		tv := SingleView()
+		if (tv # nil) & (tv.NofTabs() > 0) then
+			l := 0
+			m := 0
+			for i:= 0 to tv.NofTabs() - 1 do 
+				if tv.View(i) is Containers.View then
+					c := tv.View(i)(Containers.View).ThisController()
+					if c.opts * mode = {Containers.noFocus} then
+						inc(l) 
+					elsif c.opts * mode = {Containers.noSelection, Containers.noCaret} then 
+						inc(m) 
+					end  
+				end  
+			end 
+			if ((m # 0) & (l # 0)) or ((m + l) < tv.NofTabs()) then
+				par.undef := true
+				dlg.opt := -1 
+			elsif layout & (m = 0) then 
+				dlg.opt := 0 
+			elsif ~layout & (l = 0) then 
+				dlg.opt := 1 
+			end  
+		else 
+			par.disabled := true 
+		end 
+	end ModeGuard
+	
+	proc LayoutModeGuard*(var par: Dialog.Par) 
+	begin 
+		ModeGuard(par, true)
+	end LayoutModeGuard
+	
+	proc MaskModeGuard*(var par: Dialog.Par) 
+	begin 
+		ModeGuard(par, false)
+	end MaskModeGuard
+	
+	proc InitDialog*
+	begin 
+		dlg.tab := nil
+		dlg.index := -1
+	end InitDialog
+	
+	
+	proc Init
+		var 
+			res: integer
+	begin 
+		oldModeHook := StdApi.modeHook
+		StdApi.modeHook := ModeHook
+		setFocus := false
+		dlg.tab := nil
+		dlg.index := -1
+		new(d)
+		stdDir := d
+		dir := d
+		Dialog.Call('HostTabFrames.Init', 'Could not load HostTabFrames', res)
+	end Init
+
+begin
+	Init
+(* CLOSE
+	StdApi.modeHook := oldModeHook *) 
+end StdTabViews

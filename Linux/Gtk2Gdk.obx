@@ -1,0 +1,1493 @@
+definition Gtk2Gdk
+
+
+	import SYSTEM, GLib:= Gtk2GLib, GObject:= Gtk2GObject, Pango:= Gtk2Pango
+	// deprecated
+	type 
+		gpointer = GLib.gpointer
+		gboolean = GLib.gboolean
+		gunichar = GLib.gunichar
+		GSList = GLib.GSList
+		
+		String = carray of char
+		PString = unsafe pointer to String
+		UString = carray of gunichar
+		PUString = unsafe pointer to UString
+		APString = carray of PString
+		PBYTES = unsafe pointer to carray of byte
+	
+	const 
+		GDK_CURRENT_TIME = 0
+		GDK_PARENT_RELATIVE = 1
+	
+	type 
+		GdkDragAction = integer
+	type 
+		GdkDragProtocol = integer
+	type 
+		GdkEventFunc = integer
+	type 
+		GdkVisibilityState = integer
+	type 
+		GdkScrollDirection = integer
+	const 
+		GDK_SCROLL_UP = 0
+		GDK_SCROLL_DOWN = 1
+		GDK_SCROLL_LEFT = 2
+		GDK_SCROLL_RIGHT = 3
+	type 
+		GdkFilterReturn = integer
+	type 
+		GdkSettingAction = integer
+	type 
+		GdkNotifyType = integer
+	type 
+		GdkCrossingMode = integer
+	type 
+		GdkPropertyState = integer
+	type 
+		GdkExtensionMode = integer
+	type 
+		GdkFill = integer
+	type 
+		GdkFillRule = integer
+	type 
+		GdkFilterFunc = integer
+	type 
+		GdkFunction = integer
+	type 
+		GdkOverlapType = integer
+	type 
+		GdkPixbufAlphaMode = integer
+	type 
+		GdkPropMode = integer
+	type 
+		GdkRgbDither = integer
+	type 
+		GdkSpanFunc = integer
+	type 
+		GdkSubwindowMode = integer
+	type 
+		GdkWMDecoration = integer
+	type 
+		GdkWMFunction = integer
+	type 
+		GdkWindowEdge = integer
+	type 
+		GdkWindowHints = integer
+	type 
+		GdkWindowState = integer
+	type 
+		GdkWindowType = integer
+	type 
+		GdkWindowTypeHint = integer
+	type 
+		GdkAxisUse = integer
+	(* GdkAxisUse
+	   CONST
+	   GDK_AXIS_IGNORE = 0;
+	   GDK_AXIS_X = 1;
+	   GDK_AXIS_Y = 2;
+	   GDK_AXIS_PRESSURE = 3;
+	   GDK_AXIS_XTILT = 4;
+	   GDK_AXIS_YTILT = 5;
+	   GDK_AXIS_WHEEL = 6;
+	   GDK_AXIS_LAST = 7;
+	   end: GdkAxisUse *)
+	
+	
+	type 
+		GdkWindowClass = integer
+	const 
+		GDK_INPUT_OUTPUT = 0
+		GDK_INPUT_ONLY = 1
+	
+	type 
+		GdkInputCondition = integer
+	
+	const 
+		GDK_INPUT_READ = 1
+		GDK_INPUT_WRITE = 2
+		GDK_INPUT_EXCEPTION = 4
+	
+	type 
+		GdkStatus = integer
+	
+	const 
+		GDK_OK = 0
+		GDK_ERROR = -1
+		GDK_ERROR_PARAM = -2
+		GDK_ERROR_FILE = -3
+		GDK_ERROR_MEM = -4
+	
+	type  // enu: GdkGrabStatus
+		GdkGrabStatus = integer
+	
+	const 
+		GDK_GRAB_SUCCESS = 0
+		GDK_GRAB_ALREADY_GRABBED = 1
+		GDK_GRAB_INVALID_TIME = 2
+		GDK_GRAB_NOT_VIEWABLE = 3
+		GDK_GRAB_FROZEN = 4
+	
+	type  // enu: GdkVisualType
+		GdkVisualType = integer
+	
+	const 
+		GDK_VISUAL_STATIC_GRAY = 0
+		GDK_VISUAL_GRAYSCALE = 1
+		GDK_VISUAL_STATIC_COLOR = 2
+		GDK_VISUAL_PSEUDO_COLOR = 3
+		GDK_VISUAL_TRUE_COLOR = 4
+		GDK_VISUAL_DIRECT_COLOR = 5 // end: GdkVisualType
+	type  // enu: GdkByteOrder
+		GdkByteOrder = integer
+	
+	const 
+		GDK_LSB_FIRST = 0
+		GDK_MSB_FIRST = 1
+	
+	type  // enu: GdkCursorType
+		GdkCursorType = integer
+	
+	const 
+		GDK_X_CURSOR = 0
+		GDK_ARROW = 2
+		GDK_BASED_ARROW_DOWN = 4
+		GDK_BASED_ARROW_UP = 6
+		GDK_BOAT = 8
+		GDK_BOGOSITY = 10
+		GDK_BOTTOM_LEFT_CORNER = 12
+		GDK_BOTTOM_RIGHT_CORNER = 14
+		GDK_BOTTOM_SIDE = 16
+		GDK_BOTTOM_TEE = 18
+		GDK_BOX_SPIRAL = 20
+		GDK_CENTER_PTR = 22
+		GDK_CIRCLE = 24
+		GDK_CLOCK = 26
+		GDK_COFFEE_MUG = 28
+		GDK_CROSS = 30
+		GDK_CROSS_REVERSE = 32
+		GDK_CROSSHAIR = 34
+		GDK_DIAMOND_CROSS = 36
+		GDK_DOT = 38
+		GDK_DOTBOX = 40
+		GDK_DOUBLE_ARROW = 42
+		GDK_DRAFT_LARGE = 44
+		GDK_DRAFT_SMALL = 46
+		GDK_DRAPED_BOX = 48
+		GDK_EXCHANGE = 50
+		GDK_FLEUR = 52
+		GDK_GOBBLER = 54
+		GDK_GUMBY = 56
+		GDK_HAND1 = 58
+		GDK_HAND2 = 60
+		GDK_HEART = 62
+		GDK_ICON = 64
+		GDK_IRON_CROSS = 66
+		GDK_LEFT_PTR = 68
+		GDK_LEFT_SIDE = 70
+		GDK_LEFT_TEE = 72
+		GDK_LEFTBUTTON = 74
+		GDK_LL_ANGLE = 76
+		GDK_LR_ANGLE = 78
+		GDK_MAN = 80
+		GDK_MIDDLEBUTTON = 82
+		GDK_MOUSE = 84
+		GDK_PENCIL = 86
+		GDK_PIRATE = 88
+		GDK_PLUS = 90
+		GDK_QUESTION_ARROW = 92
+		GDK_RIGHT_PTR = 94
+		GDK_RIGHT_SIDE = 96
+		GDK_RIGHT_TEE = 98
+		GDK_RIGHTBUTTON = 100
+		GDK_RTL_LOGO = 102
+		GDK_SAILBOAT = 104
+		GDK_SB_DOWN_ARROW = 106
+		GDK_SB_H_DOUBLE_ARROW = 108
+		GDK_SB_LEFT_ARROW = 110
+		GDK_SB_RIGHT_ARROW = 112
+		GDK_SB_UP_ARROW = 114
+		GDK_SB_V_DOUBLE_ARROW = 116
+		GDK_SHUTTLE = 118
+		GDK_SIZING = 120
+		GDK_SPIDER = 122
+		GDK_SPRAYCAN = 124
+		GDK_STAR = 126
+		GDK_TARGET = 128
+		GDK_TCROSS = 130
+		GDK_TOP_LEFT_ARROW = 132
+		GDK_TOP_LEFT_CORNER = 134
+		GDK_TOP_RIGHT_CORNER = 136
+		GDK_TOP_SIDE = 138
+		GDK_TOP_TEE = 140
+		GDK_TREK = 142
+		GDK_UL_ANGLE = 144
+		GDK_UMBRELLA = 146
+		GDK_UR_ANGLE = 148
+		GDK_WATCH = 150
+		GDK_XTERM = 152
+		GDK_LAST_CURSOR = 153
+		GDK_CURSOR_IS_PIXMAP = -1
+	// end: GdkCursorType
+	type  // enu: GdkInputSource
+		GdkInputSource = integer
+	
+	const 
+		GDK_SOURCE_MOUSE = 0
+		GDK_SOURCE_PEN = 1
+		GDK_SOURCE_ERASER = 2
+		GDK_SOURCE_CURSOR = 3
+	// end: GdkInputSource
+	
+	type  // enu: GdkInputMode
+		GdkInputMode = integer
+	
+	const 
+		GDK_MODE_DISABLED = 0 // end: GdkInputMode
+		GDK_MODE_SCREEN = 1
+		GDK_MODE_WINDOW = 2
+	type  // enu: GdkImageType
+		GdkImageType = integer
+	
+	const 
+		GDK_IMAGE_NORMAL = 0
+		GDK_IMAGE_SHARED = 1
+		GDK_IMAGE_FASTEST = 2 // end: GdkImageType
+	type  // Possible values for JoinStyle
+		GdkJoinStyle = integer
+	
+	const 
+		GDK_JOIN_MITER = 0
+		GDK_JOIN_ROUND = 1
+		GDK_JOIN_BEVEL = 2
+	
+	type  // Possible values for LineStyle
+		GdkLineStyle = integer
+	
+	const 
+		GDK_LINE_SOLID = 0
+		GDK_LINE_ON_OFF_DASH = 1
+		GDK_LINE_DOUBLE_DASH = 2
+	
+	type  // Possible values for CapStyle
+		GdkCapStyle = integer
+	
+	const 
+		GDK_CAP_NOT_LAST = 0
+		GDK_CAP_BUTT = 1
+		GDK_CAP_ROUND = 2
+		GDK_CAP_PROJECTING = 3
+	
+	type  // possible values for EventMask
+		GdkEventMask = set
+	
+	const 
+		GDK_EXPOSURE_MASK = {1}
+		GDK_POINTER_MOTION_MASK = {2}
+		GDK_POINTER_MOTION_HINT_MASK = {3}
+		GDK_BUTTON_MOTION_MASK = {4}
+		GDK_BUTTON1_MOTION_MASK = {5}
+		GDK_BUTTON2_MOTION_MASK = {6}
+		GDK_BUTTON3_MOTION_MASK = {7}
+		GDK_BUTTON_PRESS_MASK = {8}
+		GDK_BUTTON_RELEASE_MASK = {9}
+		GDK_KEY_PRESS_MASK = {10}
+		GDK_KEY_RELEASE_MASK = {11}
+		GDK_ENTER_NOTIFY_MASK = {12}
+		GDK_LEAVE_NOTIFY_MASK = {13}
+		GDK_FOCUS_CHANGE_MASK = {14}
+		GDK_STRUCTURE_MASK = {15}
+		GDK_PROPERTY_CHANGE_MASK = {16}
+		GDK_VISIBILITY_NOTIFY_MASK = {17}
+		GDK_PROXIMITY_IN_MASK = {18}
+		GDK_PROXIMITY_OUT_MASK = {19}
+		GDK_SUBSTRUCTURE_MASK = {20}
+		GDK_SCROLL_MASK = {21}
+		GDK_ALL_EVENTS_MASK = {0..21} // 0x3FFFFE
+	
+	type  // Possible values for GCValuesMask
+		GdkGCValuesMask = set
+	
+	const 
+		GDK_GC_FOREGROUND = {0}
+		GDK_GC_BACKGROUND = {1}
+		GDK_GC_FONT = {2}
+		GDK_GC_FUNCTION = {3}
+		GDK_GC_FILL = {4}
+		GDK_GC_TILE = {5}
+		GDK_GC_STIPPLE = {6}
+		GDK_GC_CLIP_MASK = {7}
+		GDK_GC_SUBWINDOW = {8}
+		GDK_GC_TS_X_ORIGIN = {9}
+		GDK_GC_TS_Y_ORIGIN = {10}
+		GDK_GC_CLIP_X_ORIGIN = {11}
+		GDK_GC_CLIP_Y_ORIGIN = {12}
+		GDK_GC_EXPOSURES = {13}
+		GDK_GC_LINE_WIDTH = {14}
+		GDK_GC_LINE_STYLE = {15}
+		GDK_GC_CAP_STYLE = {16}
+		GDK_GC_JOIN_STYLE = {17}
+	
+	type  // enu: GdkEventType
+		GdkEventType = integer
+	
+	const 
+		GDK_NOTHING = -1
+		GDK_DELETE = 0
+		GDK_DESTROY = 1
+		GDK_EXPOSE = 2
+		GDK_MOTION_NOTIFY = 3
+		GDK_BUTTON_PRESS = 4
+		GDK_2BUTTON_PRESS = 5
+		GDK_3BUTTON_PRESS = 6
+		GDK_BUTTON_RELEASE = 7
+		GDK_KEY_PRESS = 8
+		GDK_KEY_RELEASE = 9
+		GDK_ENTER_NOTIFY = 10
+		GDK_LEAVE_NOTIFY = 11
+		GDK_FOCUS_CHANGE = 12
+		GDK_CONFIGURE = 13
+		GDK_MAP = 14
+		GDK_UNMAP = 15
+		GDK_PROPERTY_NOTIFY = 16
+		GDK_SELECTION_CLEAR = 17
+		GDK_SELECTION_REQUEST = 18
+		GDK_SELECTION_NOTIFY = 19
+		GDK_PROXIMITY_IN = 20
+		GDK_PROXIMITY_OUT = 21
+		GDK_DRAG_ENTER = 22
+		GDK_DRAG_LEAVE = 23
+		GDK_DRAG_MOTION = 24
+		GDK_DRAG_STATUS = 25
+		GDK_DROP_START = 26
+		GDK_DROP_FINISHED = 27
+		GDK_CLIENT_EVENT = 28
+		GDK_VISIBILITY_NOTIFY = 29
+		GDK_NO_EXPOSE = 30
+		GDK_SCROLL = 31
+		GDK_WINDOW_STATE = 32
+		GDK_SETTING = 33
+	
+	// end: GdkEventType
+	type  // enu: GdkFontType
+		GdkFontType = integer
+	
+	const 
+		GDK_FONT_FONT = 0 // XFontStruct.
+		GDK_FONT_FONTSET = 1 // XFontSet used for I18N.
+	// end: GdkFontType
+	
+	const 
+		// selections
+		
+		GDK_SELECTION_PRIMARY = 1
+		GDK_SELECTION_SECONDARY = 2
+		GDK_SELECTION_CLIPBOARD = 69
+		
+		// targets (Target)
+		
+		GDK_TARGET_BITMAP = 5
+		GDK_TARGET_COLORMAP = 7
+		GDK_TARGET_DRAWABLE = 17
+		GDK_TARGET_PIXMAP = 20
+		GDK_TARGET_STRING = 31
+		// selection types (SelectionType)
+		
+		GDK_SELECTION_TYPE_ATOM = 4
+		GDK_SELECTION_TYPE_BITMAP = 5
+		GDK_SELECTION_TYPE_COLORMAP = 7
+		GDK_SELECTION_TYPE_DRAWABLE = 17
+		GDK_SELECTION_TYPE_INTEGER = 19
+		GDK_SELECTION_TYPE_PIXMAP = 20
+		GDK_SELECTION_TYPE_WINDOW = 33
+		GDK_SELECTION_TYPE_STRING = 31
+	
+	
+	// cursor types
+	
+	const 
+		GDK_NUM_GLYPHS = 154
+		
+		
+		// Possible values for SubwindowMode
+		
+		GDK_CLIP_BY_CHILDREN = 0
+		GDK_INCLUDE_INFERIORS = 1
+		
+		// Possible values for Function
+		
+		GDK_COPY = 0
+		GDK_INVERT = 1
+		GDK_XOR = 2
+		GDK_CLEAR = 3
+		GDK_AND = 4
+		GDK_AND_REVERSE = 5
+		GDK_AND_INVERT = 6
+		GDK_NOOP = 7
+		GDK_OR = 8
+		GDK_EQUIV = 9
+		GDK_OR_REVERSE = 10
+		GDK_COPY_INVERT = 11
+		GDK_OR_INVERT = 12
+		GDK_NAND = 13
+		GDK_SET = 14
+		// Possible values for Fill
+		
+		GDK_SOLID = 0
+		GDK_TILED = 1
+		GDK_STIPPLED = 2
+		GDK_OPAQUE_STIPPLED = 3
+	
+	type  // GdkModifierType
+		GdkModifierType = set
+	
+	const 
+		GDK_SHIFT_BIT = 0
+		GDK_LOCK_BIT = 1
+		GDK_CONTROL_BIT = 2
+		GDK_MOD1_BIT = 3
+		GDK_MOD2_BIT = 4
+		GDK_MOD3_BIT = 5
+		GDK_MOD4_BIT = 6
+		GDK_MOD5_BIT = 7
+		GDK_BUTTON1_BIT = 8
+		GDK_BUTTON2_BIT = 9
+		GDK_BUTTON3_BIT = 10
+		GDK_BUTTON4_BIT = 11
+		GDK_BUTTON5_BIT = 12
+		GDK_RELEASE_BIT = 13
+		GDK_MODIFIER_MASK = 03fffh // end: GdkModifierType
+	(* GdkModifierType _MASK
+	   
+	   GDK_SHIFT_MASK * = 1;
+	   GDK_LOCK_MASK * = 2;
+	   GDK_CONTROL_MASK * = 4;
+	   GDK_MOD1_MASK * = 8;
+	   GDK_MOD2_MASK * = 16;
+	   GDK_MOD3_MASK * = 32;
+	   GDK_MOD4_MASK * = 64;
+	   GDK_MOD5_MASK * = 128;
+	   GDK_BUTTON1_MASK * = 256;
+	   GDK_BUTTON2_MASK * = 512;
+	   GDK_BUTTON3_MASK * = 1024;
+	   GDK_BUTTON4_MASK * = 2048;
+	   GDK_BUTTON5_MASK * = 4096;
+	   GDK_RELEASE_MASK * = 1073741824; *)
+	
+	
+	type 
+		GdkNativeWindow = integer
+	type 
+		GdkAtom = integer
+	const 
+		GDK_NONE = 0
+	
+	
+	type 
+		GdkPoint = cstruct 
+				x: integer
+				y: integer 
+			end 
+		GdkPoints = carray of GdkPoint
+	
+	type 
+		GdkRectangle = cstruct 
+				x: integer
+				y: integer
+				width: integer
+				height: integer 
+			end 
+		pGdkRectangle = unsafe pointer to GdkRectangle
+		GdkRectangles = carray of GdkRectangle
+	
+	type 
+		GdkSegment = cstruct 
+				x1: integer
+				y1: integer
+				x2: integer
+				y2: integer 
+			end 
+		pGdkSegment = unsafe pointer to GdkSegment
+		
+		GdkSpan = cstruct 
+				x, y, width: integer 
+			end 
+	
+	type 
+		GdkColor = cstruct 
+				pixel: integer
+				red, green, blue: shortint 
+			end 
+		GdkColors = carray of GdkColor
+	
+	type 
+		GdkPixbuf = pointer to record (GObject.GObject) end 
+	type 
+		GdkColormap = pointer to (* limited *) record (GObject.GObject) 
+				size_: integer
+				colors: unsafe pointer to GdkColors 
+			end 
+	
+	
+	type 
+		GdkDrawable = pointer to (* limited *) record (GObject.GObject) end 
+	type 
+		GdkBitmap = pointer to (* limited *) record (GdkDrawable) end 
+	type 
+		GdkPixmap = pointer to (* limited *) record (GdkDrawable) end 
+	type 
+		GdkWindow = pointer to (* limited *) record (GdkDrawable) end 
+	type  // Rochus: removed semicolon
+		GdkImage = pointer to (* limited *) record (GObject.GObject) 
+				type_-: GdkImageType
+				visual-: GdkVisual // visual used to create the image
+				byte_order-: GdkByteOrder
+				width-: integer
+				height-: integer
+				depth-: shortint
+				bpp-: shortint // bytes per pixel
+				bpl-: shortint // bytes per line
+				bits_per_pixel-: shortint // bits per pixel
+				mem: gpointer
+				colormap-: GdkColormap
+				windowing_data-: gpointer 
+			end 
+	
+	type 
+		GdkFont = unsafe pointer to (* limited *) cstruct 
+				type_: GdkFontType
+				ascent-: integer
+				descent-: integer 
+			end 
+	
+	type 
+		GdkGC = pointer to (* limited *) record (GObject.GObject) end 
+	type 
+		GdkGCValues = cstruct 
+				foreground, 
+				background: GdkColor
+				font: GdkFont
+				function: GdkFunction
+				fill: GdkFill
+				tile: GdkPixmap
+				stipple: GdkPixmap
+				clip_mask: GdkPixmap
+				subwindow_mode: GdkSubwindowMode
+				ts_x_origin, 
+				ts_y_origin: integer
+				clip_x_origin, 
+				clip_y_origin: integer
+				graphics_exposures: integer
+				line_width: integer
+				line_style: GdkLineStyle
+				cap_style: GdkCapStyle
+				join_style: GdkJoinStyle 
+			end 
+	
+	type 
+		GdkKeymap = pointer to (* limited *) record (GObject.GObject) end 
+	
+	
+	type 
+		GdkKeymapKey = cstruct 
+				keycode: integer
+				group: integer
+				level: integer 
+			end 
+	
+	type 
+		GdkVisual = pointer to (* limited *) record (GObject.GObject) 
+				type_: GdkVisualType
+				depth: integer
+				byte_order: GdkByteOrder
+				colormap_size: integer
+				bits_per_rgb: integer
+				red_mask: integer
+				red_shift: integer
+				red_prec: integer
+				green_mask: integer
+				green_shift: integer
+				green_prec: integer
+				blue_mask: integer
+				blue_shift: integer
+				blue_prec: integer 
+			end 
+	
+	type 
+		GdkDeviceKey = cstruct 
+				keyval: integer
+				modifiers: GdkModifierType 
+			end 
+	
+	type 
+		GdkDeviceAxis = cstruct 
+				use: GdkAxisUse
+				min_, max_: real 
+			end 
+	
+	type 
+		GdkDevice = pointer to (* limited *) record (GObject.GObject) 
+				name-: PString
+				source-: GdkInputSource
+				mode-: GdkInputMode
+				has_cursor-: gboolean // TRUE if the X pointer follows device motion
+				num_axes-: integer
+				axes-: unsafe pointer to carray of GdkDeviceAxis
+				num_keys-: integer
+				keys-: unsafe pointer to carray of GdkDeviceKey 
+			end 
+	
+	type 
+		GdkScreen = pointer to (* limited *) record (GObject.GObject) 
+				closed: set // bit field. closed:1.
+				normal_gcs: array 32 of GdkGC
+				exposure_gcs: array 32 of GdkGC 
+			end 
+	
+	type 
+		GdkRegion = unsafe pointer to cstruct end 
+	type 
+		GdkDisplayManager = unsafe pointer to cstruct end 
+	
+	
+	
+	type  // enu: GdkGravity
+		GdkGravity = integer
+	
+	const 
+	(* GDK_GRAVITY_NORTH_WEST = 1;
+	   GDK_GRAVITY_NORTH,
+	   GDK_GRAVITY_NORTH_EAST,
+	   GDK_GRAVITY_WEST,
+	   GDK_GRAVITY_CENTER,
+	   GDK_GRAVITY_EAST,
+	   GDK_GRAVITY_SOUTH_WEST,
+	   GDK_GRAVITY_SOUTH,
+	   GDK_GRAVITY_SOUTH_EAST,
+	   GDK_GRAVITY_STATIC *)
+	
+	
+	
+	
+	
+	type 
+		GdkCursor = unsafe pointer to (* limited *) cstruct end 
+	
+	type 
+		GdkDragContext = pointer to (* limited *) record (GObject.GObject) end 
+	type 
+		GdkRgbCmap = unsafe pointer to (* limited *) cstruct 
+				colors: array 256 of integer
+				n_colors: integer
+				info_list: GSList 
+			end 
+	
+	type 
+		GdkWindowAttr = unsafe pointer to cstruct 
+				title: PString
+				event_mask: integer
+				x, y: integer
+				width: integer
+				height: integer
+				wclass: GdkWindowClass
+				visual: GdkVisual
+				colormap: GdkColormap
+				window_type: GdkWindowType
+				cursor: GdkCursor
+				wmclass_name: PString
+				wmclass_class: PString
+				override_redirect: gboolean 
+			end 
+	
+	type 
+		GdkGeometry = unsafe pointer to cstruct 
+				min_width: integer
+				min_height: integer
+				max_width: integer
+				max_height: integer
+				base_width: integer
+				base_height: integer
+				width_inc: integer
+				height_inc: integer
+				min_aspect: real
+				max_aspect: real
+				win_gravity: GdkGravity 
+			end 
+	
+	
+	
+	type 
+		GdkDisplay = pointer to (* limited *) record (GObject.GObject) end 
+	
+	
+	type 
+		GdkEvent = unsafe pointer to GdkEventDesc
+		GdkEventDesc = (* abstract *) cstruct 
+				type_: GdkEventType
+				window: GdkWindow
+				send_event: byte 
+			end 
+	
+	type 
+		GdkEventKey = pointer to GdkEventKeyDesc
+		GdkEventKeyDesc = record (GdkEvent) 
+				time: integer
+				state: set
+				keyval: integer
+				length: integer
+				string: PString
+				hardware_keycode: shortint
+				group: byte
+				is_modifier: integer 
+			end 
+	
+	type 
+		GdkEventButton = pointer to GdkEventButtonDesc
+		GdkEventButtonDesc = record (GdkEvent) 
+				time: integer
+				x, y: real
+				axes: unsafe pointer to array of real
+				state: set
+				button: integer
+				deviceid: integer
+				x_root, y_root: real 
+			end 
+	
+	type 
+		GdkEventConfigure = pointer to record (GdkEvent) 
+				x, y, width, height: integer 
+			end 
+	
+	type 
+		GdkEventExpose = pointer to record (GdkEvent) 
+				area: GdkRectangle
+				region: GdkRegion
+				count: integer  // If non-zero, how many more events follow.
+			end 
+	
+	type 
+		GdkEventFocus = pointer to record (GdkEvent) 
+				in_: shortint 
+			end 
+	
+	type 
+		GdkEventMotion = pointer to record (GdkEvent) 
+				time: integer
+				x, y: real
+				axes: unsafe pointer to carray of real
+				state: set
+				is_hint: shortint
+				device: GdkDevice
+				x_root, y_root: real 
+			end 
+	
+	type 
+		GdkEventNoExpose = record (GdkEvent) end 
+	
+	type 
+		GdkEventVisibility = record (GdkEvent) 
+				state: GdkVisibilityState 
+			end 
+	
+	type 
+		// DIA: Scroll
+		GdkEventScroll = pointer to GdkEventScrollDesc
+		GdkEventScrollDesc = record (GdkEvent) 
+				time: integer
+				x: real
+				y: real
+				state: set
+				direction-: GdkScrollDirection
+				device: GdkDevice
+				x_root: real
+				y_root: real 
+			end 
+	
+	type 
+		GdkEventProperty = record (GdkEvent) 
+				atom: GdkAtom
+				time: integer
+				state: set 
+			end 
+	
+	type 
+		GdkEventProximity = record (GdkEvent) 
+				time: integer
+				device: GdkDevice 
+			end 
+	
+	type 
+		GdkEventClient = record (GdkEvent) 
+				message_type: GdkAtom
+				data_format: byte
+				data: cstruct 
+						b: carray 20 of byte
+						s: carray 10 of shortint
+						l: carray 5 of integer 
+					end  
+			end 
+	
+	type 
+		GdkEventCrossing = record (GdkEvent) 
+				subwindow: GdkAtom
+				time: integer
+				x: real
+				y: real
+				x_root: real
+				y_root: real
+				mode: GdkCrossingMode
+				detail: GdkNotifyType
+				focus: gboolean
+				state: set 
+			end 
+	
+	
+	type 
+		GdkEventSelection = record (GdkEvent) 
+				selection: GdkAtom
+				target: GdkAtom
+				property: GdkAtom
+				time: integer
+				requestor: GdkNativeWindow 
+			end 
+	
+	type 
+		GdkEventDND = record (GdkEvent) 
+				context: GdkDragContext
+				time: integer
+				x_root: shortint
+				y_root: shortint 
+			end 
+	
+	type 
+		GdkEventWindowState = record (GdkEvent) 
+				changed_mask: GdkWindowState
+				new_window_state: GdkWindowState 
+			end 
+	
+	type 
+		GdkEventSetting = record (GdkEvent) 
+				action: GdkSettingAction
+				name: PString 
+			end 
+	
+	
+	type 
+		GdkInputFunction = proc (data: gpointer; source: integer; condition: GdkInputCondition)
+		GdkDestroyNotify = proc (data: gpointer)
+		ChildFunc = proc (w: GdkWindow; p: gpointer): gboolean
+	
+	
+	
+	// General — Library initialization and miscellaneous functions
+	
+	proc gdk_init(var argc: integer; var argv: APString) 
+	proc gdk_init_check(var argc: integer; var argv: APString): boolean 
+	proc gdk_parse_args(var argc: integer; var argv: APString) 
+	proc gdk_set_locale(): PString 
+	proc gdk_get_program_class(): PString 
+	proc gdk_set_program_class(program_class: PString) 
+	proc gdk_exit(error_code: integer) 
+	
+	proc gdk_error_trap_push() 
+	proc gdk_error_trap_pop(): integer 
+	proc gdk_get_display(): PString 
+	proc gdk_get_display_arg_name(): PString 
+	proc gdk_set_use_xshm(use_xshm: gboolean) 
+	proc gdk_get_use_xshm(): gboolean 
+	
+	proc gdk_pointer_grab(window: GdkWindow; owner_events: gboolean; event_mask: GdkEventMask; confine_to: GdkWindow; cursor: GdkCursor; time: integer): GdkGrabStatus 
+	proc gdk_keyboard_grab(window: GdkWindow; owner_events: gboolean; time: integer): GdkGrabStatus 
+	proc gdk_pointer_ungrab(time: integer) 
+	proc gdk_keyboard_ungrab(time: integer) 
+	proc gdk_pointer_is_grabbed(): boolean 
+	
+	proc gdk_screen_width(): integer  // in pixels
+	proc gdk_screen_height(): integer 
+	proc gdk_screen_width_mm(): integer 
+	proc gdk_screen_height_mm(): integer 
+	proc gdk_beep
+	proc gdk_flush
+	proc gdk_set_double_click_time(msec: integer) 
+	
+	
+	// Conversion functions between wide char and multibyte strings.
+	proc gdk_wcstombs(in src: UString): PString 
+	proc gdk_mbstowcs(var dest: UString; in src: String; dest_max: integer): integer 
+	// Miscellaneous
+	proc gdk_event_send_client_message(event: GdkEvent; winid: GdkNativeWindow): boolean 
+	proc gdk_event_send_clientmessage_toall(event: GdkEvent) 
+	proc gdk_event_send_client_message_for_display(display: GdkDisplay; event: GdkEvent; winid: GdkNativeWindow): boolean 
+	proc gdk_notify_startup_complete() 
+	
+	// display
+	proc gdk_display_open(in display_name: String): GdkDisplay 
+	proc gdk_display_get_name(display: GdkDisplay): PString 
+	proc gdk_display_get_n_screens(display: GdkDisplay): integer 
+	proc gdk_display_get_screen(display: GdkDisplay; screen_num: integer): GdkScreen 
+	proc gdk_display_get_default_screen(display: GdkDisplay): GdkScreen 
+	proc gdk_display_pointer_ungrab(display: GdkDisplay; time: integer) 
+	proc gdk_display_keyboard_ungrab(display: GdkDisplay; time: integer) 
+	proc gdk_display_pointer_is_grabbed(display: GdkDisplay): boolean 
+	proc gdk_display_beep(display: GdkDisplay) 
+	proc gdk_display_sync(display: GdkDisplay) 
+	proc gdk_display_flush(display: GdkDisplay) 
+	proc gdk_display_close(display: GdkDisplay) 
+	proc gdk_display_list_devices(display: GdkDisplay): GLib.GList 
+	proc gdk_display_get_event(display: GdkDisplay): GdkEvent 
+	proc gdk_display_peek_event(display: GdkDisplay): GdkEvent 
+	proc gdk_display_put_event(display: GdkDisplay; event: GdkEvent) 
+	proc gdk_display_add_client_message_filter(display: GdkDisplay; message_type: GdkAtom; func: GdkFilterFunc; data: gpointer) 
+	proc gdk_display_set_double_click_time(display: GdkDisplay; msec: integer) 
+	proc gdk_display_set_double_click_distance(display: GdkDisplay; distance: integer) 
+	proc gdk_display_get_default(): GdkDisplay 
+	proc gdk_display_get_core_pointer(display: GdkDisplay): GdkDevice 
+	proc gdk_display_get_pointer(display: GdkDisplay; var screen: GdkScreen; var x, y: integer; var mask: GdkModifierType) 
+	proc gdk_display_get_window_at_pointer(display: GdkDisplay; var win_x, win_y: integer): GdkWindow 
+	proc gdk_display_open_default_libgtk_only(): GdkDisplay 
+	proc gdk_display_supports_cursor_alpha(display: GdkDisplay): boolean 
+	proc gdk_display_supports_cursor_color(display: GdkDisplay): boolean 
+	proc gdk_display_get_default_cursor_size(display: GdkDisplay): integer 
+	proc gdk_display_get_maximal_cursor_size(display: GdkDisplay; var width, height: integer) 
+	proc gdk_display_get_default_group(display: GdkDisplay): GdkWindow 
+	// display manager
+	proc gdk_display_manager_get(): GdkDisplayManager 
+	proc gdk_display_manager_get_default_display(display_manager: GdkDisplayManager): GdkDisplay 
+	proc gdk_display_manager_set_default_display(display_manager: GdkDisplayManager; display: GdkDisplay) 
+	proc gdk_display_manager_list_displays(display_manager: GdkDisplayManager): GSList 
+	// Screen
+	proc gdk_screen_get_default_colormap(screen: GdkScreen): GdkColormap 
+	proc gdk_screen_set_default_colormap(screen: GdkScreen; colormap: GdkColormap) 
+	proc gdk_screen_get_system_colormap(screen: GdkScreen): GdkColormap 
+	proc gdk_screen_get_system_visual(screen: GdkScreen): GdkVisual 
+	proc gdk_screen_get_rgb_colormap(screen: GdkScreen): GdkColormap 
+	proc gdk_screen_get_rgb_visual(screen: GdkScreen): GdkVisual 
+	proc gdk_screen_get_root_window(screen: GdkScreen): GdkWindow 
+	proc gdk_screen_get_toplevel_windows(screen: GdkScreen): GLib.GList 
+	proc gdk_screen_get_display(screen: GdkScreen): GdkDisplay 
+	proc gdk_screen_get_number(screen: GdkScreen): integer 
+	proc gdk_screen_get_width(screen: GdkScreen): integer 
+	proc gdk_screen_get_height(screen: GdkScreen): integer 
+	proc gdk_screen_get_width_mm(screen: GdkScreen): integer 
+	proc gdk_screen_get_height_mm(screen: GdkScreen): integer 
+	proc gdk_screen_list_visuals(screen: GdkScreen): GdkVisual 
+	proc gdk_screen_make_display_name(in screen: GdkScreen): PString 
+	proc gdk_screen_get_n_monitors(screen: GdkScreen): integer 
+	proc gdk_screen_get_monitor_geometry(screen: GdkScreen; monitor_num: integer; dest: pGdkRectangle) 
+	proc gdk_screen_get_monitor_at_point(screen: GdkScreen; x: integer; y: integer): integer 
+	proc gdk_screen_get_monitor_at_window(screen: GdkScreen; window: GdkWindow): integer 
+	proc gdk_screen_broadcast_client_message(screen: GdkScreen; event: GdkEvent) 
+	proc gdk_screen_get_default(): GdkScreen 
+	proc gdk_screen_get_setting(screen: GdkScreen; in name: String; value: GdkAtom): boolean 
+	
+	proc gdk_spawn_on_screen(screen: GdkScreen; in working_directory: String; in argv, envp: APString; flags: GLib.GSpawnFlags; child_setup: GLib.GSpawnChildSetupFunc; user_data: gpointer
+		var child_pid: integer
+		var error: GLib.GError): boolean 
+	
+	proc gdk_spawn_on_screen_with_pipes(screen: GdkScreen; in working_directory: String; in argv, envp: APString; flags: GLib.GSpawnFlags; child_setup: GLib.GSpawnChildSetupFunc; user_data: gpointer; var child_pid, standard_input, standard_output, standard_error: integer; var error: GLib.GError): boolean 
+	proc gdk_spawn_command_line_on_screen(screen: GdkScreen; in command_line: String; var error: GLib.GError): boolean 
+	
+	// Points, Rectangles and Regions
+	proc gdk_region_new(): GdkRegion 
+	proc gdk_region_polygon(in points: GdkPoints; npoints: integer; fill_rule: GdkFillRule): GdkRegion 
+	proc gdk_region_copy(region: GdkRegion): GdkRegion 
+	proc gdk_region_rectangle(rectangle: pGdkRectangle): GdkRegion 
+	proc gdk_region_destroy(region: GdkRegion) 
+	proc gdk_region_get_clipbox(region: GdkRegion; rectangle: pGdkRectangle) 
+	proc gdk_region_get_rectangles(region: GdkRegion; var rectangles: unsafe pointer to GdkRectangles; var n_rectangles: integer) 
+	proc gdk_region_empty(region: GdkRegion): boolean 
+	proc gdk_region_equal(region1: GdkRegion; region2: GdkRegion): boolean 
+	proc gdk_region_point_in(region: GdkRegion; x: integer; y: integer): boolean 
+	proc gdk_region_rect_in(region: GdkRegion; rect: pGdkRectangle): GdkOverlapType 
+	proc gdk_region_offset(region: GdkRegion; dx: integer; dy: integer) 
+	proc gdk_region_shrink(region: GdkRegion; dx: integer; dy: integer) 
+	proc gdk_region_union_with_rect(region: GdkRegion; rect: pGdkRectangle) 
+	proc gdk_region_intersect(source1: GdkRegion; source2: GdkRegion) 
+	proc gdk_region_union(source1: GdkRegion; source2: GdkRegion) 
+	proc gdk_region_subtract(source1: GdkRegion; source2: GdkRegion) 
+	proc gdk_region_xor(source1: GdkRegion; source2: GdkRegion) 
+	proc gdk_region_spans_intersect_foreach(region: GdkRegion; in spans: carray of GdkSpan; n_spans: integer; sorted: gboolean; function: GdkSpanFunc; data: gpointer) 
+	// Rectangle utilities
+	proc gdk_rectangle_intersect(in src1, src2: GdkRectangle; var dest: GdkRectangle): boolean 
+	proc gdk_rectangle_union(in src1, src2: GdkRectangle; var dest: GdkRectangle) 
+	// Graphics Contexts
+	proc gdk_gc_new(drawable: GdkDrawable): GdkGC 
+	proc gdk_gc_new_with_values(drawable: GdkDrawable; var values: GdkGCValues; values_mask: GdkGCValuesMask): GdkGC 
+	proc gdk_gc_ref(gc: GdkGC)  // : GdkGC
+	proc gdk_gc_unref(gc: GdkGC) 
+	
+	proc gdk_gc_get_values(gc: GdkGC; var values: GdkGCValues) 
+	proc gdk_gc_set_values(gc: GdkGC; var values: GdkGCValues; values_mask: GdkGCValuesMask) 
+	proc gdk_gc_set_foreground(gc: GdkGC; in color: GdkColor) 
+	proc gdk_gc_set_background(gc: GdkGC; in color: GdkColor) 
+	
+	proc gdk_gc_set_function(gc: GdkGC; function: GdkFunction) 
+	proc gdk_gc_set_fill(gc: GdkGC; fill: GdkFill) 
+	proc gdk_gc_set_tile(gc: GdkGC; tile: GdkPixmap) 
+	proc gdk_gc_set_stipple(gc: GdkGC; stipple: GdkPixmap) 
+	proc gdk_gc_set_ts_origin(gc: GdkGC; x: integer; y: integer) 
+	proc gdk_gc_set_clip_origin(gc: GdkGC; x: integer; y: integer) 
+	proc gdk_gc_set_clip_rectangle(gc: GdkGC; rectangle: pGdkRectangle) 
+	proc gdk_gc_set_clip_mask(gc: GdkGC; mask: GdkPixmap) 
+	proc gdk_gc_set_clip_region(gc: GdkGC; region: GdkRegion) 
+	proc gdk_gc_set_subwindow(gc: GdkGC; mode: GdkSubwindowMode) 
+	proc gdk_gc_set_exposures(gc: GdkGC; exposures: boolean) 
+	proc gdk_gc_set_line_attributes(gc: GdkGC; line_width: integer; line_style: GdkLineStyle; cap_style: GdkCapStyle; join_style: GdkJoinStyle) 
+	proc gdk_gc_set_dashes(gc: GdkGC; dash_offset: integer; dash_list: array of byte; n: integer) 
+	proc gdk_gc_set_font(gc: GdkGC; font: GdkFont) 
+	proc gdk_gc_offset(gc: GdkGC; x_offset, y_offset: integer) 
+	proc gdk_gc_copy(dst_gc: GdkGC; src_gc: GdkGC) 
+	proc gdk_gc_set_colormap(gc: GdkGC; colormap: GdkColormap) 
+	proc gdk_gc_get_colormap(gc: GdkGC): GdkColormap 
+	proc gdk_gc_set_rgb_fg_color(gc: GdkGC; in color: GdkColor) 
+	proc gdk_gc_set_rgb_bg_color(gc: GdkGC; in color: GdkColor) 
+	proc gdk_gc_get_screen(gc: GdkGC): GdkScreen 
+	
+	
+	// Drawing Primitives
+	// Manipulation of drawables
+	proc gdk_drawable_set_data(drawable: GdkDrawable; in key: String; data: gpointer; destroy_func: GLib.GDestroyNotify) 
+	proc gdk_drawable_get_data(drawable: GdkDrawable; in key: String): gpointer 
+	proc gdk_drawable_get_size(drawable: GdkDrawable; var width, height: integer) 
+	proc gdk_drawable_set_colormap(drawable: GdkDrawable; colormap: GdkColormap) 
+	proc gdk_drawable_get_colormap(drawable: GdkDrawable): GdkColormap 
+	proc gdk_drawable_get_visual(drawable: GdkDrawable): GdkVisual 
+	proc gdk_drawable_get_depth(drawable: GdkDrawable): integer 
+	proc gdk_drawable_get_screen(drawable: GdkDrawable): GdkScreen 
+	proc gdk_drawable_get_display(drawable: GdkDrawable): GdkDisplay 
+	proc gdk_drawable_get_image(drawable: GdkDrawable; x, y: integer; width: integer; height: integer): GdkImage 
+	proc gdk_drawable_copy_to_image(drawable: GdkDrawable; image: GdkImage; src_x: integer; src_y: integer; dest_x: integer; dest_y: integer; width: integer; height: integer): GdkImage 
+	proc gdk_drawable_get_clip_region(drawable: GdkDrawable): GdkRegion 
+	proc gdk_drawable_get_visible_region(drawable: GdkDrawable): GdkRegion 
+	proc gdk_drawable_ref(drawable: GdkDrawable): GdkDrawable 
+	proc gdk_drawable_unref(drawable: GdkDrawable) 
+	
+	// Drawing
+	proc gdk_draw_point(drawable: GdkDrawable; gc: GdkGC; x: integer; y: integer) 
+	proc gdk_draw_points(drawable: GdkDrawable; gc: GdkGC; in points: GdkPoints; npoints: integer) 
+	proc gdk_draw_line(drawable: GdkDrawable; gc: GdkGC; x1, y1, x2, y2: integer) 
+	proc gdk_draw_rectangle(drawable: GdkDrawable; gc: GdkGC; filled: gboolean; x, y, width, height: integer) 
+	proc gdk_draw_arc(drawable: GdkDrawable; gc: GdkGC; filled: gboolean; x, y, width, height, angle1, angle2: integer) 
+	proc gdk_draw_polygon(drawable: GdkDrawable; gc: GdkGC; filled: gboolean; in points: GdkPoints; npoints: integer) 
+	proc gdk_draw_lines(drawable: GdkDrawable; gc: GdkGC; in points: GdkPoints; npoints: integer) 
+	proc gdk_draw_segments(drawable: GdkDrawable; gc: GdkGC; in segs: carray of GdkSegment; nsegs: integer) 
+	
+	
+	proc gdk_draw_string(drawable: GdkDrawable; font: GdkFont; gc: GdkGC; x, y: integer; in string: String) 
+	proc gdk_draw_text(drawable: GdkDrawable; font: GdkFont; gc: GdkGC; x, y: integer; in text: String; text_length: integer) 
+	proc gdk_draw_text_wc(drawable: GdkDrawable; font: GdkFont; gc: GdkGC; x, y: integer; in text: UString; text_length: integer) 
+	
+	proc gdk_draw_drawable(drawable: GdkDrawable; gc: GdkGC; src: GdkDrawable; xsrc: integer; ysrc: integer; xdest: integer; ydest: integer; width: integer; height: integer) 
+	proc gdk_draw_image(drawable: GdkDrawable; gc: GdkGC; image: GdkImage; xsrc: integer; ysrc: integer; xdest: integer; ydest: integer; width: integer; height: integer) 
+	proc gdk_draw_pixbuf(drawable: GdkDrawable; gc: GdkGC; pixbuf: GdkPixbuf; src_x: integer; src_y: integer; dest_x: integer; dest_y: integer; width: integer; height: integer; dither: GdkRgbDither; x_dither: integer; y_dither: integer) 
+	
+	proc gdk_draw_glyphs(drawable: GdkDrawable; gc: GdkGC; font: Pango.PangoFont; x, y: integer; glyphs: Pango.PangoGlyphString) 
+	proc gdk_draw_layout(drawable: GdkDrawable; gc: GdkGC; x, y: integer; layout: Pango.PangoLayout) 
+	proc gdk_draw_layout_with_colors(drawable: GdkDrawable; gc: GdkGC; x, y: integer; layout: Pango.PangoLayout; in foreground, background: GdkColor) 
+	proc gdk_draw_layout_line(drawable: GdkDrawable; gc: GdkGC; x, y: integer; line: Pango.PangoLayoutLine) 
+	proc gdk_draw_layout_line_with_colors(drawable: GdkDrawable; gc: GdkGC; x, y: integer; line: Pango.PangoLayoutLine; in foreground, background: GdkColor) 
+	
+	
+	// Bitmaps and Pixmaps - Offscreen drawables
+	proc gdk_pixmap_new(drawable: GdkDrawable; width: integer; height: integer; depth: integer): GdkPixmap 
+	proc gdk_bitmap_create_from_data(drawable: GdkDrawable; data: PBYTES; width: integer; height: integer): GdkBitmap 
+	proc gdk_pixmap_create_from_data(drawable: GdkDrawable; data: PBYTES; width: integer; height: integer; depth: integer; in fg, bg: GdkColor): GdkPixmap 
+	proc gdk_pixmap_create_from_xpm(drawable: GdkDrawable; var mask: GdkBitmap; in transparent_color: GdkColor; in filename: String): GdkPixmap 
+	proc gdk_pixmap_colormap_create_from_xpm(drawable: GdkDrawable; colormap: GdkColormap; var mask: GdkBitmap; transparent_color: GdkColor; in filename: String): GdkPixmap 
+	proc gdk_pixmap_create_from_xpm_d(drawable: GdkDrawable; var mask: GdkBitmap; transparent_color: GdkColor; data: PBYTES): GdkPixmap 
+	proc gdk_pixmap_colormap_create_from_xpm_d(drawable: GdkDrawable; colormap: GdkColormap; var mask: GdkBitmap; transparent_color: GdkColor; data: PBYTES): GdkPixmap 
+	// Functions to create/lookup pixmaps from their native equivalents
+	proc gdk_pixmap_foreign_new(anid: GdkNativeWindow): GdkDrawable 
+	proc gdk_pixmap_lookup(anid: GdkNativeWindow): GdkDrawable 
+	proc gdk_pixmap_foreign_new_for_display(display: GdkDisplay; anid: GdkNativeWindow): GdkDrawable 
+	proc gdk_pixmap_lookup_for_display(display: GdkDisplay; anid: GdkNativeWindow): GdkDrawable 
+	
+	// GdkRGB — Renders RGB, grayscale, or indexed image data to a GdkDrawable
+	proc gdk_rgb_init() 
+	proc gdk_rgb_xpixel_from_rgb(rgb: integer): integer 
+	proc gdk_rgb_gc_set_foreground(gc: GdkGC; rgb: integer) 
+	proc gdk_rgb_gc_set_background(gc: GdkGC; rgb: integer) 
+	proc gdk_rgb_find_color(colormap: GdkColormap; var color: GdkColor) 
+	
+	proc gdk_draw_rgb_image(drawable: GdkDrawable; gc: GdkGC; x, y: integer; width: integer; height: integer; dith: GdkRgbDither; rgb_buf: PBYTES; rowstride: integer) 
+	proc gdk_draw_rgb_image_dithalign(drawable: GdkDrawable; gc: GdkGC; x, y: integer; width: integer; height: integer; dith: GdkRgbDither; rgb_buf: PBYTES; rowstride: integer; xdith: integer; ydith: integer) 
+	proc gdk_draw_rgb_32_image(drawable: GdkDrawable; gc: GdkGC; x, y: integer; width: integer; height: integer; dith: GdkRgbDither; buf: PBYTES; rowstride: integer) 
+	proc gdk_draw_rgb_32_image_dithalign(drawable: GdkDrawable; gc: GdkGC; x, y: integer; width: integer; height: integer; dith: GdkRgbDither; buf: PBYTES; rowstride: integer; xdith: integer; ydith: integer) 
+	proc gdk_draw_gray_image(drawable: GdkDrawable; gc: GdkGC; x, y: integer; width: integer; height: integer; dith: GdkRgbDither; buf: PBYTES; rowstride: integer) 
+	proc gdk_draw_indexed_image(drawable: GdkDrawable; gc: GdkGC; x, y: integer; width: integer; height: integer; dith: GdkRgbDither; buf: PBYTES; rowstride: integer; cmap: GdkRgbCmap) 
+	
+	proc gdk_rgb_cmap_new(in colors: carray of integer; n_colors: integer): GdkRgbCmap 
+	proc gdk_rgb_cmap_free(cmap: GdkRgbCmap) 
+	proc gdk_rgb_set_verbose(verbose: gboolean) 
+	// experimental colormap stuff
+	proc gdk_rgb_set_install(install: gboolean) 
+	proc gdk_rgb_set_min_colors(min_colors: integer) 
+	proc gdk_rgb_get_colormap(): GdkColormap 
+	proc gdk_rgb_get_visual(): GdkVisual 
+	proc gdk_rgb_ditherable(): boolean 
+	// Images - A client-side area for bit-mapped graphics
+	proc gdk_image_new(type_: GdkImageType; visual: GdkVisual; width: integer; height: integer): GdkImage 
+	proc gdk_image_put_pixel(image: GdkImage; x, y: integer; pixel: integer) 
+	proc gdk_image_get_pixel(image: GdkImage; x: integer; y: integer): integer 
+	proc gdk_image_set_colormap(image: GdkImage; colormap: GdkColormap) 
+	proc gdk_image_get_colormap(image: GdkImage): GdkColormap 
+	proc gdk_image_get(drawable: GdkDrawable; x, y: integer; width: integer; height: integer): GdkImage 
+	proc gdk_image_ref(image: GdkImage): GdkImage 
+	proc gdk_image_unref(image: GdkImage) 
+	
+	
+	// Pixbufs - Functions for rendering pixbufs on drawables
+	proc gdk_pixbuf_render_threshold_alpha(pixbuf: GdkPixbuf; bitmap: GdkBitmap; src_x, src_y, dest_x, dest_y, width, height: integer; alpha_threshold: integer) 
+	
+	proc gdk_pixbuf_render_to_drawable(pixbuf: GdkPixbuf; drawable: GdkBitmap; gc: GdkGC; src_x, src_y, dest_x, dest_y, width, height, dither: GdkRgbDither; x_dither, y_dither: integer) 
+	proc gdk_pixbuf_render_to_drawable_alpha(pixbuf: GdkPixbuf; drawable: GdkBitmap; src_x, src_y, dest_x, dest_y, width, height: integer; alpha_mode: GdkPixbufAlphaMode; alpha_threshold: integer; dither: GdkRgbDither; x_dither, y_dither: integer) 
+	proc gdk_pixbuf_render_pixmap_and_mask_for_colormap(pixbuf: GdkPixbuf; colormap: GdkColormap; var pixmap_return: GdkPixmap; var mask_return: GdkPixmap; alpha_threshold: integer) 
+	proc gdk_pixbuf_render_pixmap_and_mask(pixbuf: GdkPixbuf; var pixmap_return: GdkPixmap; var mask_return: GdkPixmap; alpha_threshold: integer) 
+	
+	// Fetching a region from a drawable
+	proc gdk_pixbuf_get_from_drawable(dest: GdkPixbuf; src: GdkBitmap; cmap: GdkColormap; src_x, src_y, dest_x, dest_y, width, height: integer): GdkPixbuf 
+	proc gdk_pixbuf_get_from_image(dest: GdkPixbuf; src: GdkImage; cmap: GdkColormap; src_x, src_y, dest_x, dest_y, width, height: integer): GdkPixbuf 
+	
+	// Colormaps and Colors
+	type ClrPtr = unsafe pointer to GdkColor
+	proc gdk_color_copy(in color: GdkColor): ClrPtr 
+	proc gdk_color_free(color: unsafe pointer to GdkColor) 
+	
+	proc gdk_color_parse(in spec: String; var color: GdkColor): integer 
+	proc gdk_color_hash(in colora: GdkColor): integer 
+	proc gdk_color_equal(in colora, colorb: GdkColor): boolean 
+	
+	proc gdk_colormap_new(visual: GdkVisual; allocate: gboolean): GdkColormap 
+	proc gdk_colormap_ref(cmap: GdkColormap): GdkColormap 
+	proc gdk_colormap_unref(cmap: GdkColormap) 
+	proc gdk_colormap_get_system(): GdkColormap 
+	
+	proc gdk_colormap_get_screen(cmap: GdkColormap): GdkScreen 
+	proc gdk_colormap_get_system_size(): integer 
+	
+	
+	proc gdk_colormap_alloc_color(colormap: GdkColormap; var color: GdkColor; writeable, best_match: gboolean): boolean 
+	proc gdk_colormap_alloc_colors(colormap: GdkColormap; in colors: GdkColors; ncolors: integer; writeable, best_match: gboolean; var success: gboolean): integer 
+	proc gdk_colormap_free_colors(colormap: GdkColormap; in colors: GdkColors; ncolors: integer) 
+	proc gdk_colormap_query_color(colormap: GdkColormap; pixel: integer; var result: GdkColor) 
+	proc gdk_colormap_get_visual(colormap: GdkColormap): GdkVisual 
+	
+	// The following functions are deprecated
+	proc gdk_colormap_change(colormap: GdkColormap; ncolors: integer) 
+	proc gdk_colors_store(colormap: GdkColormap; in colors: GdkColors; ncolors: integer) 
+	proc gdk_color_white(colormap: GdkColormap; var color: GdkColor): integer 
+	proc gdk_color_black(colormap: GdkColormap; var color: GdkColor): integer 
+	proc gdk_color_alloc(colormap: GdkColormap; var color: GdkColor): integer 
+	proc gdk_color_change(colormap: GdkColormap; var color: GdkColor): integer 
+	
+	
+	// Visuals - Low-level display hardware information
+	proc gdk_visual_get_system(): GdkVisual 
+	proc gdk_visual_get_best(): GdkVisual 
+	proc gdk_visual_get_best_depth(): integer 
+	proc gdk_visual_get_best_type(): GdkVisualType 
+	proc gdk_visual_get_best_with_depth(depth: integer): GdkVisual 
+	proc gdk_visual_get_best_with_type(visual_type: GdkVisualType): GdkVisual 
+	proc gdk_visual_get_best_with_both(depth: integer; visual_type: GdkVisualType): GdkVisual 
+	
+	proc gdk_query_depths(var depths: unsafe pointer to carray of integer; var count: integer) 
+	proc gdk_query_visual_types(var visual_types: unsafe pointer to carray of GdkVisualType; var count: integer) 
+	proc gdk_list_visuals(): GdkVisual 
+	proc gdk_visual_get_screen(visual: GdkVisual): GdkScreen 
+	
+	// Fonts — Loading and manipulating fonts
+	proc gdk_font_load(in font_name: String): GdkFont 
+	proc gdk_fontset_load(in fontset_name: String): GdkFont 
+	proc gdk_font_load_for_display(display: GdkDisplay; in font_name: String): GdkFont 
+	proc gdk_fontset_load_for_display(display: GdkDisplay; in fontset_name: String): GdkFont 
+	proc gdk_font_from_description(font_desc: Pango.PangoFontDescription): GdkFont 
+	proc gdk_font_from_description_for_display(display: GdkDisplay; font_desc: Pango.PangoFontDescription): GdkFont 
+	proc gdk_font_ref(font: GdkFont): GdkFont 
+	proc gdk_font_unref(font: GdkFont) 
+	
+	proc gdk_font_id(font: GdkFont): integer 
+	proc gdk_font_equal(fonta, fontb: GdkFont): boolean 
+	proc gdk_font_get_display(font: GdkFont): GdkDisplay 
+	
+	proc gdk_char_width(font: GdkFont; character: char): integer 
+	proc gdk_char_width_wc(font: GdkFont; character: gunichar): integer 
+	proc gdk_string_width(font: GdkFont; in string: String): integer 
+	proc gdk_text_width(font: GdkFont; in text: String; text_length: integer): integer 
+	proc gdk_text_width_wc(font: GdkFont; in text: UString; text_length: integer): integer 
+	proc gdk_string_measure(font: GdkFont; in string: String): integer 
+	proc gdk_text_measure(font: GdkFont; in text: String; text_length: integer): integer 
+	proc gdk_char_measure(font: GdkFont; character: char): integer 
+	proc gdk_string_height(font: GdkFont; in string: String): integer 
+	proc gdk_text_height(font: GdkFont; in text: String; text_length: integer): integer 
+	proc gdk_char_height(font: GdkFont; character: char): integer 
+	
+	proc gdk_string_extents(font: GdkFont; in string: String; var lbearing, rbearing, width, ascent, descent: integer) 
+	proc gdk_text_extents(font: GdkFont; in text: String; text_length: integer; var lbearing, rbearing, width, ascent, descent: integer) 
+	proc gdk_text_extents_wc(font: GdkFont; in text: UString; text_length: integer; var lbearing, rbearing, width, ascent, descent: integer) 
+	
+	
+	// Cursors - Standard and pixmap cursors
+	proc gdk_cursor_new(cursor_type: GdkCursorType): GdkCursor 
+	proc gdk_cursor_new_for_display(display: GdkDisplay; cursor_type: GdkCursorType): GdkCursor 
+	proc gdk_cursor_new_from_pixmap(source: GdkPixmap; mask: GdkPixmap; in fg, bg: GdkColor; x, y: integer): GdkCursor 
+	proc gdk_cursor_new_from_pixbuf(display: GdkDisplay; pixbuf: GdkPixbuf; x: integer; y: integer): GdkCursor 
+	proc gdk_cursor_get_display(cursor: GdkCursor): GdkDisplay 
+	proc gdk_cursor_ref(cursor: GdkCursor): GdkCursor 
+	proc gdk_cursor_unref(cursor: GdkCursor) 
+	
+	// Windows - Onscreen display areas in the target window system
+	proc gdk_get_default_root_window(): GdkWindow 
+	proc gdk_window_new(parent: GdkWindow; attributes: GdkWindowAttr; attributes_mask: integer): GdkWindow 
+	proc gdk_window_destroy(window: GdkWindow) 
+	proc gdk_window_get_width(window: GdkWindow): integer 
+	proc gdk_window_get_height(window: GdkWindow): integer 
+	proc gdk_window_get_root_coords(window: GdkWindow; x, y: integer
+		var root_x, root_y: integer
+		) 
+	proc gdk_window_get_window_type(window: GdkWindow): GdkWindowType 
+	proc gdk_window_at_pointer(var win_x, win_y: integer): GdkWindow 
+	proc gdk_window_show(window: GdkWindow) 
+	proc gdk_window_hide(window: GdkWindow) 
+	proc gdk_window_withdraw(window: GdkWindow) 
+	proc gdk_window_show_unraised(window: GdkWindow) 
+	proc gdk_window_move(window: GdkWindow; x: integer; y: integer) 
+	proc gdk_window_resize(window: GdkWindow; width: integer; height: integer) 
+	proc gdk_window_move_resize(window: GdkWindow; x, y: integer; width: integer; height: integer) 
+	proc gdk_window_reparent(window: GdkWindow; new_parent: GdkWindow; x: integer; y: integer) 
+	proc gdk_window_clear(window: GdkWindow) 
+	proc gdk_window_clear_area(window: GdkWindow; x, y: integer; width, height: integer) 
+	proc gdk_window_clear_area_e(window: GdkWindow; x, y: integer; width, height: integer) 
+	proc gdk_window_raise(window: GdkWindow) 
+	proc gdk_window_lower(window: GdkWindow) 
+	proc gdk_window_focus(window: GdkWindow; timestamp: integer
+		) 
+	proc gdk_window_set_user_data(window: GdkWindow; user_data: gpointer) 
+	proc gdk_window_set_override_redirect(window: GdkWindow; override_redirect: gboolean) 
+	proc gdk_window_set_accept_focus(window: GdkWindow; accept_focus: gboolean) 
+	proc gdk_window_add_filter(window: GdkWindow; function: GdkFilterFunc; data: gpointer) 
+	proc gdk_window_remove_filter(window: GdkWindow; function: GdkFilterFunc; data: gpointer) 
+	proc gdk_window_scroll(window: GdkWindow; dx: integer; dy: integer) 
+	proc gdk_window_shape_combine_mask(window: GdkWindow; mask: GdkWindow; x: integer; y: integer) 
+	proc gdk_window_shape_combine_region(window: GdkWindow; shape_region: GdkRegion; offset_x: integer; offset_y: integer) 
+	proc gdk_window_set_child_shapes(window: GdkWindow) 
+	proc gdk_window_merge_child_shapes(window: GdkWindow) 
+	proc gdk_window_is_visible(window: GdkWindow): boolean 
+	proc gdk_window_is_viewable(window: GdkWindow): boolean 
+	proc gdk_window_get_state(window: GdkWindow): GdkWindowState 
+	proc gdk_window_set_static_gravities(window: GdkWindow; use_static: gboolean): boolean 
+	// Functions to create/lookup windows from their native equivalents
+	proc gdk_window_foreign_new(anid: GdkNativeWindow): GdkWindow 
+	proc gdk_window_lookup(anid: GdkNativeWindow): GdkWindow 
+	proc gdk_window_foreign_new_for_display(display: GdkDisplay; anid: GdkNativeWindow): GdkWindow 
+	proc gdk_window_lookup_for_display(display: GdkDisplay; anid: GdkNativeWindow): GdkWindow 
+	
+	proc gdk_window_set_hints(window: GdkWindow; x, y: integer; min_width, min_height, max_width, max_height: integer; flags: integer) 
+	proc gdk_window_set_type_hint(window: GdkWindow; hint: GdkWindowTypeHint) 
+	proc gdk_window_set_modal_hint(window: GdkWindow; modal: gboolean) 
+	proc gdk_window_set_skip_taskbar_hint(window: GdkWindow; skips_taskbar: gboolean) 
+	proc gdk_window_set_skip_pager_hint(window: GdkWindow; skips_pager: gboolean) 
+	proc gdk_window_set_geometry_hints(window: GdkWindow; geometry: GdkGeometry; geom_mask: GdkWindowHints) 
+	proc gdk_set_sm_client_id(in sm_client_id: String) 
+	proc gdk_window_begin_paint_rect(window: GdkWindow; rectangle: pGdkRectangle) 
+	proc gdk_window_begin_paint_region(window: GdkWindow; region: GdkRegion) 
+	proc gdk_window_end_paint(window: GdkWindow) 
+	proc gdk_window_set_title(window: GdkWindow; in title: String) 
+	proc gdk_window_set_role(window: GdkWindow; in role: String) 
+	proc gdk_window_set_transient_for(window: GdkWindow; parent: GdkWindow) 
+	proc gdk_window_set_background(window: GdkWindow; in color: GdkColor) 
+	proc gdk_window_set_back_pixmap(window: GdkWindow; pixmap: GdkWindow; parent_relative: gboolean) 
+	proc gdk_window_set_cursor(window: GdkWindow; cursor: GdkCursor) 
+	proc gdk_window_get_user_data(window: GdkWindow; var data: gpointer) 
+	proc gdk_window_get_geometry(window: GdkWindow; var x, y, width, height, depth: integer) 
+	proc gdk_window_get_position(window: GdkWindow; var x, y: integer) 
+	proc gdk_window_get_origin(window: GdkWindow; var x, y: integer): integer 
+	proc gdk_window_get_root_origin(window: GdkWindow; var x, y: integer) 
+	proc gdk_window_get_frame_extents(window: GdkWindow; rect: pGdkRectangle) 
+	proc gdk_window_get_pointer(window: GdkWindow; var x, y: integer; var mask: GdkModifierType): GdkWindow 
+	proc gdk_window_get_parent(window: GdkWindow): GdkWindow 
+	proc gdk_window_get_toplevel(window: GdkWindow): GdkWindow 
+	proc gdk_window_get_children(window: GdkWindow): GdkWindow 
+	proc gdk_window_peek_children(window: GdkWindow): GdkWindow 
+	proc gdk_window_get_events(window: GdkWindow): GdkEventMask 
+	proc gdk_window_set_events(window: GdkWindow; event_mask: GdkEventMask) 
+	proc gdk_window_set_icon_list(window: GdkWindow; pixbufs: GdkPixbuf) 
+	proc gdk_window_set_icon(window: GdkWindow; icon_window: GdkWindow; pixmap: GdkWindow; mask: GdkWindow) 
+	proc gdk_window_set_icon_name(window: GdkWindow; in name: String) 
+	proc gdk_window_set_group(window: GdkWindow; leader: GdkWindow) 
+	proc gdk_window_get_group(window: GdkWindow): GdkWindow 
+	proc gdk_window_set_decorations(window: GdkWindow; decorations: GdkWMDecoration) 
+	proc gdk_window_get_decorations(window: GdkWindow; var decorations: GdkWMDecoration): boolean 
+	proc gdk_window_set_functions(window: GdkWindow; functions: GdkWMFunction) 
+	proc gdk_window_get_toplevels(): GdkWindow 
+	proc gdk_window_iconify(window: GdkWindow) 
+	proc gdk_window_deiconify(window: GdkWindow) 
+	proc gdk_window_stick(window: GdkWindow) 
+	proc gdk_window_unstick(window: GdkWindow) 
+	proc gdk_window_maximize(window: GdkWindow) 
+	proc gdk_window_unmaximize(window: GdkWindow) 
+	proc gdk_window_fullscreen(window: GdkWindow) 
+	proc gdk_window_unfullscreen(window: GdkWindow) 
+	proc gdk_window_set_keep_above(window: GdkWindow; setting: gboolean) 
+	proc gdk_window_set_keep_below(window: GdkWindow; setting: gboolean) 
+	proc gdk_window_register_dnd(window: GdkWindow) 
+	proc gdk_window_begin_resize_drag(window: GdkWindow; edge: GdkWindowEdge; button: integer; root_x: integer; root_y: integer; timestamp: integer
+		) 
+	proc gdk_window_begin_move_drag(window: GdkWindow; button: integer; root_x: integer; root_y: integer; timestamp: integer
+		) 
+	// Interface for dirty-region queueing
+	proc gdk_window_invalidate_rect(window: GdkWindow; rect: pGdkRectangle; invalidate_children: gboolean) 
+	proc gdk_window_invalidate_region(window: GdkWindow; region: GdkRegion; invalidate_children: gboolean) 
+	proc gdk_window_invalidate_maybe_recurse(window: GdkWindow; region: GdkRegion; child_func: ChildFunc; user_data: gpointer) 
+	proc gdk_window_get_update_area(window: GdkWindow): GdkRegion 
+	proc gdk_window_freeze_updates(window: GdkWindow) 
+	proc gdk_window_thaw_updates(window: GdkWindow) 
+	proc gdk_window_process_all_updates() 
+	proc gdk_window_process_updates(window: GdkWindow; update_children: gboolean) 
+	// Enable/disable flicker, so you can tell if your code is inefficient.
+	proc gdk_window_set_debug_updates(setting: gboolean) 
+	proc gdk_window_constrain_size(geometry: GdkGeometry; flags: integer; width: integer; height: integer; var new_width, new_height: integer) 
+	proc gdk_window_get_internal_paint_info(window: GdkWindow; var real_drawable: GdkDrawable; var x_offset, y_offset: integer) 
+	
+	// Events - Functions for handling events from the window system
+	proc gdk_events_pending(): boolean 
+	proc gdk_event_get(): GdkEvent 
+	proc gdk_event_peek(): GdkEvent 
+	proc gdk_event_put(event: GdkEvent) 
+	proc gdk_event_free(event: GdkEvent) 
+	
+	proc gdk_event_new(type_: GdkEventType): GdkEvent 
+	proc gdk_event_copy(event: GdkEvent): GdkEvent 
+	
+	proc gdk_event_get_time(event: GdkEvent): integer 
+	proc gdk_event_get_state(event: GdkEvent; state: GdkModifierType): boolean 
+	proc gdk_event_get_graphics_expose(window: GdkWindow): GdkEvent 
+	proc gdk_event_get_coords(event: GdkEvent; var x_win, y_win: real): boolean 
+	proc gdk_event_get_root_coords(event: GdkEvent; var x_win, y_win: real): boolean 
+	proc gdk_event_get_axis(event: GdkEvent; axis_use: GdkAxisUse; var value: real): boolean 
+	proc gdk_event_handler_set(func: GdkEventFunc; data: gpointer; notify: GLib.GDestroyNotify) 
+	proc gdk_event_set_screen(event: GdkEvent; screen: GdkScreen) 
+	proc gdk_event_get_screen(event: GdkEvent): GdkScreen 
+	proc gdk_add_client_message_filter(message_type: GdkAtom; func: GdkFilterFunc; data: gpointer) 
+	proc gdk_setting_get(in name: String; value: GObject.GValue): boolean 
+	proc gdk_get_show_events(): gboolean 
+	proc gdk_set_show_events(show_events: gboolean) 
+	
+	// Event Structures
+	
+	
+	// Key Values - Functions for manipulating keyboard codes
+	proc gdk_keymap_get_default(): GdkKeymap 
+	proc gdk_keymap_get_for_display(display: GdkDisplay): GdkKeymap 
+	proc gdk_keymap_lookup_key(keymap: GdkKeymap; key: GdkKeymapKey): integer 
+	proc gdk_keymap_translate_keyboard_state(keymap: GdkKeymap; hardware_keycode: integer; state: GdkModifierType; group: integer; var keyval: integer; var effective_group: integer; var level: integer; var consumed_modifiers: GdkModifierType): boolean 
+	proc gdk_keymap_get_entries_for_keyval(keymap: GdkKeymap; keyval: integer; var keys: unsafe pointer to GdkKeymapKey; var n_keys: integer): boolean 
+	proc gdk_keymap_get_entries_for_keycode(keymap: GdkKeymap; hardware_keycode: integer; var keys: unsafe pointer to GdkKeymapKey; var keyvals: unsafe pointer to carray of integer; var n_entries: integer): boolean 
+	proc gdk_keymap_get_direction(keymap: GdkKeymap): Pango.PangoDirection 
+	
+	// Key values
+	proc gdk_keyval_name(keyval: integer): PString 
+	proc gdk_keyval_from_name(in keyval_name: String): integer 
+	proc gdk_keyval_convert_case(symbol: integer; var lower, upper: integer) 
+	proc gdk_keyval_to_upper(keyval: integer): integer 
+	proc gdk_keyval_to_lower(keyval: integer): integer 
+	proc gdk_keyval_is_upper(keyval: integer): boolean 
+	proc gdk_keyval_is_lower(keyval: integer): boolean 
+	proc gdk_keyval_to_unicode(keyval: integer): gunichar 
+	proc gdk_unicode_to_keyval(wc: gunichar): integer 
+	
+	
+	// Selections - Functions for transfering data via the X selection mechanism
+	proc gdk_selection_owner_set(owner: GdkWindow; selection: GdkAtom; time: integer; send_event: gboolean): boolean 
+	proc gdk_selection_owner_get(selection: GdkAtom): GdkWindow 
+	proc gdk_selection_owner_set_for_display(display: GdkDisplay; owner: GdkWindow; selection: GdkAtom; time: integer; send_event: gboolean): boolean 
+	proc gdk_selection_owner_get_for_display(display: GdkDisplay; selection: GdkAtom): GdkWindow 
+	proc gdk_selection_convert(requestor: GdkWindow; selection: GdkAtom; target: GdkAtom; time: integer) 
+	proc gdk_selection_property_get(requestor: GdkWindow; var data: PBYTES; var prop_type: GdkAtom; var prop_format: integer): boolean 
+	proc gdk_selection_send_notify(requestor: integer; selection: GdkAtom; target: GdkAtom; property: GdkAtom; time: integer) 
+	
+	// Drag and Drop - Functions for controlling drag and drop handling
+	proc gdk_drag_context_new(): GdkDragContext 
+	proc gdk_drag_context_ref(context: GdkDragContext) 
+	proc gdk_drag_context_unref(context: GdkDragContext) 
+	
+	// Destination side
+	proc gdk_drag_status(context: GdkDragContext; action: GdkDragAction; time: integer) 
+	proc gdk_drop_reply(context: GdkDragContext; ok: gboolean; time: integer) 
+	proc gdk_drop_finish(context: GdkDragContext; success: gboolean; time: integer) 
+	proc gdk_drag_get_selection(context: GdkDragContext): GdkAtom 
+	
+	// Source side
+	proc gdk_drag_begin(window: GdkWindow; targets: GdkAtom): GdkDragContext 
+	proc gdk_drag_get_protocol_for_display(display: GdkDisplay; xid: integer; var protocol: GdkDragProtocol): integer 
+	proc gdk_drag_find_window_for_screen(context: GdkDragContext; drag_window: GdkWindow; screen: GdkScreen; x_root: integer; y_root: integer; var dest_window: GdkWindow; var protocol: GdkDragProtocol) 
+	proc gdk_drag_get_protocol(xid: integer; var protocol: GdkDragProtocol): integer 
+	proc gdk_drag_find_window(context: GdkDragContext; drag_window: GdkWindow; x_root, y_root: integer; var dest_window: GdkWindow; var protocol: GdkDragProtocol) 
+	proc gdk_drag_motion(context: GdkDragContext; dest_window: GdkWindow; protocol: GdkDragProtocol; x_root, y_root: integer; suggested_action, possible_actions: GdkDragAction; time: integer): boolean 
+	proc gdk_drag_drop(context: GdkDragContext; time: integer) 
+	proc gdk_drag_abort(context: GdkDragContext; time: integer) 
+	
+	
+	// Properties and Atoms - Functions to manipulate properties on windows
+	proc gdk_atom_intern(in atom_name: String; only_if_exists: gboolean): GdkAtom 
+	proc gdk_atom_name(atom: GdkAtom): PString 
+	
+	proc gdk_property_get(window: GdkWindow; property: GdkAtom; type_: GdkAtom; offset, length: integer; pdelete: integer; var actual_property_type: GdkAtom; var actual_format, actual_length: integer; var data: PString): boolean 
+	
+	proc gdk_property_change(window: GdkWindow; property: GdkAtom; type_: GdkAtom; format: integer; mode: GdkPropMode; data: PBYTES; nelements: integer) 
+	proc gdk_property_delete(window: GdkWindow; property: GdkAtom) 
+	
+	proc gdk_free_text_list(in list: APString) 
+	proc gdk_free_compound_text(in ctext: String) 
+	
+	proc gdk_text_property_to_text_list(encoding: GdkAtom; format: integer; in text: String; length: integer; var list: APString): integer 
+	proc gdk_text_property_to_text_list_for_display(display: GdkDisplay; encoding: GdkAtom; format: integer; in text: String; length: integer; var list: APString): integer 
+	
+	proc gdk_text_property_to_utf8_list(encoding: GdkAtom; format: integer; in text: String; length: integer; var list: APString): integer 
+	proc gdk_text_property_to_utf8_list_for_display(display: GdkDisplay; encoding: GdkAtom; format: integer; in text: String; length: integer; var list: APString): integer 
+	
+	proc gdk_utf8_to_string_target(in str: String): PString 
+	proc gdk_utf8_to_compound_text(in str: String; var encoding: GdkAtom; var format: integer; var ctext: PString; var length: integer): boolean 
+	proc gdk_utf8_to_compound_text_for_display(display: GdkDisplay; in str: String; var encoding: GdkAtom; var format: integer; var ctext: PString; var length: integer): boolean 
+	
+	proc gdk_string_to_compound_text(str: PString; OUTencoding: GdkAtom; var format: integer; var ctext: PString; var length: integer): integer 
+	proc gdk_string_to_compound_text_for_display(display: GdkDisplay; str: PString; var encoding: GdkAtom; var format: integer; var ctext: PString; var length: integer): integer 
+	
+	
+	// Threads - Functions for using GDK in multi-threaded programs
+	// GCallback gdk_threads_lock;
+	// GCallback gdk_threads_unlock;
+	proc gdk_threads_enter() 
+	proc gdk_threads_leave() 
+	proc gdk_threads_init() 
+	
+	// Input - Callbacks on file descriptors
+	proc gdk_input_add(source: integer; condition: GdkInputCondition; function: GdkInputFunction; data: gpointer): integer 
+	proc gdk_input_add_full(source: integer; condition: GdkInputCondition; function: GdkInputFunction; data: gpointer; destroy: GdkDestroyNotify): integer 
+	proc gdk_input_remove(tag: integer) 
+	
+	
+	// Pango Interaction - Using Pango in GDK
+	
+	proc gdk_pango_context_get(): Pango.PangoContext 
+	proc gdk_pango_context_get_for_screen(screen: GdkScreen): Pango.PangoContext 
+	proc gdk_pango_context_set_colormap(context: Pango.PangoContext; colormap: GdkColormap) 
+	proc gdk_pango_layout_line_get_clip_region(line: Pango.PangoLayoutLine; x_origin, y_origin: integer; in index_ranges: carray of integer; n_ranges: integer): GdkRegion 
+	proc gdk_pango_layout_get_clip_region(layout: Pango.PangoLayout; x_origin, y_origin: integer; in index_ranges: carray of integer; n_ranges: integer): GdkRegion 
+	
+	proc gdk_pango_attr_stipple_new(stipple: GdkBitmap): Pango.PangoAttribute 
+	proc gdk_pango_attr_embossed_new(embossed: gboolean): Pango.PangoAttribute 
+	
+	// Input Devices - Functions for handling extended input devices
+	proc gdk_devices_list(): GLib.GList 
+	proc gdk_device_set_source(device: GdkDevice; source: GdkInputSource) 
+	proc gdk_device_set_mode(device: GdkDevice; mode: GdkInputMode): boolean 
+	proc gdk_device_set_key(device: GdkDevice; index: integer; keyval: integer; modifiers: GdkModifierType) 
+	proc gdk_device_set_axis_use(device: GdkDevice; index: integer; use: GdkAxisUse) 
+	proc gdk_device_get_state(device: GdkDevice; window: GdkWindow; var axes: carray of real; mask: GdkModifierType) 
+	proc gdk_device_get_axis(device: GdkDevice; in axes: carray of real; use: GdkAxisUse; var value: real): boolean 
+	proc gdk_input_set_extension_events(window: GdkWindow; mask: integer; mode: GdkExtensionMode) 
+	proc gdk_device_get_core_pointer(): GdkDevice 
+
+end Gtk2Gdk

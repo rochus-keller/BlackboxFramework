@@ -1,0 +1,240 @@
+module StdClocks
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		Dates, Math, Domains:= Stores, Ports, Stores, Models, Views, Services, Properties, 
+		TextModels
+	
+	const 
+		minSize = 25 * Ports.point
+		niceSize = 42 * Ports.point
+		minVersion = 0
+		maxVersion = 0
+	
+	type 
+		StdView = pointer to record (Views.View) 
+				time: Dates.Time 
+			end 
+		
+		TickAction = pointer to record (Services.Action) end 
+		
+		Msg = record (Models.Message) 
+				consumed: boolean
+				time: Dates.Time 
+			end 
+	
+	var 
+		clockTime: Dates.Time
+		action: TickAction
+		actionIsAlive: boolean
+	
+	
+	proc Cos(r, g: integer): integer 
+	begin 
+		return short(entier(r * Math.Cos(2 * Math.Pi() * g / 60) + 0.5))
+	end Cos
+	
+	proc Sin(r, g: integer): integer 
+	begin 
+		return short(entier(r * Math.Sin(2 * Math.Pi() * g / 60) + 0.5))
+	end Sin
+	
+	proc (a: TickAction) Do
+		var 
+			msg: Msg
+			time: Dates.Time
+	begin 
+		Dates.GetTime(time)
+		if clockTime.second = time.second then
+			Services.DoLater(action, Services.Ticks() + Services.resolution div 2) 
+		else 
+			clockTime := time
+			msg.consumed := false
+			msg.time := time
+			Views.Omnicast(msg)
+			if msg.consumed then
+				Services.DoLater(action, Services.Ticks() + Services.resolution div 2) 
+			else 
+				actionIsAlive := false 
+			end  
+		end 
+	end Do
+	
+	
+	// View
+	
+	proc DrawTick(f: Views.Frame; m, d0, d1, s, g: integer; c: Ports.Color) 
+	begin 
+		f.DrawLine(m + Sin(d0, g), m - Cos(d0, g), m + Sin(d1, g), m - Cos(d1, g), s, c)
+	end DrawTick
+	
+	
+	proc (v: StdView) Externalize(var wr: Stores.Writer) 
+	begin 
+		v.Externalize^(wr)
+		wr.WriteVersion(maxVersion)
+		wr.WriteByte(9)
+	end Externalize
+	
+	proc (v: StdView) Internalize(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+			format: byte
+	begin 
+		v.Internalize^(rd)
+		if ~rd.cancelled then
+			rd.ReadVersion(minVersion, maxVersion, thisVersion)
+			if ~rd.cancelled then
+				rd.ReadByte(format)
+				v.time.second := -1 
+			end  
+		end 
+	end Internalize
+	
+	proc (v: StdView) CopyFromSimpleView(source: Views.View) 
+	begin 
+		with source: StdView do 
+			v.time.second := -1 
+		end 
+	end CopyFromSimpleView
+	
+	proc (v: StdView) Restore(f: Views.Frame; l, t, r, b: integer) 
+		var 
+			c: Models.Context
+			a: TextModels.Attributes
+			color: Ports.Color
+			time: Dates.Time
+			i, m, d, u, hs, hd1, ms, md1, ss, sd0, sd1, w, h: integer
+	begin 
+		if ~actionIsAlive then
+			actionIsAlive := true
+			Services.DoLater(action, Services.now) 
+		end 
+		if v.time.second = -1 then
+			Dates.GetTime(v.time) 
+		end 
+		c := v.context
+		c.GetSize(w, h)
+		with c: TextModels.Context do 
+			a := c.Attr()
+			color := a.color 
+		else 
+			color := Ports.defaultColor 
+		end 
+		u := f.unit
+		d := h div u * u
+		if ~odd(d div u) then
+			dec(d, u) 
+		end 
+		m := (h - u) div 2
+		if d >= niceSize - 2 * Ports.point then
+			hs := 3 * u
+			ms := 3 * u
+			ss := u
+			hd1 := m * 4 div 6
+			md1 := m * 5 div 6
+			sd0 := -(m div 6)
+			sd1 := m - 4 * u
+			i := 0
+			while i < 12 do 
+				DrawTick(f, m, m * 11 div 12, m, u, i * 5, color)
+				inc(i) 
+			end  
+		else 
+			hd1 := m * 2 div 4
+			hs := u
+			ms := u
+			ss := u
+			md1 := m * 3 div 4
+			sd0 := 0
+			sd1 := 3 * u 
+		end 
+		time := v.time
+		f.DrawOval(0, 0, d, d, u, color)
+		DrawTick(f, m, 0, m * 4 div 6, hs, time.hour mod 12 * 5 + time.minute div 12, color)
+		DrawTick(f, m, 0, md1, ms, time.minute, color)
+		DrawTick(f, m, sd0, sd1, ss, time.second, color)
+	end Restore
+	
+	proc (v: StdView) HandleModelMsg(var msg: Models.Message) 
+		var 
+			w, h: integer
+	begin 
+		with msg: Msg do 
+			msg.consumed := true
+			if v.time.second # msg.time.second then // execute only once per view
+				Views.Update(v, Views.keepFrames)
+				v.time := msg.time 
+			end  
+		else  
+		end 
+	end HandleModelMsg
+	
+	proc SizePref(v: StdView; var p: Properties.SizePref) 
+	begin 
+		if (p.w > Views.undefined) & (p.h > Views.undefined) then
+			Properties.ProportionalConstraint(1, 1, p.fixedW, p.fixedH, p.w, p.h)
+			if p.w < minSize then
+				p.w := minSize
+				p.h := minSize 
+			end  
+		else 
+			p.w := niceSize
+			p.h := niceSize 
+		end 
+	end SizePref
+	
+	proc (v: StdView) HandlePropMsg(var msg: Properties.Message) 
+	begin 
+		with msg: Properties.Preference do 
+			with msg: Properties.SizePref do 
+				SizePref(v, msg) 
+			else  
+			end  
+		else  
+		end 
+	end HandlePropMsg
+	
+	
+	// allocation
+	
+	proc New*(): Views.View 
+		var 
+			v: StdView
+	begin 
+		new(v)
+		v.time.second := -1
+		return v
+	end New
+	
+	proc Deposit*
+	begin 
+		Views.Deposit(New())
+	end Deposit
+
+
+begin
+	clockTime.second := -1
+	new(action)
+	actionIsAlive := false
+(* CLOSE
+	if actionIsAlive then
+		Services.RemoveAction(action) 
+	end  *) 
+end StdClocks

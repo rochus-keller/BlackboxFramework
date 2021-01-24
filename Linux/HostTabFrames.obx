@@ -1,0 +1,869 @@
+module HostTabFrames
+	
+	(* project	= "ypk Host"
+	   subproject	= "Control Frames"
+	   organization	= "https://bitbucket.org/oberoncore/ypk/src/default/Mod/HostTabFrames.odc"
+	   contributors	= "Peter Kushnir"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   purpose	= ""
+	   changes	= ""
+	   issues	= "" *)
+	
+	
+	
+	import Controllers, TV:= StdTabViews, Dialog, Fonts, Kernel, Models, Ports, Services, Stores, Views
+	
+	const 
+		pixel = short(entier((3 / 4) * Ports.point)) // Традиционный пиксел
+		scrollStep = 40 * pixel
+		none = -1
+	
+	type 
+		IteratorItem = pointer to (* abstract *) record 
+				root: Iterator
+				prev, next: IteratorItem 
+			end 
+		
+		Iterator = pointer to (* limited *) record (IteratorItem) 
+				first, last, this: IteratorItem
+				length: integer 
+			end 
+		
+		IntMap = pointer to (* limited *) record 
+				list: Iterator 
+			end 
+		
+		IntItem = pointer to record (IteratorItem) 
+				id: integer
+				data: ANYPTR 
+			end 
+		
+		
+		UpdateAction = pointer to record (Services.Action) 
+				v: Views.View
+				l, t, r, b: integer 
+			end 
+		
+		Directory = pointer to record (TV.FrameDirectory) 
+				list: IntMap 
+			end 
+		
+		Scroll = pointer to record (Views.View) end 
+		
+		ScrollContext = pointer to record (Models.Context) 
+				base: Views.View
+				v: Scroll
+				l, t, r, b: integer 
+			end 
+		
+		Tab = pointer to record (Views.View) 
+				i: integer
+				title: array 256 of char 
+			end 
+		
+		TabContext = pointer to record (Models.Context) 
+				base: Views.View
+				v: Tab
+				l, t, r, b: integer 
+			end 
+		
+		Bar = pointer to record (Views.View) end 
+		
+		BarContext = pointer to record (Models.Context) 
+				base: Views.View
+				v: Bar
+				l, t, r, b, dx: integer 
+			end 
+		
+		Frame = pointer to record (TV.Frame) 
+				tabs: record 
+						h: integer
+						c: BarContext
+						s: ScrollContext 
+					end  
+			end 
+		
+		Prop = pointer to record 
+				dx, bw, w, hl: integer
+				upd: integer 
+			end 
+	
+	
+	var 
+		dir: Directory
+	
+	
+	proc NewIterator(): Iterator 
+		var 
+			it: Iterator
+	begin 
+		new(it)
+		it.length := 0
+		return (it)
+	end NewIterator
+	
+	
+	proc (i: Iterator) First()  // new
+	begin 
+		i.this := i.first
+	end First
+	
+	proc (i: Iterator) Next()  // new
+	begin 
+		assert(i.this # nil, 20)
+		i.this := i.this.next
+	end Next
+	
+	proc (i: Iterator) Add(item: IteratorItem)  // new
+	begin 
+		assert(item # nil, 20)
+		item.root := i
+		if (i.last # nil) & (i.first # nil) then
+			i.last.next := item
+			item.prev := i.last
+			item.next := nil
+			i.last := item 
+		else 
+			i.first := item
+			i.last := item
+			item.next := nil
+			item.prev := nil 
+		end 
+		inc(i.length)
+	end Add
+	
+	
+	proc (m: IntMap) Item2(id: integer): IntItem  // new
+		var 
+			x: IntItem
+	begin 
+		x := nil
+		m.list.First
+		while (m.list.this # nil) & (m.list.this is IntItem) & (x = nil) do 
+			if m.list.this(IntItem).id = id then
+				x := m.list.this(IntItem) 
+			end 
+			m.list.Next 
+		end 
+		return x
+	end Item2
+	
+	proc (m: IntMap) Item(id: integer): ANYPTR  // new
+		var 
+			x: IntItem
+	begin 
+		x := m.Item2(id)
+		if x # nil then
+			return x.data 
+		else 
+			return nil 
+		end 
+	end Item
+	
+	proc (m: IntMap) Add(id: integer; item: ANYPTR)  // new
+		var 
+			i: IntItem
+	begin 
+		assert(item # nil, 20)
+		i := m.Item2(id)
+		if i # nil then
+			i.data := item 
+		else 
+			new(i)
+			i.id := id
+			i.data := item
+			m.list.Add(i) 
+		end 
+	end Add
+	
+	proc NewIntMap(): IntMap 
+		var 
+			i: IntMap
+	begin 
+		new(i)
+		i.list := NewIterator()
+		return i
+	end NewIntMap
+	
+	
+	proc (a: UpdateAction) Do
+	begin 
+		Views.UpdateIn(a.v, a.l, a.t, a.r, a.b, true)
+	end Do
+	
+	proc (d: Directory) This(v: Views.View): Prop  // new
+		var 
+			x: ANYPTR
+			p: Prop
+	begin 
+		Kernel.Collect
+		x := d.list.Item(Services.AdrOf(v))
+		if x # nil then
+			p := x(Prop) 
+		end 
+		return p
+	end This
+	
+	proc (d: Directory) Add(v: Views.View; p: Prop)  // new
+	begin 
+		d.list.Add(Services.AdrOf(v), p)
+	end Add
+	
+	proc (d: Directory) NewFrame(v: Views.View)  // new
+		var 
+			p: Prop
+	begin 
+		p := dir.This(v)
+		if p # nil then
+			p.upd := 0 
+		end 
+	end NewFrame
+	
+	proc (d: Directory) UpdateView(v: Views.View)  // new
+		var 
+			p: Prop
+	begin 
+		p := d.This(v)
+		if (p # nil) & (p.upd = 0) then
+			Kernel.Collect
+			Views.Update(v, true)
+			p.upd := 1 
+		else 
+			Views.Update(v, true) 
+		end 
+	end UpdateView
+	
+	proc (d: Directory) UpdateFrame(f: Frame)  // new
+		var 
+			p: Prop
+			a: UpdateAction
+	begin 
+		p := d.This(f.view)
+		if (p # nil) then
+			Kernel.Collect
+			new(a)
+			a.v := f.view
+			a.l := f.tabs.c.l
+			a.t := f.tabs.c.t
+			a.r := f.tabs.c.r
+			a.b := f.tabs.c.b
+			Services.DoLater(a, Services.immediately)
+			p.upd := 1 
+		end 
+	end UpdateFrame
+	
+	proc (d: Directory) Close(f: Frame)  // new
+		var 
+			p: Prop
+	begin 
+		p := d.This(f.view)
+		if (p # nil) then
+			Kernel.Collect
+			p.upd := 0 
+		end 
+	end Close
+	
+	proc NewTabContext(v, base: Views.View): TabContext 
+		var 
+			c: TabContext
+	begin 
+		new(c)
+		c.v := v(Tab)
+		c.base := base
+		v.InitContext(c)
+		Stores.Join(v, base)
+		return c
+	end NewTabContext
+	
+	proc (c: TabContext) ThisModel(): Models.Model 
+	begin 
+		return nil // don't give the embedded views information about the dummy twin model
+	end ThisModel
+	
+	proc (c: TabContext) GetSize(var w, h: integer) 
+	begin 
+		w := c.r - c.l
+		h := c.b - c.t
+	end GetSize
+	
+	proc (c: TabContext) MakeVisible(l, t, r, b: integer) 
+		var 
+			w, h, sep: integer
+	begin 
+		c.base.context.MakeVisible(l, t, r, b)
+	end MakeVisible
+	
+	proc (c: TabContext) Consider(var p: Models.Proposal) 
+	begin 
+		c.base.context.Consider(p)
+	end Consider
+	
+	proc (c: TabContext) Normalize(): boolean 
+	begin 
+		return c.base.context.Normalize()
+	end Normalize
+	
+	
+	proc NewBarContext(v, base: Views.View): BarContext 
+		var 
+			c: BarContext
+			p: Prop
+	begin 
+		new(c)
+		c.v := v(Bar)
+		c.base := base
+		v.InitContext(c)
+		Stores.Join(v, base)
+		p := dir.This(base)
+		if p = nil then
+			new(p)
+			p.dx := 0
+			p.hl := none
+			p.upd := 0
+			dir.Add(c.base, p) 
+		end 
+		p.bw := 0
+		p.w := 0
+		return c
+	end NewBarContext
+	
+	proc (c: BarContext) ThisModel(): Models.Model 
+	begin 
+		return nil // don't give the embedded views information about the dummy twin model
+	end ThisModel
+	
+	proc (c: BarContext) GetSize(var w, h: integer) 
+	begin 
+		w := c.r - c.l
+		h := c.b - c.t
+	end GetSize
+	
+	proc (c: BarContext) MakeVisible(l, t, r, b: integer) 
+		var 
+			w, h, sep: integer
+	begin 
+		c.base.context.MakeVisible(l, t, r, b)
+	end MakeVisible
+	
+	proc (c: BarContext) Consider(var p: Models.Proposal) 
+	begin 
+		c.base.context.Consider(p)
+	end Consider
+	
+	proc (c: BarContext) Normalize(): boolean 
+	begin 
+		return c.base.context.Normalize()
+	end Normalize
+	
+	proc (c: BarContext) SetWidth(bw: integer)  // new
+		var 
+			p: Prop
+	begin 
+		p := dir.This(c.base)
+		if p # nil then
+			p.bw := bw
+			p.w := c.r - c.l 
+		end 
+	end SetWidth
+	
+	proc (c: BarContext) SetHover(idx: integer)  // new
+		var 
+			p: Prop
+	begin 
+		p := dir.This(c.base)
+		if (p # nil) & (p.hl # idx) then 
+		// p.hl := idx не нужен
+		end 
+	end SetHover
+	
+	proc (c: BarContext) GetHover(): integer  // new
+		var 
+			p: Prop
+			res: integer
+	begin 
+		res := none
+		p := dir.This(c.base)
+		if p # nil then
+			res := p.hl 
+		end 
+		return res
+	end GetHover
+	
+	proc NewScrollContext(v, base: Views.View): ScrollContext 
+		var 
+			c: ScrollContext
+	begin 
+		new(c)
+		c.v := v(Scroll)
+		c.base := base
+		v.InitContext(c)
+		Stores.Join(v, base)
+		return c
+	end NewScrollContext
+	
+	proc (c: ScrollContext) ThisModel(): Models.Model 
+	begin 
+		return nil // don't give the embedded views information about the dummy twin model
+	end ThisModel
+	
+	proc (c: ScrollContext) GetSize(var w, h: integer) 
+	begin 
+		w := c.r - c.l
+		h := c.b - c.t
+	end GetSize
+	
+	proc (c: ScrollContext) MakeVisible(l, t, r, b: integer) 
+		var 
+			w, h, sep: integer
+	begin 
+		c.base.context.MakeVisible(l, t, r, b)
+	end MakeVisible
+	
+	proc (c: ScrollContext) Consider(var p: Models.Proposal) 
+	begin 
+		c.base.context.Consider(p)
+	end Consider
+	
+	proc (c: ScrollContext) Normalize(): boolean 
+	begin 
+		return c.base.context.Normalize()
+	end Normalize
+	
+	proc (c: ScrollContext) SetPos(x: integer)  // new
+		var 
+			p: Prop
+			n: integer
+	begin 
+		p := dir.This(c.base)
+		n := p.bw div scrollStep
+		p.dx := max(0, min(p.dx + x, n - 2))
+	end SetPos
+	
+	proc (c: ScrollContext) GetPos(var x: integer)  // new
+		var 
+			p: Prop
+	begin 
+		p := dir.This(c.base)
+		x := p.dx
+	end GetPos
+	
+	proc DrawRect3d(f: Views.Frame; l, t, r, b: integer; dir: byte) 
+		var 
+			x1, y1, h: integer
+	begin 
+		h := 7 * f.dot
+		x1 := (r - l) div 2
+		y1 := ((b - t) div 2) - (h div 2)
+		case dir of 
+			| 2:  // влево
+				f.DrawRect(l + 5 * f.dot, t + 7 * f.dot + y1, l + 6 * f.dot, t + 8 * f.dot + y1, Ports.fill, Ports.black) // лев - 1
+				f.DrawRect(l + 6 * f.dot, t + 6 * f.dot + y1, l + 7 * f.dot, t + 9 * f.dot + y1, Ports.fill, Ports.black) // 2
+				f.DrawRect(l + 7 * f.dot, t + 5 * f.dot + y1, l + 8 * f.dot, t + 10 * f.dot + y1, Ports.fill, Ports.black) // 3
+				f.DrawRect(l + 8 * f.dot, t + 4 * f.dot + y1, l + 9 * f.dot, t + 11 * f.dot + y1, Ports.fill, Ports.black)  // 4
+			| 3:  // вправо
+				f.DrawRect(r - 7 * f.dot, t + 7 * f.dot + y1, r - 6 * f.dot, t + 8 * f.dot + y1, Ports.fill, Ports.black) // прав - 1
+				f.DrawRect(r - 8 * f.dot, t + 6 * f.dot + y1, r - 7 * f.dot, t + 9 * f.dot + y1, Ports.fill, Ports.black) // прав - 1
+				f.DrawRect(r - 9 * f.dot, t + 5 * f.dot + y1, r - 8 * f.dot, t + 10 * f.dot + y1, Ports.fill, Ports.black) // прав - 1
+				f.DrawRect(r - 10 * f.dot, t + 4 * f.dot + y1, r - 9 * f.dot, t + 11 * f.dot + y1, Ports.fill, Ports.black)  // прав - 1
+		else  
+		end 
+	end DrawRect3d
+	
+	proc (v: Scroll) Restore(f: Views.Frame; l, t, r, b: integer) 
+		var 
+			w, h: integer
+			p: Prop
+	begin 
+		v.context.GetSize(w, h)
+		p := dir.This(v.context(ScrollContext).base)
+		if (p # nil) & (p.w < p.bw) then
+			f.DrawRect(0, 3 * pixel, (w - pixel) div 2, h, Ports.fill, Ports.grey12)
+			f.DrawRect((w - pixel) div 2, 3 * pixel, w - pixel, h, Ports.fill, Ports.grey12)
+			f.DrawRect(0, 3 * pixel, w - pixel, h, pixel, Ports.black)
+			
+			f.DrawLine((w div 2) - pixel, 3 * pixel, (w div 2) - pixel, h - 2 * pixel, 2 * pixel, Ports.black)
+			
+			DrawRect3d(f, 0, 0, (w div 2) - 2 * pixel, h - 2 * pixel, 2)
+			DrawRect3d(f, (w div 2) + 2 * pixel, 0, w - pixel, h - 2 * pixel, 3) 
+		
+		else 
+			f.DrawLine(0, h - pixel, w - pixel, h - pixel, pixel, Ports.black)
+			p.dx := 0 
+		end 
+	end Restore
+	
+	proc (v: Scroll) HandleCtrlMsg(f: Views.Frame; var msg: Views.CtrlMessage; var focus: Views.View) 
+		var 
+			w, h, x, y, res: integer
+			mods: set
+			isDown: boolean
+			p: Prop
+	begin 
+		v.context.GetSize(w, h)
+		with 
+		msg: Controllers.TrackMsg do  // Rochus: removed unneccessary bar
+			f.Input(x, y, mods, isDown)
+			if isDown then
+				p := dir.This(v.context(ScrollContext).base)
+				if (p # nil) & (p.w < p.bw) then
+					if ((w div 2) >= x) then
+						res := -1 
+					else 
+						res := 1 
+					end 
+					v.context(ScrollContext).SetPos(res)
+					dir.UpdateView(v.context(ScrollContext).base) 
+				end  
+			end  
+		else  
+		end 
+		focus := v
+	end HandleCtrlMsg
+	
+	proc NewScroll(): Scroll 
+		var 
+			s: Scroll
+	begin 
+		new(s)
+		return s
+	end NewScroll
+	
+	
+	proc (v: Tab) Restore(f: Views.Frame; l, t, r, b: integer) 
+		var 
+			w, h, dh: integer
+			v0: Views.View
+			tv: TV.View
+			len_, i: integer
+			font: Fonts.Font
+			sw, tt, tl, tr, tb, col, mcol: integer
+			asc, desc, weight: integer
+			hov, this: boolean
+	begin 
+		v.context.GetSize(w, h)
+		font := Fonts.dir.Default()
+		font.GetBounds(asc, desc, weight)
+		tv := v.context(TabContext).base(Bar).context(BarContext).base(TV.View)
+		hov := (v.i = v.context(TabContext).base.context(BarContext).GetHover())
+		this := (v.i = tv.Index())
+		if hov & this then
+			col := Ports.grey6 
+		elsif hov or this then 
+			col := Ports.white
+			mcol := Ports.black 
+		else 
+			col := Ports.grey12
+			mcol := Ports.grey50 
+		end 
+		sw := font.StringWidth(v.title)
+		tl := v.context(TabContext).l
+		tr := v.context(TabContext).r
+		tt := v.context(TabContext).t
+		tb := v.context(TabContext).b
+		f.DrawRect(0, 0, w, h, pixel, mcol)
+		f.DrawRect(pixel, pixel, w - pixel, h, Ports.fill, col)
+		if this then
+			dh := 3 * pixel 
+		else 
+			dh := 1 * pixel 
+		end 
+		f.DrawString((w div 2) - (sw div 2), (h div 2) + (asc div 2) - dh, Ports.black, v.title, font)
+	end Restore
+	
+	proc (v: Tab) HandleCtrlMsg(f: Views.Frame; var msg: Views.CtrlMessage; var focus: Views.View) 
+		var 
+			w, h, x, y: integer
+			mods: set
+			isDown: boolean
+			tv: TV.View
+			g: Views.Frame
+			dw: integer
+	begin 
+		v.context.GetSize(w, h)
+		with 
+		msg: Controllers.TrackMsg do  // Rochus: removed unneccessary bar
+			f.Input(x, y, mods, isDown)
+			if isDown then
+				g := f
+				repeat 
+					g := Views.HostOf(g) 
+				until (g = nil) or (g is Frame) 
+				v.context(TabContext).base.context(BarContext).SetHover(v.i)
+				if g # nil then
+					dw := v.context(TabContext).base.context(BarContext).r - v.context(TabContext).r
+					if dw < 10 * pixel then
+						g(Frame).tabs.s.SetPos(max(2, w div scrollStep)) 
+					else 
+						dw := v.context(TabContext).l - v.context(TabContext).base.context(BarContext).l
+						if dw < 10 * pixel then
+							g(Frame).tabs.s.SetPos(-max(2, w div scrollStep)) 
+						end  
+					end  
+				end 
+				g(Frame).SetIndex(v.i)  // вытащил из ветки охраны
+			end  
+		| msg: Controllers.PollCursorMsg do 
+			if (msg.x > v.context(TabContext).l) & (msg.y > v.context(TabContext).t) & (msg.x < v.context(TabContext).r) & (msg.y < v.context(TabContext).b) then 
+			// v.context(TabContext).base.context(BarContext).SetHover(v.i)
+			else  
+			end  
+		else  
+		end 
+		focus := nil
+	end HandleCtrlMsg
+	
+	proc NewTab(idx: integer; title: array of char): Tab 
+		var 
+			t0: Tab
+	begin 
+		new(t0)
+		t0.i := idx
+		t0.title := title
+		return t0
+	end NewTab
+	
+	proc (v: Bar) Restore(f: Views.Frame; l, t, r, b: integer) 
+		var 
+			dw, w, h: integer
+			s: Dialog.String
+			v0: Views.View
+			tv: TV.View
+			len_, i: integer
+			font: Fonts.Font
+			sw, tt, tl, tr, tb, il, ir, col: integer
+			asc, desc, weight: integer
+			tab: Tab
+			tc: TabContext
+			bw, tw, th: integer
+	begin 
+		v.context.GetSize(w, h)
+		font := Fonts.dir.Default()
+		font.GetBounds(asc, desc, weight)
+		tv := v.context(BarContext).base(TV.View)
+		i := 0
+		len_ := tv.NofTabs()
+		dw := -(scrollStep * v.context(BarContext).dx)
+		tl := dw + 5 * pixel
+		tb := h - pixel
+		tr := dw
+		tt := 0
+		il := 0
+		ir := 0
+		bw := 0
+		while i < len_ do 
+			tv.GetItem(i, s, v0)
+			Dialog.MapString(s, s)
+			
+			// s := v.vitle$;
+			
+			sw := font.StringWidth(s)
+			// sw := MAX(sw + MAX(5*pixel, sw DIV 5), 20 * pixel);
+			sw := sw + 4 * Ports.mm
+			tr := tr + sw
+			
+			tab := NewTab(i, s)
+			tc := NewTabContext(tab, v)
+			if i = tv.Index() then
+				tt := 2 * pixel
+				il := tl
+				ir := tr 
+			else 
+				tt := 4 * pixel 
+			end 
+			tc.l := tl - pixel
+			tc.r := tr
+			tc.t := tt
+			tc.b := tb
+			if i = tv.Index() then
+				Views.InstallFrame(f, tab, tl - pixel, tt, 1, true) 
+			else 
+				Views.InstallFrame(f, tab, tl - pixel, tt, 0, true) 
+			end 
+			tc.GetSize(tw, th)
+			inc(bw, tw)
+			tl := tr
+			inc(i) 
+		end 
+		v.context(BarContext).SetWidth(bw)
+		f.DrawLine(0, h - pixel, il, h - pixel, pixel, Ports.black)
+		f.DrawLine(ir, h - pixel, w, h - pixel, pixel, Ports.black)
+	end Restore
+	
+	proc (v: Bar) HandleCtrlMsg(f: Views.Frame; var msg: Views.CtrlMessage; var focus: Views.View) 
+		var 
+			g: Views.Frame
+			hl: integer
+	begin 
+		with 
+		msg: Controllers.TrackMsg do  // Rochus: removed unneccessary bar
+			g := Views.FrameAt(f, msg.x, msg.y)
+			if g # nil then
+				Views.ForwardCtrlMsg(g, msg) 
+			end  
+		| msg: Controllers.PollCursorMsg do 
+			g := Views.FrameAt(f, msg.x, msg.y) 
+		(* hl := v.context(BarContext).GetHover();
+		   IF g # NIL THEN
+		   Views.ForwardCtrlMsg(g, msg)
+		   ELSE v.context(BarContext).SetHover(none) END;
+		   IF (hl # v.context(BarContext).GetHover()) THEN
+		   dir.UpdateFrame(Views.HostOf(f)(Frame))
+		   END *)
+		| msg: Controllers.PollOpsMsg do  
+		else  
+		end 
+		focus := nil
+	end HandleCtrlMsg
+	
+	
+	proc (f: Frame) GetDispSize(var x, y, w, h: integer) 
+	begin 
+		f.view.context.GetSize(w, h)
+		x := 2 * pixel
+		y := f.tabs.h + 2 * pixel
+		w := w - 4 * pixel
+		h := h - y - 2 * pixel
+	end GetDispSize
+	
+	proc (f: Frame) InDispArea(x, y: integer): boolean 
+		var 
+			ok: boolean
+			w, h: integer
+		
+		proc ResetHover
+			var 
+				p: Prop
+		begin 
+			p := dir.This(f.view)
+			if p # nil then
+				if p.hl >= 0 then
+					p.hl := none
+					dir.UpdateFrame(f) 
+				end  
+			end 
+		end ResetHover
+	
+	begin 
+		f.view.context.GetSize(w, h)
+		ok := (abs(w - x) > 2 * pixel) & (y > (f.tabs.h + 2 * pixel)) & (y < h)
+		if ok then 
+		// ResetHover
+		end 
+		return ok
+	end InDispArea
+	
+	proc (f: Frame) DrawTabs // new
+		var 
+			w, h, col: integer
+	begin 
+		f.view.context.GetSize(w, h)
+		f.tabs.c.l := 0
+		f.tabs.c.t := 0
+		f.tabs.c.r := w - f.tabs.h
+		f.tabs.c.b := f.tabs.h + pixel
+		f.tabs.s.GetPos(f.tabs.c.dx)
+		Views.InstallFrame(f, f.tabs.c.v, 0, 0, 0, true)
+		f.tabs.s.l := f.tabs.c.r
+		f.tabs.s.t := 0
+		f.tabs.s.r := w
+		f.tabs.s.b := f.tabs.h + pixel
+		Views.InstallFrame(f, f.tabs.s.v, f.tabs.c.r, 0, 0, true)
+	end DrawTabs
+	
+	proc (f: Frame) UpdateList
+		var 
+			v: Bar
+			s: Scroll
+			res: integer
+	begin 
+		if f.tabs.c = nil then
+			dir.NewFrame(f.view)
+			new(v)
+			f.tabs.c := NewBarContext(v, f.view)
+			new(s)
+			f.tabs.s := NewScrollContext(s, f.view)
+			Dialog.Call('Kernel.Collect', '', res) 
+		end 
+	end UpdateList
+	
+	proc (f: Frame) Restore(l, t, r, b: integer) 
+		var 
+			w, h: integer
+	begin 
+		f.view.context.GetSize(w, h)
+		f.DrawTabs
+		f.DrawLine(0, f.tabs.h, 0, h - pixel, pixel, Ports.black)
+		f.DrawLine(w - pixel, f.tabs.h, w - pixel, h - pixel, pixel, Ports.black)
+		f.DrawLine(0, h - pixel, w - pixel, h - pixel, pixel, Ports.black)
+	end Restore
+	
+	proc (f: Frame) MouseDown(x, y: integer; buttons: set) 
+		var 
+			g: Views.Frame
+			tm: Controllers.TrackMsg
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			g := Views.FrameAt(f, x, y)
+			if g # nil then
+				tm.x := x
+				tm.y := y
+				tm.modifiers := {}
+				Views.ForwardCtrlMsg(g, tm) 
+			end  
+		end 
+	end MouseDown
+	
+	proc (f: Frame) GetCursor(x, y: integer; mods: set; var c: integer) 
+		var 
+			g: Views.Frame
+			cm: Controllers.PollCursorMsg
+	begin 
+		assert(~f.disabled, 100)
+		if f.rider # nil then
+			if mods = {} then
+				g := Views.FrameAt(f, x, y)
+				if g # nil then
+					cm.x := x
+					cm.y := y
+					cm.modifiers := {}
+					Views.ForwardCtrlMsg(g, cm) 
+				end  
+			end  
+		end 
+	end GetCursor
+	
+	proc (f: Frame) Close
+	begin 
+		dir.Close(f)
+	end Close
+	
+	proc (d: Directory) GetTabSize(var w, h: integer) 
+	begin 
+		if w = Views.undefined then
+			w := 150 * pixel 
+		end 
+		if h = Views.undefined then
+			h := 100 * pixel 
+		end 
+	end GetTabSize
+	
+	proc (d: Directory) New(): Frame 
+		var 
+			f: Frame
+	begin 
+		new(f)
+		f.tabs.h := 25 * pixel
+		return f
+	end New
+	
+	proc Init*
+	begin 
+		new(dir)
+		dir.list := NewIntMap()
+		TV.SetFrameDir(dir)
+	end Init
+
+end HostTabFrames

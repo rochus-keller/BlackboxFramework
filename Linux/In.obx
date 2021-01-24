@@ -1,0 +1,118 @@
+module In
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import TextMappers, TextControllers
+	
+	var 
+		Done-: boolean
+		s: TextMappers.Scanner
+	
+	proc Open*
+		var 
+			c: TextControllers.Controller
+			beg, end_: integer
+	begin 
+		c := TextControllers.Focus()
+		if c # nil then
+			if c.HasSelection() then
+				c.GetSelection(beg, end_) 
+			else 
+				beg := 0 
+			end 
+			s.ConnectTo(c.text)
+			s.SetPos(beg)
+			s.rider.Read
+			Done := true 
+		else 
+			s.ConnectTo(nil)
+			Done := false 
+		end 
+	end Open
+	
+	proc Char*(var ch: char) 
+	begin 
+		if Done then
+			if s.rider.eot then
+				Done := false 
+			else 
+				ch := s.rider.char_
+				s.rider.Read 
+			end  
+		end 
+	end Char
+	
+	proc Int*(var i: integer) 
+	begin 
+		if Done then
+			s.Scan
+			if (s.type_ = TextMappers.int_) then
+				i := s.int_ 
+			else 
+				Done := false 
+			end  
+		end 
+	end Int
+	
+	proc LongInt*(var l: longint) 
+	begin 
+		if Done then
+			s.Scan
+			if (s.type_ = TextMappers.lint) or (s.type_ = TextMappers.int_) then
+				l := s.lint 
+			else 
+				Done := false 
+			end  
+		end 
+	end LongInt
+	
+	proc Real*(var x: real) 
+	begin 
+		if Done then
+			s.Scan
+			if s.type_ = TextMappers.real_ then
+				x := (s.real_) 
+			elsif s.type_ = TextMappers.int_ then 
+				x := s.int_ 
+			else 
+				Done := false 
+			end  
+		end 
+	end Real
+	
+	proc Name*(var name: array of char) 
+	begin 
+		if Done then
+			s.Scan
+			TextMappers.ScanQualIdent(s, name, Done) 
+		end 
+	end Name
+	
+	proc String*(var str: array of char) 
+	begin 
+		if Done then
+			s.Scan
+			if s.type_ = TextMappers.string then
+				str := s.string 
+			else 
+				Done := false 
+			end  
+		end 
+	end String
+
+end In

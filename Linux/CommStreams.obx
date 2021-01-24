@@ -1,0 +1,106 @@
+module CommStreams
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Meta
+	
+	const 
+		// portable error codes:
+		done* = 0
+		noSuchProtocol* = 1
+		invalidLocalAdr* = 2
+		invalidRemoteAdr* = 3
+		networkDown* = 4
+		localAdrInUse* = 5
+		remoteAdrInUse* = 6
+	
+	type 
+		Adr* = pointer to array of char
+		
+		Stream* = pointer to (* abstract *) record end 
+		
+		StreamAllocator* = proc 
+			(localAdr, remoteAdr: array of char; var s: Stream; var res: integer)
+		
+		Listener* = pointer to (* abstract *) record end 
+		
+		ListenerAllocator* = proc 
+			(localAdr: array of char; var l: Listener; var res: integer)
+	
+	
+	proc (s: Stream) RemoteAdr*(): Adr  end // new abstract
+	proc (s: Stream) IsConnected*(): boolean  end // new abstract
+	proc (s: Stream) WriteBytes*(
+		in x: array of byte; beg, len_: integer; var written: integer)  end // new abstract
+	proc (s: Stream) ReadBytes*(
+		var x: array of byte; beg, len_: integer; var read: integer)  end // new abstract
+	proc (s: Stream) Close* end // new abstract
+	
+	proc NewStream*(protocol, localAdr, remoteAdr: array of char; var s: Stream; var res: integer) 
+		var 
+			ok: boolean
+			m, p: Meta.Item
+			mod_: Meta.Name
+			v: record (Meta.Value) 
+					p: StreamAllocator 
+				end 
+	begin 
+		assert(protocol # "", 20)
+		res := noSuchProtocol
+		mod_ := protocol
+		Meta.Lookup(mod_, m)
+		if m.obj = Meta.modObj then
+			m.Lookup("NewStream", p)
+			if p.obj = Meta.procObj then
+				p.GetVal(v, ok)
+				if ok then
+					v.p(localAdr, remoteAdr, s, res) 
+				end  
+			end  
+		end 
+	end NewStream
+	
+	proc (l: Listener) LocalAdr*(): Adr  end // new abstract
+	proc (l: Listener) Accept*(var s: Stream)  end // new abstract
+	proc (l: Listener) Close* end // new abstract
+	
+	proc NewListener*(protocol, localAdr: array of char; var l: Listener; var res: integer) 
+		var 
+			ok: boolean
+			m, p: Meta.Item
+			mod_: Meta.Name
+			v: record (Meta.Value) 
+					p: ListenerAllocator 
+				end 
+	begin 
+		assert(protocol # "", 20)
+		res := noSuchProtocol
+		mod_ := protocol
+		Meta.Lookup(mod_, m)
+		if m.obj = Meta.modObj then
+			m.Lookup("NewListener", p)
+			if p.obj = Meta.procObj then
+				p.GetVal(v, ok)
+				if ok then
+					v.p(localAdr, l, res) 
+				end  
+			end  
+		end 
+	end NewListener
+
+end CommStreams

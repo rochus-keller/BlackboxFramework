@@ -1,0 +1,2901 @@
+module Kernel
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20070123, bh, Beep using MessageBeep
+	   - 20070125, bh, Support for procedure signatures added
+	   - 20070130, bh, KERNEL32 & USER32 eliminated
+	   - 20070220, bh, comSig eliminated
+	   - 20070307, bh, improved Ctrl-Break handling
+	   - 20070308, bh, check for unloaded module in ExecFinalizer
+	   - 20080107, bh, full GC included in NewBlock
+	   - 20080107, bh, pointer anchoring bug corrected in NewRec & NewArr
+	   - 20181123, center #192, Kernel.Call does not work with ANYREC-parameters
+	   - 20181213, center #194, Meta.PutParam and Kernel.Call for open arrays are mismatched
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	(* A. V. Shiryaev, 2012.11, 2013.10, 2016.11, 2018.06, 2019.06
+	   Linux Kernel
+	   Based on 1.7.1-a1 (build number 710) Windows Kernel
+	   Some parts taken from OpenBUGS linKernel
+	   
+	   Most Windows-specific code removed
+	   Some Windows-specific code commented and marked red
+	   Windows COM-specific code re-marked from green to gray
+	   Linux(/OpenBSD,/FreeBSD)-specific code marked green
+	   
+	   TODO:
+	   handle stack overflow exceptions
+	   Quit from TrapHandler *)
+	
+	
+	import S:= SYSTEM, Libc:= LinLibc, LibW:= LinLibW, Dl:= LinDl, Rt:= LinRt
+	
+	const 
+		strictStackSweep = true
+		
+		nameLen* = 256
+		
+		littleEndian* = true
+		timeResolution* = 1000 // ticks per second
+		
+		processor* = 10 // i386
+		
+		objType* = "ocf" // file types
+		symType* = "osf"
+		docType* = "odc"
+		
+		// loader constants
+		done* = 0
+		fileNotFound* = 1
+		syntaxError* = 2
+		objNotFound* = 3
+		illegalFPrint* = 4
+		cyclicImport* = 5
+		noMem* = 6
+		commNotFound* = 7
+		commSyntaxError* = 8
+		moduleNotFound* = 9
+		
+		any = 1000000
+		
+		CX = 1
+		SP = 4 // register number of stack pointer
+		FP = 5 // register number of frame pointer
+		ML = 3 // register which holds the module list at program start
+		
+		N = 128 div 16 // free lists
+		
+		// kernel flags in module desc
+		init = 16
+		dyn = 17
+		dll = 24
+		iptrs = 30
+		
+		// meta interface consts
+		mConst = 1
+		mTyp = 2
+		mVar = 3
+		mProc = 4
+		mField = 5
+		
+		debug = false
+		
+		
+		// sigStackSize = MAX(Libc.SIGSTKSZ, 65536);
+		
+		
+		
+		trapReturn = 1 // Return value for sigsetjmp given from siglongjmp
+		
+		// constants for the message boxes
+		mbClose* = -1
+		mbOk* = 0
+		mbCancel* = 1
+		mbRetry* = 2
+		mbIgnore* = 3
+		mbYes* = 4
+		mbNo* = 5
+	
+	type 
+		Name* = array nameLen of char
+		Utf8Name* = array nameLen of char
+		Command* = proc 
+		
+		Module* = unsafe pointer to cstruct 
+				next-: Module
+				opts-: set // 0..15: compiler opts, 16..31: kernel flags
+				refcnt-: integer // <0: module invalidated
+				compTime-, loadTime-: array 6 of shortint
+				ext-: integer // currently not used
+				term-: Command // terminator
+				nofimps-, nofptrs-: integer
+				csize-, dsize-, rsize-: integer
+				code-, data-, refs-: integer
+				procBase-, varBase-: integer // meta base addresses
+				names-: unsafe pointer to carray of char // names[0] = 0X
+				ptrs-: unsafe pointer to carray of integer
+				imports-: unsafe pointer to carray of Module
+				export-: Directory // exported objects (name sorted)
+				name-: Utf8Name 
+			end 
+		
+		Type* = unsafe pointer to cstruct 
+				// record: ptr to method n at offset - 4 * (n+1)
+				size_-: integer // record: size, array: #elem, dyn array: 0, proc: sigfp
+				mod_-: Module
+				id-: integer // name idx * 256 + lev * 16 + attr * 4 + form
+				base-: array 16 of Type // signature if form = ProcTyp
+				fields-: Directory // new fields (declaration order)
+				ptroffs-: array any of integer  // array of any length
+			end 
+		
+		Object* = unsafe pointer to ObjDesc
+		
+		ObjDesc* = cstruct 
+				fprint-: integer
+				offs-: integer // pvfprint for record types
+				id-: integer // name idx * 256 + vis * 16 + mode
+				struct-: Type  // id of basic type or pointer to typedesc/signature
+			end 
+		
+		Directory* = unsafe pointer to cstruct 
+				num-: integer // number of entries
+				obj-: array any of ObjDesc  // array of any length
+			end 
+		
+		Signature* = unsafe pointer to cstruct 
+				retStruct-: Type // id of basic type or pointer to typedesc or 0
+				num-: integer // number of parameters
+				par-: array any of cstruct  // parameters
+						id-: integer // name idx * 256 + kind
+						struct-: Type  // id of basic type or pointer to typedesc
+					end  
+			end 
+		
+		Handler* = proc 
+		
+		Reducer* = pointer to (* abstract *) record 
+				next: Reducer 
+			end 
+		
+		Identifier* = (* abstract *) record 
+				typ*: integer
+				obj-: ANYPTR 
+			end 
+		
+		TrapCleaner* = pointer to (* abstract *) record 
+				next: TrapCleaner 
+			end 
+		
+		TryHandler* = proc (a, b, c: integer)
+		
+		
+		// meta extension suport
+		
+		ItemExt* = pointer to (* abstract *) record end 
+		
+		ItemAttr* = record 
+				obj*, vis*, typ*, adr*: integer
+				mod_*: Module
+				desc*: Type
+				ptr*: S.PTR
+				ext*: ItemExt 
+			end 
+		
+		Hook* = pointer to (* abstract *) record end 
+		
+		LoaderHook* = pointer to (* abstract *) record (Hook) 
+				res*: integer
+				importing*, imported*, object*: array 256 of char 
+			end 
+		
+		GuiHook* = pointer to (* abstract *) record (Hook) end  // Implemented by HostGnome
+		
+		Block = unsafe pointer to cstruct 
+				tag: Type
+				last: integer // arrays: last element
+				actual: integer // arrays: used during mark phase
+				first: integer  // arrays: first element
+			end 
+		
+		FreeBlock = unsafe pointer to FreeDesc
+		
+		FreeDesc = cstruct 
+				tag: Type // f.tag = ADR(f.size)
+				size_: integer
+				next: FreeBlock 
+			end 
+		
+		Cluster = unsafe pointer to cstruct 
+				size_: integer // total size
+				next: Cluster
+				max_: integer  // exe: reserved size, dll: original address
+			// start of first block
+			end 
+		
+		FList = pointer to record 
+				next: FList
+				blk: Block
+				iptr, aiptr: boolean 
+			end 
+		
+		CList = pointer to record 
+				next: CList
+				do_: Command
+				trapped: boolean 
+			end 
+		
+		
+		PtrType = record v: S.PTR end  // used for array of pointer
+		Char8Type = record v: char end 
+		Char16Type = record v: char end 
+		Int8Type = record v: byte end 
+		Int16Type = record v: shortint end 
+		Int32Type = record v: integer end 
+		Int64Type = record v: longint end 
+		BoolType = record v: boolean end 
+		SetType = record v: set end 
+		Real32Type = record v: real end 
+		Real64Type = record v: real end 
+		ProcType = record v: proc  end 
+		UPtrType = record v: integer end 
+		StrPtr = unsafe pointer to carray of char
+	
+	
+	var 
+		baseStack: integer // modList, root, and baseStack must be together for remote debugging
+		root: Cluster // cluster list
+		modList-: Module // root of module list
+		trapCount-: integer
+		err-, pc-, sp-, fp-, stack-, val_-: integer
+		argc-: integer
+		argv-: Libc.StrArray
+		
+		free: array N of FreeBlock // free list
+		sentinelBlock: FreeDesc
+		sentinel: FreeBlock
+		candidates: array 1024 of integer
+		nofcand: integer
+		allocated: integer // bytes allocated on BlackBox heap
+		total: integer // current total size of BlackBox heap
+		used: integer // bytes allocated on system heap
+		finalizers: FList
+		hotFinalizers: FList
+		cleaners: CList
+		reducers: Reducer
+		trapStack: TrapCleaner
+		actual: Module // valid during module initialization
+		
+		res: integer // auxiliary global variables used for trap handling
+		old: integer
+		
+		trapViewer, trapChecker: Handler
+		trapped, guarded, secondTrap: boolean
+		interrupted: boolean
+		static, inDll, terminating: boolean
+		restart: Command
+		
+		// told, shift: INTEGER;	(* used in Time() *)
+		
+		loader: LoaderHook
+		loadres: integer
+		
+		wouldFinalize: boolean
+		
+		watcher*: proc (event: integer) // for debugging
+		
+		
+		// sigStack: Libc.PtrVoid;
+		
+		
+		
+		zerofd: integer
+		pageSize: integer
+		
+		loopContext: Libc.sigjmp_buf // trap return context, if no Kernel.Try has been used.
+		currentTryContext: unsafe pointer to Libc.sigjmp_buf // trap return context, if Kernel.Try has been used.
+		isReadableContext: Libc.sigjmp_buf // for IsReadable
+		isReadableCheck: boolean
+		
+		guiHook: GuiHook
+	
+	
+	// code procedures for fpu
+	
+	proc FINIT end // [code] 0DBH 0E3H
+	proc FLDCW end // [code] 0D9H 06DH 0FCH // -4, FP
+	proc FSTCW end // [code] 0D9H 07DH 0FCH // -4, FP
+	
+	// code procedure for memory erase
+	
+	proc Erase(adr, words: integer)  end // [code] 089H 0C7H 031H 0C0H 059H 0F2H 0ABH
+	// MOV EDI, EAX
+	// XOR EAX, EAX
+	// POP ECX
+	// REP STOS
+	
+	// code procedure for stack allocate
+	
+	proc ALLOC end // [code] 0H // argument in CX // Rochus: added 0H because otherwise empty
+	(* PUSH	EAX
+	   ADD	ECX,-5
+	   JNS	L0
+	   XOR	ECX,ECX
+	   L0: AND	ECX,-4	(n-8+3)/4*4
+	   MOV	EAX,ECX
+	   AND	EAX,4095
+	   SUB	ESP,EAX
+	   MOV	EAX,ECX
+	   SHR	EAX,12
+	   JEQ	L2
+	   L1: PUSH	0
+	   SUB	ESP,4092
+	   DEC	EAX
+	   JNE	L1
+	   L2: ADD	ECX,8
+	   MOV	EAX,[ESP,ECX,-4]
+	   PUSH	EAX
+	   MOV	EAX,[ESP,ECX,-4]
+	   SHR	ECX,2
+	   RET *)
+	
+	
+	
+	proc (var id: Identifier) Identified*(): boolean  end // new abstract
+	proc (r: Reducer) Reduce*(full: boolean)  end // new abstract
+	proc (c: TrapCleaner) Cleanup* end // new empty
+	
+	
+	// meta extension suport
+	
+	proc (e: ItemExt) Lookup*(name: array of char; var i: ANYREC)  end // new abstract
+	proc (e: ItemExt) Index*(index: integer; var elem: ANYREC)  end // new abstract
+	proc (e: ItemExt) Deref*(var ref: ANYREC)  end // new abstract
+	
+	proc (e: ItemExt) Valid*(): boolean  end // new abstract
+	proc (e: ItemExt) Size*(): integer  end // new abstract
+	proc (e: ItemExt) BaseTyp*(): integer  end // new abstract
+	proc (e: ItemExt) Len*(): integer  end // new abstract
+	
+	proc (e: ItemExt) Call*(var ok: boolean)  end // new abstract
+	proc (e: ItemExt) BoolVal*(): boolean  end // new abstract
+	proc (e: ItemExt) PutBoolVal*(x: boolean)  end // new abstract
+	proc (e: ItemExt) CharVal*(): char  end // new abstract
+	proc (e: ItemExt) PutCharVal*(x: char)  end // new abstract
+	proc (e: ItemExt) IntVal*(): integer  end // new abstract
+	proc (e: ItemExt) PutIntVal*(x: integer)  end // new abstract
+	proc (e: ItemExt) LongVal*(): longint  end // new abstract
+	proc (e: ItemExt) PutLongVal*(x: longint)  end // new abstract
+	proc (e: ItemExt) RealVal*(): real  end // new abstract
+	proc (e: ItemExt) PutRealVal*(x: real)  end // new abstract
+	proc (e: ItemExt) SetVal*(): set  end // new abstract
+	proc (e: ItemExt) PutSetVal*(x: set)  end // new abstract
+	proc (e: ItemExt) PtrVal*(): ANYPTR  end // new abstract
+	proc (e: ItemExt) PutPtrVal*(x: ANYPTR)  end // new abstract
+	proc (e: ItemExt) GetSStringVal*(var x: array of char
+		var ok: boolean)  end // new abstract
+	proc (e: ItemExt) PutSStringVal*(in x: array of char
+		var ok: boolean)  end // new abstract
+	proc (e: ItemExt) GetStringVal*(var x: array of char; var ok: boolean)  end // new abstract
+	proc (e: ItemExt) PutStringVal*(in x: array of char; var ok: boolean)  end // new abstract
+	
+	
+	// -------------------- miscellaneous tools --------------------
+	
+	proc Msg(in str: array of char) 
+		var 
+			ss: array 1024 of char
+			res, l: integer
+	begin 
+		ss := short(str)
+		l := len(ss)
+		ss[l] := 0ax
+		ss[l + 1] := 0x
+		res := Libc.printf(ss)
+	end Msg
+	
+	proc Int(x: longint) 
+		var 
+			j, k: integer
+			ch: char
+			a, s: array 32 of char
+	begin 
+		if x # min(longint) then
+			if x < 0 then
+				s[0] := "-"
+				k := 1
+				x := -x 
+			else 
+				k := 0 
+			end 
+			j := 0
+			repeat 
+				a[j] := chr(x mod 10 + ord("0"))
+				x := x div 10
+				inc(j) 
+			until x = 0  
+		else 
+			a := "8085774586302733229"
+			s[0] := "-"
+			k := 1
+			j := 0
+			while a[j] # 0x do 
+				inc(j) 
+			end  
+		end 
+		assert(k + j < len(s), 20)
+		repeat 
+			dec(j)
+			ch := a[j]
+			s[k] := ch
+			inc(k) 
+		until j = 0 
+		s[k] := 0x
+		Msg(s)
+	end Int
+	
+	proc (h: GuiHook) MessageBox*(
+		title, msg: array of char; buttons: set): integer  end // new abstract
+	proc (h: GuiHook) Beep* end // new abstract
+	
+	(* Is extended by HostGnome to show dialogs. If no dialog is present or
+	   if the dialog is not closed by using one button, then "mbClose" is returned *)
+	proc MessageBox*(title, msg: array of char; buttons: set): integer 
+		var 
+			res: integer
+	begin 
+		if guiHook # nil then
+			res := guiHook.MessageBox(title, msg, buttons) 
+		else 
+			Msg(" ")
+			Msg("****")
+			Msg("* " + title)
+			Msg("* " + msg)
+			Msg("****")
+			res := mbClose 
+		end 
+		return res
+	end MessageBox
+	
+	proc SetGuiHook*(hook: GuiHook) 
+	begin 
+		guiHook := hook
+	end SetGuiHook
+	
+	proc IsAlpha*(ch: char): boolean 
+	begin 
+		return LibW.iswalpha(ord(ch)) # 0
+	end IsAlpha
+	
+	proc Upper*(ch: char): char 
+	begin 
+		if ("a" <= ch) & (ch <= "z") then // common case optimized
+			return cap(ch) 
+		elsif ch > 7fx then 
+			return chr(LibW.towupper(ord(ch))) 
+		else 
+			return ch 
+		end 
+	end Upper
+	
+	proc IsUpper*(ch: char): boolean 
+	begin 
+		if ("A" <= ch) & (ch <= "Z") then
+			return true 
+		elsif ch > 7fx then 
+			return LibW.iswupper(ord(ch)) # 0 
+		else 
+			return false 
+		end 
+	end IsUpper
+	
+	proc Lower*(ch: char): char 
+	begin 
+		if ("A" <= ch) & (ch <= "Z") then
+			return chr(ord(ch) + 32) 
+		elsif ch > 7fx then 
+			return chr(LibW.towlower(ord(ch))) 
+		else 
+			return ch 
+		end 
+	end Lower
+	
+	proc IsLower*(ch: char): boolean 
+	begin 
+		if ("a" <= ch) & (ch <= "z") then
+			return true 
+		elsif ch > 7fx then 
+			return LibW.iswlower(ord(ch)) # 0 
+		else 
+			return false 
+		end 
+	end IsLower
+	
+	proc Utf8ToString*(in in_: array of char; var out: array of char
+		var res: integer) 
+		var 
+			i, j, val_, max_: integer
+			ch: char
+		
+		proc FormatError() 
+		begin  // format error
+			out := in_
+			res := 2
+		end FormatError
+	
+	begin 
+		ch := in_[0]
+		i := 1
+		j := 0
+		max_ := len(out) - 1
+		while (ch # 0x) & (j < max_) do 
+			if ch < 80x then
+				out[j] := ch
+				inc(j) 
+			elsif ch < 0e0x then 
+				val_ := ord(ch) - 192
+				if val_ < 0 then
+					FormatError
+					return  
+				end 
+				ch := in_[i]
+				inc(i)
+				val_ := val_ * 64 + ord(ch) - 128
+				if (ch < 80x) or (ch >= 0e0x) then
+					FormatError
+					return  
+				end 
+				out[j] := chr(val_)
+				inc(j) 
+			elsif ch < 0f0x then 
+				val_ := ord(ch) - 224
+				ch := in_[i]
+				inc(i)
+				val_ := val_ * 64 + ord(ch) - 128
+				if (ch < 80x) or (ch >= 0e0x) then
+					FormatError
+					return  
+				end 
+				ch := in_[i]
+				inc(i)
+				val_ := val_ * 64 + ord(ch) - 128
+				if (ch < 80x) or (ch >= 0e0x) then
+					FormatError
+					return  
+				end 
+				out[j] := chr(val_)
+				inc(j) 
+			else 
+				FormatError
+				return  
+			end 
+			ch := in_[i]
+			inc(i) 
+		end 
+		out[j] := 0x
+		if ch = 0x then // ok // truncated
+			res := 0 
+		else 
+			res := 1 
+		end 
+	end Utf8ToString
+	
+	proc StringToUtf8*(in in_: array of char; var out: array of char
+		var res: integer) 
+		var 
+			i, j, val_, max_: integer
+	begin 
+		i := 0
+		j := 0
+		max_ := len(out) - 3
+		while (in_[i] # 0x) & (j < max_) do 
+			val_ := ord(in_[i])
+			inc(i)
+			if val_ < 128 then
+				out[j] := short(chr(val_))
+				inc(j) 
+			elsif val_ < 2048 then 
+				out[j] := short(chr(val_ div 64 + 192))
+				inc(j)
+				out[j] := short(chr(val_ mod 64 + 128))
+				inc(j) 
+			else 
+				out[j] := short(chr(val_ div 4096 + 224))
+				inc(j)
+				out[j] := short(chr(val_ div 64 mod 64 + 128))
+				inc(j)
+				out[j] := short(chr(val_ mod 64 + 128))
+				inc(j) 
+			end  
+		end 
+		out[j] := 0x
+		if in_[i] = 0x then // ok // truncated
+			res := 0 
+		else 
+			res := 1 
+		end 
+	end StringToUtf8
+	
+	proc SplitName*(name: array of char; var head, tail: array of char) 
+		// portable
+		var 
+			i, j: integer
+			ch, lch: char
+	begin 
+		i := 0
+		ch := name[0]
+		if ch # 0x then
+			repeat 
+				head[i] := ch
+				lch := ch
+				inc(i)
+				ch := name[i] 
+			until (ch = 0x) or (ch = ".") or IsUpper(ch) & ~IsUpper(lch) 
+			if ch = "." then
+				i := 0
+				ch := name[0] 
+			end 
+			head[i] := 0x
+			j := 0
+			while ch # 0x do 
+				tail[j] := ch
+				inc(i)
+				inc(j)
+				ch := name[i] 
+			end 
+			tail[j] := 0x
+			if tail = "" then
+				tail := head
+				head := "" 
+			end  
+		else 
+			head := ""
+			tail := "" 
+		end 
+	end SplitName
+	
+	proc MakeFileName*(var name: array of char; type_: array of char) 
+		var 
+			i, j: integer
+			ext: array 8 of char
+			ch: char
+	begin 
+		i := 0
+		while (name[i] # 0x) & (name[i] # ".") do 
+			inc(i) 
+		end 
+		if name[i] = "." then
+			if name[i + 1] = 0x then
+				name[i] := 0x 
+			end  
+		else 
+			if type_ = "" then
+				ext := docType 
+			else 
+				ext := type_ 
+			end 
+			if i < len(name) - len(ext) - 1 then
+				name[i] := "."
+				inc(i)
+				j := 0
+				ch := ext[0]
+				while ch # 0x do 
+					name[i] := Lower(ch)
+					inc(i)
+					inc(j)
+					ch := ext[j] 
+				end 
+				name[i] := 0x 
+			end  
+		end 
+	end MakeFileName
+	
+	proc Time*(): longint 
+		var  // t: INTEGER;
+			res: integer
+			tp: Rt.timespec_t
+	begin 
+		(* t := WinApi.GetTickCount();
+		   IF t < told THEN INC(shift) END;
+		   told := t;
+		   RETURN shift * 100000000L + t *)
+		
+		
+		
+		// A. V. Shiryaev: Linux
+		res := Rt.clock_gettime(Rt.CLOCK_MONOTONIC, tp)
+		assert(res = 0)
+		return long(tp.tv_sec) * 1000 + tp.tv_nsec div 1000000
+	end Time
+	
+	proc Beep*() 
+		var 
+			ss: array 2 of char
+	begin 
+		if guiHook # nil then
+			guiHook.Beep 
+		else 
+			ss[0] := 007x
+			ss[1] := 0x
+			res := Libc.printf(ss)
+			res := Libc.fflush(Libc.NULL) 
+		end 
+	end Beep
+	
+	proc SearchProcVar*(var_: integer; var m: Module; var adr: integer) 
+	begin 
+		adr := var_
+		m := nil
+		if var_ # 0 then
+			m := modList
+			while (m # nil) & ((var_ < m.code) or (var_ >= m.code + m.csize)) do 
+				m := m.next 
+			end 
+			if m # nil then
+				dec(adr, m.code) 
+			end  
+		end 
+	end SearchProcVar
+	
+	
+	// -------------------- system memory management ---------------------
+	
+	// A. V. Shiryaev, 2012.10: NOTE: it seems that GC works correctly with positive addesses only
+	
+	(* PROCEDURE HeapAlloc (adr: INTEGER; size: INTEGER; prot: SET): Libc.PtrVoid;
+	   VAR
+	   x: Libc.PtrVoid;
+	   res: INTEGER;
+	   BEGIN
+	   x := Libc.calloc(1, size); (* calloc initialize allocated space to zero *)
+	   IF x # Libc.NULL THEN
+	   res := Libc.mprotect(x, size, prot);
+	   IF res # 0 THEN
+	   Libc.free(x);
+	   x := Libc.NULL;
+	   Msg("Kernel.HeapAlloc: mprotect failed!");
+	   HALT(100)
+	   END
+	   END;
+	   RETURN x
+	   END HeapAlloc; *)
+	
+	
+	proc HeapAlloc(adr: Libc.PtrVoid; size_: integer; prot: set): Libc.PtrVoid 
+		var 
+			x: Libc.PtrVoid
+	begin 
+		x := Libc.mmap(adr, size_, prot, Libc.MAP_PRIVATE + Libc.MAP_ANON, zerofd, 0)
+		if x = Libc.MAP_FAILED then
+			x := Libc.NULL 
+		else 
+			assert(size_ mod 4 = 0, 100)
+			Erase(x, size_ div 4) 
+		end 
+		return x
+	end HeapAlloc
+	
+	(* PROCEDURE HeapFree (adr: Libc.PtrVoid; size: INTEGER);
+	   VAR res: INTEGER;
+	   BEGIN
+	   (*
+	   ASSERT(size MOD 4 = 0, 100);
+	   Erase(adr, size DIV 4);
+	   res := Libc.mprotect(adr, size, Libc.PROT_NONE);
+	   ASSERT(res = 0, 101);
+	   *)
+	   Libc.free(adr)
+	   END HeapFree; *)
+	
+	
+	proc HeapFree(adr: Libc.PtrVoid; size_: integer) 
+		var 
+			res: integer
+	begin 
+		(* ASSERT(size MOD 4 = 0, 100);
+		   Erase(adr, size DIV 4);
+		   res := Libc.mprotect(adr, size, Libc.PROT_NONE);
+		   ASSERT(res = 0, 101); *)
+		
+		
+		res := Libc.munmap(adr, size_)
+		assert(res = 0, 102)
+	end HeapFree
+	
+	proc AllocHeapMem(size_: integer; var c: Cluster) 
+		// allocate at least size bytes, typically at least 256*4 kbytes are allocated
+		const  // cluster size for dll
+			N = 65536 * 4
+			prot = Libc.PROT_READ + Libc.PROT_WRITE // + Libc.PROT_EXEC
+		var 
+			adr: integer
+			allocated: integer
+	begin 
+		inc(size_, 16)
+		assert(size_ > 0, 100)
+		adr := 0
+		if size_ < N then
+			adr := HeapAlloc(65536, N, prot) 
+		end 
+		if adr = 0 then
+			adr := HeapAlloc(65536, size_, prot)
+			allocated := size_ 
+		else 
+			allocated := N 
+		end 
+		if adr = 0 then
+			c := nil 
+		else 
+			c := S.VAL(Cluster, (adr + 15) div 16 * 16)
+			c.max_ := adr
+			c.size_ := allocated - (S.VAL(integer, c) - adr)
+			inc(used, c.size_)
+			inc(total, c.size_) 
+		end 
+	// post: (c = NIL) OR (c MOD 16 = 0) & (c.size >= size)
+	end AllocHeapMem
+	
+	proc FreeHeapMem(c: Cluster) 
+	begin 
+		dec(used, c.size_)
+		dec(total, c.size_)
+		HeapFree(c.max_, (S.VAL(integer, c) - c.max_) + c.size_)
+	end FreeHeapMem
+	
+	proc AllocModMem*(descSize, modSize: integer; var descAdr, modAdr: integer) 
+		const 
+			prot = Libc.PROT_READ + Libc.PROT_WRITE // + Libc.PROT_EXEC
+	begin 
+		descAdr := HeapAlloc(0, descSize, prot)
+		if descAdr # 0 then
+			modAdr := HeapAlloc(0, modSize, prot)
+			if modAdr # 0 then
+				inc(used, descSize + modSize) 
+			else 
+				HeapFree(descAdr, descSize)
+				descAdr := 0 
+			end  
+		else 
+			modAdr := 0 
+		end 
+	end AllocModMem
+	
+	proc DeallocModMem*(descSize, modSize, descAdr, modAdr: integer) 
+	begin 
+		dec(used, descSize + modSize)
+		HeapFree(descAdr, descSize)
+		HeapFree(modAdr, modSize)
+	end DeallocModMem
+	
+	proc InvalModMem(modSize, modAdr: integer) 
+	begin 
+		dec(used, modSize)
+		HeapFree(modAdr, modSize)
+	end InvalModMem
+	
+	(* PROCEDURE IsReadable* (from, to: INTEGER): BOOLEAN;
+	   (* check wether memory between from (incl.) and to (excl.) may be read *)
+	   BEGIN
+	   RETURN WinApi.IsBadReadPtr(from, to - from) = 0
+	   END IsReadable; *)
+	
+	
+	
+	// Alexander Shiryaev, 2012.10: Linux: can be implemented through mincore/madvise
+	// This procedure can be called from TrapHandler also
+	proc IsReadable*(from, to_: integer): boolean 
+		// check wether memory between from (incl.) and to (excl.) may be read
+		var 
+			res: boolean
+			res1: integer
+			x: char
+			mask, omask: Libc.sigset_t
+	begin 
+		// save old sigmask and unblock SIGSEGV
+		res1 := Libc.sigemptyset(mask)
+		assert(res1 = 0, 100)
+		res1 := Libc.sigaddset(mask, Libc.SIGSEGV)
+		assert(res1 = 0, 101)
+		res1 := Libc.sigprocmask(Libc.SIG_UNBLOCK, mask, omask)
+		assert(res1 = 0, 102)
+		
+		res := false
+		res1 := Libc.sigsetjmp(isReadableContext, Libc.TRUE_)
+		if res1 = 0 then
+			isReadableCheck := true
+			// read memory
+			repeat 
+				S.GET(from, x)
+				inc(from) 
+			until from = to_ 
+			res := true 
+		else 
+			assert(res1 = 1, 103) 
+		end 
+		isReadableCheck := false
+		
+		// restore saved sigmask
+		res1 := Libc.sigprocmask(Libc.SIG_SETMASK, omask, nil)
+		assert(res1 = 0, 104)
+		
+		return res
+	end IsReadable
+	
+	// --------------------- NEW implementation (portable) --------------------
+	
+	proc NewRec*(typ: integer): integer  // implementation of NEW(ptr)
+		var 
+			size_: integer
+			b: Block
+			tag: Type
+			l: FList
+	begin 
+		if odd(typ) then // record contains interface pointers
+			tag := S.VAL(Type, typ - 1)
+			b := NewBlock(tag.size_)
+			if b = nil then
+				return 0 
+			end 
+			b.tag := tag
+			l := S.VAL(FList, S.ADR(b.last)) // anchor new object!
+			l := S.VAL(FList, NewRec(S.TYP(FList))) // NEW(l)
+			l.blk := b
+			l.iptr := true
+			l.next := finalizers
+			finalizers := l
+			return S.ADR(b.last) 
+		else 
+			tag := S.VAL(Type, typ)
+			b := NewBlock(tag.size_)
+			if b = nil then
+				return 0 
+			end 
+			b.tag := tag
+			S.GET(typ - 4, size_)
+			if size_ # 0 then // record uses a finalizer
+				l := S.VAL(FList, S.ADR(b.last)) // anchor new object!
+				l := S.VAL(FList, NewRec(S.TYP(FList))) // NEW(l)
+				l.blk := b
+				l.next := finalizers
+				finalizers := l 
+			end 
+			return S.ADR(b.last) 
+		end 
+	end NewRec
+	
+	proc NewArr*(eltyp, nofelem, nofdim: integer): integer  // impl. of NEW(ptr, dim0, dim1, ...)
+		var 
+			b: Block
+			size_, headSize: integer
+			t: Type
+			fin: boolean
+			l: FList
+	begin 
+		if (nofdim < 0) or (nofdim > (max(integer) - 12) div 4) then
+			return 0 
+		end 
+		headSize := 4 * nofdim + 12
+		fin := false
+		case eltyp of 
+			// | -1: eltyp := S.ADR(IntPtrType); fin := TRUE
+			
+			
+			| -1: 
+				halt(100) 
+			| 0: 
+				eltyp := S.ADR(PtrType) 
+			| 1: 
+				eltyp := S.ADR(Char8Type) 
+			| 2: 
+				eltyp := S.ADR(Int16Type) 
+			| 3: 
+				eltyp := S.ADR(Int8Type) 
+			| 4: 
+				eltyp := S.ADR(Int32Type) 
+			| 5: 
+				eltyp := S.ADR(BoolType) 
+			| 6: 
+				eltyp := S.ADR(SetType) 
+			| 7: 
+				eltyp := S.ADR(Real32Type) 
+			| 8: 
+				eltyp := S.ADR(Real64Type) 
+			| 9: 
+				eltyp := S.ADR(Char16Type) 
+			| 10: 
+				eltyp := S.ADR(Int64Type) 
+			| 11: 
+				eltyp := S.ADR(ProcType) 
+			| 12: 
+				eltyp := S.ADR(UPtrType) 
+		else  // eltyp is desc
+			if odd(eltyp) then
+				dec(eltyp)
+				fin := true 
+			end  
+		end 
+		t := S.VAL(Type, eltyp)
+		assert(t.size_ > 0, 100)
+		if (nofelem < 0) or (nofelem > (max(integer) - headSize) div t.size_) then
+			return 0 
+		end 
+		size_ := headSize + nofelem * t.size_
+		b := NewBlock(size_)
+		if b = nil then
+			return 0 
+		end 
+		b.tag := S.VAL(Type, eltyp + 2) // tag + array mark
+		b.last := S.ADR(b.last) + size_ - t.size_ // pointer to last elem
+		b.first := S.ADR(b.last) + headSize // pointer to first elem
+		if fin then
+			l := S.VAL(FList, S.ADR(b.last)) // anchor new object!
+			l := S.VAL(FList, NewRec(S.TYP(FList))) // NEW(l)
+			l.blk := b
+			l.aiptr := true
+			l.next := finalizers
+			finalizers := l 
+		end 
+		return S.ADR(b.last)
+	end NewArr
+	
+	
+	// -------------------- handler installation (portable) ---------------------
+	
+	proc ThisFinObj*(var id: Identifier): ANYPTR 
+		var 
+			l: FList
+	begin 
+		assert(id.typ # 0, 100)
+		l := finalizers
+		while l # nil do 
+			if S.VAL(integer, l.blk.tag) = id.typ then
+				id.obj := S.VAL(ANYPTR, S.ADR(l.blk.last))
+				if id.Identified() then
+					return id.obj 
+				end  
+			end 
+			l := l.next 
+		end 
+		return nil
+	end ThisFinObj
+	
+	proc InstallReducer*(r: Reducer) 
+	begin 
+		r.next := reducers
+		reducers := r
+	end InstallReducer
+	
+	proc InstallTrapViewer*(h: Handler) 
+	begin 
+		trapViewer := h
+	end InstallTrapViewer
+	
+	proc InstallTrapChecker*(h: Handler) 
+	begin 
+		trapChecker := h
+	end InstallTrapChecker
+	
+	proc PushTrapCleaner*(c: TrapCleaner) 
+		var 
+			t: TrapCleaner
+	begin 
+		t := trapStack
+		while (t # nil) & (t # c) do 
+			t := t.next 
+		end 
+		assert(t = nil, 20)
+		c.next := trapStack
+		trapStack := c
+	end PushTrapCleaner
+	
+	proc PopTrapCleaner*(c: TrapCleaner) 
+		var 
+			t: TrapCleaner
+	begin 
+		t := nil
+		while (trapStack # nil) & (t # c) do 
+			t := trapStack
+			trapStack := trapStack.next 
+		end 
+	end PopTrapCleaner
+	
+	proc InstallCleaner*(p: Command) 
+		var 
+			c: CList
+	begin 
+		c := S.VAL(CList, NewRec(S.TYP(CList))) // NEW(c)
+		c.do_ := p
+		c.trapped := false
+		c.next := cleaners
+		cleaners := c
+	end InstallCleaner
+	
+	proc RemoveCleaner*(p: Command) 
+		var 
+			c0, c: CList
+	begin 
+		c := cleaners
+		c0 := nil
+		while (c # nil) & (c.do_ # p) do 
+			c0 := c
+			c := c.next 
+		end 
+		if c # nil then
+			if c0 = nil then
+				cleaners := cleaners.next 
+			else 
+				c0.next := c.next 
+			end  
+		end 
+	end RemoveCleaner
+	
+	proc Cleanup*
+		var 
+			c, c0: CList
+	begin 
+		c := cleaners
+		c0 := nil
+		while c # nil do 
+			if ~c.trapped then
+				c.trapped := true
+				c.do_
+				c.trapped := false
+				c0 := c 
+			else 
+				if c0 = nil then
+					cleaners := cleaners.next 
+				else 
+					c0.next := c.next 
+				end  
+			end 
+			c := c.next 
+		end 
+	end Cleanup
+	
+	// -------------------- meta information (portable) ---------------------
+	
+	proc (h: LoaderHook) ThisMod*(in name: array of char): Module  end // new abstract
+	
+	proc SetLoaderHook*(h: LoaderHook) 
+	begin 
+		loader := h
+	end SetLoaderHook
+	
+	proc InitModule(mod_: Module)  // initialize linked modules
+		var 
+			body: Command
+			res: integer
+			errno: integer
+	begin 
+		if ~(dyn in mod_.opts) & (mod_.next # nil) & ~(init in mod_.next.opts) then
+			InitModule(mod_.next) 
+		end 
+		if ~(init in mod_.opts) then
+			body := S.VAL(Command, mod_.code)
+			incl(mod_.opts, init)
+			actual := mod_
+			
+			// A. V. Shiryaev: Allow execution on code pages
+			// Linux: must be page-aligned
+			res := Libc.mprotect(
+				(mod_.code div pageSize) * pageSize, 
+				((mod_.csize + mod_.code mod pageSize - 1) div pageSize) * pageSize + pageSize, 
+				Libc.PROT_READ + Libc.PROT_WRITE + Libc.PROT_EXEC)
+			if res = -1 then
+				S.GET(Libc.__errno_location(), errno)
+				Msg("ERROR: Kernel.InitModule: mprotect failed!")
+				Msg(mod_.name)
+				Int(mod_.code)
+				Int(mod_.csize)
+				Int(errno)
+				halt(100) 
+			else 
+				assert(res = 0) 
+			end 
+			
+			body()
+			actual := nil 
+		end 
+	end InitModule
+	
+	proc ThisLoadedMod*(in name: array of char): Module  // loaded modules only
+		var 
+			m: Module
+			res: integer
+			n: Utf8Name
+	begin 
+		StringToUtf8(name, n, res)
+		assert(res = 0)
+		loadres := done
+		m := modList
+		while (m # nil) & ((m.name # n) or (m.refcnt < 0)) do 
+			m := m.next 
+		end 
+		if (m # nil) & ~(init in m.opts) then
+			InitModule(m) 
+		end 
+		if m = nil then
+			loadres := moduleNotFound 
+		end 
+		return m
+	end ThisLoadedMod
+	
+	proc ThisMod*(in name: array of char): Module 
+	begin 
+		if loader # nil then
+			loader.res := done
+			return loader.ThisMod(name) 
+		else 
+			return ThisLoadedMod(name) 
+		end 
+	end ThisMod
+	
+	proc LoadMod*(in name: array of char) 
+		var 
+			m: Module
+	begin 
+		m := ThisMod(name)
+	end LoadMod
+	
+	proc GetLoaderResult*(var res: integer; var importing, imported, object: array of char) 
+	begin 
+		if loader # nil then
+			res := loader.res
+			importing := loader.importing
+			imported := loader.imported
+			object := loader.object 
+		else 
+			res := loadres
+			importing := ""
+			imported := ""
+			object := "" 
+		end 
+	end GetLoaderResult
+	
+	proc ThisObject*(mod_: Module; in name: array of char): Object 
+		var 
+			l, r, m, res: integer
+			p: StrPtr
+			n: Utf8Name
+	begin 
+		StringToUtf8(name, n, res)
+		assert(res = 0)
+		l := 0
+		r := mod_.export.num
+		while l < r do  // binary search
+			m := (l + r) div 2
+			p := S.VAL(StrPtr, S.ADR(mod_.names[mod_.export.obj[m].id div 256]))
+			if p^ = n then
+				return S.VAL(Object, S.ADR(mod_.export.obj[m])) 
+			end 
+			if p^ < n then
+				l := m + 1 
+			else 
+				r := m 
+			end  
+		end 
+		return nil
+	end ThisObject
+	
+	proc ThisDesc*(mod_: Module; fprint: integer): Object 
+		var 
+			i, n: integer
+	begin 
+		i := 0
+		n := mod_.export.num
+		while (i < n) & (mod_.export.obj[i].id div 256 = 0) do 
+			if mod_.export.obj[i].offs = fprint then
+				return S.VAL(Object, S.ADR(mod_.export.obj[i])) 
+			end 
+			inc(i) 
+		end 
+		return nil
+	end ThisDesc
+	
+	proc ThisField*(rec: Type; in name: array of char): Object 
+		var 
+			n, res: integer
+			p: StrPtr
+			obj: Object
+			m: Module
+			nn: Utf8Name
+	begin 
+		StringToUtf8(name, nn, res)
+		assert(res = 0)
+		m := rec.mod_
+		obj := S.VAL(Object, S.ADR(rec.fields.obj[0]))
+		n := rec.fields.num
+		while n > 0 do 
+			p := S.VAL(StrPtr, S.ADR(m.names[obj.id div 256]))
+			if p^ = nn then
+				return obj 
+			end 
+			dec(n)
+			inc(S.VAL(integer, obj), 16) 
+		end 
+		return nil
+	end ThisField
+	
+	proc ThisCommand*(mod_: Module; in name: array of char): Command 
+		var 
+			x: Object
+			sig: Signature
+	begin 
+		x := ThisObject(mod_, name)
+		if (x # nil) & (x.id mod 16 = mProc) then
+			sig := S.VAL(Signature, x.struct)
+			if (sig.retStruct = nil) & (sig.num = 0) then
+				return S.VAL(Command, mod_.procBase + x.offs) 
+			end  
+		end 
+		return nil
+	end ThisCommand
+	
+	proc ThisType*(mod_: Module; in name: array of char): Type 
+		var 
+			x: Object
+	begin 
+		x := ThisObject(mod_, name)
+		if (x # nil) & (x.id mod 16 = mTyp) & (S.VAL(integer, x.struct) div 256 # 0) then
+			return x.struct 
+		else 
+			return nil 
+		end 
+	end ThisType
+	
+	proc TypeOf*(in rec: ANYREC): Type 
+	begin 
+		return S.VAL(Type, S.TYP(rec))
+	end TypeOf
+	
+	proc LevelOf*(t: Type): shortint 
+	begin 
+		return short(t.id div 16 mod 16)
+	end LevelOf
+	
+	proc NewObj*(var o: S.PTR; t: Type) 
+		var 
+			i: integer
+	begin 
+		if t.size_ = -1 then
+			o := nil 
+		else 
+			i := 0
+			while t.ptroffs[i] >= 0 do 
+				inc(i) 
+			end 
+			if t.ptroffs[i + 1] >= 0 then // with interface pointers
+				inc(S.VAL(integer, t)) 
+			end 
+			o := S.VAL(S.PTR, NewRec(S.VAL(integer, t)))  // generic NEW
+		end 
+	end NewObj
+	
+	proc GetModName*(mod_: Module; var name: Name) 
+		var 
+			res: integer
+	begin 
+		Utf8ToString(mod_.name, name, res)
+		assert(res = 0)
+	end GetModName
+	
+	proc GetObjName*(mod_: Module; obj: Object; var name: Name) 
+		var 
+			p: StrPtr
+			res: integer
+	begin 
+		p := S.VAL(StrPtr, S.ADR(mod_.names[obj.id div 256]))
+		Utf8ToString(p^, name, res)
+		assert(res = 0)
+	end GetObjName
+	
+	proc GetTypeName*(t: Type; var name: Name) 
+		var 
+			p: StrPtr
+			res: integer
+	begin 
+		p := S.VAL(StrPtr, S.ADR(t.mod_.names[t.id div 256]))
+		Utf8ToString(p^, name, res)
+		assert(res = 0)
+	end GetTypeName
+	
+	proc RegisterMod*(mod_: Module) 
+		var 
+			i: integer
+			t: Libc.time_t
+			tm: Libc.tm
+	begin 
+		mod_.next := modList
+		modList := mod_
+		mod_.refcnt := 0
+		incl(mod_.opts, dyn)
+		i := 0
+		while i < mod_.nofimps do 
+			if mod_.imports[i] # nil then
+				inc(mod_.imports[i].refcnt) 
+			end 
+			inc(i) 
+		end 
+		
+		t := Libc.time(nil)
+		tm := Libc.localtime(t)
+		mod_.loadTime[0] := short(tm.tm_year + 1900) // Linux counts years from 1900 but BlackBox from 0000
+		mod_.loadTime[1] := short(tm.tm_mon + 1) // Linux month range 0-11 but BB month range 1-12
+		mod_.loadTime[2] := short(tm.tm_mday)
+		mod_.loadTime[3] := short(tm.tm_hour)
+		mod_.loadTime[4] := short(tm.tm_min)
+		mod_.loadTime[5] := short(tm.tm_sec)
+		tm := nil
+		
+		if ~(init in mod_.opts) then
+			InitModule(mod_) 
+		end 
+	end RegisterMod
+	
+	proc UnloadMod*(mod_: Module) 
+		var 
+			i: integer
+			t: Command
+	begin 
+		if mod_.refcnt = 0 then
+			t := mod_.term
+			mod_.term := nil
+			if t # nil then // terminate module
+				t() 
+			end 
+			i := 0
+			while i < mod_.nofptrs do  // release global pointers
+				S.PUT(mod_.varBase + mod_.ptrs[i], 0)
+				inc(i) 
+			end 
+			// ReleaseIPtrs(mod);	(* release global interface pointers *)
+			
+			
+			Collect // call finalizers
+			i := 0
+			while i < mod_.nofimps do  // release imported modules
+				if mod_.imports[i] # nil then
+					dec(mod_.imports[i].refcnt) 
+				end 
+				inc(i) 
+			end 
+			mod_.refcnt := -1
+			if dyn in mod_.opts then // release memory
+				InvalModMem(mod_.data + mod_.dsize - mod_.refs, mod_.refs) 
+			end  
+		end 
+	end UnloadMod
+	
+	// -------------------- dynamic procedure call  ---------------------// COMPILER DEPENDENT
+	
+	proc PUSH(p: integer)  end // [code] 050H // push AX
+	proc CALL(a: integer)  end // [code] 0FFH 0D0H // call AX
+	proc RETI(): longint  end // [code] 0H // Rochus: added 0H
+	proc RETR(): real  end // [code] 0H // Rochus: added 0H
+	
+	(* type				par
+	   32 bit scalar	value
+	   64 bit scalar	low hi
+	   var scalar		address
+	   record			address tag
+	   array			  address size
+	   open array	   length_N-1 .. length_0 *)
+	
+	
+	
+	proc Call*(adr: integer; sig: Signature; in par: array of integer; n: integer): longint 
+		var 
+			p, kind, sp, size_: integer
+			typ: Type
+			r: real
+	begin 
+		p := sig.num
+		while p > 0 do  // push parameters from right to left
+			dec(p)
+			typ := sig.par[p].struct
+			kind := sig.par[p].id mod 16
+			if (S.VAL(integer, typ) div 256 = 0) or (typ.id mod 4 in {0, 3}) then // scalar, ANYREC
+				if (kind = 10) & ((S.VAL(integer, typ) = 8) or (S.VAL(integer, typ) = 10)) then // 64 bit
+					dec(n) // push hi word
+					PUSH(par[n]) 
+				elsif S.VAL(integer, typ) = 11 then  // ANYREC
+					assert(kind # 10) // not a value par, also checked by compiler
+					dec(n) // push tag
+					PUSH(par[n]) 
+				end 
+				dec(n) // push value/address
+				PUSH(par[n]) 
+			elsif typ.id mod 4 = 1 then  // record
+				if kind # 10 then // var par
+					dec(n) // push tag
+					PUSH(par[n])
+					dec(n) // push address
+					PUSH(par[n]) 
+				else 
+					dec(n, 2) // skip tag
+					S.GETREG(SP, sp) // allocate space
+					sp := (sp - typ.size_) div 4 * 4
+					S.PUTREG(SP, sp)
+					S.MOVE(par[n], sp, typ.size_)  // copy to stack
+				end  
+			elsif typ.size_ = 0 then  // open array
+				size_ := typ.id div 16 mod 16 // number of open dimensions
+				while size_ > 0 do 
+					dec(size_) // push length
+					dec(n)
+					PUSH(par[n]) 
+				end 
+				dec(n) // push address
+				PUSH(par[n]) 
+			else  // fix array
+				if kind # 10 then // var par
+					dec(n, 2) // push address
+					PUSH(par[n]) 
+				else 
+					dec(n)
+					size_ := par[n]
+					dec(n)
+					S.GETREG(SP, sp) // allocate space
+					sp := (sp - size_) div 4 * 4
+					S.PUTREG(SP, sp)
+					S.MOVE(par[n], sp, size_)  // copy to stack
+				end  
+			end  
+		end 
+		assert(n = 0)
+		if S.VAL(integer, sig.retStruct) = 7 then // shortreal
+			CALL(adr)
+			return S.VAL(integer, (RETR()))  // return value in fpu register
+		elsif S.VAL(integer, sig.retStruct) = 8 then  // real
+			CALL(adr)
+			r := RETR()
+			return S.VAL(longint, r)  // return value in fpu register
+		else 
+			CALL(adr)
+			return RETI()  // return value in integer registers
+		end 
+	end Call
+	
+	// -------------------- reference information (portable) ---------------------
+	
+	proc RefCh(var ref: integer; var ch: char) 
+	begin 
+		S.GET(ref, ch)
+		inc(ref)
+	end RefCh
+	
+	proc RefNum(var ref: integer; var x: integer) 
+		var 
+			s, n: integer
+			ch: char
+	begin 
+		s := 0
+		n := 0
+		RefCh(ref, ch)
+		while ord(ch) >= 128 do 
+			inc(n, ash(ord(ch) - 128, s))
+			inc(s, 7)
+			RefCh(ref, ch) 
+		end 
+		x := n + ash(ord(ch) mod 64 - ord(ch) div 64 * 64, s)
+	end RefNum
+	
+	proc RefName(var ref: integer; var n: Utf8Name) 
+		var 
+			i: integer
+			ch: char
+	begin 
+		i := 0
+		RefCh(ref, ch)
+		while ch # 0x do 
+			n[i] := ch
+			inc(i)
+			RefCh(ref, ch) 
+		end 
+		n[i] := 0x
+	end RefName
+	
+	proc GetRefProc*(var ref: integer; var adr: integer; var name: Utf8Name) 
+		var 
+			ch: char
+	begin 
+		S.GET(ref, ch)
+		while ch >= 0fdx do  // skip variables
+			inc(ref)
+			RefCh(ref, ch)
+			if ch = 10x then
+				inc(ref, 4) 
+			end 
+			RefNum(ref, adr)
+			RefName(ref, name)
+			S.GET(ref, ch) 
+		end 
+		while (ch > 0x) & (ch < 0fcx) do  // skip source refs
+			inc(ref)
+			RefNum(ref, adr)
+			S.GET(ref, ch) 
+		end 
+		if ch = 0fcx then
+			inc(ref)
+			RefNum(ref, adr)
+			RefName(ref, name) 
+		else 
+			adr := 0 
+		end 
+	end GetRefProc
+	
+	// A. V. Shiryaev, 2012.11
+	proc CheckRefVarReadable(ref: integer): boolean 
+		var 
+			ok: boolean
+			ch: char
+			p: integer // address
+		
+		proc Get
+		begin 
+			if ok then
+				if IsReadable(ref, ref + 1) then // S.GET(ref, ch); INC(ref)
+					RefCh(ref, ch) 
+				else 
+					ok := false 
+				end  
+			end 
+		end Get
+		
+		proc Num
+		begin 
+			Get
+			while ok & (ord(ch) >= 128) do 
+				Get 
+			end 
+		end Num
+		
+		proc Name
+		begin 
+			Get
+			while ok & (ch # 0x) do 
+				Get 
+			end 
+		end Name
+	
+	begin 
+		ok := true
+		Get // mode
+		if ok & (ch >= 0fdx) then
+			Get // form
+			if ok & (ch = 10x) then
+				if IsReadable(ref, ref + 4) then // desc
+					S.GET(ref, p)
+					inc(ref, 4)
+					ok := IsReadable(p + 2 * 4, p + 3 * 4)  // desc.id
+				else 
+					ok := false 
+				end  
+			end 
+			Num
+			Name 
+		end 
+		return ok
+	end CheckRefVarReadable
+	
+	proc GetRefVar*(var ref: integer; var mode, form: char; var desc: Type
+		var adr: integer; var name: Utf8Name) 
+	begin 
+		if CheckRefVarReadable(ref) then
+			S.GET(ref, mode)
+			desc := nil
+			if mode >= 0fdx then
+				mode := short(chr(ord(mode) - 0fch))
+				inc(ref)
+				RefCh(ref, form)
+				if form = 10x then
+					S.GET(ref, desc)
+					inc(ref, 4)
+					form := short(chr(16 + desc.id mod 4)) 
+				end 
+				RefNum(ref, adr)
+				RefName(ref, name) 
+			else 
+				mode := 0x
+				form := 0x
+				adr := 0 
+			end  
+		else 
+			Msg("Kernel.GetRefVar failed!")
+			Int(ref)
+			mode := 0x
+			form := 0x
+			adr := 0 
+		end 
+	end GetRefVar
+	
+	proc SourcePos*(mod_: Module; codePos: integer): integer 
+		var 
+			ref, pos, ad, d: integer
+			ch: char
+			name: Utf8Name
+	begin 
+		if mod_ # nil then // mf, 12.02.04
+			ref := mod_.refs
+			pos := 0
+			ad := 0
+			S.GET(ref, ch)
+			while ch # 0x do 
+				while (ch > 0x) & (ch < 0fcx) do  // srcref: {dAdr,dPos}
+					inc(ad, ord(ch))
+					inc(ref)
+					RefNum(ref, d)
+					if ad > codePos then
+						return pos 
+					end 
+					inc(pos, d)
+					S.GET(ref, ch) 
+				end 
+				if ch = 0fcx then // proc: 0FCX,Adr,Name
+					inc(ref)
+					RefNum(ref, d)
+					RefName(ref, name)
+					S.GET(ref, ch)
+					if (d > codePos) & (pos > 0) then
+						return pos 
+					end  
+				end 
+				while ch >= 0fdx do  // skip variables: Mode, Form, adr, Name
+					inc(ref)
+					RefCh(ref, ch)
+					if ch = 10x then
+						inc(ref, 4) 
+					end 
+					RefNum(ref, d)
+					RefName(ref, name)
+					S.GET(ref, ch) 
+				end  
+			end  
+		end 
+		return -1
+	end SourcePos
+	
+	// -------------------- dynamic link libraries ---------------------
+	
+	(* PROCEDURE DlOpen (name: ARRAY OF SHORTCHAR): Dl.HANDLE;
+	   CONST flags = Dl.RTLD_LAZY + Dl.RTLD_GLOBAL;
+	   VAR h: Dl.HANDLE;
+	   i: INTEGER;
+	   BEGIN
+	   h := Dl.NULL;
+	   i := 0; WHILE (i < LEN(name)) & (name[i] # 0X) DO INC(i) END;
+	   IF i < LEN(name) THEN
+	   h := Dl.dlopen(name, flags);
+	   WHILE (h = Dl.NULL) & (i > 0) DO
+	   DEC(i);
+	   WHILE (i > 0) & (name[i] # '.') DO DEC(i) END;
+	   IF i > 0 THEN
+	   name[i] := 0X;
+	   h := Dl.dlopen(name, flags);
+	   (* IF h # Dl.NULL THEN Msg(name$) END *)
+	   END
+	   END
+	   END;
+	   RETURN h
+	   END DlOpen; *)
+	
+	
+	
+	proc LoadDll*(in name: array of char; var ok: boolean) 
+		var 
+			h: Dl.HANDLE
+			res: integer
+			s: Utf8Name
+	begin 
+		ok := false
+		StringToUtf8(name, s, res)
+		assert(res = 0)
+		h := Dl.dlopen(s, Dl.RTLD_LAZY + Dl.RTLD_GLOBAL)
+		if h # Dl.NULL then
+			ok := true 
+		end 
+	end LoadDll
+	
+	proc ThisDllObj*(mode, fprint: integer; in dll, name: array of char): integer 
+		var 
+			ad: integer
+			h: Dl.HANDLE
+			res: integer
+			s: Utf8Name
+	begin 
+		ad := 0
+		if mode in {mVar, mProc} then
+			StringToUtf8(dll, s, res)
+			assert(res = 0)
+			h := Dl.dlopen(s, Dl.RTLD_LAZY + Dl.RTLD_GLOBAL)
+			if h # Dl.NULL then
+				StringToUtf8(name, s, res)
+				assert(res = 0)
+				ad := Dl.dlsym(h, s) 
+			end  
+		end 
+		return ad
+	end ThisDllObj
+	
+	// -------------------- garbage collector (portable) ---------------------
+	
+	proc Mark(this: Block) 
+		var 
+			father, son: Block
+			tag: Type
+			flag, offset, actual: integer
+	begin 
+		if ~odd(S.VAL(integer, this.tag)) then
+			father := nil
+			loop 
+				inc(S.VAL(integer, this.tag))
+				flag := S.VAL(integer, this.tag) mod 4
+				tag := S.VAL(Type, S.VAL(integer, this.tag) - flag)
+				if flag >= 2 then
+					actual := this.first
+					this.actual := actual 
+				else 
+					actual := S.ADR(this.last) 
+				end 
+				loop 
+					offset := tag.ptroffs[0]
+					if offset < 0 then
+						inc(S.VAL(integer, tag), offset + 4) // restore tag
+						if (flag >= 2) & (actual < this.last) & (offset < -4) then // next array element
+							inc(actual, tag.size_)
+							this.actual := actual 
+						else  // up
+							this.tag := S.VAL(Type, S.VAL(integer, tag) + flag)
+							if father = nil then
+								return  
+							end 
+							son := this
+							this := father
+							flag := S.VAL(integer, this.tag) mod 4
+							tag := S.VAL(Type, S.VAL(integer, this.tag) - flag)
+							offset := tag.ptroffs[0]
+							if flag >= 2 then
+								actual := this.actual 
+							else 
+								actual := S.ADR(this.last) 
+							end 
+							S.GET(actual + offset, father)
+							S.PUT(actual + offset, S.ADR(son.last))
+							inc(S.VAL(integer, tag), 4) 
+						end  
+					else 
+						S.GET(actual + offset, son)
+						if son # nil then
+							dec(S.VAL(integer, son), 4)
+							if ~odd(S.VAL(integer, son.tag)) then // down
+								this.tag := S.VAL(Type, S.VAL(integer, tag) + flag)
+								S.PUT(actual + offset, father)
+								father := this
+								this := son
+								exit 
+							end  
+						end 
+						inc(S.VAL(integer, tag), 4) 
+					end  
+				end  
+			end  
+		end 
+	end Mark
+	
+	proc MarkGlobals
+		var 
+			m: Module
+			i, p: integer
+	begin 
+		m := modList
+		while m # nil do 
+			if m.refcnt >= 0 then
+				i := 0
+				while i < m.nofptrs do 
+					S.GET(m.varBase + m.ptrs[i], p)
+					inc(i)
+					if p # 0 then
+						Mark(S.VAL(Block, p - 4)) 
+					end  
+				end  
+			end 
+			m := m.next 
+		end 
+	end MarkGlobals
+	
+	(* This is the specification for the code procedure following below:
+	   
+	   PROCEDURE Next (b: Block): Block;	(* next block in same cluster *)
+	   VAR size: INTEGER;
+	   BEGIN
+	   S.GET(S.VAL(INTEGER, b.tag) DIV 4 * 4, size);
+	   IF ODD(S.VAL(INTEGER, b.tag) DIV 2) THEN INC(size, b.last - S.ADR(b.last)) END;
+	   RETURN S.VAL(Block, S.VAL(INTEGER, b) + (size + 19) DIV 16 * 16)
+	   END Next; *)
+	
+	
+	proc Next(b: Block): Block  end // [code] 08BH 008H 080H 0E1H 0FCH 08BH 009H 0F6H 000H 002H 074H 008H 003H 048H 004H 029H 0C1H 083H 0E9H 004H 083H 0C1H 013H 080H 0E1H 0F0H 001H 0C8H // next block in same cluster
+	(* MOV	ECX,[EAX]	b.tag
+	   AND	CL,0FCH	b.tag DIV * 4
+	   MOV	ECX,[ECX]	size
+	   TESTB	[EAX],02H	ODD(b.tag DIV 2)
+	   JE	L1
+	   ADD	ECX,[EAX,4]	size + b.last
+	   SUB	ECX,EAX
+	   SUB	ECX,4	size + b.last - ADR(b.last)
+	   L1:
+	   ADD	ECX,19	size + 19
+	   AND	CL,0F0H	(size + 19) DIV 16 * 16
+	   ADD	EAX,ECX	b + size *)
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	proc CheckCandidates
+		// pre: nofcand > 0
+		var 
+			i, j, h, p, end_: integer
+			c: Cluster
+			blk, next: Block
+	begin 
+		// sort candidates (shellsort)
+		h := 1
+		repeat 
+			h := h * 3 + 1 
+		until h > nofcand 
+		repeat 
+			h := h div 3
+			i := h
+			while i < nofcand do 
+				p := candidates[i]
+				j := i
+				while (j >= h) & (candidates[j - h] > p) do 
+					candidates[j] := candidates[j - h]
+					j := j - h 
+				end 
+				candidates[j] := p
+				inc(i) 
+			end  
+		until h = 1 
+		// sweep
+		c := root
+		i := 0
+		while c # nil do 
+			blk := S.VAL(Block, S.VAL(integer, c) + 12)
+			end_ := S.VAL(integer, blk) + (c.size_ - 12) div 16 * 16
+			while candidates[i] < S.VAL(integer, blk) do 
+				inc(i)
+				if i = nofcand then
+					return  
+				end  
+			end 
+			while S.VAL(integer, blk) < end_ do 
+				next := Next(blk)
+				if candidates[i] < S.VAL(integer, next) then
+					if (S.VAL(integer, blk.tag) # S.ADR(blk.last))  // not a free block
+						& (~strictStackSweep or (candidates[i] = S.ADR(blk.last))) then
+						Mark(blk) 
+					end 
+					repeat 
+						inc(i)
+						if i = nofcand then
+							return  
+						end  
+					until candidates[i] >= S.VAL(integer, next)  
+				end 
+				if (S.VAL(integer, blk.tag) mod 4 = 0) & (S.VAL(integer, blk.tag) # S.ADR(blk.last)) 
+					& (blk.tag.base[0] = nil) & (blk.actual > 0) then // referenced interface record
+					Mark(blk) 
+				end 
+				blk := next 
+			end 
+			c := c.next 
+		end 
+	end CheckCandidates
+	
+	proc MarkLocals
+		var 
+			sp, p, min_, max_: integer
+			c: Cluster
+	begin 
+		S.GETREG(FP, sp)
+		nofcand := 0
+		c := root
+		while c.next # nil do 
+			c := c.next 
+		end 
+		min_ := S.VAL(integer, root)
+		max_ := S.VAL(integer, c) + c.size_
+		while sp < baseStack do 
+			S.GET(sp, p)
+			if (p > min_) & (p < max_) & (~strictStackSweep or (p mod 16 = 0)) then
+				candidates[nofcand] := p
+				inc(nofcand)
+				if nofcand = len(candidates) - 1 then
+					CheckCandidates
+					nofcand := 0 
+				end  
+			end 
+			inc(sp, 4) 
+		end 
+		candidates[nofcand] := max_ // ensure complete scan for interface mark
+		inc(nofcand)
+		if nofcand > 0 then
+			CheckCandidates 
+		end 
+	end MarkLocals
+	
+	proc MarkFinObj
+		var 
+			f: FList
+	begin 
+		wouldFinalize := false
+		f := finalizers
+		while f # nil do 
+			if ~odd(S.VAL(integer, f.blk.tag)) then
+				wouldFinalize := true 
+			end 
+			Mark(f.blk)
+			f := f.next 
+		end 
+		f := hotFinalizers
+		while f # nil do 
+			if ~odd(S.VAL(integer, f.blk.tag)) then
+				wouldFinalize := true 
+			end 
+			Mark(f.blk)
+			f := f.next 
+		end 
+	end MarkFinObj
+	
+	proc CheckFinalizers
+		var 
+			f, g, h, k: FList
+	begin 
+		f := finalizers
+		g := nil
+		if hotFinalizers = nil then
+			k := nil 
+		else 
+			k := hotFinalizers
+			while k.next # nil do 
+				k := k.next 
+			end  
+		end 
+		while f # nil do 
+			h := f
+			f := f.next
+			if ~odd(S.VAL(integer, h.blk.tag)) then
+				if g = nil then
+					finalizers := f 
+				else 
+					g.next := f 
+				end 
+				if k = nil then
+					hotFinalizers := h 
+				else 
+					k.next := h 
+				end 
+				k := h
+				h.next := nil 
+			else 
+				g := h 
+			end  
+		end 
+		h := hotFinalizers
+		while h # nil do 
+			Mark(h.blk)
+			h := h.next 
+		end 
+	end CheckFinalizers
+	
+	proc ExecFinalizer(a, b, c: integer) 
+		var 
+			f: FList
+			fin: proc (this: ANYPTR)
+	begin 
+		f := S.VAL(FList, a)
+		if f.aiptr then  // ArrFinalizer(S.VAL(ANYPTR, S.ADR(f.blk.last)))
+		else 
+			S.GET(S.VAL(integer, f.blk.tag) - 4, fin) // method 0
+			if (fin # nil) & (f.blk.tag.mod_.refcnt >= 0) then
+				fin(S.VAL(ANYPTR, S.ADR(f.blk.last))) 
+			end  
+		// IF f.iptr THEN RecFinalizer(S.VAL(ANYPTR, S.ADR(f.blk.last))) END
+		
+		
+		end 
+	end ExecFinalizer // COMPILER DEPENDENT
+	
+	proc CallFinalizers
+		var 
+			f: FList
+	begin 
+		while hotFinalizers # nil do 
+			f := hotFinalizers
+			hotFinalizers := hotFinalizers.next
+			Try(ExecFinalizer, S.VAL(integer, f), 0, 0) 
+		end 
+		wouldFinalize := false
+	end CallFinalizers
+	
+	proc Insert(blk: FreeBlock; size_: integer)  // insert block in free list
+		var 
+			i: integer
+	begin 
+		blk.size_ := size_ - 4
+		blk.tag := S.VAL(Type, S.ADR(blk.size_))
+		i := min(N - 1, (blk.size_ div 16))
+		blk.next := free[i]
+		free[i] := blk
+	end Insert
+	
+	proc Sweep(dealloc: boolean) 
+		var 
+			cluster, last, c: Cluster
+			blk, next: Block
+			fblk, b, t: FreeBlock
+			end_, i: integer
+	begin 
+		cluster := root
+		last := nil
+		allocated := 0
+		i := N
+		repeat 
+			dec(i)
+			free[i] := sentinel 
+		until i = 0 
+		while cluster # nil do 
+			blk := S.VAL(Block, S.VAL(integer, cluster) + 12)
+			end_ := S.VAL(integer, blk) + (cluster.size_ - 12) div 16 * 16
+			fblk := nil
+			while S.VAL(integer, blk) < end_ do 
+				next := Next(blk)
+				if odd(S.VAL(integer, blk.tag)) then
+					if fblk # nil then
+						Insert(fblk, S.VAL(integer, blk) - S.VAL(integer, fblk))
+						fblk := nil 
+					end 
+					dec(S.VAL(integer, blk.tag)) // unmark
+					inc(allocated, S.VAL(integer, next) - S.VAL(integer, blk)) 
+				elsif fblk = nil then 
+					fblk := S.VAL(FreeBlock, blk) 
+				end 
+				blk := next 
+			end 
+			if dealloc & (S.VAL(integer, fblk) = S.VAL(integer, cluster) + 12) then // deallocate cluster
+				c := cluster
+				cluster := cluster.next
+				if last = nil then
+					root := cluster 
+				else 
+					last.next := cluster 
+				end 
+				FreeHeapMem(c) 
+			else 
+				if fblk # nil then
+					Insert(fblk, end_ - S.VAL(integer, fblk)) 
+				end 
+				last := cluster
+				cluster := cluster.next 
+			end  
+		end 
+		// reverse free list
+		i := N
+		repeat 
+			dec(i)
+			b := free[i]
+			fblk := sentinel
+			while b # sentinel do 
+				t := b
+				b := t.next
+				t.next := fblk
+				fblk := t 
+			end 
+			free[i] := fblk 
+		until i = 0 
+	end Sweep
+	
+	proc Collect*
+	begin 
+		if root # nil then
+			CallFinalizers // trap cleanup
+			if debug & (watcher # nil) then
+				watcher(1) 
+			end 
+			MarkGlobals
+			MarkLocals
+			CheckFinalizers
+			Sweep(true)
+			CallFinalizers 
+		end 
+	end Collect
+	
+	proc FastCollect*
+	begin 
+		if root # nil then
+			if debug & (watcher # nil) then
+				watcher(2) 
+			end 
+			MarkGlobals
+			MarkLocals
+			MarkFinObj
+			Sweep(false) 
+		end 
+	end FastCollect
+	
+	proc WouldFinalize*(): boolean 
+	begin 
+		return wouldFinalize
+	end WouldFinalize
+	
+	// --------------------- memory allocation (portable) --------------------
+	
+	proc OldBlock(size_: integer): FreeBlock  // size MOD 16 = 0
+		var 
+			b, l: FreeBlock
+			s, i: integer
+	begin 
+		if debug & (watcher # nil) then
+			watcher(3) 
+		end 
+		s := size_ - 4
+		i := min(N - 1, s div 16)
+		while (i # N - 1) & (free[i] = sentinel) do 
+			inc(i) 
+		end 
+		b := free[i]
+		l := nil
+		while b.size_ < s do 
+			l := b
+			b := b.next 
+		end 
+		if b # sentinel then
+			if l = nil then
+				free[i] := b.next 
+			else 
+				l.next := b.next 
+			end  
+		else 
+			b := nil 
+		end 
+		return b
+	end OldBlock
+	
+	proc LastBlock(limit: integer): FreeBlock  // size MOD 16 = 0
+		var 
+			b, l: FreeBlock
+			s, i: integer
+	begin 
+		s := limit - 4
+		i := 0
+		repeat 
+			b := free[i]
+			l := nil
+			while (b # sentinel) & (S.VAL(integer, b) + b.size_ # s) do 
+				l := b
+				b := b.next 
+			end 
+			if b # sentinel then
+				if l = nil then
+					free[i] := b.next 
+				else 
+					l.next := b.next 
+				end  
+			else 
+				b := nil 
+			end 
+			inc(i) 
+		until (b # nil) or (i = N) 
+		return b
+	end LastBlock
+	
+	proc NewBlock(size_: integer): Block 
+		var 
+			tsize, a, s: integer
+			b: FreeBlock
+			new_, c: Cluster
+			r: Reducer
+	begin 
+		assert(size_ >= 0, 20)
+		if size_ > max(integer) - 19 then
+			return nil 
+		end 
+		tsize := (size_ + 19) div 16 * 16
+		b := OldBlock(tsize) // 1) search for free block
+		if b = nil then
+			FastCollect // 2) collect
+			b := OldBlock(tsize)
+			if b = nil then
+				Collect // 2a) fully collect
+				b := OldBlock(tsize) 
+			end 
+			if b = nil then
+				AllocHeapMem(tsize + 12, new_) // 3) allocate new cluster
+				if new_ # nil then
+					if (root = nil) or (S.VAL(integer, new_) < S.VAL(integer, root)) then
+						new_.next := root
+						root := new_ 
+					else 
+						c := root
+						while (c.next # nil) & (S.VAL(integer, new_) > S.VAL(integer, c.next)) do 
+							c := c.next 
+						end 
+						new_.next := c.next
+						c.next := new_ 
+					end 
+					b := S.VAL(FreeBlock, S.VAL(integer, new_) + 12)
+					b.size_ := (new_.size_ - 12) div 16 * 16 - 4 
+				else 
+					return nil  // 4) give up
+				end  
+			end  
+		end 
+		// b # NIL
+		a := b.size_ + 4 - tsize
+		if a > 0 then
+			Insert(S.VAL(FreeBlock, S.VAL(integer, b) + tsize), a) 
+		end 
+		if size_ > 0 then
+			Erase(S.ADR(b.size_), (size_ + 3) div 4) 
+		end 
+		inc(allocated, tsize)
+		return S.VAL(Block, b)
+	end NewBlock
+	
+	proc Allocated*(): integer 
+	begin 
+		return allocated
+	end Allocated
+	
+	proc Used*(): integer 
+	begin 
+		return used
+	end Used
+	
+	proc Root*(): integer 
+	begin 
+		return S.VAL(integer, root)
+	end Root
+	
+	
+	// -------------------- Trap Handling ---------------------
+	
+	proc Start*(code: Command) 
+	begin 
+		restart := code
+		S.GETREG(SP, baseStack) // save base stack
+		res := Libc.sigsetjmp(loopContext, Libc.TRUE_)
+		code()
+	end Start
+	
+	proc Quit*(exitCode: integer) 
+		var 
+			m: Module
+			term: Command
+			t: boolean
+			res: integer
+	begin 
+		trapViewer := nil
+		trapChecker := nil
+		restart := nil
+		t := terminating
+		terminating := true
+		m := modList
+		while m # nil do  // call terminators
+			if ~static or ~t then
+				term := m.term
+				m.term := nil
+				if term # nil then
+					term() 
+				end  
+			end 
+			// ReleaseIPtrs(m);
+			
+			
+			m := m.next 
+		end 
+		CallFinalizers
+		hotFinalizers := finalizers
+		finalizers := nil
+		CallFinalizers
+		(* IF ~inDll THEN
+		   RemoveExcp(excpPtr^);
+		   WinApi.ExitProcess(exitCode)	(* never returns *)
+		   END *)
+		
+		
+		
+		res := Libc.fflush(0)
+		Libc.exit_(exitCode)
+	end Quit
+	
+	proc FatalError*(id: integer; str: array of char) 
+		var 
+			res: integer
+			title: array 16 of char
+			text: array 256 of char
+	begin 
+		title := "Error xy"
+		title[6] := chr(id div 10 + ord("0"))
+		title[7] := chr(id mod 10 + ord("0"))
+		// res := WinApi.MessageBoxW(0, str, title, {});
+		
+		
+		text := short(str)
+		res := MessageBox(title, short(str), {mbOk})
+		// IF ~inDll THEN RemoveExcp(excpPtr^) END;
+		
+		
+		// WinApi.ExitProcess(1)
+		
+		
+		Libc.exit_(1)
+	// never returns
+	end FatalError
+	
+	proc DefaultTrapViewer
+		var 
+			len_, ref, end_, x, a, b, c: integer
+			mod_: Module
+			modName, name: Name
+			res: integer
+			n: Utf8Name
+			out: array 1024 of char
+		
+		proc WriteString(in s: array of char) 
+			var 
+				i: integer
+		begin 
+			i := 0
+			while (len_ < len(out) - 1) & (s[i] # 0x) do 
+				out[len_] := s[i]
+				inc(i)
+				inc(len_) 
+			end 
+		end WriteString
+		
+		proc WriteHex(x, n: integer) 
+			var 
+				i, y: integer
+		begin 
+			if len_ + n < len(out) then
+				i := len_ + n - 1
+				while i >= len_ do 
+					y := x mod 16
+					x := x div 16
+					if y > 9 then
+						y := y + (ord("A") - ord("0") - 10) 
+					end 
+					out[i] := chr(y + ord("0"))
+					dec(i) 
+				end 
+				inc(len_, n) 
+			end 
+		end WriteHex
+		
+		proc WriteLn
+		begin 
+			if len_ < len(out) - 1 then // 0DX on Windows
+				out[len_] := 0ax
+				inc(len_) 
+			end 
+		end WriteLn
+	
+	begin 
+		len_ := 0
+		if err = 129 then
+			WriteString("invalid with") 
+		elsif err = 130 then 
+			WriteString("invalid case") 
+		elsif err = 131 then 
+			WriteString("function without return") 
+		elsif err = 132 then 
+			WriteString("type guard") 
+		elsif err = 133 then 
+			WriteString("implied type guard") 
+		elsif err = 134 then 
+			WriteString("value out of range") 
+		elsif err = 135 then 
+			WriteString("index out of range") 
+		elsif err = 136 then 
+			WriteString("string too long") 
+		elsif err = 137 then 
+			WriteString("stack overflow") 
+		elsif err = 138 then 
+			WriteString("integer overflow") 
+		elsif err = 139 then 
+			WriteString("division by zero") 
+		elsif err = 140 then 
+			WriteString("infinite real result") 
+		elsif err = 141 then 
+			WriteString("real underflow") 
+		elsif err = 142 then 
+			WriteString("real overflow") 
+		elsif err = 143 then 
+			WriteString("undefined real result") 
+		elsif err = 200 then 
+			WriteString("keyboard interrupt") 
+		elsif err = 202 then 
+			WriteString("illegal instruction:  ")
+			WriteHex(val_, 4) 
+		elsif err = 203 then 
+			WriteString("illegal memory read [ad = ")
+			WriteHex(val_, 8)
+			WriteString("]") 
+		elsif err = 204 then 
+			WriteString("illegal memory write [ad = ")
+			WriteHex(val_, 8)
+			WriteString("]") 
+		elsif err = 205 then 
+			WriteString("illegal execution [ad = ")
+			WriteHex(val_, 8)
+			WriteString("]") 
+		elsif err < 0 then 
+			WriteString("exception #")
+			WriteHex(-err, 2) 
+		else 
+			err := err div 100 * 256 + err div 10 mod 10 * 16 + err mod 10
+			WriteString("trap #")
+			WriteHex(err, 3) 
+		end 
+		a := pc
+		b := fp
+		c := 12
+		repeat 
+			WriteLn
+			WriteString("- ")
+			mod_ := modList
+			while (mod_ # nil) & ((a < mod_.code) or (a >= mod_.code + mod_.csize)) do 
+				mod_ := mod_.next 
+			end 
+			if mod_ # nil then
+				dec(a, mod_.code)
+				if mod_.refcnt >= 0 then
+					GetModName(mod_, modName)
+					WriteString(modName)
+					ref := mod_.refs
+					repeat 
+						GetRefProc(ref, end_, n) 
+					until (end_ = 0) or (a < end_) 
+					if a < end_ then
+						Utf8ToString(n, name, res)
+						WriteString(".")
+						WriteString(name) 
+					end  
+				else 
+					GetModName(mod_, modName)
+					WriteString("(")
+					WriteString(modName)
+					WriteString(")") 
+				end 
+				WriteString("  ") 
+			end 
+			WriteString("(pc=")
+			WriteHex(a, 8)
+			WriteString(", fp=")
+			WriteHex(b, 8)
+			WriteString(")")
+			if (b >= sp) & (b < stack) then
+				S.GET(b + 4, a) // stacked pc
+				S.GET(b, b) // dynamic link
+				dec(c) 
+			else 
+				c := 0 
+			end  
+		until c = 0 
+		out[len_] := 0x
+		x := MessageBox("BlackBox", out, {mbOk})
+	end DefaultTrapViewer
+	
+	proc TrapCleanup
+		var 
+			t: TrapCleaner
+	begin 
+		while trapStack # nil do 
+			t := trapStack
+			trapStack := trapStack.next
+			t.Cleanup 
+		end 
+		if (trapChecker # nil) & (err # 128) then
+			trapChecker 
+		end 
+	end TrapCleanup
+	
+	proc SetTrapGuard*(on: boolean) 
+	begin 
+		guarded := on
+	end SetTrapGuard
+	
+	proc Try*(h: TryHandler; a, b, c: integer) 
+		var 
+			res: integer
+			context: Libc.sigjmp_buf
+			oldContext: pointer to Libc.sigjmp_buf
+	begin 
+		oldContext := currentTryContext
+		res := Libc.sigsetjmp(context, Libc.TRUE_)
+		currentTryContext := context
+		if res = 0 then // first time around
+			h(a, b, c) 
+		elsif res = trapReturn then   // after a trap
+		else 
+			halt(100) 
+		end 
+		currentTryContext := oldContext
+	end Try
+	
+	// -------------------- Initialization ---------------------
+	
+	proc InitFpu // COMPILER DEPENDENT
+		// could be eliminated, delayed for backward compatibility
+		var 
+			cw: set
+	begin 
+		FINIT
+		FSTCW
+		// denorm, underflow, precision, zero div, overflow masked
+		// invalid trapped
+		// round to nearest, temp precision
+		cw := cw - {0..5, 8..11} + {1, 2, 3, 4, 5, 8, 9}
+		FLDCW
+	end InitFpu
+	
+	proc TrapHandler(sig: integer; siginfo: Libc.Ptrsiginfo_t; context: Libc.Ptrucontext_t) 
+	begin 
+		if isReadableCheck then
+			isReadableCheck := false
+			Msg("~IsReadable")
+			Libc.siglongjmp(isReadableContext, 1) 
+		end 
+		
+		(* S.GETREG(SP, sp);
+		   S.GETREG(FP, fp); *)
+		
+		
+		stack := baseStack
+		
+		sp := context.uc_mcontext.gregs[7] // TODO: is the stack pointer really stored in register 7?
+		fp := context.uc_mcontext.gregs[6] // TODO: is the frame pointer really stored in register 6?
+		pc := context.uc_mcontext.gregs[14] // TODO: is the pc really stored in register 14?
+		val_ := siginfo._sifields._sigfault.si_addr
+		
+		(* Int(sig); Int(siginfo.si_signo); Int(siginfo.si_code); Int(siginfo.si_errno);
+		   Int(siginfo.si_status); Int(siginfo.si_value); Int(siginfo.si_int); *)
+		
+		
+		err := sig
+		if trapped then
+			DefaultTrapViewer 
+		end 
+		case sig of 
+			Libc.SIGINT: 
+				err := 200 // Interrupt (ANSI).
+				Quit(0) 
+			| Libc.SIGILL:  // Illegal instruction (ANSI).
+				err := 202
+				val_ := 0
+				if IsReadable(pc, pc + 4) then
+					S.GET(pc, val_)
+					if val_ mod 100h = 8dh then // lea reg,reg
+						if val_ div 100h mod 100h = 0f0h then
+							err := val_ div 10000h mod 100h  // trap
+						elsif val_ div 1000h mod 10h = 0eh then 
+							err := 128 + val_ div 100h mod 10h  // run time error
+						end  
+					end  
+				end  
+			| Libc.SIGFPE: 
+				case siginfo.si_code of 
+					0:   // TODO: ??????
+					(* IF siginfo.si_int = 8 THEN
+					   err := 139
+					   ELSIF siginfo.si_int = 0 THEN
+					   err := 143
+					   END *)
+					
+					
+					| Libc.FPE_INTDIV:  // Integer divide by zero.
+						err := 139 
+					| Libc.FPE_INTOVF:  // Integer overflow.
+						err := 138 
+					| Libc.FPE_FLTDIV:  // Floating point divide by zero.
+						err := 140 
+					| Libc.FPE_FLTOVF:  // Floating point overflow.
+						err := 142 
+					| Libc.FPE_FLTUND:  // Floating point underflow.
+						err := 141 
+					| Libc.FPE_FLTRES:  // Floating point inexact result.
+						err := 143 
+					| Libc.FPE_FLTINV:  // Floating point invalid operation.
+						err := 143 
+					| Libc.FPE_FLTSUB:  // Subscript out of range.
+						err := 134 
+				else  
+				end  
+			| Libc.SIGSEGV:  // Segmentation violation (ANSI).
+				err := 203 
+		else  
+		end 
+		inc(trapCount)
+		InitFpu
+		TrapCleanup
+		if err # 128 then
+			if (trapViewer = nil) or trapped then
+				DefaultTrapViewer 
+			else 
+				trapped := true
+				trapViewer()
+				trapped := false 
+			end  
+		end 
+		if currentTryContext # nil then // Try failed
+			Libc.siglongjmp(currentTryContext, trapReturn) 
+		else 
+			if restart # nil then // Start failed
+				Libc.siglongjmp(loopContext, trapReturn) 
+			end 
+			Quit(1)  // FIXME
+		end 
+		trapped := false
+	end TrapHandler
+	
+	proc InstallSignals*
+		var 
+			sa, old: Libc.sigaction_t
+			res, i: integer
+	(* sigstk: Libc.stack_t;
+	   errno: INTEGER; *)
+	
+	
+	begin 
+		(* (* A. V. Shiryaev: Set alternative stack on which signals are to be processed *)
+		   sigstk.ss_sp := sigStack;
+		   sigstk.ss_size := sigStackSize;
+		   sigstk.ss_flags := 0;
+		   res := Libc.sigaltstack(sigstk, NIL);
+		   IF res # 0 THEN Msg("ERROR: Kernel.InstallSignals: sigaltstack failed!");
+		   S.GET( Libc.__errno_location(), errno );
+		   Int(errno);
+		   Libc.exit(1)
+		   END; *)
+		
+		
+		
+		sa.sa_sigaction := TrapHandler
+		// res := LinLibc.sigemptyset(S.ADR(sa.sa_mask));
+		
+		
+		res := Libc.sigfillset(sa.sa_mask)
+		sa.sa_flags := (* Libc.SA_ONSTACK + *)Libc.SA_SIGINFO // TrapHandler takes three arguments
+		(* IF LinLibc.sigaction(LinLibc.SIGINT, sa, old) # 0 THEN Msg("failed to install SIGINT") END;
+		   IF LinLibc.sigaction(LinLibc.SIGILL, sa, old) # 0 THEN Msg("failed to install SIGILL") END;
+		   IF LinLibc.sigaction(LinLibc.SIGFPE, sa, old) # 0 THEN Msg("failed to install SIGFPE") END;
+		   IF LinLibc.sigaction(LinLibc.SIGSEGV, sa, old) # 0 THEN Msg("failed to install SIGSEGV") END;
+		   IF LinLibc.sigaction(LinLibc.SIGPIPE, sa, old) # 0 THEN Msg("failed to install SIGPIPE") END;
+		   IF LinLibc.sigaction(LinLibc.SIGTERM, sa, old) # 0 THEN Msg("failed to install SIGTERM") END; *)
+		
+		
+		// respond to all possible signals
+		for i:= 1 to Libc._NSIG - 1 do 
+			if (i # Libc.SIGKILL) 
+				& (i # Libc.SIGSTOP) 
+				& (i # Libc.SIGWINCH) 
+				& (i # Libc.SIGCHLD) 
+			then
+				if Libc.sigaction(i, sa, old) # 0 then  // Msg("failed to install signal"); Int(i)
+				end  
+			end  
+		end 
+		
+		// set SIG_IGN for SIGCHLD
+		sa.sa_sigaction := S.VAL(Libc.sa_sigaction_t, Libc.SIG_IGN)
+		if Libc.sigaction(Libc.SIGCHLD, sa, old) # 0 then
+			Msg("failed to install SIGCHLD") 
+		end 
+	end InstallSignals
+	
+	proc Init
+		var 
+			i: integer
+	begin 
+		(* (* for sigaltstack *)
+		   sigStack := Libc.calloc(1, sigStackSize);
+		   IF sigStack = Libc.NULL THEN
+		   Msg("ERROR: Kernel.Init: calloc(1, sigStackSize) failed!");
+		   Libc.exit(1)
+		   END; *)
+		
+		
+		// for mmap
+		zerofd := Libc.open("/dev/zero", Libc.O_RDWR, {0..8})
+		if zerofd < 0 then
+			Msg("ERROR: Kernel.Init: can not open /dev/zero!")
+			Libc.exit_(1) 
+		end 
+		// for mprotect
+		pageSize := Libc.sysconf(Libc._SC_PAGESIZE)
+		if pageSize < 0 then
+			Msg("ERROR: Kernel.Init: pageSize < 0!")
+			Libc.exit_(1) 
+		end 
+		
+		if LibW.setlocale(LibW.LC_ALL, "") = nil then
+			Msg("Kernel.Init: setlocale failed") 
+		end 
+		
+		isReadableCheck := false
+		
+		InstallSignals // init exception handling
+		currentTryContext := nil
+		
+		allocated := 0
+		total := 0
+		used := 0
+		sentinelBlock.size_ := max(integer)
+		sentinel := sentinelBlock
+		
+		// S.PUTREG(ML, S.ADR(modList));
+		
+		
+		
+		i := N
+		repeat 
+			dec(i)
+			free[i] := sentinel 
+		until i = 0 
+		
+		if inDll then 
+		// baseStack := FPageWord(4);	(* begin of stack segment *)
+		
+		
+		end 
+		InitFpu
+		if ~static then
+			InitModule(modList)
+			if ~inDll then
+				Quit(1) 
+			end  
+		end 
+	// told := 0; shift := 0
+	end Init
+
+begin
+	if modList = nil then // only once
+		S.GETREG(SP, baseStack) // TODO: Check that this is ok.
+		S.GET(baseStack + 16, argc) // works only with Dev2
+		argv := S.VAL(Libc.StrArray, baseStack + 20) // works only with Dev2
+		S.GETREG(ML, modList) // linker loads module list to BX
+		static := init in modList.opts
+		inDll := dll in modList.opts
+		Init 
+	end 
+(* CLOSE
+	if ~terminating then
+		terminating := true
+		Quit(0) 
+	end  *) 
+end Kernel

@@ -1,0 +1,969 @@
+module HostPorts
+	
+	(* DONE:
+	   ShiryaevAV: CharPos and CharIndex corrected (UTF-8)
+	   ShiryaevAV: DrawOval fixed (behavior as in Windows)
+	   AD: fix MarkRect
+	   DIA: fir DrawRect *)
+	
+	
+	
+	(* TODO:
+	   - OpenBuffer can be optimized to only open a buffer large enough for the clipingrectangle
+	   - MarkRect needs to be looked at for some parameter values
+	   - ResetColors should find system values *)
+	
+	
+	import SYSTEM, 
+		Gdk:= Gtk2Gdk, Gtk:= Gtk2Gtk, Key:= Gtk2Keysyms, Pango:= Gtk2Pango, 
+		HostFonts, 
+		Dialog, Ports, Fonts
+	
+	const 
+		// buttons
+		left* = 16
+		middle* = 17
+		right* = 18
+		shift* = 24
+		ctrl* = 25
+		opt* = 26
+		cmd* = 27
+		alt* = 28
+		focusPat* = 5
+		
+		resizeHCursor* = 16
+		resizeVCursor* = 17
+		resizeLCursor* = 18
+		resizeRCursor* = 19
+		resizeCursor* = 20
+		busyCursor* = 21
+		stopCursor* = 22
+		moveCursor* = 23
+		copyCursor* = 24
+		linkCursor* = 25
+		pickCursor* = 26
+		
+		extend = 1 // same as Controllers.extend, .modify, .popup, and .pick !
+		modify = 2
+		popup = 3
+		pick = 4
+		
+		off = 0
+		on = 1
+	type 
+		
+		Port* = pointer to record (Ports.Port) 
+				bl, bt, br, bb: integer // buffer rectangle
+				w, h: integer // size of port
+				da-: Gtk.GtkDrawingArea // drawing widget
+				fixed-: Gtk.GtkFixed // fixed container for absolute positioning
+				map: Gdk.GdkPixmap // off screen buffer
+				gc: Gdk.GdkGC  // graphic context
+			end 
+		
+		Rider* = pointer to record (Ports.Rider) 
+				l-, t-, r-, b-: integer
+				dx, dy: integer // scroll offset
+				port-: Port // port for the rider
+				map: Gdk.GdkPixmap // save bitmap
+				gc: Gdk.GdkGC // save gc
+				sl, st, sr, sb: integer  // save rect
+			end 
+	
+	var 
+		// system colors
+		textCol-, selBackground-, selTextCol-, 
+		dialogTextCol-, dialogShadowCol-, dialogLightCol-: Ports.Color
+		
+		mx, my: integer // actual mouse coordinates
+		mb: set // actual mouse buttons & modifiers
+		dim25Col, dim50Col, dim75Col: Ports.Color
+		
+		cursors-: array 32 of Gdk.GdkCursor
+	
+	// Auxiliary procedures
+	
+	proc UnsignedShortInt(i: integer): shortint 
+	begin 
+		assert(i < 2 * max(shortint) + 2, 20)
+		return (short(i))
+	end UnsignedShortInt
+	
+	proc AllocateColor(bbColor: Ports.Color; var gdkColor: Gdk.GdkColor) 
+		var 
+			cm: Gdk.GdkColormap
+			i: integer
+	begin 
+		cm := Gdk.gdk_colormap_get_system() // TODO: keep in global variable?
+		i := bbColor mod 256
+		gdkColor.red := UnsignedShortInt(i * 257)
+		i := (bbColor div 256) mod 256
+		gdkColor.green := UnsignedShortInt(i * 257)
+		i := (bbColor div (256 * 256)) mod 256
+		gdkColor.blue := UnsignedShortInt(i * 257)
+		if ~Gdk.gdk_colormap_alloc_color(cm, gdkColor, 1, 1) then
+			Dialog.ShowMsg("gdk_colormap_alloc_color failed") 
+		end 
+	end AllocateColor
+	
+	// Port
+	
+	proc (p: Port) OpenBuffer*(l, t, r, b: integer) 
+	// VAR rect: Gdk.GdkRectangle;
+	begin 
+		assert(p.da # nil, 20)
+		if l < 0 then
+			l := 0 
+		end 
+		if t < 0 then
+			t := 0 
+		end 
+		if r > p.w then
+			r := p.w 
+		end 
+		if b > p.h then
+			b := p.h 
+		end 
+		if (l < r) & (t < b) then
+			p.bl := l
+			p.bt := t
+			p.br := r
+			p.bb := b
+			p.map := Gdk.gdk_pixmap_new(p.da.window, p.w, p.h, -1)
+			p.gc := Gdk.gdk_gc_new(p.map) 
+		end 
+	end OpenBuffer
+	
+	proc (p: Port) CloseBuffer*
+	begin 
+		if p.map # nil then
+			Gdk.gdk_draw_drawable(p.da.window, p.da.style.white_gc, p.map, p.bl, p.bt, p.bl, p.bt, p.br - p.bl, p.bb - p.bt)
+			Gdk.gdk_drawable_unref(p.map)
+			p.map := nil
+			Gdk.gdk_gc_unref(p.gc)
+			p.gc := nil 
+		end 
+	end CloseBuffer
+	
+	proc (p: Port) SetSize*(w, h: integer) 
+	begin 
+		assert(w >= 0, 20)
+		assert(h >= 0, 21)
+		p.w := w
+		p.h := h
+	end SetSize
+	
+	proc (p: Port) GetSize*(var w, h: integer) 
+	begin 
+		w := p.w
+		h := p.h
+	end GetSize
+	
+	proc (p: Port) NewRider*(): Rider 
+		var 
+			h: Rider
+	begin 
+		new(h)
+		h.port := p
+		return h
+	end NewRider
+	
+	proc (p: Port) SetDA*(da: Gtk.GtkDrawingArea)  // new
+	begin 
+		p.da := da
+	end SetDA
+	
+	proc (p: Port) SetFW*(fixed: Gtk.GtkFixed)  // new
+	begin 
+		p.fixed := fixed
+	end SetFW
+	
+	
+	// Rider
+	
+	proc (rd: Rider) InitPort*(port: Port)  // new
+	begin 
+		assert(rd.port = nil, 20)
+		assert(port # nil, 21)
+		assert(port.da # nil, 22)
+		rd.port := port
+		rd.dx := 0
+		rd.dy := 0
+	end InitPort
+	
+	proc (rd: Rider) Move*(dx, dy: integer) 
+	begin 
+		inc(rd.dx, dx)
+		inc(rd.dy, dy)
+	end Move
+	
+	
+	proc (rd: Rider) DrawingBuf(var map: Gdk.GdkDrawable; var gc: Gdk.GdkGC)  // new
+		var 
+			r: Gdk.GdkRectangle
+	begin 
+		assert(rd.port # nil, 20)
+		if (rd.port.map # nil) & (rd.port.gc # nil) then // buffered drawing
+			map := rd.port.map
+			gc := rd.port.gc
+			Gdk.gdk_gc_ref(gc) 
+		else  // unbuffered drawing
+			map := rd.port.da.window
+			gc := Gdk.gdk_gc_new(map) 
+		end 
+		r.x := (rd.l)
+		r.y := (rd.t)
+		r.width := (rd.r - rd.l + 1)
+		r.height := (rd.b - rd.t + 1)
+		Gdk.gdk_gc_set_clip_rectangle(gc, r)
+		Gdk.gdk_gc_set_clip_origin(gc, 0, 0)
+	end DrawingBuf
+	
+	proc (rd: Rider) Base*(): Ports.Port 
+	begin 
+		return rd.port
+	end Base
+	
+	proc (rd: Rider) SetRect*(l, t, r, b: integer) 
+	begin 
+		assert((l <= r) & (t <= b), 20)
+		assert(rd.port # nil, 21)
+		rd.l := l
+		rd.t := t
+		rd.r := r
+		rd.b := b
+	end SetRect
+	
+	proc (rd: Rider) GetRect*(var l, t, r, b: integer) 
+	begin 
+		l := rd.l
+		t := rd.t
+		r := rd.r
+		b := rd.b
+	end GetRect
+	
+	proc (rd: Rider) DrawLine*(x0, y0, x1, y1, s: integer; col: Ports.Color) 
+		var 
+			gdkColor: Gdk.GdkColor
+			map: Gdk.GdkDrawable
+			gc: Gdk.GdkGC
+	begin 
+		assert(s >= 0, 21)
+		assert(rd.port # nil, 100)
+		rd.DrawingBuf(map, gc)
+		AllocateColor(col, gdkColor)
+		Gdk.gdk_gc_set_foreground(gc, gdkColor)
+		Gdk.gdk_gc_set_line_attributes(gc, s, Gdk.GDK_LINE_SOLID, Gdk.GDK_CAP_ROUND, Gdk.GDK_JOIN_ROUND)
+		Gdk.gdk_draw_line(map, gc, x0, y0, x1, y1)
+		Gdk.gdk_gc_unref(gc)
+	end DrawLine
+	
+	proc (rd: Rider) DrawOval*(l, t, r, b, s: integer; col: Ports.Color) 
+		var 
+			gdkColor: Gdk.GdkColor
+			map: Gdk.GdkDrawable
+			gc: Gdk.GdkGC
+			h: integer
+	begin 
+		assert(rd.port # nil, 20)
+		rd.DrawingBuf(map, gc)
+		AllocateColor(col, gdkColor)
+		Gdk.gdk_gc_set_foreground(gc, gdkColor)
+		Gdk.gdk_gc_set_background(gc, gdkColor)
+		if s = Ports.fill then
+			Gdk.gdk_gc_set_line_attributes(gc, 1, Gdk.GDK_LINE_SOLID, Gdk.GDK_CAP_ROUND, Gdk.GDK_JOIN_ROUND)
+			Gdk.gdk_draw_arc(map, gc, on, l, t, r - l, b - t, 0, 360 * 64) 
+		else 
+			if s = 0 then
+				s := 1 
+			end 
+			h := s div 2
+			inc(l, h)
+			inc(t, h)
+			h := (s - 1) div 2
+			dec(r, h)
+			dec(b, h)
+			// ShiryaevAV:
+			if r < l then
+				h := l
+				l := r
+				r := h 
+			end 
+			if b < t then
+				h := t
+				t := b
+				b := h 
+			end 
+			Gdk.gdk_gc_set_line_attributes(gc, s, Gdk.GDK_LINE_SOLID, Gdk.GDK_CAP_ROUND, Gdk.GDK_JOIN_ROUND)
+			Gdk.gdk_draw_arc(map, gc, off, l, t, r - l, b - t, 0, 360 * 64) 
+		end 
+		Gdk.gdk_gc_unref(gc)
+	end DrawOval
+	
+	proc (rd: Rider) DrawPath*(in pts: array of Ports.Point; n, s: integer; col: Ports.Color; path: integer) 
+		type 
+			PAP = pointer to Gdk.GdkPoints
+		var 
+			i, j, k: integer
+			map: Gdk.GdkDrawable
+			gc: Gdk.GdkGC
+			gdkColor: Gdk.GdkColor
+			polyBuf: array 256 of Gdk.GdkPoint
+			polyPtr: pointer to array of Ports.Point
+			polyLen: integer
+			pap: PAP
+		
+		proc Bezier(x0, y0, xd0, yd0, x1, y1, xd1, yd1: integer) 
+			var 
+				x, y, xd, yd, i: integer
+		begin 
+			if abs(xd0 - xd1) + abs(yd0 - yd1) < 8 then
+				if k > polyLen - 2 then
+					new(polyPtr, polyLen * 2)
+					i := 0
+					while i < polyLen do 
+						polyPtr[i] := SYSTEM.VAL(Ports.Point, pap[i])
+						inc(i) 
+					end 
+					polyLen := polyLen * 2
+					pap := SYSTEM.VAL(PAP, SYSTEM.ADR(polyPtr^)) 
+				end 
+				pap[k].x := (x0)
+				pap[k].y := (y0)
+				inc(k) 
+			else 
+				x := ((xd0 - xd1) div 4 + x0 + x1 + 1) div 2
+				y := ((yd0 - yd1) div 4 + y0 + y1 + 1) div 2
+				xd := ((x1 - x0) * 3 - (xd0 + xd1) div 2 + 2) div 4
+				yd := ((y1 - y0) * 3 - (yd0 + yd1) div 2 + 2) div 4
+				Bezier(x0, y0, xd0 div 2, yd0 div 2, x, y, xd, yd)
+				Bezier(x, y, xd, yd, x1, y1, xd1 div 2, yd1 div 2) 
+			end 
+		end Bezier
+	
+	begin 
+		assert(rd.port # nil, 20)
+		rd.DrawingBuf(map, gc)
+		AllocateColor(col, gdkColor)
+		Gdk.gdk_gc_set_foreground(gc, gdkColor)
+		
+		assert(n >= 0, 20)
+		assert(n <= len(pts), 21)
+		assert(s >= Ports.fill, 23)
+		if s < 0 then
+			Gdk.gdk_gc_set_line_attributes(gc, 1, Gdk.GDK_LINE_SOLID, Gdk.GDK_CAP_ROUND, Gdk.GDK_JOIN_ROUND)
+			Gdk.gdk_gc_set_background(gc, gdkColor)
+			if path = Ports.closedPoly then
+				assert(n >= 2, 20)
+				Gdk.gdk_draw_polygon(map, gc, on, SYSTEM.VAL(Gdk.GdkPoints, pts), n) 
+			else 
+				assert(n >= 3, 20)
+				assert(path = Ports.closedBezier, 22)
+				assert(n mod 3 = 0, 24)
+				pap := SYSTEM.VAL(PAP, SYSTEM.ADR(polyBuf))
+				polyLen := len(polyBuf)
+				i := 0
+				k := 0
+				while i < n do 
+					j := i + 3
+					if j = n then
+						j := 0 
+					end 
+					Bezier(pts[i].x, pts[i].y, (pts[i + 1].x - pts[i].x) * 3, (pts[i + 1].y - pts[i].y) * 3, 
+					pts[j].x, pts[j].y, (pts[j].x - pts[i + 2].x) * 3, (pts[j].y - pts[i + 2].y) * 3)
+					inc(i, 3) 
+				end 
+				Gdk.gdk_draw_polygon(map, gc, on, pap, k) 
+			end  
+		else 
+			Gdk.gdk_gc_set_line_attributes(gc, s, Gdk.GDK_LINE_SOLID, Gdk.GDK_CAP_ROUND, Gdk.GDK_JOIN_ROUND)
+			if s = 0 then
+				s := 1 
+			end 
+			if path = Ports.closedPoly then
+				assert(n >= 2, 20)
+				Gdk.gdk_draw_polygon(map, gc, off, SYSTEM.VAL(Gdk.GdkPoints, pts), n) 
+			elsif path = Ports.openPoly then 
+				assert(n >= 2, 20)
+				Gdk.gdk_draw_lines(map, gc, SYSTEM.VAL(Gdk.GdkPoints, pts), n) 
+			else 
+				if path = Ports.closedBezier then
+					assert(n >= 3, 20)
+					assert(n mod 3 = 0, 24) 
+				else 
+					assert(n >= 4, 20)
+					assert(path = Ports.openBezier, 25)
+					assert(n mod 3 = 1, 24) 
+				end 
+				pap := SYSTEM.VAL(PAP, SYSTEM.ADR(polyBuf))
+				polyLen := len(polyBuf)
+				i := 0
+				while i < n - 2 do 
+					k := 0
+					j := i + 3
+					if j = n then
+						j := 0 
+					end 
+					Bezier(pts[i].x, pts[i].y, (pts[i + 1].x - pts[i].x) * 3, (pts[i + 1].y - pts[i].y) * 3, 
+					pts[j].x, pts[j].y, (pts[j].x - pts[i + 2].x) * 3, (pts[j].y - pts[i + 2].y) * 3)
+					pap[k].x := (pts[j].x)
+					pap[k].y := (pts[j].y)
+					inc(k)
+					Gdk.gdk_draw_lines(map, gc, pap, k)
+					inc(i, 3) 
+				end  
+			end  
+		end 
+		Gdk.gdk_gc_unref(gc)
+	end DrawPath
+	
+	proc (rd: Rider) DrawRect*(l, t, r, b, s: integer; col: Ports.Color) 
+		var 
+			gdkColor: Gdk.GdkColor
+			map: Gdk.GdkDrawable
+			gc: Gdk.GdkGC
+			h: integer
+	begin 
+		assert(rd.port # nil, 20)
+		rd.DrawingBuf(map, gc)
+		AllocateColor(col, gdkColor)
+		Gdk.gdk_gc_set_foreground(gc, gdkColor)
+		Gdk.gdk_gc_set_background(gc, gdkColor)
+		
+		if s = Ports.fill then
+			Gdk.gdk_gc_set_line_attributes(gc, 1, Gdk.GDK_LINE_SOLID, Gdk.GDK_CAP_ROUND, Gdk.GDK_JOIN_MITER)
+			Gdk.gdk_draw_rectangle(map, gc, on, l, t, r - l, b - t) 
+		else 
+			h := s div 2
+			inc(l, h)
+			inc(t, h)
+			h := (s - 1) div 2
+			dec(r, h)
+			dec(b, h)
+			Gdk.gdk_gc_set_line_attributes(gc, s, Gdk.GDK_LINE_SOLID, Gdk.GDK_CAP_ROUND, Gdk.GDK_JOIN_MITER)
+			Gdk.gdk_draw_rectangle(map, gc, off, l, t, r - l - 1, b - t - 1) 
+		(* https://developer.gnome.org/gdk2/stable/gdk2-Drawing-Primitives.html
+		   A rectangle drawn filled is 1 pixel smaller in both dimensions than a rectangle outlined. Calling gdk_draw_rectangle (window, gc, TRUE, 0, 0, 20, 20) results in a filled rectangle 20 pixels wide and 20 pixels high. Calling gdk_draw_rectangle (window, gc, FALSE, 0, 0, 20, 20) results in an outlined rectangle with corners at (0, 0), (0, 20), (20, 20), and (20, 0), which makes it 21 pixels wide and 21 pixels high. *)
+		
+		
+		end 
+		Gdk.gdk_gc_unref(gc)
+	end DrawRect
+	
+	
+	proc (rd: Rider) DrawSString*(x, y: integer; col: Ports.Color; in s: array of char; font: Fonts.Font) 
+		var 
+			gdkColor: Gdk.GdkColor
+			map: Gdk.GdkDrawable
+			gc: Gdk.GdkGC
+			layout: Pango.PangoLayout
+	begin 
+		assert(rd.port # nil, 20)
+		rd.DrawingBuf(map, gc)
+		AllocateColor(col, gdkColor)
+		Gdk.gdk_gc_set_foreground(gc, gdkColor)
+		layout := HostFonts.layout // (layout);
+		HostFonts.ShapeSString(layout, s, font)
+		Gdk.gdk_draw_layout_line(map, gc, x, y, Pango.layout_get_line(layout, 0))
+		// GLib.g_object_unref(layout);
+		Gdk.gdk_gc_unref(gc)
+	end DrawSString
+	
+	proc (rd: Rider) DrawString*(x, y: integer; col: Ports.Color; in s: array of char; font: Fonts.Font) 
+		var 
+			gdkColor: Gdk.GdkColor
+			map: Gdk.GdkDrawable
+			gc: Gdk.GdkGC
+			layout: Pango.PangoLayout
+	begin 
+		assert(rd.port # nil, 20)
+		rd.DrawingBuf(map, gc)
+		AllocateColor(col, gdkColor)
+		Gdk.gdk_gc_set_foreground(gc, gdkColor)
+		layout := HostFonts.layout
+		HostFonts.ShapeString(layout, s, font)
+		Gdk.gdk_draw_layout_line(map, gc, x, y, Pango.layout_get_line(layout, 0))
+		// GLib.g_object_unref(layout);
+		Gdk.gdk_gc_unref(gc)
+	end DrawString
+	
+	proc (rd: Rider) DrawSpace*(x, y, w: integer; col: Ports.Color; font: Fonts.Font) 
+		var 
+			gdkColor: Gdk.GdkColor
+			map: Gdk.GdkDrawable
+			gc: Gdk.GdkGC
+			layout: Pango.PangoLayout
+	begin 
+		assert(rd.port # nil, 20)
+		rd.DrawingBuf(map, gc)
+		AllocateColor(col, gdkColor)
+		Gdk.gdk_gc_set_foreground(gc, gdkColor)
+		layout := HostFonts.layout
+		HostFonts.ShapeString(layout, " ", font)
+		Gdk.gdk_draw_layout_line(map, gc, x, y, Pango.layout_get_line(layout, 0))
+		Gdk.gdk_gc_unref(gc)
+	end DrawSpace
+	
+	proc (rd: Rider) CharPos*(x, index: integer; in s: array of char; font: Fonts.Font): integer 
+		var 
+			layout: Pango.PangoLayout
+			x_pos: integer
+		
+		proc ShortLen(in f: array of char; fLen: integer): integer 
+			var 
+				i, j: integer
+		begin 
+			i := 0
+			j := 0
+			while i < fLen do 
+				case ord(f[i]) of 
+					00h .. 7fh: 
+						inc(j) 
+					| 80h .. 7ffh: 
+						inc(j, 2) 
+				else  // | 800H..0FFFFH
+					inc(j, 3) 
+				end 
+				inc(i) 
+			end 
+			return j
+		end ShortLen
+	
+	begin 
+		assert(rd.port # nil, 100)
+		assert(index <= len(s), 101)
+		
+		layout := HostFonts.layout
+		HostFonts.ShapeString(layout, s, font)
+		
+		Pango.layout_line_index_to_x(
+		Pango.layout_get_line(layout, 0), ShortLen(s, index), 0, x_pos)
+		return x + x_pos div Pango.SCALE
+	end CharPos
+	
+	proc (rd: Rider) SCharPos*(x, index: integer; in s: array of char; font: Fonts.Font): integer 
+		var 
+			layout: Pango.PangoLayout
+			x_pos: integer
+	begin 
+		assert(rd.port # nil, 100)
+		assert(index <= len(s), 101)
+		
+		layout := HostFonts.layout
+		HostFonts.ShapeSString(layout, s, font)
+		
+		Pango.layout_line_index_to_x(
+		Pango.layout_get_line(layout, 0), index, 0, x_pos)
+		return x + x_pos div Pango.SCALE
+	end SCharPos
+	
+	proc (rd: Rider) CharIndex*(x, pos: integer; in s: array of char; font: Fonts.Font): integer 
+		var 
+			layout: Pango.PangoLayout
+			x_pos, shortIndex, index, trailing: integer
+			out: boolean
+	
+	begin 
+		assert(rd.port # nil, 100)
+		
+		layout := HostFonts.layout
+		HostFonts.ShapeString(layout, s, font)
+		x_pos := (pos - x) * Pango.SCALE
+		out := Pango.layout_line_x_to_index(
+			Pango.layout_get_line(layout, 0), x_pos, shortIndex, trailing)
+		
+		// utf8
+		index := 0
+		while shortIndex > 0 do 
+			case ord(s[index]) of 
+				00h .. 7fh: 
+					dec(shortIndex) 
+				| 80h .. 7ffh: 
+					dec(shortIndex, 2) 
+			else  // | 800H..0FFFFH
+				dec(shortIndex, 3) 
+			end 
+			inc(index) 
+		end 
+		
+		return index
+	end CharIndex
+	
+	proc (rd: Rider) SCharIndex*(x, pos: integer; in s: array of char; font: Fonts.Font): integer 
+		var 
+			layout: Pango.PangoLayout
+			x_pos, index, trailing: integer
+			out: boolean
+	begin 
+		assert(rd.port # nil, 100)
+		
+		layout := HostFonts.layout
+		HostFonts.ShapeSString(layout, s, font)
+		x_pos := (pos - x) * Pango.SCALE
+		out := Pango.layout_line_x_to_index(Pango.layout_get_line(layout, 0), x_pos, index, trailing)
+		return index
+	end SCharIndex
+	
+	proc SetMouseState*(x, y: integer; but: set; isDown: boolean) 
+	begin 
+		mx := x
+		my := y
+		mb := but
+	end SetMouseState
+	
+	proc (rd: Rider) MarkRect*(l, t, r, b, s, mode: integer; show: boolean) 
+		var 
+			gdkColor: Gdk.GdkColor
+			gc: Gdk.GdkGC
+			vals: Gdk.GdkGCValues
+			map: Gdk.GdkDrawable
+			rect: Gdk.GdkRectangle
+	begin 
+		if rd.port.map # nil then
+			map := rd.port.map  // buffered drawing
+		else 
+			map := rd.port.da.window  // unbuffered drawing
+		end 
+		if (mode = Ports.invert) or (mode = Ports.hilite) then
+			vals.foreground := rd.port.da.style.white 
+		elsif mode = Ports.dim25 then 
+			AllocateColor(dim25Col, gdkColor)
+			vals.foreground := gdkColor 
+		elsif mode = Ports.dim50 then 
+			AllocateColor(dim50Col, gdkColor)
+			vals.foreground := gdkColor 
+		elsif mode = Ports.dim75 then 
+			AllocateColor(dim75Col, gdkColor)
+			vals.foreground := gdkColor 
+		else  // mode = focusPat
+			// TODO: which color should be used here?
+			AllocateColor(Ports.red, gdkColor)
+			vals.foreground := gdkColor 
+		end 
+		vals.function := Gdk.GDK_XOR
+		vals.line_style := Gdk.GDK_LINE_SOLID
+		vals.line_width := 1
+		vals.subwindow_mode := Gdk.GDK_INCLUDE_INFERIORS
+		gc := Gdk.gdk_gc_new_with_values(map, vals, 
+			Gdk.GDK_GC_FOREGROUND + Gdk.GDK_GC_LINE_WIDTH + 
+			Gdk.GDK_GC_LINE_STYLE + Gdk.GDK_GC_SUBWINDOW + Gdk.GDK_GC_FUNCTION)
+		
+		rect.x := (rd.l)
+		rect.y := (rd.t)
+		rect.width := (rd.r - rd.l + 1)
+		rect.height := (rd.b - rd.t + 1)
+		Gdk.gdk_gc_set_clip_rectangle(gc, rect)
+		Gdk.gdk_gc_set_clip_origin(gc, 0, 0)
+		
+		if s = 0 then
+			s := 1 
+		end 
+		if (s < 0) or (r - l < 2 * s) or (b - t < 2 * s) then
+			Gdk.gdk_gc_set_line_attributes(gc, 1, Gdk.GDK_LINE_SOLID, Gdk.GDK_CAP_ROUND, Gdk.GDK_JOIN_MITER)
+			Gdk.gdk_draw_rectangle(map, gc, on, l, t, r - l, b - t) 
+		else 
+			Gdk.gdk_gc_set_line_attributes(gc, 1, Gdk.GDK_LINE_SOLID, Gdk.GDK_CAP_ROUND, Gdk.GDK_JOIN_MITER)
+			Gdk.gdk_draw_rectangle(map, gc, off, l, t, s, b - t)
+			dec(r, s)
+			Gdk.gdk_draw_rectangle(map, gc, off, r, t, s, b - t)
+			inc(l, s)
+			Gdk.gdk_draw_rectangle(map, gc, off, l, t, r - l, s)
+			dec(b, s)
+			Gdk.gdk_draw_rectangle(map, gc, off, l, b, r - l, s) 
+		end 
+		Gdk.gdk_gc_unref(gc)
+	end MarkRect
+	
+	
+	proc (rd: Rider) SaveRect*(l, t, r, b: integer; var res: integer) 
+		var 
+			p: Port
+	begin 
+		res := 1
+		p := rd.port
+		if l < 0 then
+			l := 0 
+		end 
+		if t < 0 then
+			t := 0 
+		end 
+		if r > p.w then
+			r := p.w 
+		end 
+		if b > p.h then
+			b := p.h 
+		end 
+		if (l < r) & (t < b) then
+			rd.sl := l
+			rd.st := t
+			rd.sr := r
+			rd.sb := b
+			rd.gc := Gdk.gdk_gc_new(p.da.window)
+			if rd.gc # nil then
+				rd.map := Gdk.gdk_pixmap_new(p.da.window, r - l, b - t, -1)
+				if rd.map # nil then
+					Gdk.gdk_gc_set_exposures(rd.gc, true)
+					Gdk.gdk_draw_drawable(rd.map, rd.gc, p.da.window, l, t, 0, 0, r - l, b - t)
+					res := 0 
+				else 
+					Gdk.gdk_gc_unref(rd.gc)
+					rd.gc := nil 
+				end  
+			end  
+		end 
+	end SaveRect
+	
+	proc (rd: Rider) RestoreRect*(l, t, r, b: integer; dispose: boolean) 
+	begin 
+		if rd.gc # nil then
+			if l < rd.sl then
+				l := rd.sl 
+			end 
+			if t < rd.st then
+				t := rd.st 
+			end 
+			if r > rd.sr then
+				r := rd.sr 
+			end 
+			if b > rd.sb then
+				b := rd.sb 
+			end 
+			Gdk.gdk_draw_drawable(rd.port.da.window, rd.port.da.style.white_gc, rd.map, l - rd.sl, t - rd.st, l, t, r - l, b - t)
+			if dispose then
+				Gdk.gdk_drawable_unref(rd.map)
+				rd.map := nil
+				Gdk.gdk_gc_unref(rd.gc)
+				rd.gc := nil 
+			end  
+		end 
+	end RestoreRect
+	
+	
+	proc (rd: Rider) Scroll*(dx, dy: integer) 
+		var 
+			width, height, x, y, sx, sy: integer
+			gc: Gdk.GdkGC
+	begin 
+		assert(rd.port # nil, 100)
+		if dx < 0 then
+			sx := rd.l - dx
+			x := rd.l
+			width := rd.r - rd.l + dx 
+		else 
+			sx := rd.l
+			x := rd.l + dx
+			width := rd.r - rd.l - dx 
+		end 
+		if dy < 0 then
+			sy := rd.t - dy
+			y := rd.t
+			height := rd.b - rd.t + dy 
+		else 
+			sy := rd.t
+			y := rd.t + dy
+			height := rd.b - rd.t - dy 
+		end 
+		gc := Gdk.gdk_gc_new(rd.port.da.window)
+		Gdk.gdk_gc_set_exposures(gc, true)
+		inc(width)
+		inc(height)
+		Gdk.gdk_draw_drawable(rd.port.da.window, gc, rd.port.da.window, sx, sy, x, y, width, height)
+		Gdk.gdk_gc_unref(gc)
+		
+		// Invalidate the new area
+		
+		if dy < 0 then
+			Gtk.gtk_widget_queue_draw_area(rd.port.da, rd.l, rd.b + dy, rd.r - rd.l + 1, -dy + 1) 
+		elsif dy > 0 then 
+			Gtk.gtk_widget_queue_draw_area(rd.port.da, rd.l, rd.t, rd.r - rd.l + 1, dy + 1) 
+		end 
+		if dx < 0 then
+			Gtk.gtk_widget_queue_draw_area(rd.port.da, rd.r + dx, rd.t, -dx + 1, rd.b - rd.t + 1) 
+		elsif dx > 0 then 
+			Gtk.gtk_widget_queue_draw_area(rd.port.da, rd.l, rd.t, dx + 1, rd.b - rd.t + 1) 
+		end 
+		
+		// pattern origin correction
+		inc(rd.dx, dx)
+		inc(rd.dy, dy)
+	end Scroll
+	
+	proc (rd: Rider) SetCursor*(cursor: integer) 
+	begin 
+		Gdk.gdk_window_set_cursor(rd.port.da.window, cursors[cursor])
+	end SetCursor
+	
+	
+	proc (rd: Rider) Input*(var x, y: integer; var modifiers: set; var isDown: boolean) 
+		var 
+			event: Gdk.GdkEvent
+			motion: Gdk.GdkEventMotion
+			button: Gdk.GdkEventButton
+			key: Gdk.GdkEventKey
+			state: set
+			gotState: boolean
+	begin 
+		if Gdk.gdk_events_pending() then
+			gotState := false
+			event := Gdk.gdk_event_get()
+			if event # nil then
+				if event.type_ = Gdk.GDK_MOTION_NOTIFY then
+					motion := event(Gdk.GdkEventMotion)
+					Gdk.gdk_window_get_position(rd.port.fixed.parent.window, mx, my)
+					mx := short(entier(motion.x_root)) - mx
+					my := short(entier(motion.y_root)) - my
+					state := motion.state
+					gotState := true 
+				elsif event.type_ in {Gdk.GDK_BUTTON_PRESS, Gdk.GDK_BUTTON_RELEASE} then 
+					button := event(Gdk.GdkEventButton)
+					Gdk.gdk_window_get_position(rd.port.fixed.parent.window, mx, my)
+					mx := short(entier(button.x_root)) - mx
+					my := short(entier(button.y_root)) - my
+					if event.type_ = Gdk.GDK_BUTTON_PRESS then
+						if button.button = 1 then
+							incl(mb, left) 
+						end 
+						if button.button = 2 then
+							incl(mb, middle) 
+						end 
+						if button.button = 3 then
+							incl(mb, right) 
+						end  
+					else 
+						if button.button = 1 then
+							excl(mb, left) 
+						end 
+						if button.button = 2 then
+							excl(mb, middle) 
+						end 
+						if button.button = 3 then
+							excl(mb, right) 
+						end  
+					end 
+					state := button.state
+					gotState := true 
+				elsif event.type_ in {Gdk.GDK_KEY_PRESS, Gdk.GDK_KEY_RELEASE} then 
+					key := event(Gdk.GdkEventKey)
+					if (key.keyval = Key.GDK_Shift_L) or (key.keyval = Key.GDK_Shift_R) then
+						if key.type_ = Gdk.GDK_KEY_PRESS then
+							mb := mb + {shift, extend} 
+						else 
+							mb := mb - {shift, extend} 
+						end  
+					end 
+					if (key.keyval = Key.GDK_Control_L) or (key.keyval = Key.GDK_Control_R) then
+						if key.type_ = Gdk.GDK_KEY_PRESS then
+							mb := mb + {ctrl, modify} 
+						else 
+							mb := mb - {ctrl, modify} 
+						end  
+					end 
+					if (key.keyval = Key.GDK_Alt_L) or (key.keyval = Key.GDK_Alt_R) then
+						if key.type_ = Gdk.GDK_KEY_PRESS then
+							incl(mb, alt) 
+						else 
+							excl(mb, alt) 
+						end  
+					end  
+				else 
+					Gtk.gtk_main_do_event(event) 
+				end 
+				if gotState then
+					if Gdk.GDK_SHIFT_BIT in state then
+						mb := mb + {shift, extend} 
+					else 
+						mb := mb - {shift, extend} 
+					end 
+					if Gdk.GDK_CONTROL_BIT in state then
+						mb := mb + {ctrl, modify} 
+					else 
+						mb := mb - {ctrl, modify} 
+					end 
+					if Gdk.GDK_MOD1_BIT in state then
+						incl(mb, alt) 
+					else 
+						excl(mb, alt) 
+					end  
+				end 
+				Gdk.gdk_event_free(event) 
+			end  
+		end 
+		
+		if right in mb then
+			incl(mb, popup) 
+		else 
+			excl(mb, popup) 
+		end 
+		if {middle, alt} * mb # {} then
+			incl(mb, pick) 
+		else 
+			excl(mb, pick) 
+		end 
+		
+		x := mx
+		y := my
+		modifiers := mb
+		isDown := mb * {left, middle, right} # {}
+	end Input
+	
+	proc ResetColors*(basewidget: Gtk.GtkWidget) 
+	begin 
+		assert(basewidget # nil, 20)
+		// TODO: Use the actual system colors
+		Ports.background := Ports.white
+		textCol := Ports.black
+		selBackground := Ports.black
+		selTextCol := Ports.white
+		
+		Ports.dialogBackground := Ports.RGBColor(
+			(basewidget.style.bg[Gtk.GTK_STATE_NORMAL].red div 256) mod 256, 
+			(basewidget.style.bg[Gtk.GTK_STATE_NORMAL].green div 256) mod 256, 
+			(basewidget.style.bg[Gtk.GTK_STATE_NORMAL].blue div 256) mod 256)
+		dialogTextCol := Ports.black
+		dialogShadowCol := Ports.grey75
+		dialogLightCol := Ports.grey50
+		dim25Col := Ports.white - Ports.grey75
+		dim50Col := Ports.white - Ports.grey75 // TODO: On Windows this is a dashed line...
+		dim75Col := Ports.white - Ports.grey25
+	end ResetColors
+	
+	
+	proc Init
+		var 
+			i: integer
+			wnd: Gtk.GtkWidget
+	begin 
+		wnd := Gtk.gtk_window_new(Gtk.GTK_WINDOW_TOPLEVEL)
+		Gtk.gtk_widget_ref(wnd)
+		ResetColors(wnd)
+		Gtk.gtk_widget_unref(wnd)
+		cursors[Ports.arrowCursor] := Gdk.gdk_cursor_new(Gdk.GDK_LEFT_PTR)
+		cursors[Ports.textCursor] := Gdk.gdk_cursor_new(Gdk.GDK_XTERM)
+		cursors[Ports.graphicsCursor] := Gdk.gdk_cursor_new(Gdk.GDK_CROSSHAIR)
+		cursors[Ports.bitmapCursor] := Gdk.gdk_cursor_new(Gdk.GDK_CROSSHAIR)
+		cursors[Ports.tableCursor] := Gdk.gdk_cursor_new(Gdk.GDK_CROSS)
+		cursors[Ports.refCursor] := Gdk.gdk_cursor_new(Gdk.GDK_HAND2)
+		cursors[resizeHCursor] := Gdk.gdk_cursor_new(Gdk.GDK_SB_H_DOUBLE_ARROW)
+		cursors[resizeVCursor] := Gdk.gdk_cursor_new(Gdk.GDK_SB_V_DOUBLE_ARROW)
+		cursors[resizeLCursor] := Gdk.gdk_cursor_new(Gdk.GDK_TOP_LEFT_CORNER)
+		cursors[resizeRCursor] := Gdk.gdk_cursor_new(Gdk.GDK_TOP_RIGHT_CORNER)
+		cursors[resizeCursor] := Gdk.gdk_cursor_new(Gdk.GDK_FLEUR)
+		cursors[busyCursor] := Gdk.gdk_cursor_new(Gdk.GDK_WATCH)
+		cursors[stopCursor] := Gdk.gdk_cursor_new(Gdk.GDK_CIRCLE)
+		// TODO: On windows these are bitmaps stored as resources...
+		cursors[moveCursor] := Gdk.gdk_cursor_new(Gdk.GDK_SAILBOAT)
+		cursors[copyCursor] := Gdk.gdk_cursor_new(Gdk.GDK_SAILBOAT)
+		cursors[linkCursor] := Gdk.gdk_cursor_new(Gdk.GDK_SAILBOAT)
+		cursors[pickCursor] := Gdk.gdk_cursor_new(Gdk.GDK_SAILBOAT)
+		i := 0
+		while i < len(cursors) do 
+			if cursors[i] = nil then
+				cursors[i] := cursors[Ports.arrowCursor] 
+			end 
+			inc(i) 
+		end 
+	end Init
+
+begin
+	Init
+end HostPorts

@@ -1,0 +1,1236 @@
+module StdCoder
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20160321, center #110, use mapped strings for labels in all forms
+	   - 20161010, center #133, bug fix in Encoding/Decoding Unicode filenames and paths
+	   - 20161216, center #144, inconsistent docu and usage of Files.Locator error codes
+	   - 20170225, center #148, StdCoder to support file names with spaces
+	   - 20190211, center #196, StdCoder to support both "\" & "/" in file paths
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		Kernel, Files, Converters, Stores, Views, Controllers, Dialog, Documents, Windows, 
+		TextModels, TextViews, TextControllers, TextMappers, 
+		StdCmds
+	
+	const 
+		N = 16384
+		LineLength = 74
+		OldVersion = 0
+		ThisVersion = 1
+		Tag = "StdCoder.Decode" // first letter of Tag must not to appear within Tag again
+		Separator = "/"
+		Separator2 = "\"
+		View = 1
+		File = 2
+		List = 3
+	
+	type 
+		FileList = pointer to record 
+				next: FileList
+				file: Files.File
+				type_: Files.Type
+				name: Dialog.String 
+			end 
+		
+		ParList* = record 
+				list*: Dialog.Selection
+				storeAs*: Dialog.String
+				files: FileList 
+			end 
+	
+	var 
+		par*: ParList
+		code: array 64 of char
+		revCode: array 256 of byte
+		table: array N of byte
+		stdDocuType: Files.Type
+	
+	proc NofSelections(in list: Dialog.Selection): integer 
+		var 
+			i, n: integer
+	begin 
+		i := 0
+		n := 0
+		while i # list.len_ do 
+			if list.In(i) then
+				inc(n) 
+			end 
+			inc(i) 
+		end 
+		return n
+	end NofSelections
+	
+	proc ShowError(n: integer; par: array of char) 
+	begin 
+		Dialog.Beep
+		case n of 
+			1: 
+				Dialog.ShowParamMsg("#Std:bad characters", par, "", "") 
+			| 2: 
+				Dialog.ShowParamMsg("#Std:checksum error", par, "", "") 
+			| 3: 
+				Dialog.ShowParamMsg("#Std:incompatible version", par, "", "") 
+			| 4: 
+				Dialog.ShowParamMsg("#Std:filing error", par, "", "") 
+			| 5: 
+				Dialog.ShowParamMsg("#Std:directory ^0 not found", par, "", "") 
+			| 6: 
+				Dialog.ShowParamMsg("#Std:file ^0 not found", par, "", "") 
+			| 7: 
+				Dialog.ShowParamMsg("#Std:illegal path", par, "", "") 
+			| 8: 
+				Dialog.ShowParamMsg("#Std:no tag", par, "", "") 
+			| 9: 
+				Dialog.ShowParamMsg("#Std:disk write protected", par, "", "") 
+			| 10: 
+				Dialog.ShowParamMsg("#Std:io error", par, "", "") 
+		end 
+	end ShowError
+	
+	proc ShowSizeMsg(x: integer) 
+		var 
+			i, j: integer
+			ch: char
+			s: array 20 of char
+	begin 
+		assert(x >= 0, 20)
+		i := 0
+		repeat 
+			s[i] := chr(ord("0") + x mod 10)
+			inc(i)
+			x := x div 10 
+		until x = 0 
+		s[i] := 0x
+		dec(i)
+		j := 0
+		while j < i do 
+			ch := s[j]
+			s[j] := s[i]
+			s[i] := ch
+			inc(j)
+			dec(i) 
+		end 
+		Dialog.ShowParamStatus("#Std:^0 characters coded", s, "", "")
+	end ShowSizeMsg
+	
+	proc Write(dest: TextModels.Writer; x: integer; var n: integer) 
+	begin 
+		dest.WriteChar(code[x])
+		inc(n)
+		if n = LineLength then
+			dest.WriteChar(0dx)
+			dest.WriteChar(" ")
+			n := 0 
+		end 
+	end Write
+	
+	proc WriteHeader(dest: TextModels.Writer; var n: integer
+		name: array of char; type_: byte
+		) 
+		var 
+			byte_, bit, i, res: integer
+			ch: char
+			tag: array 16 of char
+			utf8: Kernel.Utf8Name
+	begin 
+		tag := Tag
+		i := 0
+		ch := tag[0]
+		while ch # 0x do 
+			dest.WriteChar(ch)
+			inc(n)
+			inc(i)
+			ch := tag[i] 
+		end 
+		dest.WriteChar(" ")
+		inc(n)
+		bit := 0
+		byte_ := 0
+		i := 0
+		Kernel.StringToUtf8(name, utf8, res)
+		assert(res = 0)
+		repeat 
+			ch := utf8[i]
+			inc(byte_, ash(ord(ch), bit))
+			inc(bit, 8)
+			while bit >= 6 do 
+				Write(dest, byte_ mod 64, n)
+				byte_ := byte_ div 64
+				dec(bit, 6) 
+			end 
+			inc(i) 
+		until ch = 0x 
+		if bit # 0 then
+			Write(dest, byte_, n) 
+		end 
+		Write(dest, ThisVersion, n)
+		Write(dest, type_, n)
+	end WriteHeader
+	
+	proc WriteFileType(dest: TextModels.Writer; var n: integer; t: Files.Type) 
+		var 
+			byte_, bit, i: integer
+			ch: char
+	begin 
+		if t = Kernel.docType then
+			t := stdDocuType 
+		end 
+		bit := 0
+		byte_ := 0
+		i := 0
+		dest.WriteChar(" ")
+		repeat 
+			ch := t[i]
+			inc(byte_, ash(ord(ch), bit))
+			inc(bit, 8)
+			while bit >= 6 do 
+				Write(dest, byte_ mod 64, n)
+				byte_ := byte_ div 64
+				dec(bit, 6) 
+			end 
+			inc(i) 
+		until ch = 0x 
+		if bit # 0 then
+			Write(dest, byte_, n) 
+		end 
+	end WriteFileType
+	
+	proc WriteFile(dest: TextModels.Writer; var n: integer; f: Files.File) 
+		var 
+			hash, byte_, bit, i, j, sum, len_: integer
+			src: Files.Reader
+			b: byte
+	begin 
+		len_ := f.Length()
+		j := len_
+		i := 6
+		while i # 0 do 
+			Write(dest, j mod 64, n)
+			j := j div 64
+			dec(i) 
+		end 
+		i := 0
+		repeat 
+			table[i] := 0
+			inc(i) 
+		until i = N 
+		hash := 0
+		bit := 0
+		byte_ := 0
+		sum := 0
+		src := f.NewReader(nil)
+		while len_ # 0 do 
+			src.ReadByte(b)
+			dec(len_)
+			sum := (sum + b mod 256) mod (16 * 1024)
+			if table[hash] = b then // 0 bit for correct prediction
+				inc(bit) 
+			else  // Incorrect prediction -> 1'xxxx'xxxx bits
+				table[hash] := b
+				inc(byte_, ash(1, bit))
+				inc(bit)
+				inc(byte_, ash(b mod 256, bit))
+				inc(bit, 8) 
+			end 
+			while bit >= 6 do 
+				Write(dest, byte_ mod 64, n)
+				byte_ := byte_ div 64
+				dec(bit, 6) 
+			end 
+			hash := (16 * hash + b mod 256) mod N 
+		end 
+		if bit # 0 then
+			Write(dest, byte_, n) 
+		end 
+		i := 6
+		while i # 0 do 
+			Write(dest, sum mod 64, n)
+			sum := sum div 64
+			dec(i) 
+		end 
+		if n # 0 then
+			dest.WriteChar(0dx)
+			n := 0 
+		end 
+	end WriteFile
+	
+	proc Read(src: TextModels.Reader; var x: integer; var res: integer) 
+		var 
+			ch: char
+	begin 
+		if res = 0 then
+			repeat 
+				src.ReadChar(ch)
+				x := revCode[ord(ch)] 
+			until (x >= 0) or src.eot 
+			if src.eot then
+				res := 1 
+			end  
+		end 
+		if res # 0 then
+			x := 0 
+		end 
+	end Read
+	
+	proc Utf8ToString(in in_: array of char; var out: array of char) 
+		var 
+			res: integer
+	begin 
+		Kernel.Utf8ToString(in_, out, res)
+		assert(res in {0, 2}) // for backward compatibility: res = 2 allows non-encoded strings as well
+	end Utf8ToString
+	
+	proc ReadHeader(src: TextModels.Reader; var res: integer
+		var name: array of char; var type_: byte
+		) 
+		var 
+			x, bit, i, j: integer
+			ch: char
+			tag: array 16 of char
+			utf8: Kernel.Utf8Name
+	begin 
+		tag := Tag
+		i := 0
+		name := ""
+		while ~src.eot & (tag[i] # 0x) do 
+			src.ReadChar(ch)
+			if ch = tag[i] then
+				inc(i) 
+			elsif ch = tag[0] then 
+				i := 1 
+			else 
+				i := 0 
+			end  
+		end 
+		if ~src.eot then
+			res := 0
+			i := 0
+			bit := 0
+			x := 0
+			repeat 
+				while (res = 0) & (bit < 8) do 
+					Read(src, j, res)
+					inc(x, ash(j, bit))
+					inc(bit, 6) 
+				end 
+				if res = 0 then
+					ch := chr(x mod 256)
+					x := x div 256
+					dec(bit, 8)
+					utf8[i] := short(ch)
+					inc(i) 
+				end  
+			until (res # 0) or (ch = 0x) 
+			Read(src, j, res)
+			if res = 0 then
+				Utf8ToString(utf8, name)
+				if (j = ThisVersion) or (j = OldVersion) then
+					Read(src, j, res)
+					type_ := short(short(j)) 
+				else 
+					res := 3 
+				end  
+			end  
+		else 
+			res := 8 
+		end 
+	end ReadHeader
+	
+	proc ReadFileType(src: TextModels.Reader; var res: integer; var ftype: Files.Type) 
+		var 
+			x, bit, i, j: integer
+			ch: char
+	begin 
+		res := 0
+		i := 0
+		bit := 0
+		x := 0
+		repeat 
+			while (res = 0) & (bit < 8) do 
+				Read(src, j, res)
+				inc(x, ash(j, bit))
+				inc(bit, 6) 
+			end 
+			if res = 0 then
+				ch := chr(x mod 256)
+				x := x div 256
+				dec(bit, 8)
+				ftype[i] := ch
+				inc(i) 
+			end  
+		until (res # 0) or (ch = 0x) 
+		if ftype = stdDocuType then
+			ftype := Kernel.docType 
+		end 
+	end ReadFileType
+	
+	proc ReadFile(src: TextModels.Reader; var res: integer; f: Files.File) 
+		var 
+			hash, x, bit, i, j, len_, sum, s: integer
+			byte_: byte
+			dest: Files.Writer
+	begin 
+		res := 0
+		i := 0
+		len_ := 0
+		repeat 
+			Read(src, x, res)
+			len_ := len_ + ash(x, 6 * i)
+			inc(i) 
+		until (res # 0) or (i = 6) 
+		i := 0
+		repeat 
+			table[i] := 0
+			inc(i) 
+		until i = N 
+		bit := 0
+		hash := 0
+		sum := 0
+		dest := f.NewWriter(nil)
+		while (res = 0) & (len_ # 0) do 
+			if bit = 0 then
+				Read(src, x, res)
+				bit := 6 
+			end 
+			if odd(x) then // Incorrect prediction -> 1'xxxx'xxxx
+				x := x div 2
+				dec(bit)
+				while (res = 0) & (bit < 8) do 
+					Read(src, j, res)
+					inc(x, ash(j, bit))
+					inc(bit, 6) 
+				end 
+				i := x mod 256
+				if i > max(byte) then
+					i := i - 256 
+				end 
+				byte_ := short(short(i))
+				x := x div 256
+				dec(bit, 8)
+				table[hash] := byte_ 
+			else  // correct prediction
+				byte_ := table[hash]
+				x := x div 2
+				dec(bit) 
+			end 
+			hash := (16 * hash + byte_ mod 256) mod N
+			dest.WriteByte(byte_)
+			sum := (sum + byte_ mod 256) mod (16 * 1024)
+			dec(len_) 
+		end 
+		if res = 0 then
+			i := 0
+			s := 0
+			repeat 
+				Read(src, x, res)
+				s := s + ash(x, 6 * i)
+				inc(i) 
+			until (res # 0) or (i = 6) 
+			if (res = 0) & (s # sum) then
+				res := 2 
+			end  
+		end 
+	end ReadFile
+	
+	proc ShowText(t: TextModels.Model) 
+		var 
+			l: integer
+			v: Views.View
+			wr: TextMappers.Formatter
+			conv: Converters.Converter
+	begin 
+		l := t.Length()
+		wr.ConnectTo(t)
+		wr.SetPos(l)
+		wr.WriteString(" --- end of encoding ---")
+		ShowSizeMsg(l)
+		v := TextViews.dir.New(t)
+		conv := Converters.list
+		while (conv # nil) & (conv.imp # "HostTextConv.ImportText") do 
+			conv := conv.next 
+		end 
+		Views.Open(v, nil, "", conv)
+		Views.SetDirty(v)
+	end ShowText
+	
+	proc EncodedView*(v: Views.View): TextModels.Model 
+		var 
+			n: integer
+			f: Files.File
+			wrs: Stores.Writer
+			t: TextModels.Model
+			wr: TextModels.Writer
+	begin 
+		f := Files.dir.Temp()
+		wrs.ConnectTo(f)
+		Views.WriteView(wrs, v)
+		t := TextModels.dir.New()
+		wr := t.NewWriter(nil)
+		n := 0
+		WriteHeader(wr, n, "", View)
+		WriteFileType(wr, n, f.type_)
+		WriteFile(wr, n, f)
+		return t
+	end EncodedView
+	
+	proc EncodeDocument*
+		var 
+			v: Views.View
+			w: Windows.Window
+	begin 
+		w := Windows.dir.First()
+		if w # nil then
+			v := w.doc.OriginalView()
+			if (v.context # nil) & (v.context is Documents.Context) then
+				v := v.context(Documents.Context).ThisDoc() 
+			end 
+			if v # nil then
+				ShowText(EncodedView(v)) 
+			end  
+		end 
+	end EncodeDocument
+	
+	proc EncodeFocus*
+		var 
+			v: Views.View
+	begin 
+		v := Controllers.FocusView()
+		if v # nil then
+			ShowText(EncodedView(v)) 
+		end 
+	end EncodeFocus
+	
+	proc EncodeSelection*
+		var 
+			beg, end_: integer
+			t: TextModels.Model
+			c: TextControllers.Controller
+	begin 
+		c := TextControllers.Focus()
+		if (c # nil) & c.HasSelection() then
+			c.GetSelection(beg, end_)
+			t := TextModels.CloneOf(c.text)
+			t.InsertCopy(0, c.text, beg, end_)
+			ShowText(EncodedView(TextViews.dir.New(t))) 
+		end 
+	end EncodeSelection
+	
+	proc EncodeFile*
+		var 
+			n: integer
+			loc: Files.Locator
+			name: Files.Name
+			f: Files.File
+			t: TextModels.Model
+			wr: TextModels.Writer
+	begin 
+		Dialog.GetIntSpec("", loc, name)
+		if loc # nil then
+			f := Files.dir.Old(loc, name, true)
+			if f # nil then
+				t := TextModels.dir.New()
+				wr := t.NewWriter(nil)
+				n := 0
+				WriteHeader(wr, n, name, File)
+				WriteFileType(wr, n, f.type_)
+				WriteFile(wr, n, f)
+				ShowText(t) 
+			end  
+		end 
+	end EncodeFile
+	
+	proc GetFile(var path: array of char; var loc: Files.Locator; var name: Files.Name) 
+		var 
+			i, j: integer
+			ch: char
+	begin 
+		i := 0
+		ch := path[0]
+		loc := Files.dir.This("")
+		name := ""
+		while (ch # 0x) & (loc.res = 0) do 
+			j := 0
+			while (ch # 0x) & (ch # Separator) & (ch # Separator2) do 
+				name[j] := ch
+				inc(j)
+				inc(i)
+				ch := path[i] 
+			end 
+			name[j] := 0x
+			if (ch = Separator) or (ch = Separator2) then
+				loc := loc.This(name)
+				inc(i)
+				ch := path[i] 
+			end  
+		end 
+		if loc.res # 0 then
+			loc := nil 
+		end 
+		path[i] := 0x
+	end GetFile
+	
+	proc ReadPath(rd: TextModels.Reader; var path: array of char; var len_: integer) 
+		var 
+			i, l: integer
+			ch: char
+			quote: char
+	begin 
+		i := 0
+		l := len(path) - 1
+		repeat 
+			rd.ReadChar(ch) 
+		until rd.eot or (ch > " ") 
+		if (ch = "'") or (ch = '"') then
+			quote := ch
+			rd.ReadChar(ch) 
+		else 
+			quote := 0x 
+		end 
+		while ~rd.eot & (i < l) & ((quote = 0x) & (ch > " ") or (quote # 0x) & (ch # quote) & (ch >= " ")) do 
+			path[i] := ch
+			inc(i)
+			rd.ReadChar(ch) 
+		end 
+		path[i] := 0x
+		len_ := i
+	end ReadPath
+	
+	proc WriteString(w: Files.Writer; in str: array of char; len_: integer) 
+		var 
+			i, res: integer
+			utf8: Kernel.Utf8Name
+	begin 
+		Kernel.StringToUtf8(str, utf8, res)
+		assert(res = 0)
+		len_ := len(utf8) + 1
+		i := 0
+		while i < len_ do 
+			if ord(utf8[i]) > max(byte) then
+				w.WriteByte(short(short(ord(utf8[i]) - 256))) 
+			else 
+				w.WriteByte(short(ord(utf8[i]))) 
+			end 
+			inc(i) 
+		end 
+	end WriteString
+	
+	proc EncodeFileList*
+		type 
+			FileList = pointer to record 
+					next: FileList
+					f: Files.File 
+				end 
+		var 
+			beg, end_, i, j, n: integer
+			err: boolean
+			files, last: FileList
+			list, f: Files.File
+			w: Files.Writer
+			loc: Files.Locator
+			rd: TextModels.Reader
+			wr: TextModels.Writer
+			t: TextModels.Model
+			c: TextControllers.Controller
+			name: Files.Name
+			path, next: array 2048 of char
+	begin 
+		c := TextControllers.Focus()
+		if (c # nil) & c.HasSelection() then
+			c.GetSelection(beg, end_)
+			rd := c.text.NewReader(nil)
+			rd.SetPos(beg)
+			err := false
+			list := Files.dir.Temp()
+			w := list.NewWriter(nil)
+			files := nil
+			last := nil
+			ReadPath(rd, path, i)
+			while (path # "") & (rd.Pos() - i < end_) & ~err do 
+				GetFile(path, loc, name)
+				if loc # nil then
+					f := Files.dir.Old(loc, name, true)
+					err := f = nil
+					if ~err then
+						if last = nil then
+							new(last)
+							files := last 
+						else 
+							new(last.next)
+							last := last.next 
+						end 
+						last.f := f
+						ReadPath(rd, next, j)
+						if (next = "=>") & (rd.Pos() - j < end_) then
+							ReadPath(rd, next, j)
+							if next # "" then
+								WriteString(w, next, j + 1)
+								ReadPath(rd, next, j) 
+							else 
+								err := true 
+							end  
+						else 
+							WriteString(w, path, i + 1) 
+						end 
+						path := next
+						i := j 
+					end  
+				else 
+					err := true 
+				end  
+			end 
+			if ~err & (files # nil) then
+				t := TextModels.dir.New()
+				wr := t.NewWriter(nil)
+				n := 0
+				WriteHeader(wr, n, "", List)
+				WriteFileType(wr, n, list.type_)
+				WriteFile(wr, n, list)
+				while files # nil do 
+					WriteFileType(wr, n, files.f.type_)
+					WriteFile(wr, n, files.f)
+					files := files.next 
+				end 
+				ShowText(t) 
+			elsif err then 
+				if path = "" then
+					ShowError(7, path) 
+				elsif loc # nil then 
+					ShowError(6, path) 
+				else 
+					ShowError(5, path) 
+				end  
+			end  
+		end 
+	end EncodeFileList
+	
+	proc DecodeView(rd: TextModels.Reader; name: Files.Name) 
+		var 
+			res: integer
+			f: Files.File
+			ftype: Files.Type
+			rds: Stores.Reader
+			v: Views.View
+	begin 
+		ReadFileType(rd, res, ftype)
+		if res = 0 then
+			f := Files.dir.Temp()
+			ReadFile(rd, res, f)
+			if res = 0 then
+				rds.ConnectTo(f)
+				Views.ReadView(rds, v)
+				Views.Open(v, nil, name, nil)
+				Views.SetDirty(v) 
+			else 
+				ShowError(res, "") 
+			end  
+		else 
+			ShowError(res, "") 
+		end 
+	end DecodeView
+	
+	proc DecodeFile(rd: TextModels.Reader; name: Files.Name) 
+		var 
+			res: integer
+			ftype: Files.Type
+			loc: Files.Locator
+			f: Files.File
+	begin 
+		ReadFileType(rd, res, ftype)
+		if res = 0 then
+			Dialog.GetExtSpec(name, ftype, loc, name)
+			if loc # nil then
+				f := Files.dir.New(loc, Files.ask)
+				if f # nil then
+					ReadFile(rd, res, f)
+					if res = 0 then
+						f.Register(name, ftype, Files.ask, res)
+						if res # 0 then
+							ShowError(4, "") 
+						end  
+					else 
+						ShowError(res, "") 
+					end  
+				elsif loc.res = 4 then 
+					ShowError(9, "") 
+				elsif loc.res = 5 then 
+					ShowError(10, "") 
+				end  
+			end  
+		else 
+			ShowError(res, "") 
+		end 
+	end DecodeFile
+	
+	proc DecodeFileList(rd: TextModels.Reader; var files: FileList; var len_, res: integer) 
+		var 
+			i, n: integer
+			b: byte
+			p: FileList
+			ftype: Files.Type
+			f: Files.File
+			frd: Files.Reader
+			utf8: Kernel.Utf8Name
+	begin 
+		ReadFileType(rd, res, ftype)
+		if res = 0 then
+			f := Files.dir.Temp()
+			ReadFile(rd, res, f)
+			if res = 0 then
+				files := nil
+				p := nil
+				n := 0
+				frd := f.NewReader(nil)
+				frd.ReadByte(b)
+				while ~frd.eof & (res = 0) do 
+					inc(n)
+					i := 0
+					while ~frd.eof & (b # 0) do 
+						utf8[i] := short(chr(b mod 256))
+						inc(i)
+						frd.ReadByte(b) 
+					end 
+					if (i > 4) & (utf8[i - 4] = ".") & (cap(utf8[i - 3]) = "O") 
+						& (cap(utf8[i - 2]) = "D") & (cap(utf8[i - 1]) = "C") 
+					then
+						utf8[i - 4] := 0x 
+					else 
+						utf8[i] := 0x 
+					end 
+					if ~frd.eof then
+						if p = nil then
+							new(p)
+							files := p 
+						else 
+							new(p.next)
+							p := p.next 
+						end 
+						Utf8ToString(utf8, p.name)
+						frd.ReadByte(b) 
+					else 
+						res := 1 
+					end  
+				end 
+				p := files
+				len_ := n
+				while (res = 0) & (p # nil) do 
+					ReadFileType(rd, res, p.type_)
+					if res = 0 then
+						p.file := Files.dir.Temp()
+						ReadFile(rd, res, p.file) 
+					end 
+					p := p.next 
+				end  
+			end  
+		end 
+	end DecodeFileList
+	
+	proc OpenDialog(files: FileList; len_: integer) 
+		var 
+			i: integer
+			p: FileList
+	begin 
+		par.files := files
+		par.list.SetLen(len_)
+		p := files
+		i := 0
+		while p # nil do 
+			par.list.SetItem(i, p.name)
+			inc(i)
+			p := p.next 
+		end 
+		par.storeAs := ""
+		Dialog.Update(par)
+		Dialog.UpdateList(par.list)
+		StdCmds.OpenAuxDialog("Std/Rsrc/Coder", "#Std:DecodeDialog")
+	end OpenDialog
+	
+	proc CloseDialog*
+	begin 
+		par.files := nil
+		par.list.SetLen(0)
+		par.storeAs := ""
+		Dialog.UpdateList(par.list)
+		Dialog.Update(par)
+	end CloseDialog
+	
+	proc Select*(op, from, to_: integer) 
+		var 
+			p: FileList
+			i: integer
+	begin 
+		if (op = Dialog.included) or (op = Dialog.excluded) or (op = Dialog.set_) then
+			if NofSelections(par.list) = 1 then
+				i := 0
+				p := par.files
+				while ~par.list.In(i) do 
+					inc(i)
+					p := p.next 
+				end 
+				par.storeAs := p.name 
+			else 
+				par.storeAs := "" 
+			end 
+			Dialog.Update(par) 
+		end 
+	end Select
+	
+	proc CopyFile(from: Files.File; loc: Files.Locator; name: Files.Name; type_: Files.Type) 
+		const 
+			BufSize = 4096
+		var 
+			res, k, l: integer
+			f: Files.File
+			r: Files.Reader
+			w: Files.Writer
+			buf: array BufSize of byte
+	begin 
+		f := Files.dir.New(loc, Files.ask)
+		if f # nil then
+			r := from.NewReader(nil)
+			w := f.NewWriter(nil)
+			l := from.Length()
+			while l # 0 do 
+				if l <= BufSize then
+					k := l 
+				else 
+					k := BufSize 
+				end 
+				r.ReadBytes(buf, 0, k)
+				w.WriteBytes(buf, 0, k)
+				l := l - k 
+			end 
+			f.Register(name, type_, Files.ask, res)
+			if res # 0 then
+				ShowError(4, "") 
+			end  
+		elsif loc.res = 4 then 
+			ShowError(9, "") 
+		elsif loc.res = 5 then 
+			ShowError(10, "") 
+		end 
+	end CopyFile
+	
+	proc StoreSelection*
+		var 
+			i, n: integer
+			p: FileList
+			loc: Files.Locator
+			name: Files.Name
+	begin 
+		n := NofSelections(par.list)
+		if n > 1 then
+			i := 0
+			p := par.files
+			while n # 0 do 
+				while ~par.list.In(i) do 
+					inc(i)
+					p := p.next 
+				end 
+				GetFile(p.name, loc, name)
+				CopyFile(p.file, loc, name, p.type_)
+				dec(n)
+				inc(i)
+				p := p.next 
+			end  
+		elsif (n = 1) & (par.storeAs # "") then 
+			i := 0
+			p := par.files
+			while ~par.list.In(i) do 
+				inc(i)
+				p := p.next 
+			end 
+			GetFile(par.storeAs, loc, name)
+			CopyFile(p.file, loc, name, p.type_) 
+		end 
+	end StoreSelection
+	
+	proc StoreSelectionGuard*(var p: Dialog.Par) 
+		var 
+			n: integer
+	begin 
+		n := NofSelections(par.list)
+		p.disabled := (n = 0) or ((n = 1) & (par.storeAs = ""))
+	end StoreSelectionGuard
+	
+	proc StoreSingle*
+		var 
+			i: integer
+			p: FileList
+			loc: Files.Locator
+			name: Files.Name
+	begin 
+		if NofSelections(par.list) = 1 then
+			i := 0
+			p := par.files
+			while ~par.list.In(i) do 
+				inc(i)
+				p := p.next 
+			end 
+			GetFile(p.name, loc, name)
+			Dialog.GetExtSpec(name, p.type_, loc, name)
+			if loc # nil then
+				CopyFile(p.file, loc, name, p.type_) 
+			end  
+		end 
+	end StoreSingle
+	
+	proc StoreSingleGuard*(var p: Dialog.Par) 
+	begin 
+		p.disabled := NofSelections(par.list) # 1
+	end StoreSingleGuard
+	
+	proc StoreAllFiles(files: FileList) 
+		var 
+			loc: Files.Locator
+			name: Files.Name
+	begin 
+		while files # nil do 
+			GetFile(files.name, loc, name)
+			CopyFile(files.file, loc, name, files.type_)
+			files := files.next 
+		end 
+	end StoreAllFiles
+	
+	proc StoreAll*
+	begin 
+		StoreAllFiles(par.files)
+	end StoreAll
+	
+	proc DecodeAllFromText*(text: TextModels.Model; beg: integer; ask: boolean) 
+		var 
+			res, i: integer
+			type_: byte
+			name: Files.Name
+			rd: TextModels.Reader
+			files: FileList
+	begin 
+		CloseDialog
+		rd := text.NewReader(nil)
+		rd.SetPos(beg)
+		ReadHeader(rd, res, name, type_)
+		i := 0
+		while name[i] # 0x do 
+			inc(i) 
+		end 
+		if (i > 4) & (name[i - 4] = ".") & (cap(name[i - 3]) = "O") 
+			& (cap(name[i - 2]) = "D") & (cap(name[i - 1]) = "C") 
+		then
+			name[i - 4] := 0x 
+		end 
+		if res = 0 then
+			if type_ = View then
+				DecodeView(rd, name) 
+			elsif type_ = File then 
+				DecodeFile(rd, name) 
+			elsif type_ = List then 
+				DecodeFileList(rd, files, i, res)
+				if res = 0 then
+					if ask then
+						OpenDialog(files, i) 
+					else 
+						StoreAllFiles(files) 
+					end  
+				else 
+					ShowError(res, "") 
+				end  
+			else 
+				ShowError(3, "") 
+			end  
+		else 
+			ShowError(res, "") 
+		end 
+	end DecodeAllFromText
+	
+	proc Decode*
+		var 
+			beg, end_: integer
+			c: TextControllers.Controller
+	begin 
+		CloseDialog
+		c := TextControllers.Focus()
+		if c # nil then
+			if c.HasSelection() then
+				c.GetSelection(beg, end_) 
+			else 
+				beg := 0 
+			end 
+			DecodeAllFromText(c.text, beg, true) 
+		end 
+	end Decode
+	
+	proc ListFiles(rd: TextModels.Reader; var wr: TextMappers.Formatter) 
+		var 
+			i, n, res: integer
+			b: byte
+			ftype: Files.Type
+			f: Files.File
+			frd: Files.Reader
+			path: Dialog.String
+			utf8: Kernel.Utf8Name
+	begin 
+		ReadFileType(rd, res, ftype)
+		if res = 0 then
+			f := Files.dir.Temp()
+			ReadFile(rd, res, f)
+			if res = 0 then
+				n := 0
+				frd := f.NewReader(nil)
+				frd.ReadByte(b)
+				while ~frd.eof & (res = 0) do 
+					inc(n)
+					i := 0
+					while ~frd.eof & (b # 0) do 
+						utf8[i] := short(chr(b mod 256))
+						inc(i)
+						frd.ReadByte(b) 
+					end 
+					if (i > 4) & (utf8[i - 4] = ".") & (cap(utf8[i - 3]) = "O") 
+						& (cap(utf8[i - 2]) = "D") & (cap(utf8[i - 1]) = "C") 
+					then
+						utf8[i - 4] := 0x 
+					else 
+						utf8[i] := 0x 
+					end 
+					if ~frd.eof then
+						Utf8ToString(utf8, path)
+						wr.WriteString(path)
+						wr.WriteLn
+						frd.ReadByte(b) 
+					else 
+						res := 1 
+					end  
+				end  
+			else 
+				ShowError(res, "") 
+			end  
+		else 
+			ShowError(res, "") 
+		end 
+	end ListFiles
+	
+	proc ListSingleton(type_, name: array of char; var wr: TextMappers.Formatter) 
+	begin 
+		wr.WriteString(type_)
+		if name # "" then
+			wr.WriteString(": '")
+			wr.WriteString(name)
+			wr.WriteChar("'") 
+		end 
+		wr.WriteLn
+	end ListSingleton
+	
+	proc EncodedInText*(text: TextModels.Model; beg: integer): TextModels.Model 
+		var 
+			res, i: integer
+			type_: byte
+			name: Files.Name
+			rd: TextModels.Reader
+			report: TextModels.Model
+			wr: TextMappers.Formatter
+	begin 
+		report := TextModels.dir.New()
+		wr.ConnectTo(report)
+		rd := text.NewReader(nil)
+		rd.SetPos(beg)
+		ReadHeader(rd, res, name, type_)
+		i := 0
+		while name[i] # 0x do 
+			inc(i) 
+		end 
+		if (i > 4) & (name[i - 4] = ".") & (cap(name[i - 3]) = "O") 
+			& (cap(name[i - 2]) = "D") & (cap(name[i - 1]) = "C") 
+		then
+			name[i - 4] := 0x 
+		end 
+		if res = 0 then
+			if type_ = View then
+				ListSingleton("View", name, wr) 
+			elsif type_ = File then 
+				ListSingleton("File", name, wr) 
+			elsif type_ = List then 
+				ListFiles(rd, wr) 
+			else 
+				ShowError(3, "") 
+			end  
+		else 
+			ShowError(res, "") 
+		end 
+		return report
+	end EncodedInText
+	
+	proc ListEncodedMaterial*
+		var 
+			beg, end_: integer
+			c: TextControllers.Controller
+	begin 
+		c := TextControllers.Focus()
+		if c # nil then
+			if c.HasSelection() then
+				c.GetSelection(beg, end_) 
+			else 
+				beg := 0 
+			end 
+			Views.OpenView(TextViews.dir.New(EncodedInText(c.text, beg))) 
+		end 
+	end ListEncodedMaterial
+	
+	proc InitCodes
+		var 
+			i: byte
+			j: integer
+	begin 
+		j := 0
+		while j # 256 do 
+			revCode[j] := -1
+			inc(j) 
+		end 
+		code[0] := "."
+		revCode[ord(".")] := 0
+		code[1] := ","
+		revCode[ord(",")] := 1
+		i := 2
+		j := ord("0")
+		while j <= ord("9") do 
+			code[i] := chr(j)
+			revCode[j] := i
+			inc(i)
+			inc(j) 
+		end 
+		j := ord("A")
+		while j <= ord("Z") do 
+			code[i] := chr(j)
+			revCode[j] := i
+			inc(i)
+			inc(j) 
+		end 
+		j := ord("a")
+		while j <= ord("z") do 
+			code[i] := chr(j)
+			revCode[j] := i
+			inc(i)
+			inc(j) 
+		end 
+		assert(i = 64, 60)
+	end InitCodes
+
+begin
+	InitCodes
+	stdDocuType[0] := 3x
+	stdDocuType[1] := 3x
+	stdDocuType[2] := 3x
+	stdDocuType[3] := 0x
+end StdCoder
