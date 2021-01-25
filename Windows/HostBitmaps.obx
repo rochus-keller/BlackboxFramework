@@ -55,28 +55,28 @@ module HostBitmaps
 	
 	// helpers for painting to bitmap
 	
-	proc (c: RootContext) ThisModel(): Models.Model
+	proc (c: RootContext) ThisModel(): Models.Model 
 	begin 
 		return nil
 	end ThisModel
 	
-	proc (c: RootContext) GetSize(var w, h: integer)
+	proc (c: RootContext) GetSize(var w, h: integer) 
 	begin 
 		w := c.w
 		h := c.h
 	end GetSize
 	
-	proc (c: RootContext) Normalize(): boolean
+	proc (c: RootContext) Normalize(): boolean 
 	begin 
 		return true
 	end Normalize
 	
-	proc (d: RootView) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (d: RootView) Restore(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		Views.InstallFrame(f, d.view, 0, 0, 0, false)
 	end Restore
 	
-	proc (d: RootView) GetNewFrame(var frame: Views.Frame)
+	proc (d: RootView) GetNewFrame(var frame: Views.Frame) 
 		var 
 			f: Views.RootFrame
 	begin 
@@ -84,12 +84,12 @@ module HostBitmaps
 		frame := f
 	end GetNewFrame
 	
-	proc (d: RootView) GetBackground(var color: Ports.Color)
+	proc (d: RootView) GetBackground(var color: Ports.Color) 
 	begin 
 		color := Ports.background
 	end GetBackground
 	
-	proc Paint(dc: WinApi.HDC; v: Views.View; w, h, unit: integer)
+	proc Paint(dc: WinApi.HDC; v: Views.View; w, h, unit: integer) 
 		var 
 			d: RootView
 			c: RootContext
@@ -120,7 +120,7 @@ module HostBitmaps
 	
 	
 	
-	proc GetHeader(v: StdView; var hdr: WinApi.BITMAPINFOHEADER; var colors: integer)
+	proc GetHeader(v: StdView; var hdr: WinApi.BITMAPINFOHEADER; var colors: integer) 
 	begin 
 		hdr.biSize := size(WinApi.BITMAPINFOHEADER)
 		hdr.biWidth := v.w
@@ -146,7 +146,7 @@ module HostBitmaps
 		hdr.biClrImportant := 0
 	end GetHeader
 	
-	proc Evaluate(v: StdView; dc: WinApi.HDC)
+	proc Evaluate(v: StdView; dc: WinApi.HDC) 
 		var 
 			len_, adr, res, colors, i: integer
 			rd: Stores.Reader
@@ -196,7 +196,7 @@ module HostBitmaps
 	
 	// View
 	
-	proc (v: StdView) Internalize(var rd: Stores.Reader)
+	proc (v: StdView) Internalize(var rd: Stores.Reader) 
 		var 
 			m: Model
 			thisVersion: integer
@@ -225,7 +225,7 @@ module HostBitmaps
 		rd.SetPos(m.pos + m.len_)
 	end Internalize
 	
-	proc (v: StdView) Externalize(var wr: Stores.Writer)
+	proc (v: StdView) Externalize(var wr: Stores.Writer) 
 		var 
 			len_, res, colors, i: integer
 			r: Files.Reader
@@ -278,7 +278,7 @@ module HostBitmaps
 		end 
 	end Externalize
 	
-	proc (v: StdView) CopyFromSimpleView(source: Views.View)
+	proc (v: StdView) CopyFromSimpleView(source: Views.View) 
 	begin 
 		with source: StdView do 
 			v.model := source.model
@@ -288,7 +288,7 @@ module HostBitmaps
 		end 
 	end CopyFromSimpleView
 	
-	proc (v: StdView) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (v: StdView) Restore(f: Views.Frame; l, t, r, b: integer) 
 		var 
 			rd: HostPorts.Rider
 			res, w, h: integer
@@ -321,7 +321,7 @@ module HostBitmaps
 		res := WinApi.DeleteDC(bdc)
 	end Restore
 	
-	proc (v: StdView) HandlePropMsg(var msg: Properties.Message)
+	proc (v: StdView) HandlePropMsg(var msg: Properties.Message) 
 	begin 
 		with msg: Properties.SizePref do 
 			if (msg.w > Views.undefined) & (msg.h > Views.undefined) then
@@ -337,7 +337,7 @@ module HostBitmaps
 	end HandlePropMsg
 	
 	
-	proc TurnToBitmap*(bits: integer)
+	proc TurnToBitmap*(bits: integer) 
 		var 
 			v: Views.View
 			f: Views.Frame
@@ -390,7 +390,7 @@ module HostBitmaps
 	   END TurnThisToBitmap; *)
 	
 	
-	proc ViewToBitmap*(v: Views.View; bits: integer): Views.View
+	proc ViewToBitmap*(v: Views.View; bits: integer): Views.View 
 		var 
 			dc, bdc: WinApi.HDC
 			bm: WinApi.HBITMAP
@@ -423,9 +423,9 @@ module HostBitmaps
 	end ViewToBitmap
 	
 	
-	proc ImportBitmap*(f: Files.File; var s: Stores.Store)
+	proc ImportBitmap*(f: Files.File; var s: Stores.Store) 
 		type 
-			Str = unsafe pointer to carray of char
+			Str = unsafe pointer to carray of wchar
 		var 
 			name: Str
 			bm: WinApi.HBITMAP
@@ -453,7 +453,7 @@ module HostBitmaps
 		s := obj
 	end ImportBitmap
 	
-	proc ExportBitmap*(v: Stores.Store; f: Files.File)
+	proc ExportBitmap*(v: Stores.Store; f: Files.File) 
 		var 
 			w: Stores.Writer
 			info: BITMAPINFO8
@@ -512,7 +512,7 @@ module HostBitmaps
 	
 	proc ImportDPictAsBitmap*(var med: WinOle.STGMEDIUM
 		var v: Views.View; var w, h: integer; var isSingle: boolean
-		)
+		) 
 		var 
 			hm: WinApi.HMETAFILEPICT
 			mp: WinApi.PtrMETAFILEPICT
@@ -569,7 +569,7 @@ module HostBitmaps
 	
 	proc ImportDBitmap*(var med: WinOle.STGMEDIUM
 		var v: Views.View; var w, h: integer; var isSingle: boolean
-		)
+		) 
 		var 
 			obj: StdView
 			res: integer
@@ -613,7 +613,7 @@ module HostBitmaps
 	
 	proc ExportDBitmap*(v: Views.View; w, h, x, y: integer; isSingle: boolean
 		var med: WinOle.STGMEDIUM
-		)
+		) 
 	begin 
 		assert(v # nil, 20)
 		with v: StdView do 

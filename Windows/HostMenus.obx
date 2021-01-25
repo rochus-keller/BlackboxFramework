@@ -105,7 +105,7 @@ module HostMenus
 			end 
 		
 		TypeMsg* = (* extensible *) record (Properties.Message) 
-				type_*: array 64 of char  // OUT, preset to ""
+				type_*: array 64 of wchar  // OUT, preset to ""
 			end 
 	
 	
@@ -139,7 +139,7 @@ module HostMenus
 		state: integer
 		
 		openUsed: boolean
-		openParam: array 256 of char
+		openParam: array 256 of wchar
 		
 		isCont*, isObj*: boolean
 		
@@ -197,7 +197,7 @@ module HostMenus
 	
 	// shortcut support
 	
-	proc Append(var a: array of char; b: array of char) // a := a + b
+	proc Append(var a: array of wchar; b: array of wchar)  // a := a + b
 		var 
 			i, j: integer
 	begin 
@@ -214,11 +214,11 @@ module HostMenus
 		a[i] := 0x
 	end Append
 	
-	proc SetShortcut(var i: Item; var name: Dialog.String)
+	proc SetShortcut(var i: Item; var name: Dialog.String) 
 		var 
 			j, n: integer
-			ch, nch: char
-			a: array 4 of char
+			ch, nch: wchar
+			a: array 4 of wchar
 	begin 
 		i.shift := false
 		i.ctrl := false
@@ -288,7 +288,7 @@ module HostMenus
 	
 	// hotkey support
 	
-	proc NextWord(var name: Dialog.String; i: integer): integer
+	proc NextWord(var name: Dialog.String; i: integer): integer 
 	begin 
 		while (name[i] # 0x) & (name[i] # " ") do 
 			inc(i) 
@@ -302,7 +302,7 @@ module HostMenus
 		return i
 	end NextWord
 	
-	proc SetHotkey(var name: Dialog.String; i: integer)
+	proc SetHotkey(var name: Dialog.String; i: integer) 
 		var 
 			j: integer
 	begin 
@@ -319,10 +319,10 @@ module HostMenus
 		end 
 	end SetHotkey
 	
-	proc GetHotkey(var name: Dialog.String; var pos: integer; var used: set)
+	proc GetHotkey(var name: Dialog.String; var pos: integer; var used: set) 
 		var 
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		ch := name[0]
@@ -346,10 +346,10 @@ module HostMenus
 		pos := -1
 	end GetHotkey
 	
-	proc FirstFree(var name: Dialog.String; var used: set): integer
+	proc FirstFree(var name: Dialog.String; var used: set): integer 
 		var 
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		ch := cap(name[0])
@@ -365,10 +365,10 @@ module HostMenus
 		return i
 	end FirstFree
 	
-	proc SetHotkeys(var tab: array of Dialog.String; n: integer)
+	proc SetHotkeys(var tab: array of Dialog.String; n: integer) 
 		var 
 			i, j: integer
-			ch: char
+			ch: wchar
 			pos: pointer to array of integer
 			used: set
 	begin 
@@ -419,11 +419,11 @@ module HostMenus
 		end 
 	end SetHotkeys
 	
-	proc UpdateHotkey(var old, new_: Dialog.String)
+	proc UpdateHotkey(var old, new_: Dialog.String) 
 		var 
 			i, j: integer
 			used: set
-			ch: char
+			ch: wchar
 	begin 
 		GetHotkey(new_, i, used)
 		if i = -1 then
@@ -455,7 +455,7 @@ module HostMenus
 	
 	// custom menus
 	
-	proc AppendMenu(menu: WinApi.HANDLE; id: integer; name: Dialog.String)
+	proc AppendMenu(menu: WinApi.HANDLE; id: integer; name: Dialog.String) 
 		var 
 			res: integer
 	begin 
@@ -463,7 +463,7 @@ module HostMenus
 		res := WinApi.AppendMenuW(menu, {}, id, name)
 	end AppendMenu
 	
-	proc FirstMenu*(): Menu
+	proc FirstMenu*(): Menu 
 	begin 
 		return menus
 	end FirstMenu
@@ -480,7 +480,7 @@ module HostMenus
 		nextId := firstId
 	end DeleteAll
 	
-	proc Open*(menu, type_: array of char)
+	proc Open*(menu, type_: array of wchar) 
 	begin 
 		assert(curMenu = nil, 20)
 		assert(menu # "", 21)
@@ -493,7 +493,7 @@ module HostMenus
 		curMenu.firstItem := nil
 	end Open
 	
-	proc AddItem*(item, string, shortcut, filter: Dialog.String)
+	proc AddItem*(item, string, shortcut, filter: Dialog.String) 
 		var 
 			i: Item
 			id: integer
@@ -526,7 +526,7 @@ module HostMenus
 		end 
 	end AddItem
 	
-	proc ChangeItem(m: Menu; i: Item; var name: Dialog.String)
+	proc ChangeItem(m: Menu; i: Item; var name: Dialog.String) 
 		var 
 			res: integer
 			old: Dialog.String
@@ -614,18 +614,18 @@ module HostMenus
 		curMenu := nil
 	end Close
 	
-	proc IsSubmenu(m: Menu): boolean
+	proc IsSubmenu(m: Menu): boolean 
 	begin 
 		return m.menu[0] = submenuPrefix
 	end IsSubmenu
 	
-	proc FindSubmenu(item: StdDialog.Item): Menu
+	proc FindSubmenu(item: StdDialog.Item): Menu 
 		var 
 			m: Menu
 	begin 
 		if item.string[0] = submenuPrefix then
 			m := firstMenu
-			while (m # nil) & (m.menu # item.string) do 
+			while (m # nil) & (m.menu # item.string^) do 
 				m := m.next 
 			end 
 			return m 
@@ -839,7 +839,7 @@ module HostMenus
 		end 
 	end OpenWindow
 	
-	proc HandleVerb(n: integer)
+	proc HandleVerb(n: integer) 
 		var 
 			v: Views.View
 			dvm: Properties.DoVerbMsg
@@ -852,7 +852,7 @@ module HostMenus
 		end 
 	end HandleVerb
 	
-	proc CheckVerb(v: Views.View; n: integer; var pvm: Properties.PollVerbMsg)
+	proc CheckVerb(v: Views.View; n: integer; var pvm: Properties.PollVerbMsg) 
 	begin 
 		pvm.verb := n
 		pvm.label := ""
@@ -925,7 +925,7 @@ module HostMenus
 	   END PropertiesGuard; *)
 	
 	
-	proc ObjectMenuGuard*(var par: Dialog.Par)
+	proc ObjectMenuGuard*(var par: Dialog.Par) 
 		var 
 			v: Views.View
 			pvm: Properties.PollVerbMsg
@@ -1017,7 +1017,7 @@ module HostMenus
 	
 	// menu dispatching
 	
-	proc PrepareMenu(wnd, menu: WinApi.HANDLE; lParam: integer)
+	proc PrepareMenu(wnd, menu: WinApi.HANDLE; lParam: integer) 
 		(* this procedure is called after the user has clicked into the menu bar, but before
 		   showing the menu; to prepare item enabling/disabling, check marks, etc. *)
 		var 
@@ -1087,7 +1087,7 @@ module HostMenus
 		end 
 	end PrepareMenu
 	
-	proc HandleCustomMenu(id: integer)
+	proc HandleCustomMenu(id: integer) 
 		var 
 			m: Menu
 			i: StdDialog.Item
@@ -1107,7 +1107,7 @@ module HostMenus
 		end 
 	end HandleCustomMenu
 	
-	proc MenuCommand(wnd: WinApi.HANDLE; wParam, lParam: integer)
+	proc MenuCommand(wnd: WinApi.HANDLE; wParam, lParam: integer) 
 		var 
 			res, id: integer
 			old: WinApi.HANDLE
@@ -1158,7 +1158,7 @@ module HostMenus
 	end MenuCommand
 	
 	
-	proc FindAccelerator(menu: Menu; code: integer; ctrl, shift: boolean): Item
+	proc FindAccelerator(menu: Menu; code: integer; ctrl, shift: boolean): Item 
 		var 
 			item: StdDialog.Item
 			submenu: Menu
@@ -1183,13 +1183,13 @@ module HostMenus
 		return nil
 	end FindAccelerator
 	
-	proc TranslateAccelerators(var msg: WinApi.MSG; filter: set; var done: boolean)
+	proc TranslateAccelerators(var msg: WinApi.MSG; filter: set; var done: boolean) 
 		var 
 			m: Menu
 			i: StdDialog.Item
 			id, code: integer
 			ctrl, shift, alt: boolean
-			ch: char
+			ch: wchar
 			failed, ok, control: boolean
 			par: Dialog.Par
 			focus: Views.View
@@ -1297,7 +1297,7 @@ module HostMenus
 	end TranslateAccelerators
 	
 	
-	proc OpenFile(var name: array of char; l, t, r, b: integer; var ok: boolean)
+	proc OpenFile(var name: array of wchar; l, t, r, b: integer; var ok: boolean) 
 		var 
 			res: integer
 			loc: Files.Locator
@@ -1349,19 +1349,19 @@ module HostMenus
 		end 
 	end OpenFile
 	
-	type StrPtr = pointer to array of char
+	type StrPtr = pointer to array of wchar
 	
 	proc IncludingFileCommandLine(
-		in line: carray of char
-		): StrPtr
+		in line: carray of wchar
+		): StrPtr 
 		var 
 			f: Files.File
 			r: Files.Reader
 			i, len_: integer
 			header: array 12 of byte
-			keyword: array 12 of char
+			keyword: array 12 of wchar
 			b: pointer to array of byte
-			l2: StrPtr
+			l2: pointer to array of wchar
 	begin 
 		len_ := len(line)
 		f := Files.dir.Old(Files.dir.This(cmdLinePath), cmdLineFile, Files.shared)
@@ -1391,15 +1391,15 @@ module HostMenus
 		return l2
 	end IncludingFileCommandLine
 	
-	proc ReadCommandLine(in line: carray of char; open: boolean)
+	proc ReadCommandLine(in line: carray of wchar; open: boolean) 
 		var 
-			name, opt: array 260 of char
+			name, opt: array 260 of wchar
 			i, l, t, r, b, res: integer
 			ok: boolean
 		
 		proc CopyName
 			var 
-				ch, tch: char
+				ch, tch: wchar
 				j: integer
 		begin 
 			j := 0
@@ -1524,10 +1524,10 @@ module HostMenus
 		end 
 	end ReadCommandLine
 	
-	proc DropFiles(wnd: WinApi.HANDLE; wParam, lParam: integer)
+	proc DropFiles(wnd: WinApi.HANDLE; wParam, lParam: integer) 
 		var 
 			i, n, res: integer
-			name: array 260 of char
+			name: array 260 of wchar
 			ok: boolean
 	begin 
 		if state = noAppWin then
@@ -1549,7 +1549,7 @@ module HostMenus
 	
 	// main window handler
 	
-	proc Quit(wnd: WinApi.HANDLE; wParam, lParam: integer)
+	proc Quit(wnd: WinApi.HANDLE; wParam, lParam: integer) 
 	begin 
 		HostCmds.Quit
 	end Quit
@@ -1589,7 +1589,7 @@ module HostMenus
 		Controllers.ResetCurrentPath()
 	end UpdateType
 	
-	proc TimerTick(wnd: WinApi.HANDLE; wParam, lParam: integer)
+	proc TimerTick(wnd: WinApi.HANDLE; wParam, lParam: integer) 
 		var 
 			ops: Controllers.PollOpsMsg
 	begin 
@@ -1602,13 +1602,13 @@ module HostMenus
 		UpdateType()
 	end TimerTick
 	
-	proc Flush(wnd: WinApi.HANDLE; wParam, lParam: integer)
+	proc Flush(wnd: WinApi.HANDLE; wParam, lParam: integer) 
 	begin 
 		HostClipboard.Flush
 	end Flush
 	
 	
-	proc ApplWinHandler(wnd: WinApi.HANDLE; message, wParam, lParam: integer): integer
+	proc ApplWinHandler(wnd: WinApi.HANDLE; message, wParam, lParam: integer): integer 
 		type 
 			PPS = pointer to WinApi.PAINTSTRUCT
 			PR = pointer to WinApi.RECT
@@ -1618,7 +1618,7 @@ module HostMenus
 			r: WinApi.RECT
 			hit: boolean
 			Proc: proc 
-			s: array 256 of char
+			s: array 256 of wchar
 	begin 
 		Controllers.SetCurrentPath(Controllers.targetPath)
 		if (hookApplWinHandler # nil) & hookApplWinHandler(message, wParam, lParam, res) then
@@ -1946,7 +1946,7 @@ module HostMenus
 	end Run
 	
 	
-	proc SetNum*(n: integer)
+	proc SetNum*(n: integer) 
 	begin 
 		num := n
 	end SetNum
@@ -1955,7 +1955,7 @@ module HostMenus
 	proc Init
 		var 
 			res: integer
-			s: array 256 of char
+			s: array 256 of wchar
 	begin 
 		state := running
 		HostCmds.quit := false

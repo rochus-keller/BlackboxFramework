@@ -54,7 +54,7 @@ module Stores64
 	
 	// Segment
 	
-	proc NewSegment*(container: Files64.File; org: longint): Files.File
+	proc NewSegment*(container: Files64.File; org: longint): Files.File 
 		var 
 			seg: Segment
 	begin 
@@ -72,12 +72,12 @@ module Stores64
 		this.container := nil
 	end Close
 	
-	proc (this: Segment) Closed(): boolean
+	proc (this: Segment) Closed(): boolean 
 	begin 
 		return (this.container = nil) or this.container.Closed()
 	end Closed
 	
-	proc (this: Segment) Shared(): boolean
+	proc (this: Segment) Shared(): boolean 
 	begin 
 		return this.container.Shared()
 	end Shared
@@ -87,12 +87,12 @@ module Stores64
 		this.container.Flush
 	end Flush
 	
-	proc (this: Segment) Length(): integer
+	proc (this: Segment) Length(): integer 
 	begin 
 		return short(min(max(integer), this.container.Length() - this.org))
 	end Length
 	
-	proc (this: Segment) NewReader(old: Files.Reader): Files.Reader
+	proc (this: Segment) NewReader(old: Files.Reader): Files.Reader 
 		var 
 			segRd: SegmentReader
 	begin 
@@ -111,7 +111,7 @@ module Stores64
 		return segRd
 	end NewReader
 	
-	proc (this: Segment) NewWriter(old: Files.Writer): Files.Writer
+	proc (this: Segment) NewWriter(old: Files.Writer): Files.Writer 
 		var 
 			segWr: SegmentWriter
 	begin 
@@ -131,17 +131,17 @@ module Stores64
 	end NewWriter
 	
 	proc (this: Segment) Register(name: Files.Name; type_: Files.Type; ask: boolean
-		var res: integer)
+		var res: integer) 
 	begin  // a Segment cannot be registered
 		halt(20)
 	end Register
 	
-	proc (this: SegmentReader) Base(): Files.File
+	proc (this: SegmentReader) Base(): Files.File 
 	begin 
 		return this.base
 	end Base
 	
-	proc (this: SegmentReader) SetPos(pos: integer)
+	proc (this: SegmentReader) SetPos(pos: integer) 
 		var 
 			seg: Segment
 	begin 
@@ -153,28 +153,28 @@ module Stores64
 		this.rd.SetPos(seg.org + pos)
 	end SetPos
 	
-	proc (this: SegmentReader) Pos(): integer
+	proc (this: SegmentReader) Pos(): integer 
 	begin 
 		assert(this.base # nil, 20)
 		return short(this.rd.Pos() - this.base.org)
 	end Pos
 	
-	proc (this: SegmentReader) ReadByte(var x: byte)
+	proc (this: SegmentReader) ReadByte(var x: byte) 
 	begin 
 		this.rd.ReadByte(x)
 	end ReadByte
 	
-	proc (this: SegmentReader) ReadBytes(var x: array of byte; beg, len_: integer)
+	proc (this: SegmentReader) ReadBytes(var x: array of byte; beg, len_: integer) 
 	begin 
 		this.rd.ReadBytes(x, beg, len_)
 	end ReadBytes
 	
-	proc (this: SegmentWriter) Base(): Files.File
+	proc (this: SegmentWriter) Base(): Files.File 
 	begin 
 		return this.base
 	end Base
 	
-	proc (this: SegmentWriter) SetPos(pos: integer)
+	proc (this: SegmentWriter) SetPos(pos: integer) 
 		var 
 			seg: Segment
 	begin 
@@ -186,18 +186,18 @@ module Stores64
 		this.wr.SetPos(seg.org + pos)
 	end SetPos
 	
-	proc (this: SegmentWriter) Pos(): integer
+	proc (this: SegmentWriter) Pos(): integer 
 	begin 
 		assert(this.base # nil, 20)
 		return short(this.wr.Pos() - this.base.org)
 	end Pos
 	
-	proc (this: SegmentWriter) WriteByte(x: byte)
+	proc (this: SegmentWriter) WriteByte(x: byte) 
 	begin 
 		this.wr.WriteByte(x)
 	end WriteByte
 	
-	proc (this: SegmentWriter) WriteBytes(in x: array of byte; beg, len_: integer)
+	proc (this: SegmentWriter) WriteBytes(in x: array of byte; beg, len_: integer) 
 	begin 
 		this.wr.WriteBytes(x, beg, len_)
 	end WriteBytes
@@ -205,7 +205,7 @@ module Stores64
 	
 	// Reader
 	
-	proc (var rd: Reader) ConnectTo*(f: Files64.File) // new
+	proc (var rd: Reader) ConnectTo*(f: Files64.File)  // new
 	begin 
 		if f = nil then
 			rd.rider := nil 
@@ -218,17 +218,17 @@ module Stores64
 		rd.srd := nil
 	end ConnectTo
 	
-	proc (var rd: Reader) SetPos*(pos: longint) // new
+	proc (var rd: Reader) SetPos*(pos: longint)  // new
 	begin 
 		rd.rider.SetPos(pos)
 	end SetPos
 	
-	proc (var rd: Reader) Pos*(): longint // new
+	proc (var rd: Reader) Pos*(): longint  // new
 	begin 
 		return rd.rider.Pos()
 	end Pos
 	
-	proc (var rd: Reader) ReadBool*(var x: boolean) // new
+	proc (var rd: Reader) ReadBool*(var x: boolean)  // new
 		var 
 			b: byte
 	begin 
@@ -236,12 +236,12 @@ module Stores64
 		x := b # 0
 	end ReadBool
 	
-	proc (var rd: Reader) ReadSChar*(var x: char) // new
+	proc (var rd: Reader) ReadSChar*(var x: char)  // new
 	begin 
 		rd.rider.ReadByte(SYSTEM.VAL(byte, x))
 	end ReadSChar
 	
-	proc (var rd: Reader) ReadXChar*(var x: char) // new
+	proc (var rd: Reader) ReadXChar*(var x: wchar)  // new
 		var 
 			c: char
 	begin 
@@ -249,7 +249,7 @@ module Stores64
 		x := c
 	end ReadXChar
 	
-	proc (var rd: Reader) ReadChar*(var x: char) // new
+	proc (var rd: Reader) ReadChar*(var x: wchar)  // new
 		var  // little endian, big endian
 			le: array 2 of byte
 	begin 
@@ -257,12 +257,12 @@ module Stores64
 		x := chr(le[0] mod 256 + (le[1] mod 256) * 256)
 	end ReadChar
 	
-	proc (var rd: Reader) ReadByte*(var x: byte) // new
+	proc (var rd: Reader) ReadByte*(var x: byte)  // new
 	begin 
 		rd.rider.ReadByte(x)
 	end ReadByte
 	
-	proc (var rd: Reader) ReadSInt*(var x: shortint) // new
+	proc (var rd: Reader) ReadSInt*(var x: shortint)  // new
 		var  // little endian, big endian
 			le, be: array 2 of byte
 	begin 
@@ -276,7 +276,7 @@ module Stores64
 		end 
 	end ReadSInt
 	
-	proc (var rd: Reader) ReadXInt*(var x: integer) // new
+	proc (var rd: Reader) ReadXInt*(var x: integer)  // new
 		var  // little endian, big endian
 			le, be: array 2 of byte
 	begin 
@@ -290,7 +290,7 @@ module Stores64
 		end 
 	end ReadXInt
 	
-	proc (var rd: Reader) ReadInt*(var x: integer) // new
+	proc (var rd: Reader) ReadInt*(var x: integer)  // new
 		var  // little endian, big endian
 			le, be: array 4 of byte
 	begin 
@@ -306,7 +306,7 @@ module Stores64
 		end 
 	end ReadInt
 	
-	proc (var rd: Reader) ReadLong*(var x: longint) // new
+	proc (var rd: Reader) ReadLong*(var x: longint)  // new
 		var  // little endian, big endian
 			le, be: array 8 of byte
 	begin 
@@ -326,7 +326,7 @@ module Stores64
 		end 
 	end ReadLong
 	
-	proc (var rd: Reader) ReadSReal*(var x: real) // new
+	proc (var rd: Reader) ReadSReal*(var x: real)  // new
 		var  // little endian, big endian
 			le, be: array 4 of byte
 	begin 
@@ -342,7 +342,7 @@ module Stores64
 		end 
 	end ReadSReal
 	
-	proc (var rd: Reader) ReadXReal*(var x: real) // new
+	proc (var rd: Reader) ReadXReal*(var x: longreal)  // new
 		var  // little endian, big endian
 			le, be: array 4 of byte
 	begin 
@@ -358,13 +358,13 @@ module Stores64
 		end 
 	end ReadXReal
 	
-	proc (var rd: Reader) ReadReal*(var x: real) // new
+	proc (var rd: Reader) ReadReal*(var x: longreal)  // new
 		var  // little endian, big endian
 			le, be: array 8 of byte
 	begin 
 		rd.rider.ReadBytes(le, 0, 8)
 		if Kernel.littleEndian then
-			x := SYSTEM.VAL(real, le) 
+			x := SYSTEM.VAL(longreal, le) 
 		else 
 			be[0] := le[7]
 			be[1] := le[6]
@@ -374,11 +374,11 @@ module Stores64
 			be[5] := le[2]
 			be[6] := le[1]
 			be[7] := le[0]
-			x := SYSTEM.VAL(real, be) 
+			x := SYSTEM.VAL(longreal, be) 
 		end 
 	end ReadReal
 	
-	proc (var rd: Reader) ReadSet*(var x: set) // new
+	proc (var rd: Reader) ReadSet*(var x: set)  // new
 		var  // little endian, big endian
 			le, be: array 4 of byte
 	begin 
@@ -394,7 +394,7 @@ module Stores64
 		end 
 	end ReadSet
 	
-	proc (var rd: Reader) ReadSString*(var x: array of char) // new
+	proc (var rd: Reader) ReadSString*(var x: array of char)  // new
 		var 
 			i: integer
 			ch: char
@@ -407,10 +407,10 @@ module Stores64
 		until ch = 0x 
 	end ReadSString
 	
-	proc (var rd: Reader) ReadXString*(var x: array of char) // new
+	proc (var rd: Reader) ReadXString*(var x: array of wchar)  // new
 		var 
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		repeat 
@@ -420,10 +420,10 @@ module Stores64
 		until ch = 0x 
 	end ReadXString
 	
-	proc (var rd: Reader) ReadString*(var x: array of char) // new
+	proc (var rd: Reader) ReadString*(var x: array of wchar)  // new
 		var 
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		repeat 
@@ -433,7 +433,7 @@ module Stores64
 		until ch = 0x 
 	end ReadString
 	
-	proc (var rd: Reader) ReadStore*(var x: Stores.Store) // new
+	proc (var rd: Reader) ReadStore*(var x: Stores.Store)  // new
 		var 
 			pos0, srdPos0: longint
 			srd: pointer to Stores.Reader
@@ -465,7 +465,7 @@ module Stores64
 	
 	// Writer
 	
-	proc (var wr: Writer) ConnectTo*(f: Files64.File) // new
+	proc (var wr: Writer) ConnectTo*(f: Files64.File)  // new
 	begin 
 		if f = nil then
 			wr.rider := nil 
@@ -477,17 +477,17 @@ module Stores64
 		wr.swr := nil
 	end ConnectTo
 	
-	proc (var wr: Writer) SetPos*(pos: longint) // new
+	proc (var wr: Writer) SetPos*(pos: longint)  // new
 	begin 
 		wr.rider.SetPos(pos)
 	end SetPos
 	
-	proc (var wr: Writer) Pos*(): longint // new
+	proc (var wr: Writer) Pos*(): longint  // new
 	begin 
 		return wr.rider.Pos()
 	end Pos
 	
-	proc (var wr: Writer) WriteBool*(x: boolean) // new
+	proc (var wr: Writer) WriteBool*(x: boolean)  // new
 	begin 
 		if x then
 			wr.rider.WriteByte(1) 
@@ -496,12 +496,12 @@ module Stores64
 		end 
 	end WriteBool
 	
-	proc (var wr: Writer) WriteSChar*(x: char) // new
+	proc (var wr: Writer) WriteSChar*(x: char)  // new
 	begin 
 		wr.rider.WriteByte(SYSTEM.VAL(byte, x))
 	end WriteSChar
 	
-	proc (var wr: Writer) WriteXChar*(x: char) // new
+	proc (var wr: Writer) WriteXChar*(x: wchar)  // new
 		var 
 			c: char
 	begin 
@@ -509,7 +509,7 @@ module Stores64
 		wr.rider.WriteByte(SYSTEM.VAL(byte, c))
 	end WriteXChar
 	
-	proc (var wr: Writer) WriteChar*(x: char) // new
+	proc (var wr: Writer) WriteChar*(x: wchar)  // new
 		type 
 			a = array 2 of byte
 		var  // little endian, big endian
@@ -525,12 +525,12 @@ module Stores64
 		wr.rider.WriteBytes(le, 0, 2)
 	end WriteChar
 	
-	proc (var wr: Writer) WriteByte*(x: byte) // new
+	proc (var wr: Writer) WriteByte*(x: byte)  // new
 	begin 
 		wr.rider.WriteByte(x)
 	end WriteByte
 	
-	proc (var wr: Writer) WriteSInt*(x: shortint) // new
+	proc (var wr: Writer) WriteSInt*(x: shortint)  // new
 		type 
 			a = array 2 of byte
 		var  // little endian, big endian
@@ -546,7 +546,7 @@ module Stores64
 		wr.rider.WriteBytes(le, 0, 2)
 	end WriteSInt
 	
-	proc (var wr: Writer) WriteXInt*(x: integer) // new
+	proc (var wr: Writer) WriteXInt*(x: integer)  // new
 		type 
 			a = array 2 of byte
 		var  // little endian, big endian
@@ -564,7 +564,7 @@ module Stores64
 		wr.rider.WriteBytes(le, 0, 2)
 	end WriteXInt
 	
-	proc (var wr: Writer) WriteInt*(x: integer) // new
+	proc (var wr: Writer) WriteInt*(x: integer)  // new
 		type 
 			a = array 4 of byte
 		var  // little endian, big endian
@@ -582,7 +582,7 @@ module Stores64
 		wr.rider.WriteBytes(le, 0, 4)
 	end WriteInt
 	
-	proc (var wr: Writer) WriteLong*(x: longint) // new
+	proc (var wr: Writer) WriteLong*(x: longint)  // new
 		type 
 			a = array 8 of byte
 		var  // little endian, big endian
@@ -604,7 +604,7 @@ module Stores64
 		wr.rider.WriteBytes(le, 0, 8)
 	end WriteLong
 	
-	proc (var wr: Writer) WriteSReal*(x: real) // new
+	proc (var wr: Writer) WriteSReal*(x: real)  // new
 		type 
 			a = array 4 of byte
 		var  // little endian, big endian
@@ -622,14 +622,14 @@ module Stores64
 		wr.rider.WriteBytes(le, 0, 4)
 	end WriteSReal
 	
-	proc (var wr: Writer) WriteXReal*(x: real) // new
+	proc (var wr: Writer) WriteXReal*(x: longreal)  // new
 		type 
 			a = array 4 of byte
 		var  // little endian, big endian
 			y: real
 			le, be: a
 	begin 
-		y := (x)
+		y := short(x)
 		if Kernel.littleEndian then
 			le := SYSTEM.VAL(a, y) 
 		else 
@@ -642,7 +642,7 @@ module Stores64
 		wr.rider.WriteBytes(le, 0, 4)
 	end WriteXReal
 	
-	proc (var wr: Writer) WriteReal*(x: real) // new
+	proc (var wr: Writer) WriteReal*(x: longreal)  // new
 		type 
 			a = array 8 of byte
 		var  // little endian, big endian
@@ -664,7 +664,7 @@ module Stores64
 		wr.rider.WriteBytes(le, 0, 8)
 	end WriteReal
 	
-	proc (var wr: Writer) WriteSet*(x: set) // new
+	proc (var wr: Writer) WriteSet*(x: set)  // new
 		// SIZE(SET) = 4
 		type 
 			a = array 4 of byte
@@ -683,7 +683,7 @@ module Stores64
 		wr.rider.WriteBytes(le, 0, 4)
 	end WriteSet
 	
-	proc (var wr: Writer) WriteSString*(in x: array of char) // new
+	proc (var wr: Writer) WriteSString*(in x: array of char)  // new
 		var 
 			i: integer
 			ch: char
@@ -698,10 +698,10 @@ module Stores64
 		wr.WriteSChar(0x)
 	end WriteSString
 	
-	proc (var wr: Writer) WriteXString*(in x: array of char) // new
+	proc (var wr: Writer) WriteXString*(in x: array of wchar)  // new
 		var 
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		ch := x[0]
@@ -713,10 +713,10 @@ module Stores64
 		wr.WriteSChar(0x)
 	end WriteXString
 	
-	proc (var wr: Writer) WriteString*(in x: array of char) // new
+	proc (var wr: Writer) WriteString*(in x: array of wchar)  // new
 		var 
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		ch := x[0]
@@ -728,12 +728,12 @@ module Stores64
 		wr.WriteChar(0x)
 	end WriteString
 	
-	proc (var wr: Writer) WriteVersion*(version: integer) // new
+	proc (var wr: Writer) WriteVersion*(version: integer)  // new
 	begin 
 		wr.WriteByte(short(short(version)))
 	end WriteVersion
 	
-	proc (var wr: Writer) WriteStore*(x: Stores.Store) // new
+	proc (var wr: Writer) WriteStore*(x: Stores.Store)  // new
 		var 
 			pos0, swrPos0: longint
 			swr: pointer to Stores.Writer

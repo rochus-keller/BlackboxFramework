@@ -56,8 +56,8 @@ module HostDialog
 		LanguageHook = pointer to record (Dialog.LanguageHook) end 
 		WineHook = pointer to record (Dialog.WineHook) isWine: boolean end 
 		ExtCallHook = pointer to record (Dialog.ExtCallHook) end 
-		CallName = carray 8191 of char
-		CallNamePtr = pointer to CallName
+		CallName = carray 8191 of wchar
+		CallNamePtr = unsafe pointer to CallName
 	
 	var 
 		window-: Windows.Window // window created/selected by most recent Old or Open
@@ -74,9 +74,9 @@ module HostDialog
 		setup*: record 
 				decorate*: boolean
 				landscape*: boolean
-				left*, right*, top*, bottom*: real
+				left*, right*, top*, bottom*: longreal
 				w, h: integer
-				hs, vs: real 
+				hs, vs: longreal 
 			end 
 		
 		prefs*: record 
@@ -90,14 +90,14 @@ module HostDialog
 				language*: Dialog.Combo 
 			end 
 		
-		ShowOleStatus*: proc (w: Windows.Window; s: array of char)
+		ShowOleStatus*: proc (w: Windows.Window; s: array of wchar)
 		
-		actualPath*: array 256 of char
+		actualPath*: array 256 of wchar
 		
 		fn: WinDlg.OPENFILENAMEW
-		ftype: array 16 of char
-		filter: array 2048 of char
-		fname: array 260 of char
+		ftype: array 16 of wchar
+		filter: array 2048 of wchar
+		fname: array 260 of wchar
 		prt: WinDlg.PRINTDLGW
 		font: WinDlg.CHOOSEFONTW
 		logFont: WinApi.LOGFONTW
@@ -113,14 +113,14 @@ module HostDialog
 		dialogHook: DialogHook
 		
 		callNameTaken, isWine: boolean // params of OpenExternal and RunExternal
-		openExtErr, runExtErr: array 64 of char
+		openExtErr, runExtErr: array 64 of wchar
 		hideExtRunWindow*: boolean
 	
 	
-	proc Append(var s: array of char; var idx: integer; in t: array of char)
+	proc Append(var s: array of wchar; var idx: integer; in t: array of wchar) 
 		var 
 			len_, i: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		ch := t[0]
@@ -134,7 +134,7 @@ module HostDialog
 		s[idx] := 0x
 	end Append
 	
-	proc MapConv(cmd: array of char; var name: array of char)
+	proc MapConv(cmd: array of wchar; var name: array of wchar) 
 		var 
 			i: integer
 			sub, str: Dialog.String
@@ -175,10 +175,10 @@ module HostDialog
 		until w.wnd = 0 
 	end WaitDialogClose
 	
-	proc ShowParamStatus*(in str, p0, p1, p2: array of char)
+	proc ShowParamStatus*(in str, p0, p1, p2: array of wchar) 
 		var 
 			res: integer
-			st: array 513 of char
+			st: array 513 of wchar
 			w: Windows.Window
 	begin 
 		Dialog.MapParamString(str, p0, p1, p2, st)
@@ -192,32 +192,32 @@ module HostDialog
 		end 
 	end ShowParamStatus
 	
-	proc ShowParamMsg*(in str, p0, p1, p2: array of char)
+	proc ShowParamMsg*(in str, p0, p1, p2: array of wchar) 
 		var 
 			res: integer
-			st: array 512 of char
+			st: array 512 of wchar
 	begin 
 		assert(str # "", 20)
 		Dialog.MapParamString(str, p0, p1, p2, st)
 		res := WinApi.MessageBoxW(HostWindows.ActualWnd(), st, Dialog.appName, {4, 5})
 	end ShowParamMsg
 	
-	proc (h: ShowHook) ShowParamMsg(in str, p0, p1, p2: array of char)
+	proc (h: ShowHook) ShowParamMsg(in str, p0, p1, p2: array of wchar) 
 	begin 
 		ShowParamMsg(str, p0, p1, p2)
 	end ShowParamMsg
 	
-	proc (h: ShowHook) ShowParamStatus(in str, p0, p1, p2: array of char)
+	proc (h: ShowHook) ShowParamStatus(in str, p0, p1, p2: array of wchar) 
 	begin 
 		ShowParamStatus(str, p0, p1, p2)
 	end ShowParamStatus
 	
 	// general OK dialog
 	
-	proc (hook: DialogHook) GetOK(in str, p0, p1, p2: array of char; form: set; var res: integer)
+	proc (hook: DialogHook) GetOK(in str, p0, p1, p2: array of wchar; form: set; var res: integer) 
 		var 
 			r: integer
-			st: array 512 of char
+			st: array 512 of wchar
 			type_: set
 	begin 
 		assert(str # "", 20)
@@ -252,7 +252,7 @@ module HostDialog
 	
 	// time
 	
-	proc (hook: DatesHook) GetTime(var d: Dates.Date; var t: Dates.Time)
+	proc (hook: DatesHook) GetTime(var d: Dates.Date; var t: Dates.Time) 
 		var 
 			dt: WinApi.SYSTEMTIME
 	begin 
@@ -265,7 +265,7 @@ module HostDialog
 		t.second := dt.wSecond
 	end GetTime
 	
-	proc (hook: DatesHook) GetUTCTime(var d: Dates.Date; var t: Dates.Time)
+	proc (hook: DatesHook) GetUTCTime(var d: Dates.Date; var t: Dates.Time) 
 		var 
 			dt: WinApi.SYSTEMTIME
 	begin 
@@ -278,7 +278,7 @@ module HostDialog
 		t.second := dt.wSecond
 	end GetUTCTime
 	
-	proc (hook: DatesHook) GetUTCBias(var bias: integer)
+	proc (hook: DatesHook) GetUTCBias(var bias: integer) 
 		var 
 			res: integer
 			info: WinApi.TIME_ZONE_INFORMATION
@@ -309,10 +309,10 @@ module HostDialog
 	// asks user for a file name (for file internalization)
 	proc (hook: DialogHook) GetIntSpec(
 		in defType: Files.Type; var loc: Files.Locator; var name: Files.Name
-		)
+		) 
 		var 
 			res, i, j: integer
-			lfn: array 260 of char
+			lfn: array 260 of wchar
 	begin 
 		// set filter
 		ftype := defType
@@ -366,12 +366,12 @@ module HostDialog
 	end GetIntSpec
 	
 	// asks user for a file name (for file internalization)
-	proc GetIntSpec*(var loc: Files.Locator; var name: Files.Name; var conv: Converters.Converter)
+	proc GetIntSpec*(var loc: Files.Locator; var name: Files.Name; var conv: Converters.Converter) 
 		var 
 			res, i, j, n: integer
 			t: Dialog.String
 			c: Converters.Converter
-			lfn: array 260 of char
+			lfn: array 260 of wchar
 	begin 
 		// set filter
 		ftype := "odc"
@@ -486,7 +486,7 @@ module HostDialog
 	end GetIntSpec
 	
 	proc (h: GetSpecHook) GetIntSpec(var loc: Files.Locator; var name: Files.Name
-		var conv: Converters.Converter)
+		var conv: Converters.Converter) 
 	begin 
 		GetIntSpec(loc, name, conv)
 	end GetIntSpec
@@ -496,11 +496,11 @@ module HostDialog
 	   For earlier Windows versions, this procedure was supposed to transfer the file-type from
 	   the "Save as type" control to the "File name" control. But since Windows 98, it seems neither
 	   to work properly nor to be need anymore.##<= *)
-	proc HookProc(wnd: WinApi.HANDLE; msg, wParam, lParam: integer): integer
+	proc HookProc(wnd: WinApi.HANDLE; msg, wParam, lParam: integer): integer 
 		var 
 			i, j: integer
-			s: array 256 of char
-			t: array 8 of char
+			s: array 256 of wchar
+			t: array 8 of wchar
 			edit: WinApi.HANDLE
 	begin 
 		if (msg = WinApi.WM_COMMAND) & (lParam # 0) & (wParam = 10470h) then
@@ -543,10 +543,10 @@ module HostDialog
 	// ask user for a file name (for file externalization)
 	proc (hook: DialogHook) GetExtSpec(
 		in default: Files.Name; in defType: Files.Type; var loc: Files.Locator; var name: Files.Name
-		)
+		) 
 		var 
 			res, i, j: integer
-			lfn: array 260 of char
+			lfn: array 260 of wchar
 	begin 
 		// set filter
 		ftype := defType
@@ -607,12 +607,12 @@ module HostDialog
 	// ask user for a file name (for file externalization)
 	proc GetExtSpec*(
 		s: Stores.Store; var loc: Files.Locator; var name: Files.Name; var conv: Converters.Converter
-		)
+		) 
 		var 
 			res, i, j, n: integer
-			t: array 64 of char
+			t: array 64 of wchar
 			c: Converters.Converter
-			lfn: array 260 of char
+			lfn: array 260 of wchar
 	begin 
 		// set filter
 		if conv # nil then
@@ -715,7 +715,7 @@ module HostDialog
 	
 	proc (h: GetSpecHook) GetExtSpec(
 		s: Stores.Store; var loc: Files.Locator; var name: Files.Name; var conv: Converters.Converter
-		)
+		) 
 	begin 
 		GetExtSpec(s, loc, name, conv)
 	end GetExtSpec
@@ -724,7 +724,7 @@ module HostDialog
 	
 	// page setup previewer view
 	
-	proc (v: Preview) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (v: Preview) Restore(f: Views.Frame; l, t, r, b: integer) 
 		const 
 			scale = 16
 			rmm = Ports.mm div scale
@@ -760,7 +760,7 @@ module HostDialog
 		end 
 	end Restore
 	
-	proc (v: Preview) HandleViewMsg(f: Views.Frame; var msg: Views.Message)
+	proc (v: Preview) HandleViewMsg(f: Views.Frame; var msg: Views.Message) 
 	begin 
 		with msg: UpdateMsg do 
 			Views.Update(v, Views.keepFrames) 
@@ -778,7 +778,7 @@ module HostDialog
 	
 	// page setup dialog
 	
-	proc SetupNotify*(op, from, to_: integer)
+	proc SetupNotify*(op, from, to_: integer) 
 		var 
 			msg: UpdateMsg
 			t: integer
@@ -863,7 +863,7 @@ module HostDialog
 	
 	proc PrintDialog*(
 		hasSelection: boolean; var from, to_, copies: integer; var selection: boolean
-		)
+		) 
 		var 
 			res: integer
 	begin 
@@ -936,11 +936,11 @@ module HostDialog
 	end PrintSetup
 	
 	
-	proc CloseDialog*(w: Windows.Window; quit: boolean; var res: integer)
+	proc CloseDialog*(w: Windows.Window; quit: boolean; var res: integer) 
 		var 
 			r: integer
 			title: Views.Title
-			text: array 256 of char
+			text: array 256 of wchar
 	begin 
 		w.GetTitle(title)
 		Dialog.MapParamString(dirtyString, title, 0dx, 0dx, text)
@@ -955,7 +955,7 @@ module HostDialog
 		r := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
 	end CloseDialog
 	
-	proc (hook: DialogHook) GetColor(in_: Ports.Color; var out: Ports.Color; var set_: boolean)
+	proc (hook: DialogHook) GetColor(in_: Ports.Color; var out: Ports.Color; var set_: boolean) 
 		var 
 			res: integer
 	begin 
@@ -991,9 +991,9 @@ module HostDialog
 		end 
 	end ColorDialog
 	
-	proc FontDialog0(full: boolean; var typeface: array of char; var size_: integer
+	proc FontDialog0(full: boolean; var typeface: array of wchar; var size_: integer
 		var color: Ports.Color; var weight: integer; var style: set; var set_: boolean
-		)
+		) 
 		var 
 			res: integer
 	begin 
@@ -1237,11 +1237,11 @@ module HostDialog
 	
 	// date / time
 	
-	proc (hook: DatesHook) DateToString(d: Dates.Date; format: integer; var str: array of char)
+	proc (hook: DatesHook) DateToString(d: Dates.Date; format: integer; var str: array of wchar) 
 		var 
 			res, pos, i: integer
 			time: WinApi.SYSTEMTIME
-			fmt: array 64 of char
+			fmt: array 64 of wchar
 	begin 
 		time.wYear := short(d.year)
 		time.wMonth := short(d.month)
@@ -1284,7 +1284,7 @@ module HostDialog
 		end 
 	end DateToString
 	
-	proc (hook: DatesHook) TimeToString(t: Dates.Time; var str: array of char)
+	proc (hook: DatesHook) TimeToString(t: Dates.Time; var str: array of wchar) 
 		var 
 			res: integer
 			time: WinApi.SYSTEMTIME
@@ -1301,7 +1301,7 @@ module HostDialog
 	
 	proc (hook: LanguageHook) SetLanguage(
 		lang: Dialog.Language; persistent: boolean; var ok: boolean
-		)
+		) 
 	begin 
 		ok := (lang = "") or (len(lang) = 2)
 		if ok & persistent then
@@ -1309,10 +1309,10 @@ module HostDialog
 		end 
 	end SetLanguage
 	
-	proc (hook: LanguageHook) GetPersistentLanguage(var lang: Dialog.Language)
+	proc (hook: LanguageHook) GetPersistentLanguage(var lang: Dialog.Language) 
 		var 
 			res: integer
-			s: array 32 of char
+			s: array 32 of wchar
 	begin 
 		HostRegistry.ReadString("language", s, res)
 		if res = 0 then
@@ -1323,7 +1323,7 @@ module HostDialog
 		end 
 	end GetPersistentLanguage
 	
-	proc (hook: WineHook) IsWine*(): boolean
+	proc (hook: WineHook) IsWine*(): boolean 
 		var 
 			h: WinApi.HMODULE
 			adr: WinApi.FARPROC
@@ -1348,8 +1348,8 @@ module HostDialog
 	end IsWine
 	
 	// thread safe; error numbers as returned from WinApi.GetLastError()
-	proc FormatErrorMsg*(error: integer; in arg1, arg2, arg3: array of char
-		var errMsg: array of char)
+	proc FormatErrorMsg*(error: integer; in arg1, arg2, arg3: array of wchar
+		var errMsg: array of wchar) 
 		const 
 			format = 
 			WinApi.FORMAT_MESSAGE_FROM_SYSTEM + WinApi.FORMAT_MESSAGE_ARGUMENT_ARRAY
@@ -1365,7 +1365,7 @@ module HostDialog
 	end FormatErrorMsg
 	
 	// thread safe; error numbers as returned from WinApi.GetLastError
-	proc ShowErrorDialog*(error: integer; in arg1, arg2, arg3, msgPrefix: array of char)
+	proc ShowErrorDialog*(error: integer; in arg1, arg2, arg3, msgPrefix: array of wchar) 
 		var 
 			errMsg: CallName
 			res: integer
@@ -1375,7 +1375,7 @@ module HostDialog
 		res := WinApi.MessageBoxW(Kernel.mainWnd, errMsg, Dialog.appName, WinApi.MB_ICONERROR)
 	end ShowErrorDialog
 	
-	proc Start*(name: array of char) // deprecated; better use Dialog.RunExternal
+	proc Start*(name: array of wchar)  // deprecated; better use Dialog.RunExternal
 		var 
 			info: WinApi.STARTUPINFOW
 			process: WinApi.PROCESS_INFORMATION
@@ -1388,7 +1388,7 @@ module HostDialog
 		end 
 	end Start
 	
-	proc OpenExternal(lpParameter: integer): integer // runs in a thread
+	proc OpenExternal(lpParameter: integer): integer  // runs in a thread
 		var 
 			fileNamePtr: CallNamePtr
 			fileName, fileName2: CallName
@@ -1396,7 +1396,7 @@ module HostDialog
 			error: integer
 	begin 
 		fileNamePtr := SYSTEM.VAL(CallNamePtr, lpParameter)
-		fileName := fileNamePtr
+		fileName := fileNamePtr^
 		callNameTaken := true
 		sxinfo.cbSize := size(WinApi.SHELLEXECUTEINFOW)
 		sxinfo.fMask := {10} // SEE_MASK_DEFAULT + SEE_MASK_FLAG_NO_UI
@@ -1425,7 +1425,7 @@ module HostDialog
 		return 0
 	end OpenExternal
 	
-	proc (h: ExtCallHook) OpenExternal*(in fileName: array of char)
+	proc (h: ExtCallHook) OpenExternal*(in fileName: array of wchar) 
 		var 
 			t: WinApi.HANDLE
 			res: WinApi.BOOL
@@ -1441,7 +1441,7 @@ module HostDialog
 		end 
 	end OpenExternal
 	
-	proc RunExternal(lpParameter: integer): integer // runs in a thread
+	proc RunExternal(lpParameter: integer): integer  // runs in a thread
 		var 
 			exeNamePtr: CallNamePtr
 			exeName: CallName
@@ -1449,10 +1449,10 @@ module HostDialog
 			pos: integer
 			info: WinApi.STARTUPINFOW
 			process: WinApi.PROCESS_INFORMATION
-			cmd: array 12 of char
+			cmd: array 12 of wchar
 	begin 
 		exeNamePtr := SYSTEM.VAL(CallNamePtr, lpParameter)
-		exeName := exeNamePtr
+		exeName := exeNamePtr^
 		WinApi.GetStartupInfoW(info)
 		if hideExtRunWindow then
 			info.wShowWindow := WinApi.SW_HIDE
@@ -1483,7 +1483,7 @@ module HostDialog
 		return 0
 	end RunExternal
 	
-	proc (h: ExtCallHook) RunExternal*(in exeName: array of char)
+	proc (h: ExtCallHook) RunExternal*(in exeName: array of wchar) 
 		var 
 			t: WinApi.HANDLE
 			res: WinApi.BOOL

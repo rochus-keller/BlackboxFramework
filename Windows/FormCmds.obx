@@ -39,13 +39,13 @@ module FormCmds
 			end 
 		
 		find*: record 
-				from*, to_*: array 256 of char
+				from*, to_*: array 256 of wchar
 				link*, label*, guard*, notifier*: boolean 
 			end 
 	
 	
 	proc FindExtrema(c: FormControllers.Controller; var l, t, r, b, h, v: integer
-		var s: FormControllers.List)
+		var s: FormControllers.List) 
 		var 
 			n: integer
 			p: FormControllers.List
@@ -94,7 +94,7 @@ module FormCmds
 	end FindExtrema
 	
 	proc Move(c: FormControllers.Controller; s: FormControllers.List; p, side: integer
-		name: Stores.OpName)
+		name: Stores.OpName) 
 		var 
 			script: Stores.Operation
 			w, h: integer
@@ -250,7 +250,7 @@ module FormCmds
 	end SelectOffGridViews
 	
 	
-	proc Selection(c: FormControllers.Controller): FormControllers.List
+	proc Selection(c: FormControllers.Controller): FormControllers.List 
 		var 
 			p, q: FormControllers.List
 			h: FormModels.Reader
@@ -308,7 +308,7 @@ module FormCmds
 			r: FormModels.Reader
 			p, q: Views.View
 		
-		proc IsAbove(p, q: Views.View): boolean
+		proc IsAbove(p, q: Views.View): boolean 
 			var 
 				l0, l1, t0, t1, r, b: integer
 		begin 
@@ -498,7 +498,7 @@ module FormCmds
 			p, q: Properties.Property
 			setMsg: Properties.SetMsg
 		
-		proc Replace(var s: array of char; in from, to_: array of char)
+		proc Replace(var s: array of wchar; in from, to_: array of wchar) 
 			var 
 				pos: integer
 		begin 
@@ -547,13 +547,13 @@ module FormCmds
 	
 	// standard form-related guards
 	
-	proc FocusGuard*(var par: Dialog.Par)
+	proc FocusGuard*(var par: Dialog.Par) 
 	// in non-FormView menus; otherwise implied by menu type
 	begin 
 		par.disabled := FormViews.Focus() = nil
 	end FocusGuard
 	
-	proc SelectionGuard*(var par: Dialog.Par)
+	proc SelectionGuard*(var par: Dialog.Par) 
 		// in non-FormView menus; otherwise use "SelectionGuard"
 		var 
 			c: FormControllers.Controller
@@ -562,7 +562,7 @@ module FormCmds
 		par.disabled := (c = nil) or ~c.HasSelection()
 	end SelectionGuard
 	
-	proc SingletonGuard*(var par: Dialog.Par)
+	proc SingletonGuard*(var par: Dialog.Par) 
 		// in non-FormView menus; otherwise use "SingletonGuard"
 		var 
 			c: FormControllers.Controller

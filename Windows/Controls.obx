@@ -108,7 +108,7 @@ module Controls
 				adr: array maxAdr of integer
 				num: integer
 				stamp: integer
-				shortcut: char
+				shortcut: wchar
 				guardErr, notifyErr: boolean 
 			end 
 		
@@ -216,29 +216,29 @@ module Controls
 	end Cleanup
 	
 	
-	proc (c: Control) Update-(f: Views.Frame; op, from, to_: integer) end // new empty
-	proc (c: Control) UpdateList-(f: Views.Frame) end // new empty
-	proc (c: Control) CheckLink-(var ok: boolean) end // new empty
-	proc (c: Control) HandlePropMsg2-(var p: Views.PropMessage) end // new empty
-	proc (c: Control) HandleViewMsg2-(f: Views.Frame; var msg: Views.Message) end // new empty
+	proc (c: Control) Update-(f: Views.Frame; op, from, to_: integer)  end // new empty
+	proc (c: Control) UpdateList-(f: Views.Frame)  end // new empty
+	proc (c: Control) CheckLink-(var ok: boolean)  end // new empty
+	proc (c: Control) HandlePropMsg2-(var p: Views.PropMessage)  end // new empty
+	proc (c: Control) HandleViewMsg2-(f: Views.Frame; var msg: Views.Message)  end // new empty
 	proc (c: Control) HandleCtrlMsg2-(f: Views.Frame; var msg: Views.CtrlMessage
-		var focus: Views.View) end // new empty
-	proc (c: Control) Externalize2-(var wr: Stores.Writer) end // new empty
-	proc (c: Control) Internalize2-(var rd: Stores.Reader) end // new empty
+		var focus: Views.View)  end // new empty
+	proc (c: Control) Externalize2-(var wr: Stores.Writer)  end // new empty
+	proc (c: Control) Internalize2-(var rd: Stores.Reader)  end // new empty
 	
 	
 	// auxiliary procedures
 	
-	proc IsShortcut(ch: char; c: Control): boolean
+	proc IsShortcut(ch: wchar; c: Control): boolean 
 	begin 
 		return Strings.Upper(ch) = c.shortcut
 	end IsShortcut
 	
-	proc ExtractShortcut(c: Control)
+	proc ExtractShortcut(c: Control) 
 		var 
 			label: Dialog.String
 			i: integer
-			ch, sCh: char
+			ch, sCh: wchar
 	begin 
 		Dialog.MapString(c.label, label)
 		i := 0
@@ -261,11 +261,11 @@ module Controls
 		c.shortcut := Strings.Upper(sCh)
 	end ExtractShortcut
 	
-	proc GetGuardProc(name: array of char; var i: Meta.Item; var err: boolean
-		var par: boolean; var n: integer)
+	proc GetGuardProc(name: array of wchar; var i: Meta.Item; var err: boolean
+		var par: boolean; var n: integer) 
 		var 
 			j, k, e: integer
-			num: array 32 of char
+			num: array 32 of wchar
 	begin 
 		j := 0
 		while (name[j] # 0x) & (name[j] # "(") do 
@@ -320,7 +320,7 @@ module Controls
 		end 
 	end GetGuardProc
 	
-	proc CallGuard(c: Control)
+	proc CallGuard(c: Control) 
 		var 
 			ok, up: boolean
 			n: integer
@@ -389,7 +389,7 @@ module Controls
 		Controllers.ResetCurrentPath()
 	end CallGuard
 	
-	proc CallNotifier(c: Control; op, from, to_: integer)
+	proc CallNotifier(c: Control; op, from, to_: integer) 
 		var 
 			ok, up: boolean
 			n: integer
@@ -441,7 +441,7 @@ module Controls
 		end 
 	end CallNotifier
 	
-	proc DCHint(modifiers: set): integer
+	proc DCHint(modifiers: set): integer 
 	begin 
 		if Controllers.doubleClick in modifiers then
 			return 1 
@@ -450,7 +450,7 @@ module Controls
 		end 
 	end DCHint
 	
-	proc Notify*(c: Control; f: Views.Frame; op, from, to_: integer)
+	proc Notify*(c: Control; f: Views.Frame; op, from, to_: integer) 
 		var 
 			msg: NotifyMsg
 	begin 
@@ -479,10 +479,10 @@ module Controls
 		Views.Omnicast(msg)
 	end NotifyFlushCaches
 	
-	proc GetName(var path, name: array of char; var i: integer)
+	proc GetName(var path, name: array of wchar; var i: integer) 
 		var 
 			j: integer
-			ch: char
+			ch: wchar
 	begin 
 		j := 0
 		ch := path[i]
@@ -499,12 +499,12 @@ module Controls
 		end 
 	end GetName
 	
-	proc LookupPath(path: array of char; var i: Meta.Item
-		var adr: array of integer; var num: integer)
+	proc LookupPath(path: array of wchar; var i: Meta.Item
+		var adr: array of integer; var num: integer) 
 		var 
 			j, n: integer
 			name: Meta.Name
-			ch: char
+			ch: wchar
 	begin 
 		path[len(path) - 1] := 0x
 		j := 0
@@ -567,7 +567,7 @@ module Controls
 		end 
 	end LookupPath
 	
-	proc Sort(var adr: array of integer; num: integer)
+	proc Sort(var adr: array of integer; num: integer) 
 		var 
 			i, j, p: integer
 	begin 
@@ -584,7 +584,7 @@ module Controls
 		end 
 	end Sort
 	
-	proc GetTypeName(in item: Meta.Item; var name: Meta.Name)
+	proc GetTypeName(in item: Meta.Item; var name: Meta.Name) 
 		var 
 			mod_: Meta.Name
 	begin 
@@ -599,7 +599,7 @@ module Controls
 		end 
 	end GetTypeName
 	
-	proc OpenLink*(c: Control; p: Prop)
+	proc OpenLink*(c: Control; p: Prop) 
 		var 
 			ok: boolean
 	begin 
@@ -636,7 +636,7 @@ module Controls
 	
 	// Prop
 	
-	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean)
+	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean) 
 		var 
 			valid: set
 	begin 
@@ -683,9 +683,9 @@ module Controls
 	
 	// Control
 	
-	proc (c: Control) CopyFromSimpleView2-(source: Control) end // new empty
+	proc (c: Control) CopyFromSimpleView2-(source: Control)  end // new empty
 	
-	proc (c: Control) CopyFromSimpleView-(source: Views.View)
+	proc (c: Control) CopyFromSimpleView-(source: Views.View) 
 	begin 
 		with source: Control do 
 			c.item := source.item
@@ -703,7 +703,7 @@ module Controls
 		end 
 	end CopyFromSimpleView
 	
-	proc (c: Control) Internalize-(var rd: Stores.Reader)
+	proc (c: Control) Internalize-(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 			x, def, canc, sort: boolean
@@ -761,7 +761,7 @@ module Controls
 		OpenLink(c, c.prop)
 	end Internalize
 	
-	proc (c: Control) Externalize-(var wr: Stores.Writer)
+	proc (c: Control) Externalize-(var wr: Stores.Writer) 
 	begin 
 		c.Externalize^(wr)
 		wr.WriteVersion(maxBaseVersion)
@@ -782,7 +782,7 @@ module Controls
 		c.Externalize2(wr)
 	end Externalize
 	
-	proc (c: Control) HandleViewMsg-(f: Views.Frame; var msg: Views.Message)
+	proc (c: Control) HandleViewMsg-(f: Views.Frame; var msg: Views.Message) 
 		var 
 			disabled, undef, readOnly, done, allDone: boolean
 			i: integer
@@ -869,7 +869,7 @@ module Controls
 	end HandleViewMsg
 	
 	proc (c: Control) HandleCtrlMsg*(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 		var 
 			sp: Properties.SizeProp
 			p: Control
@@ -918,7 +918,7 @@ module Controls
 		end 
 	end HandleCtrlMsg
 	
-	proc (c: Control) HandlePropMsg-(var msg: Properties.Message)
+	proc (c: Control) HandlePropMsg-(var msg: Properties.Message) 
 		var 
 			fpref: Properties.FocusPref
 			stp: Properties.StdProp
@@ -1110,7 +1110,7 @@ module Controls
 	// ------------------------- standard controls -------------------------
 	
 	proc CatchCtrlMsg(c: Control; f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 	begin 
 		if ~c.disabled then
 			with f: StdCFrames.Frame do 
@@ -1133,25 +1133,25 @@ module Controls
 	
 	// Directory
 	
-	proc (d: Directory) NewPushButton*(p: Prop): Control end // new abstract
-	proc (d: Directory) NewCheckBox*(p: Prop): Control end // new abstract
-	proc (d: Directory) NewRadioButton*(p: Prop): Control end // new abstract
-	proc (d: Directory) NewField*(p: Prop): Control end // new abstract
-	proc (d: Directory) NewUpDownField*(p: Prop): Control end // new abstract
-	proc (d: Directory) NewDateField*(p: Prop): Control end // new abstract
-	proc (d: Directory) NewTimeField*(p: Prop): Control end // new abstract
-	proc (d: Directory) NewColorField*(p: Prop): Control end // new abstract
-	proc (d: Directory) NewListBox*(p: Prop): Control end // new abstract
-	proc (d: Directory) NewSelectionBox*(p: Prop): Control end // new abstract
-	proc (d: Directory) NewComboBox*(p: Prop): Control end // new abstract
-	proc (d: Directory) NewCaption*(p: Prop): Control end // new abstract
-	proc (d: Directory) NewGroup*(p: Prop): Control end // new abstract
-	proc (d: Directory) NewTreeControl*(p: Prop): Control end // new abstract
+	proc (d: Directory) NewPushButton*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewCheckBox*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewRadioButton*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewField*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewUpDownField*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewDateField*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewTimeField*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewColorField*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewListBox*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewSelectionBox*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewComboBox*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewCaption*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewGroup*(p: Prop): Control  end // new abstract
+	proc (d: Directory) NewTreeControl*(p: Prop): Control  end // new abstract
 	
 	
 	// PushButton
 	
-	proc Call(c: PushButton)
+	proc Call(c: PushButton) 
 		var 
 			res: integer
 			p: Control
@@ -1193,24 +1193,24 @@ module Controls
 		Views.Omnicast(msg)
 	end Call
 	
-	proc Do(f: StdCFrames.PushButton)
+	proc Do(f: StdCFrames.PushButton) 
 	begin 
 		Call(f.view(PushButton))
 	end Do
 	
-	proc (c: PushButton) Internalize2(var rd: Stores.Reader)
+	proc (c: PushButton) Internalize2(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
 		rd.ReadVersion(minVersion, pbVersion, thisVersion)
 	end Internalize2
 	
-	proc (c: PushButton) Externalize2(var wr: Stores.Writer)
+	proc (c: PushButton) Externalize2(var wr: Stores.Writer) 
 	begin 
 		wr.WriteVersion(pbVersion)
 	end Externalize2
 	
-	proc (c: PushButton) GetNewFrame(var frame: Views.Frame)
+	proc (c: PushButton) GetNewFrame(var frame: Views.Frame) 
 		var 
 			f: StdCFrames.PushButton
 	begin 
@@ -1226,7 +1226,7 @@ module Controls
 		frame := f
 	end GetNewFrame
 	
-	proc (c: PushButton) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (c: PushButton) Restore(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		with f: StdCFrames.Frame do 
 			f.Restore(l, t, r, b) 
@@ -1234,7 +1234,7 @@ module Controls
 	end Restore
 	
 	proc (c: PushButton) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 	begin 
 		if ~c.disabled then
 			with f: StdCFrames.Frame do 
@@ -1253,7 +1253,7 @@ module Controls
 		end 
 	end HandleCtrlMsg2
 	
-	proc (c: PushButton) HandlePropMsg2(var msg: Properties.Message)
+	proc (c: PushButton) HandlePropMsg2(var msg: Properties.Message) 
 	begin 
 		with msg: Properties.ControlPref do 
 			msg.accepts := ~c.disabled & ((msg.char_ = lineChar) & c.prop.opt[default] 
@@ -1276,13 +1276,13 @@ module Controls
 		end 
 	end HandlePropMsg2
 	
-	proc (c: PushButton) Update(f: Views.Frame; op, from, to_: integer)
+	proc (c: PushButton) Update(f: Views.Frame; op, from, to_: integer) 
 	begin 
 		f(StdCFrames.PushButton).label := c.label
 		f(StdCFrames.Frame).Update
 	end Update
 	
-	proc (c: PushButton) CheckLink(var ok: boolean)
+	proc (c: PushButton) CheckLink(var ok: boolean) 
 	begin 
 		ok := c.item.typ = Meta.procTyp
 	end CheckLink
@@ -1290,7 +1290,7 @@ module Controls
 	
 	// CheckBox
 	
-	proc GetCheckBox(f: StdCFrames.CheckBox; var x: boolean)
+	proc GetCheckBox(f: StdCFrames.CheckBox; var x: boolean) 
 		var 
 			c: CheckBox
 	begin 
@@ -1305,7 +1305,7 @@ module Controls
 		end 
 	end GetCheckBox
 	
-	proc SetCheckBox(f: StdCFrames.CheckBox; x: boolean)
+	proc SetCheckBox(f: StdCFrames.CheckBox; x: boolean) 
 		var 
 			c: CheckBox
 			s: set
@@ -1332,19 +1332,19 @@ module Controls
 		end 
 	end SetCheckBox
 	
-	proc (c: CheckBox) Internalize2(var rd: Stores.Reader)
+	proc (c: CheckBox) Internalize2(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
 		rd.ReadVersion(minVersion, cbVersion, thisVersion)
 	end Internalize2
 	
-	proc (c: CheckBox) Externalize2(var wr: Stores.Writer)
+	proc (c: CheckBox) Externalize2(var wr: Stores.Writer) 
 	begin 
 		wr.WriteVersion(cbVersion)
 	end Externalize2
 	
-	proc (c: CheckBox) GetNewFrame(var frame: Views.Frame)
+	proc (c: CheckBox) GetNewFrame(var frame: Views.Frame) 
 		var 
 			f: StdCFrames.CheckBox
 	begin 
@@ -1359,7 +1359,7 @@ module Controls
 		frame := f
 	end GetNewFrame
 	
-	proc (c: CheckBox) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (c: CheckBox) Restore(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		with f: StdCFrames.Frame do 
 			f.Restore(l, t, r, b) 
@@ -1367,7 +1367,7 @@ module Controls
 	end Restore
 	
 	proc (c: CheckBox) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 	begin 
 		if ~c.disabled & ~c.readOnly then
 			with f: StdCFrames.Frame do 
@@ -1383,7 +1383,7 @@ module Controls
 		end 
 	end HandleCtrlMsg2
 	
-	proc (c: CheckBox) HandlePropMsg2(var msg: Properties.Message)
+	proc (c: CheckBox) HandlePropMsg2(var msg: Properties.Message) 
 	begin 
 		with msg: Properties.ControlPref do 
 			if ~c.disabled & ~c.readOnly then
@@ -1420,12 +1420,12 @@ module Controls
 		end 
 	end HandlePropMsg2
 	
-	proc (c: CheckBox) CheckLink(var ok: boolean)
+	proc (c: CheckBox) CheckLink(var ok: boolean) 
 	begin 
 		ok := (c.item.typ = Meta.boolTyp) or (c.item.typ = Meta.setTyp)
 	end CheckLink
 	
-	proc (c: CheckBox) Update(f: Views.Frame; op, from, to_: integer)
+	proc (c: CheckBox) Update(f: Views.Frame; op, from, to_: integer) 
 	begin 
 		if (op = 0) or (c.item.typ = Meta.boolTyp) or (c.prop.level = to_) then
 			f(StdCFrames.CheckBox).label := c.label
@@ -1436,7 +1436,7 @@ module Controls
 	
 	// RadioButton
 	
-	proc GetRadioButton(f: StdCFrames.RadioButton; var x: boolean)
+	proc GetRadioButton(f: StdCFrames.RadioButton; var x: boolean) 
 		var 
 			c: RadioButton
 	begin 
@@ -1451,7 +1451,7 @@ module Controls
 		end 
 	end GetRadioButton
 	
-	proc SetRadioButton(f: StdCFrames.RadioButton; x: boolean)
+	proc SetRadioButton(f: StdCFrames.RadioButton; x: boolean) 
 		var 
 			c: RadioButton
 			old: integer
@@ -1480,19 +1480,19 @@ module Controls
 		end 
 	end SetRadioButton
 	
-	proc (c: RadioButton) Internalize2(var rd: Stores.Reader)
+	proc (c: RadioButton) Internalize2(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
 		rd.ReadVersion(minVersion, rbVersion, thisVersion)
 	end Internalize2
 	
-	proc (c: RadioButton) Externalize2(var wr: Stores.Writer)
+	proc (c: RadioButton) Externalize2(var wr: Stores.Writer) 
 	begin 
 		wr.WriteVersion(rbVersion)
 	end Externalize2
 	
-	proc (c: RadioButton) GetNewFrame(var frame: Views.Frame)
+	proc (c: RadioButton) GetNewFrame(var frame: Views.Frame) 
 		var 
 			f: StdCFrames.RadioButton
 	begin 
@@ -1507,7 +1507,7 @@ module Controls
 		frame := f
 	end GetNewFrame
 	
-	proc (c: RadioButton) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (c: RadioButton) Restore(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		with f: StdCFrames.Frame do 
 			f.Restore(l, t, r, b) 
@@ -1515,7 +1515,7 @@ module Controls
 	end Restore
 	
 	proc (c: RadioButton) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 	begin 
 		if ~c.disabled & ~c.readOnly then
 			with f: StdCFrames.Frame do 
@@ -1531,7 +1531,7 @@ module Controls
 		end 
 	end HandleCtrlMsg2
 	
-	proc (c: RadioButton) HandlePropMsg2(var msg: Properties.Message)
+	proc (c: RadioButton) HandlePropMsg2(var msg: Properties.Message) 
 		var 
 			hot: boolean
 	begin 
@@ -1577,7 +1577,7 @@ module Controls
 		end 
 	end HandlePropMsg2
 	
-	proc (c: RadioButton) CheckLink(var ok: boolean)
+	proc (c: RadioButton) CheckLink(var ok: boolean) 
 		var 
 			name: Meta.Name
 	begin 
@@ -1588,7 +1588,7 @@ module Controls
 		ok := (c.item.typ >= Meta.byteTyp) & (c.item.typ <= Meta.intTyp) or (c.item.typ = Meta.boolTyp)
 	end CheckLink
 	
-	proc (c: RadioButton) Update(f: Views.Frame; op, from, to_: integer)
+	proc (c: RadioButton) Update(f: Views.Frame; op, from, to_: integer) 
 	begin 
 		if (op = 0) or (c.prop.level = to_) or (c.prop.level = from) then
 			f(StdCFrames.RadioButton).label := c.label
@@ -1599,9 +1599,9 @@ module Controls
 	
 	// Field
 	
-	proc LongToString(x: longint; var s: array of char)
+	proc LongToString(x: longint; var s: array of wchar) 
 		var 
-			d: array 24 of char
+			d: array 24 of wchar
 			i, j: integer
 	begin 
 		if x = min(longint) then
@@ -1628,7 +1628,7 @@ module Controls
 		end 
 	end LongToString
 	
-	proc StringToLong(in s: array of char; var x: longint; var res: integer)
+	proc StringToLong(in s: array of wchar; var x: longint; var res: integer) 
 		var 
 			i, sign, d: integer
 	begin 
@@ -1664,7 +1664,7 @@ module Controls
 		end 
 	end StringToLong
 	
-	proc FixToInt(fix: array of char; var int_: array of char; scale: integer)
+	proc FixToInt(fix: array of wchar; var int_: array of wchar; scale: integer) 
 		var 
 			i, j: integer
 	begin 
@@ -1697,7 +1697,7 @@ module Controls
 		int_[j] := 0x
 	end FixToInt
 	
-	proc IntToFix(int_: array of char; var fix: array of char; scale: integer)
+	proc IntToFix(int_: array of wchar; var fix: array of wchar; scale: integer) 
 		var 
 			i, j, n: integer
 	begin 
@@ -1742,7 +1742,7 @@ module Controls
 		fix[j] := 0x
 	end IntToFix
 	
-	proc GetField(f: StdCFrames.Field; var x: array of char)
+	proc GetField(f: StdCFrames.Field; var x: array of wchar) 
 		var 
 			c: Field
 			ok: boolean
@@ -1797,16 +1797,16 @@ module Controls
 		end 
 	end GetField
 	
-	proc SetField(f: StdCFrames.Field; in x: array of char)
+	proc SetField(f: StdCFrames.Field; in x: array of wchar) 
 		var 
 			c: Field
 			ok: boolean
 			i, res, old: integer
-			r, or_: real
+			r, or_: longreal
 			b, v: Meta.Item
 			mod_, name: Meta.Name
 			long_, long0: longint
-			s: array 1024 of char
+			s: array 1024 of wchar
 	begin 
 		c := f.view(Field)
 		if c.item.Valid() & ~c.readOnly then
@@ -1977,14 +1977,14 @@ module Controls
 		end 
 	end SetField
 	
-	proc EqualField(f: StdCFrames.Field; in s1, s2: array of char): boolean
+	proc EqualField(f: StdCFrames.Field; in s1, s2: array of wchar): boolean 
 		var 
 			c: Field
 			i1, i2, res1, res2: integer
-			r1, r2: real
+			r1, r2: longreal
 			l1, l2: longint
 			mod_, name: Meta.Name
-			t1, t2: array 64 of char
+			t1, t2: array 64 of wchar
 			b: Meta.Item
 	begin 
 		c := f.view(Field)
@@ -2037,26 +2037,26 @@ module Controls
 		end 
 	end EqualField
 	
-	proc (c: Field) CopyFromSimpleView2(source: Control)
+	proc (c: Field) CopyFromSimpleView2(source: Control) 
 	begin 
 		with source: Field do 
 			c.maxLen := source.maxLen 
 		end 
 	end CopyFromSimpleView2
 	
-	proc (c: Field) Internalize2(var rd: Stores.Reader)
+	proc (c: Field) Internalize2(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
 		rd.ReadVersion(minVersion, fldVersion, thisVersion)
 	end Internalize2
 	
-	proc (c: Field) Externalize2(var wr: Stores.Writer)
+	proc (c: Field) Externalize2(var wr: Stores.Writer) 
 	begin 
 		wr.WriteVersion(fldVersion)
 	end Externalize2
 	
-	proc (c: Field) GetNewFrame(var frame: Views.Frame)
+	proc (c: Field) GetNewFrame(var frame: Views.Frame) 
 		var 
 			f: StdCFrames.Field
 	begin 
@@ -2076,7 +2076,7 @@ module Controls
 		frame := f
 	end GetNewFrame
 	
-	proc (c: Field) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (c: Field) Restore(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		with f: StdCFrames.Frame do 
 			f.Restore(l, t, r, b) 
@@ -2084,9 +2084,9 @@ module Controls
 	end Restore
 	
 	proc (c: Field) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 		var 
-			ch: char
+			ch: wchar
 			mod_, name: Meta.Name
 			from, to_: integer
 	begin 
@@ -2152,7 +2152,7 @@ module Controls
 		end 
 	end HandleCtrlMsg2
 	
-	proc (c: Field) HandlePropMsg2(var msg: Properties.Message)
+	proc (c: Field) HandlePropMsg2(var msg: Properties.Message) 
 	begin 
 		with msg: Properties.ControlPref do 
 			if msg.char_ = lineChar then
@@ -2177,7 +2177,7 @@ module Controls
 		end 
 	end HandlePropMsg2
 	
-	proc (c: Field) CheckLink(var ok: boolean)
+	proc (c: Field) CheckLink(var ok: boolean) 
 		var 
 			t: integer
 			name: Meta.Name
@@ -2207,7 +2207,7 @@ module Controls
 		end 
 	end CheckLink
 	
-	proc (c: Field) Update(f: Views.Frame; op, from, to_: integer)
+	proc (c: Field) Update(f: Views.Frame; op, from, to_: integer) 
 	begin 
 		f(StdCFrames.Frame).Update
 	end Update
@@ -2215,7 +2215,7 @@ module Controls
 	
 	// UpDownField
 	
-	proc GetUpDownField(f: StdCFrames.UpDownField; var val_: integer)
+	proc GetUpDownField(f: StdCFrames.UpDownField; var val_: integer) 
 		var 
 			c: UpDownField
 	begin 
@@ -2226,7 +2226,7 @@ module Controls
 		end 
 	end GetUpDownField
 	
-	proc SetUpDownField(f: StdCFrames.UpDownField; val_: integer)
+	proc SetUpDownField(f: StdCFrames.UpDownField; val_: integer) 
 		var 
 			c: UpDownField
 			old: integer
@@ -2246,7 +2246,7 @@ module Controls
 		end 
 	end SetUpDownField
 	
-	proc (c: UpDownField) CopyFromSimpleView2(source: Control)
+	proc (c: UpDownField) CopyFromSimpleView2(source: Control) 
 	begin 
 		with source: UpDownField do 
 			c.min_ := source.min_
@@ -2255,19 +2255,19 @@ module Controls
 		end 
 	end CopyFromSimpleView2
 	
-	proc (c: UpDownField) Internalize2(var rd: Stores.Reader)
+	proc (c: UpDownField) Internalize2(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
 		rd.ReadVersion(minVersion, fldVersion, thisVersion)
 	end Internalize2
 	
-	proc (c: UpDownField) Externalize2(var wr: Stores.Writer)
+	proc (c: UpDownField) Externalize2(var wr: Stores.Writer) 
 	begin 
 		wr.WriteVersion(fldVersion)
 	end Externalize2
 	
-	proc (c: UpDownField) GetNewFrame(var frame: Views.Frame)
+	proc (c: UpDownField) GetNewFrame(var frame: Views.Frame) 
 		var 
 			f: StdCFrames.UpDownField
 	begin 
@@ -2284,7 +2284,7 @@ module Controls
 		frame := f
 	end GetNewFrame
 	
-	proc (c: UpDownField) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (c: UpDownField) Restore(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		with f: StdCFrames.Frame do 
 			f.Restore(l, t, r, b) 
@@ -2292,11 +2292,11 @@ module Controls
 	end Restore
 	
 	proc (c: UpDownField) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 		var 
-			ch: char
+			ch: wchar
 			from, to_, i: integer
-			s: array 16 of char
+			s: array 16 of wchar
 	begin 
 		if ~c.disabled & ~c.readOnly then
 			with f: StdCFrames.UpDownField do 
@@ -2349,7 +2349,7 @@ module Controls
 		end 
 	end HandleCtrlMsg2
 	
-	proc (c: UpDownField) HandlePropMsg2(var msg: Properties.Message)
+	proc (c: UpDownField) HandlePropMsg2(var msg: Properties.Message) 
 		var 
 			m: integer
 			n: integer
@@ -2382,7 +2382,7 @@ module Controls
 		end 
 	end HandlePropMsg2
 	
-	proc (c: UpDownField) CheckLink(var ok: boolean)
+	proc (c: UpDownField) CheckLink(var ok: boolean) 
 	begin 
 		if c.item.typ = Meta.byteTyp then
 			c.min_ := min(byte)
@@ -2399,7 +2399,7 @@ module Controls
 		c.inc_ := 1
 	end CheckLink
 	
-	proc (c: UpDownField) Update(f: Views.Frame; op, from, to_: integer)
+	proc (c: UpDownField) Update(f: Views.Frame; op, from, to_: integer) 
 	begin 
 		f(StdCFrames.Frame).Update
 	end Update
@@ -2407,7 +2407,7 @@ module Controls
 	
 	// DateField
 	
-	proc GetDateField(f: StdCFrames.DateField; var date: Dates.Date)
+	proc GetDateField(f: StdCFrames.DateField; var date: Dates.Date) 
 		var 
 			c: DateField
 			v: Meta.Item
@@ -2432,7 +2432,7 @@ module Controls
 		end 
 	end GetDateField
 	
-	proc SetDateField(f: StdCFrames.DateField; in date: Dates.Date)
+	proc SetDateField(f: StdCFrames.DateField; in date: Dates.Date) 
 		var 
 			c: DateField
 			v: Meta.Item
@@ -2455,24 +2455,24 @@ module Controls
 		end 
 	end SetDateField
 	
-	proc GetDateFieldSelection(f: StdCFrames.DateField; var sel: integer)
+	proc GetDateFieldSelection(f: StdCFrames.DateField; var sel: integer) 
 	begin 
 		sel := f.view(DateField).selection
 	end GetDateFieldSelection
 	
-	proc SetDateFieldSelection(f: StdCFrames.DateField; sel: integer)
+	proc SetDateFieldSelection(f: StdCFrames.DateField; sel: integer) 
 	begin 
 		f.view(DateField).selection := sel
 	end SetDateFieldSelection
 	
-	proc (c: DateField) CopyFromSimpleView2(source: Control)
+	proc (c: DateField) CopyFromSimpleView2(source: Control) 
 	begin 
 		with source: DateField do 
 			c.selection := source.selection 
 		end 
 	end CopyFromSimpleView2
 	
-	proc (c: DateField) Internalize2(var rd: Stores.Reader)
+	proc (c: DateField) Internalize2(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
@@ -2480,12 +2480,12 @@ module Controls
 		c.selection := 0
 	end Internalize2
 	
-	proc (c: DateField) Externalize2(var wr: Stores.Writer)
+	proc (c: DateField) Externalize2(var wr: Stores.Writer) 
 	begin 
 		wr.WriteVersion(dfldVersion)
 	end Externalize2
 	
-	proc (c: DateField) GetNewFrame(var frame: Views.Frame)
+	proc (c: DateField) GetNewFrame(var frame: Views.Frame) 
 		var 
 			f: StdCFrames.DateField
 	begin 
@@ -2501,7 +2501,7 @@ module Controls
 		frame := f
 	end GetNewFrame
 	
-	proc (c: DateField) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (c: DateField) Restore(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		with f: StdCFrames.Frame do 
 			f.Restore(l, t, r, b) 
@@ -2509,7 +2509,7 @@ module Controls
 	end Restore
 	
 	proc (c: DateField) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 	begin 
 		if ~c.disabled & ~c.readOnly then
 			with f: StdCFrames.DateField do 
@@ -2535,7 +2535,7 @@ module Controls
 		end 
 	end HandleCtrlMsg2
 	
-	proc (c: DateField) HandlePropMsg2(var msg: Properties.Message)
+	proc (c: DateField) HandlePropMsg2(var msg: Properties.Message) 
 	begin 
 		with msg: Properties.ControlPref do 
 			if (msg.char_ = lineChar) or (msg.char_ = esc) then
@@ -2560,7 +2560,7 @@ module Controls
 		end 
 	end HandlePropMsg2
 	
-	proc (c: DateField) CheckLink(var ok: boolean)
+	proc (c: DateField) CheckLink(var ok: boolean) 
 		var 
 			name: Meta.Name
 	begin 
@@ -2568,7 +2568,7 @@ module Controls
 		ok := name = "Date"
 	end CheckLink
 	
-	proc (c: DateField) Update(f: Views.Frame; op, from, to_: integer)
+	proc (c: DateField) Update(f: Views.Frame; op, from, to_: integer) 
 	begin 
 		f(StdCFrames.Frame).Update
 	end Update
@@ -2576,7 +2576,7 @@ module Controls
 	
 	// TimeField
 	
-	proc GetTimeField(f: StdCFrames.TimeField; var time: Dates.Time)
+	proc GetTimeField(f: StdCFrames.TimeField; var time: Dates.Time) 
 		var 
 			c: TimeField
 			v: Meta.Item
@@ -2601,7 +2601,7 @@ module Controls
 		end 
 	end GetTimeField
 	
-	proc SetTimeField(f: StdCFrames.TimeField; in date: Dates.Time)
+	proc SetTimeField(f: StdCFrames.TimeField; in date: Dates.Time) 
 		var 
 			c: TimeField
 			v: Meta.Item
@@ -2624,24 +2624,24 @@ module Controls
 		end 
 	end SetTimeField
 	
-	proc GetTimeFieldSelection(f: StdCFrames.TimeField; var sel: integer)
+	proc GetTimeFieldSelection(f: StdCFrames.TimeField; var sel: integer) 
 	begin 
 		sel := f.view(TimeField).selection
 	end GetTimeFieldSelection
 	
-	proc SetTimeFieldSelection(f: StdCFrames.TimeField; sel: integer)
+	proc SetTimeFieldSelection(f: StdCFrames.TimeField; sel: integer) 
 	begin 
 		f.view(TimeField).selection := sel
 	end SetTimeFieldSelection
 	
-	proc (c: TimeField) CopyFromSimpleView2(source: Control)
+	proc (c: TimeField) CopyFromSimpleView2(source: Control) 
 	begin 
 		with source: TimeField do 
 			c.selection := source.selection 
 		end 
 	end CopyFromSimpleView2
 	
-	proc (c: TimeField) Internalize2(var rd: Stores.Reader)
+	proc (c: TimeField) Internalize2(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
@@ -2649,12 +2649,12 @@ module Controls
 		c.selection := 0
 	end Internalize2
 	
-	proc (c: TimeField) Externalize2(var wr: Stores.Writer)
+	proc (c: TimeField) Externalize2(var wr: Stores.Writer) 
 	begin 
 		wr.WriteVersion(tfldVersion)
 	end Externalize2
 	
-	proc (c: TimeField) GetNewFrame(var frame: Views.Frame)
+	proc (c: TimeField) GetNewFrame(var frame: Views.Frame) 
 		var 
 			f: StdCFrames.TimeField
 	begin 
@@ -2670,7 +2670,7 @@ module Controls
 		frame := f
 	end GetNewFrame
 	
-	proc (c: TimeField) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (c: TimeField) Restore(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		with f: StdCFrames.Frame do 
 			f.Restore(l, t, r, b) 
@@ -2678,7 +2678,7 @@ module Controls
 	end Restore
 	
 	proc (c: TimeField) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 	begin 
 		if ~c.disabled & ~c.readOnly then
 			with f: StdCFrames.TimeField do 
@@ -2704,7 +2704,7 @@ module Controls
 		end 
 	end HandleCtrlMsg2
 	
-	proc (c: TimeField) HandlePropMsg2(var msg: Properties.Message)
+	proc (c: TimeField) HandlePropMsg2(var msg: Properties.Message) 
 	begin 
 		with msg: Properties.ControlPref do 
 			if (msg.char_ = lineChar) or (msg.char_ = esc) then
@@ -2728,7 +2728,7 @@ module Controls
 		end 
 	end HandlePropMsg2
 	
-	proc (c: TimeField) CheckLink(var ok: boolean)
+	proc (c: TimeField) CheckLink(var ok: boolean) 
 		var 
 			name: Meta.Name
 	begin 
@@ -2736,7 +2736,7 @@ module Controls
 		ok := name = "Time"
 	end CheckLink
 	
-	proc (c: TimeField) Update(f: Views.Frame; op, from, to_: integer)
+	proc (c: TimeField) Update(f: Views.Frame; op, from, to_: integer) 
 	begin 
 		f(StdCFrames.Frame).Update
 	end Update
@@ -2744,7 +2744,7 @@ module Controls
 	
 	// ColorField
 	
-	proc GetColorField(f: StdCFrames.ColorField; var col: integer)
+	proc GetColorField(f: StdCFrames.ColorField; var col: integer) 
 		var 
 			c: ColorField
 			v: Meta.Item
@@ -2763,7 +2763,7 @@ module Controls
 		end 
 	end GetColorField
 	
-	proc SetColorField(f: StdCFrames.ColorField; col: integer)
+	proc SetColorField(f: StdCFrames.ColorField; col: integer) 
 		var 
 			c: ColorField
 			v: Meta.Item
@@ -2790,19 +2790,19 @@ module Controls
 		end 
 	end SetColorField
 	
-	proc (c: ColorField) Internalize2(var rd: Stores.Reader)
+	proc (c: ColorField) Internalize2(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
 		rd.ReadVersion(minVersion, cfldVersion, thisVersion)
 	end Internalize2
 	
-	proc (c: ColorField) Externalize2(var wr: Stores.Writer)
+	proc (c: ColorField) Externalize2(var wr: Stores.Writer) 
 	begin 
 		wr.WriteVersion(cfldVersion)
 	end Externalize2
 	
-	proc (c: ColorField) GetNewFrame(var frame: Views.Frame)
+	proc (c: ColorField) GetNewFrame(var frame: Views.Frame) 
 		var 
 			f: StdCFrames.ColorField
 	begin 
@@ -2816,7 +2816,7 @@ module Controls
 		frame := f
 	end GetNewFrame
 	
-	proc (c: ColorField) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (c: ColorField) Restore(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		with f: StdCFrames.Frame do 
 			f.Restore(l, t, r, b) 
@@ -2824,7 +2824,7 @@ module Controls
 	end Restore
 	
 	proc (c: ColorField) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 	begin 
 		if ~c.disabled & ~c.readOnly then
 			with f: StdCFrames.ColorField do 
@@ -2841,7 +2841,7 @@ module Controls
 		end 
 	end HandleCtrlMsg2
 	
-	proc (c: ColorField) HandlePropMsg2(var msg: Properties.Message)
+	proc (c: ColorField) HandlePropMsg2(var msg: Properties.Message) 
 	begin 
 		with msg: Properties.ControlPref do 
 			msg.accepts := ~c.disabled & ~c.readOnly & IsShortcut(msg.char_, c) 
@@ -2856,7 +2856,7 @@ module Controls
 		end 
 	end HandlePropMsg2
 	
-	proc (c: ColorField) CheckLink(var ok: boolean)
+	proc (c: ColorField) CheckLink(var ok: boolean) 
 		var 
 			name: Meta.Name
 	begin 
@@ -2864,7 +2864,7 @@ module Controls
 		ok := (name = "Color") or (c.item.typ = Meta.intTyp)
 	end CheckLink
 	
-	proc (c: ColorField) Update(f: Views.Frame; op, from, to_: integer)
+	proc (c: ColorField) Update(f: Views.Frame; op, from, to_: integer) 
 	begin 
 		f(StdCFrames.Frame).Update
 	end Update
@@ -2872,7 +2872,7 @@ module Controls
 	
 	// ListBox
 	
-	proc GetListBox(f: StdCFrames.ListBox; var i: integer)
+	proc GetListBox(f: StdCFrames.ListBox; var i: integer) 
 		var 
 			c: ListBox
 			v: Meta.Item
@@ -2887,7 +2887,7 @@ module Controls
 		end 
 	end GetListBox
 	
-	proc SetListBox(f: StdCFrames.ListBox; i: integer)
+	proc SetListBox(f: StdCFrames.ListBox; i: integer) 
 		var 
 			c: ListBox
 			v: Meta.Item
@@ -2906,7 +2906,7 @@ module Controls
 		end 
 	end SetListBox
 	
-	proc GetFName(var rec, par: ANYREC)
+	proc GetFName(var rec, par: ANYREC) 
 	begin 
 		with par: Param do 
 			with rec: Dialog.List do 
@@ -2921,7 +2921,7 @@ module Controls
 		end 
 	end GetFName
 	
-	proc GetListName(f: StdCFrames.ListBox; i: integer; var name: array of char)
+	proc GetListName(f: StdCFrames.ListBox; i: integer; var name: array of wchar) 
 		var 
 			c: ListBox
 			par: Param
@@ -2935,19 +2935,19 @@ module Controls
 		name := par.n
 	end GetListName
 	
-	proc (c: ListBox) Internalize2(var rd: Stores.Reader)
+	proc (c: ListBox) Internalize2(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
 		rd.ReadVersion(minVersion, lbxVersion, thisVersion)
 	end Internalize2
 	
-	proc (c: ListBox) Externalize2(var wr: Stores.Writer)
+	proc (c: ListBox) Externalize2(var wr: Stores.Writer) 
 	begin 
 		wr.WriteVersion(lbxVersion)
 	end Externalize2
 	
-	proc (c: ListBox) GetNewFrame(var frame: Views.Frame)
+	proc (c: ListBox) GetNewFrame(var frame: Views.Frame) 
 		var 
 			f: StdCFrames.ListBox
 	begin 
@@ -2963,7 +2963,7 @@ module Controls
 		frame := f
 	end GetNewFrame
 	
-	proc (c: ListBox) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (c: ListBox) Restore(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		with f: StdCFrames.Frame do 
 			f.Restore(l, t, r, b) 
@@ -2971,7 +2971,7 @@ module Controls
 	end Restore
 	
 	proc (c: ListBox) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 	begin 
 		with f: StdCFrames.ListBox do 
 			if ~c.disabled & ~c.readOnly then
@@ -2991,7 +2991,7 @@ module Controls
 		end 
 	end HandleCtrlMsg2
 	
-	proc (c: ListBox) HandlePropMsg2(var msg: Properties.Message)
+	proc (c: ListBox) HandlePropMsg2(var msg: Properties.Message) 
 	begin 
 		with msg: Properties.ControlPref do 
 			if (msg.char_ = lineChar) or (msg.char_ = esc) then
@@ -3014,7 +3014,7 @@ module Controls
 		end 
 	end HandlePropMsg2
 	
-	proc (c: ListBox) CheckLink(var ok: boolean)
+	proc (c: ListBox) CheckLink(var ok: boolean) 
 		var 
 			name: Meta.Name
 	begin 
@@ -3022,12 +3022,12 @@ module Controls
 		ok := name = "List"
 	end CheckLink
 	
-	proc (c: ListBox) Update(f: Views.Frame; op, from, to_: integer)
+	proc (c: ListBox) Update(f: Views.Frame; op, from, to_: integer) 
 	begin 
 		f(StdCFrames.Frame).Update
 	end Update
 	
-	proc (c: ListBox) UpdateList(f: Views.Frame)
+	proc (c: ListBox) UpdateList(f: Views.Frame) 
 	begin 
 		f(StdCFrames.Frame).UpdateList
 	end UpdateList
@@ -3035,7 +3035,7 @@ module Controls
 	
 	// SelectionBox
 	
-	proc InLargeSet(var rec, par: ANYREC)
+	proc InLargeSet(var rec, par: ANYREC) 
 	begin 
 		with par: Param do 
 			with rec: Dialog.Selection do 
@@ -3050,7 +3050,7 @@ module Controls
 		end 
 	end InLargeSet
 	
-	proc GetSelectionBox(f: StdCFrames.SelectionBox; i: integer; var in_: boolean)
+	proc GetSelectionBox(f: StdCFrames.SelectionBox; i: integer; var in_: boolean) 
 		var 
 			c: SelectionBox
 			lv: SelectValue
@@ -3067,7 +3067,7 @@ module Controls
 		end 
 	end GetSelectionBox
 	
-	proc InclLargeSet(var rec, par: ANYREC)
+	proc InclLargeSet(var rec, par: ANYREC) 
 	begin 
 		with par: Param do 
 			with rec: Dialog.Selection do 
@@ -3083,7 +3083,7 @@ module Controls
 		end 
 	end InclLargeSet
 	
-	proc InclSelectionBox(f: StdCFrames.SelectionBox; from, to_: integer)
+	proc InclSelectionBox(f: StdCFrames.SelectionBox; from, to_: integer) 
 		var 
 			c: SelectionBox
 			lv: SelectValue
@@ -3102,7 +3102,7 @@ module Controls
 		end 
 	end InclSelectionBox
 	
-	proc ExclLargeSet(var rec, par: ANYREC)
+	proc ExclLargeSet(var rec, par: ANYREC) 
 	begin 
 		with par: Param do 
 			with rec: Dialog.Selection do 
@@ -3118,7 +3118,7 @@ module Controls
 		end 
 	end ExclLargeSet
 	
-	proc ExclSelectionBox(f: StdCFrames.SelectionBox; from, to_: integer)
+	proc ExclSelectionBox(f: StdCFrames.SelectionBox; from, to_: integer) 
 		var 
 			c: SelectionBox
 			lv: SelectValue
@@ -3137,7 +3137,7 @@ module Controls
 		end 
 	end ExclSelectionBox
 	
-	proc SetSelectionBox(f: StdCFrames.SelectionBox; from, to_: integer)
+	proc SetSelectionBox(f: StdCFrames.SelectionBox; from, to_: integer) 
 		var 
 			c: SelectionBox
 			lv: SelectValue
@@ -3157,7 +3157,7 @@ module Controls
 		end 
 	end SetSelectionBox
 	
-	proc GetSelName(f: StdCFrames.SelectionBox; i: integer; var name: array of char)
+	proc GetSelName(f: StdCFrames.SelectionBox; i: integer; var name: array of wchar) 
 		var 
 			c: SelectionBox
 			par: Param
@@ -3171,19 +3171,19 @@ module Controls
 		name := par.n
 	end GetSelName
 	
-	proc (c: SelectionBox) Internalize2(var rd: Stores.Reader)
+	proc (c: SelectionBox) Internalize2(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
 		rd.ReadVersion(minVersion, sbxVersion, thisVersion)
 	end Internalize2
 	
-	proc (c: SelectionBox) Externalize2(var wr: Stores.Writer)
+	proc (c: SelectionBox) Externalize2(var wr: Stores.Writer) 
 	begin 
 		wr.WriteVersion(sbxVersion)
 	end Externalize2
 	
-	proc (c: SelectionBox) GetNewFrame(var frame: Views.Frame)
+	proc (c: SelectionBox) GetNewFrame(var frame: Views.Frame) 
 		var 
 			f: StdCFrames.SelectionBox
 	begin 
@@ -3201,7 +3201,7 @@ module Controls
 		frame := f
 	end GetNewFrame
 	
-	proc (c: SelectionBox) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (c: SelectionBox) Restore(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		with f: StdCFrames.Frame do 
 			f.Restore(l, t, r, b) 
@@ -3209,7 +3209,7 @@ module Controls
 	end Restore
 	
 	proc (c: SelectionBox) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 	begin 
 		with f: StdCFrames.SelectionBox do 
 			if ~c.disabled & ~c.readOnly then
@@ -3235,7 +3235,7 @@ module Controls
 		end 
 	end HandleCtrlMsg2
 	
-	proc (c: SelectionBox) HandlePropMsg2(var msg: Properties.Message)
+	proc (c: SelectionBox) HandlePropMsg2(var msg: Properties.Message) 
 	begin 
 		with msg: Properties.ControlPref do 
 			if (msg.char_ = lineChar) or (msg.char_ = esc) then
@@ -3258,7 +3258,7 @@ module Controls
 		end 
 	end HandlePropMsg2
 	
-	proc (c: SelectionBox) CheckLink(var ok: boolean)
+	proc (c: SelectionBox) CheckLink(var ok: boolean) 
 		var 
 			name: Meta.Name
 	begin 
@@ -3266,7 +3266,7 @@ module Controls
 		ok := name = "Selection"
 	end CheckLink
 	
-	proc (c: SelectionBox) Update(f: Views.Frame; op, from, to_: integer)
+	proc (c: SelectionBox) Update(f: Views.Frame; op, from, to_: integer) 
 	begin 
 		if (op >= Dialog.included) & (op <= Dialog.set_) then
 			f(StdCFrames.SelectionBox).UpdateRange(op, from, to_) 
@@ -3275,7 +3275,7 @@ module Controls
 		end 
 	end Update
 	
-	proc (c: SelectionBox) UpdateList(f: Views.Frame)
+	proc (c: SelectionBox) UpdateList(f: Views.Frame) 
 	begin 
 		f(StdCFrames.Frame).UpdateList
 	end UpdateList
@@ -3283,7 +3283,7 @@ module Controls
 	
 	// ComboBox
 	
-	proc GetComboBox(f: StdCFrames.ComboBox; var x: array of char)
+	proc GetComboBox(f: StdCFrames.ComboBox; var x: array of wchar) 
 		var 
 			c: ComboBox
 			ok: boolean
@@ -3299,12 +3299,12 @@ module Controls
 		end 
 	end GetComboBox
 	
-	proc SetComboBox(f: StdCFrames.ComboBox; in x: array of char)
+	proc SetComboBox(f: StdCFrames.ComboBox; in x: array of wchar) 
 		var 
 			c: ComboBox
 			ok: boolean
 			v: Meta.Item
-			s: array 1024 of char
+			s: array 1024 of wchar
 	begin 
 		c := f.view(ComboBox)
 		if c.item.Valid() & ~c.readOnly then
@@ -3321,7 +3321,7 @@ module Controls
 		end 
 	end SetComboBox
 	
-	proc GetComboName(f: StdCFrames.ComboBox; i: integer; var name: array of char)
+	proc GetComboName(f: StdCFrames.ComboBox; i: integer; var name: array of wchar) 
 		var 
 			c: ComboBox
 			par: Param
@@ -3335,19 +3335,19 @@ module Controls
 		name := par.n
 	end GetComboName
 	
-	proc (c: ComboBox) Internalize2(var rd: Stores.Reader)
+	proc (c: ComboBox) Internalize2(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
 		rd.ReadVersion(minVersion, cbxVersion, thisVersion)
 	end Internalize2
 	
-	proc (c: ComboBox) Externalize2(var wr: Stores.Writer)
+	proc (c: ComboBox) Externalize2(var wr: Stores.Writer) 
 	begin 
 		wr.WriteVersion(cbxVersion)
 	end Externalize2
 	
-	proc (c: ComboBox) GetNewFrame(var frame: Views.Frame)
+	proc (c: ComboBox) GetNewFrame(var frame: Views.Frame) 
 		var 
 			f: StdCFrames.ComboBox
 	begin 
@@ -3363,7 +3363,7 @@ module Controls
 		frame := f
 	end GetNewFrame
 	
-	proc (c: ComboBox) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (c: ComboBox) Restore(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		with f: StdCFrames.Frame do 
 			f.Restore(l, t, r, b) 
@@ -3371,7 +3371,7 @@ module Controls
 	end Restore
 	
 	proc (c: ComboBox) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 		var 
 			from, to_: integer
 	begin 
@@ -3413,7 +3413,7 @@ module Controls
 		end 
 	end HandleCtrlMsg2
 	
-	proc (c: ComboBox) HandlePropMsg2(var msg: Properties.Message)
+	proc (c: ComboBox) HandlePropMsg2(var msg: Properties.Message) 
 	begin 
 		with msg: Properties.ControlPref do 
 			if (msg.char_ = lineChar) or (msg.char_ = esc) then
@@ -3434,7 +3434,7 @@ module Controls
 		end 
 	end HandlePropMsg2
 	
-	proc (c: ComboBox) CheckLink(var ok: boolean)
+	proc (c: ComboBox) CheckLink(var ok: boolean) 
 		var 
 			name: Meta.Name
 	begin 
@@ -3442,12 +3442,12 @@ module Controls
 		ok := name = "Combo"
 	end CheckLink
 	
-	proc (c: ComboBox) Update(f: Views.Frame; op, from, to_: integer)
+	proc (c: ComboBox) Update(f: Views.Frame; op, from, to_: integer) 
 	begin 
 		f(StdCFrames.Frame).Update
 	end Update
 	
-	proc (c: ComboBox) UpdateList(f: Views.Frame)
+	proc (c: ComboBox) UpdateList(f: Views.Frame) 
 	begin 
 		f(StdCFrames.Frame).UpdateList
 	end UpdateList
@@ -3455,7 +3455,7 @@ module Controls
 	
 	// Caption
 	
-	proc (c: Caption) Internalize2(var rd: Stores.Reader)
+	proc (c: Caption) Internalize2(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
@@ -3465,7 +3465,7 @@ module Controls
 		end 
 	end Internalize2
 	
-	proc (c: Caption) Externalize2(var wr: Stores.Writer)
+	proc (c: Caption) Externalize2(var wr: Stores.Writer) 
 	begin 
 		// Save old version for captions that are compatible with the old version
 		if c.prop.opt[left] then
@@ -3475,7 +3475,7 @@ module Controls
 		end 
 	end Externalize2
 	
-	proc (c: Caption) GetNewFrame(var frame: Views.Frame)
+	proc (c: Caption) GetNewFrame(var frame: Views.Frame) 
 		var 
 			f: StdCFrames.Caption
 	begin 
@@ -3490,14 +3490,14 @@ module Controls
 		frame := f
 	end GetNewFrame
 	
-	proc (c: Caption) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (c: Caption) Restore(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		with f: StdCFrames.Frame do 
 			f.Restore(l, t, r, b) 
 		end 
 	end Restore
 	
-	proc (c: Caption) HandlePropMsg2(var msg: Properties.Message)
+	proc (c: Caption) HandlePropMsg2(var msg: Properties.Message) 
 	begin 
 		with msg: Properties.SizePref do 
 			StdCFrames.dir.GetCaptionSize(msg.w, msg.h) 
@@ -3511,7 +3511,7 @@ module Controls
 		end 
 	end HandlePropMsg2
 	
-	proc (c: Caption) Update(f: Views.Frame; op, from, to_: integer)
+	proc (c: Caption) Update(f: Views.Frame; op, from, to_: integer) 
 	begin 
 		f(StdCFrames.Caption).label := c.label
 		f(StdCFrames.Frame).Update
@@ -3520,19 +3520,19 @@ module Controls
 	
 	// Group
 	
-	proc (c: Group) Internalize2(var rd: Stores.Reader)
+	proc (c: Group) Internalize2(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
 		rd.ReadVersion(minVersion, grpVersion, thisVersion)
 	end Internalize2
 	
-	proc (c: Group) Externalize2(var wr: Stores.Writer)
+	proc (c: Group) Externalize2(var wr: Stores.Writer) 
 	begin 
 		wr.WriteVersion(grpVersion)
 	end Externalize2
 	
-	proc (c: Group) GetNewFrame(var frame: Views.Frame)
+	proc (c: Group) GetNewFrame(var frame: Views.Frame) 
 		var 
 			f: StdCFrames.Group
 	begin 
@@ -3545,14 +3545,14 @@ module Controls
 		frame := f
 	end GetNewFrame
 	
-	proc (c: Group) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (c: Group) Restore(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		with f: StdCFrames.Frame do 
 			f.Restore(l, t, r, b) 
 		end 
 	end Restore
 	
-	proc (c: Group) HandlePropMsg2(var msg: Properties.Message)
+	proc (c: Group) HandlePropMsg2(var msg: Properties.Message) 
 	begin 
 		with msg: Properties.SizePref do 
 			StdCFrames.dir.GetGroupSize(msg.w, msg.h) 
@@ -3566,7 +3566,7 @@ module Controls
 		end 
 	end HandlePropMsg2
 	
-	proc (c: Group) Update(f: Views.Frame; op, from, to_: integer)
+	proc (c: Group) Update(f: Views.Frame; op, from, to_: integer) 
 	begin 
 		f(StdCFrames.Group).label := c.label
 		f(StdCFrames.Frame).Update
@@ -3575,19 +3575,19 @@ module Controls
 	
 	// TreeControl
 	
-	proc (c: TreeControl) Internalize2(var rd: Stores.Reader)
+	proc (c: TreeControl) Internalize2(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
 		rd.ReadVersion(minVersion, tfVersion, thisVersion)
 	end Internalize2
 	
-	proc (c: TreeControl) Externalize2(var wr: Stores.Writer)
+	proc (c: TreeControl) Externalize2(var wr: Stores.Writer) 
 	begin 
 		wr.WriteVersion(tfVersion)
 	end Externalize2
 	
-	proc TVNofNodesF(var rec, par: ANYREC)
+	proc TVNofNodesF(var rec, par: ANYREC) 
 	begin 
 		with par: TVParam do 
 			with rec: Dialog.Tree do 
@@ -3598,7 +3598,7 @@ module Controls
 		end 
 	end TVNofNodesF
 	
-	proc TVNofNodes(f: StdCFrames.TreeFrame): integer
+	proc TVNofNodes(f: StdCFrames.TreeFrame): integer 
 		var 
 			c: TreeControl
 			par: TVParam
@@ -3611,7 +3611,7 @@ module Controls
 		return par.l
 	end TVNofNodes
 	
-	proc TVChildF(var rec, par: ANYREC)
+	proc TVChildF(var rec, par: ANYREC) 
 	begin 
 		with par: TVParam do 
 			with rec: Dialog.Tree do 
@@ -3622,7 +3622,7 @@ module Controls
 		end 
 	end TVChildF
 	
-	proc TVChild(f: StdCFrames.TreeFrame; node: Dialog.TreeNode): Dialog.TreeNode
+	proc TVChild(f: StdCFrames.TreeFrame; node: Dialog.TreeNode): Dialog.TreeNode 
 		var 
 			c: TreeControl
 			par: TVParam
@@ -3636,7 +3636,7 @@ module Controls
 		return par.nodeOut
 	end TVChild
 	
-	proc TVParentF(var rec, par: ANYREC)
+	proc TVParentF(var rec, par: ANYREC) 
 	begin 
 		with par: TVParam do 
 			with rec: Dialog.Tree do 
@@ -3647,7 +3647,7 @@ module Controls
 		end 
 	end TVParentF
 	
-	proc TVParent(f: StdCFrames.TreeFrame; node: Dialog.TreeNode): Dialog.TreeNode
+	proc TVParent(f: StdCFrames.TreeFrame; node: Dialog.TreeNode): Dialog.TreeNode 
 		var 
 			c: TreeControl
 			par: TVParam
@@ -3661,7 +3661,7 @@ module Controls
 		return par.nodeOut
 	end TVParent
 	
-	proc TVNextF(var rec, par: ANYREC)
+	proc TVNextF(var rec, par: ANYREC) 
 	begin 
 		with par: TVParam do 
 			with rec: Dialog.Tree do 
@@ -3672,7 +3672,7 @@ module Controls
 		end 
 	end TVNextF
 	
-	proc TVNext(f: StdCFrames.TreeFrame; node: Dialog.TreeNode): Dialog.TreeNode
+	proc TVNext(f: StdCFrames.TreeFrame; node: Dialog.TreeNode): Dialog.TreeNode 
 		var 
 			c: TreeControl
 			par: TVParam
@@ -3686,7 +3686,7 @@ module Controls
 		return par.nodeOut
 	end TVNext
 	
-	proc TVSelectF(var rec, par: ANYREC)
+	proc TVSelectF(var rec, par: ANYREC) 
 	begin 
 		with par: TVParam do 
 			with rec: Dialog.Tree do 
@@ -3695,7 +3695,7 @@ module Controls
 		end 
 	end TVSelectF
 	
-	proc TVSelect(f: StdCFrames.TreeFrame; node: Dialog.TreeNode)
+	proc TVSelect(f: StdCFrames.TreeFrame; node: Dialog.TreeNode) 
 		var 
 			c: TreeControl
 			par: TVParam
@@ -3708,7 +3708,7 @@ module Controls
 		end 
 	end TVSelect
 	
-	proc TVSelectedF(var rec, par: ANYREC)
+	proc TVSelectedF(var rec, par: ANYREC) 
 	begin 
 		with par: TVParam do 
 			with rec: Dialog.Tree do 
@@ -3719,7 +3719,7 @@ module Controls
 		end 
 	end TVSelectedF
 	
-	proc TVSelected(f: StdCFrames.TreeFrame): Dialog.TreeNode
+	proc TVSelected(f: StdCFrames.TreeFrame): Dialog.TreeNode 
 		var 
 			c: TreeControl
 			par: TVParam
@@ -3732,14 +3732,14 @@ module Controls
 		return par.nodeOut
 	end TVSelected
 	
-	proc TVSetExpansionF(var rec, par: ANYREC)
+	proc TVSetExpansionF(var rec, par: ANYREC) 
 	begin 
 		with par: TVParam do 
 			par.nodeIn.SetExpansion(par.e) 
 		end 
 	end TVSetExpansionF
 	
-	proc TVSetExpansion(f: StdCFrames.TreeFrame; tn: Dialog.TreeNode; expanded: boolean)
+	proc TVSetExpansion(f: StdCFrames.TreeFrame; tn: Dialog.TreeNode; expanded: boolean) 
 		var 
 			c: TreeControl
 			par: TVParam
@@ -3752,7 +3752,7 @@ module Controls
 		end 
 	end TVSetExpansion
 	
-	proc (c: TreeControl) GetNewFrame(var frame: Views.Frame)
+	proc (c: TreeControl) GetNewFrame(var frame: Views.Frame) 
 		var 
 			f: StdCFrames.TreeFrame
 	begin 
@@ -3776,12 +3776,12 @@ module Controls
 		frame := f
 	end GetNewFrame
 	
-	proc (c: TreeControl) UpdateList(f: Views.Frame)
+	proc (c: TreeControl) UpdateList(f: Views.Frame) 
 	begin 
 		f(StdCFrames.Frame).UpdateList()
 	end UpdateList
 	
-	proc (c: TreeControl) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (c: TreeControl) Restore(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		with f: StdCFrames.Frame do 
 			f.Restore(l, t, r, b) 
@@ -3789,7 +3789,7 @@ module Controls
 	end Restore
 	
 	proc (c: TreeControl) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 	begin 
 		with f: StdCFrames.TreeFrame do 
 			if ~c.disabled & ~c.readOnly then
@@ -3809,7 +3809,7 @@ module Controls
 		end 
 	end HandleCtrlMsg2
 	
-	proc (c: TreeControl) HandlePropMsg2(var msg: Properties.Message)
+	proc (c: TreeControl) HandlePropMsg2(var msg: Properties.Message) 
 	begin 
 		with msg: Properties.ControlPref do 
 			if (msg.char_ = lineChar) or (msg.char_ = esc) then
@@ -3835,7 +3835,7 @@ module Controls
 		end 
 	end HandlePropMsg2
 	
-	proc (c: TreeControl) CheckLink(var ok: boolean)
+	proc (c: TreeControl) CheckLink(var ok: boolean) 
 		var 
 			name: Meta.Name
 	begin 
@@ -3843,7 +3843,7 @@ module Controls
 		ok := name = "Tree"
 	end CheckLink
 	
-	proc (c: TreeControl) Update(f: Views.Frame; op, from, to_: integer)
+	proc (c: TreeControl) Update(f: Views.Frame; op, from, to_: integer) 
 	begin 
 		f(StdCFrames.Frame).Update
 	end Update
@@ -3851,7 +3851,7 @@ module Controls
 	
 	// StdDirectory
 	
-	proc (d: StdDirectory) NewPushButton(p: Prop): Control
+	proc (d: StdDirectory) NewPushButton(p: Prop): Control 
 		var 
 			c: PushButton
 	begin 
@@ -3860,7 +3860,7 @@ module Controls
 		return c
 	end NewPushButton
 	
-	proc (d: StdDirectory) NewCheckBox(p: Prop): Control
+	proc (d: StdDirectory) NewCheckBox(p: Prop): Control 
 		var 
 			c: CheckBox
 	begin 
@@ -3869,7 +3869,7 @@ module Controls
 		return c
 	end NewCheckBox
 	
-	proc (d: StdDirectory) NewRadioButton(p: Prop): Control
+	proc (d: StdDirectory) NewRadioButton(p: Prop): Control 
 		var 
 			c: RadioButton
 	begin 
@@ -3878,7 +3878,7 @@ module Controls
 		return c
 	end NewRadioButton
 	
-	proc (d: StdDirectory) NewField(p: Prop): Control
+	proc (d: StdDirectory) NewField(p: Prop): Control 
 		var 
 			c: Field
 	begin 
@@ -3887,7 +3887,7 @@ module Controls
 		return c
 	end NewField
 	
-	proc (d: StdDirectory) NewUpDownField(p: Prop): Control
+	proc (d: StdDirectory) NewUpDownField(p: Prop): Control 
 		var 
 			c: UpDownField
 	begin 
@@ -3896,7 +3896,7 @@ module Controls
 		return c
 	end NewUpDownField
 	
-	proc (d: StdDirectory) NewDateField(p: Prop): Control
+	proc (d: StdDirectory) NewDateField(p: Prop): Control 
 		var 
 			c: DateField
 	begin 
@@ -3905,7 +3905,7 @@ module Controls
 		return c
 	end NewDateField
 	
-	proc (d: StdDirectory) NewTimeField(p: Prop): Control
+	proc (d: StdDirectory) NewTimeField(p: Prop): Control 
 		var 
 			c: TimeField
 	begin 
@@ -3914,7 +3914,7 @@ module Controls
 		return c
 	end NewTimeField
 	
-	proc (d: StdDirectory) NewColorField(p: Prop): Control
+	proc (d: StdDirectory) NewColorField(p: Prop): Control 
 		var 
 			c: ColorField
 	begin 
@@ -3923,7 +3923,7 @@ module Controls
 		return c
 	end NewColorField
 	
-	proc (d: StdDirectory) NewListBox(p: Prop): Control
+	proc (d: StdDirectory) NewListBox(p: Prop): Control 
 		var 
 			c: ListBox
 	begin 
@@ -3932,7 +3932,7 @@ module Controls
 		return c
 	end NewListBox
 	
-	proc (d: StdDirectory) NewSelectionBox(p: Prop): Control
+	proc (d: StdDirectory) NewSelectionBox(p: Prop): Control 
 		var 
 			c: SelectionBox
 	begin 
@@ -3941,7 +3941,7 @@ module Controls
 		return c
 	end NewSelectionBox
 	
-	proc (d: StdDirectory) NewComboBox(p: Prop): Control
+	proc (d: StdDirectory) NewComboBox(p: Prop): Control 
 		var 
 			c: ComboBox
 	begin 
@@ -3950,7 +3950,7 @@ module Controls
 		return c
 	end NewComboBox
 	
-	proc (d: StdDirectory) NewCaption(p: Prop): Control
+	proc (d: StdDirectory) NewCaption(p: Prop): Control 
 		var 
 			c: Caption
 	begin 
@@ -3959,7 +3959,7 @@ module Controls
 		return c
 	end NewCaption
 	
-	proc (d: StdDirectory) NewGroup(p: Prop): Control
+	proc (d: StdDirectory) NewGroup(p: Prop): Control 
 		var 
 			c: Group
 	begin 
@@ -3968,7 +3968,7 @@ module Controls
 		return c
 	end NewGroup
 	
-	proc (d: StdDirectory) NewTreeControl(p: Prop): Control
+	proc (d: StdDirectory) NewTreeControl(p: Prop): Control 
 		var 
 			c: TreeControl
 	begin 
@@ -3977,13 +3977,13 @@ module Controls
 		return c
 	end NewTreeControl
 	
-	proc SetDir*(d: Directory)
+	proc SetDir*(d: Directory) 
 	begin 
 		assert(d # nil, 20)
 		dir := d
 	end SetDir
 	
-	proc InitProp(var p: Prop)
+	proc InitProp(var p: Prop) 
 	begin 
 		new(p)
 		p.link := ""

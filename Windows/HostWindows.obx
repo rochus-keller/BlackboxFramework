@@ -141,7 +141,7 @@ module HostWindows
 		
 		font, info: WinApi.HANDLE
 		statusH, alloc, total: integer
-		allocStr, totalStr, byteStr: array 256 of char
+		allocStr, totalStr, byteStr: array 256 of wchar
 		idleTraped: boolean
 		showState: integer // show command for main window
 		
@@ -154,7 +154,7 @@ module HostWindows
 	   experiments showed that a simple view (i.e. without scrollbars) can skip Restore when this flag is TRUE *)
 	
 	
-	proc ScrollModPressed(): boolean
+	proc ScrollModPressed(): boolean 
 	begin 
 		return WinApi.GetAsyncKeyState(11h) < 0
 	end ScrollModPressed
@@ -162,7 +162,7 @@ module HostWindows
 	// auxiliary portable prcedures
 	
 	proc GetSection(w: Window; focus, vertical: boolean
-		var size_, sect, pos: integer; var valid: boolean)
+		var size_, sect, pos: integer; var valid: boolean) 
 		var 
 			msg: Controllers.PollSectionMsg
 	begin  // portable
@@ -200,7 +200,7 @@ module HostWindows
 		valid := msg.valid
 	end GetSection
 	
-	proc SetOrigin(w: Window; focus, vertical: boolean; pos: integer)
+	proc SetOrigin(w: Window; focus, vertical: boolean; pos: integer) 
 		// set origin of window's view
 		var 
 			msg: Controllers.ScrollMsg
@@ -213,7 +213,7 @@ module HostWindows
 		w.ForwardCtrlMsg(msg)
 	end SetOrigin
 	
-	proc Scroll(w: Window; focus, vertical: boolean; dir: integer)
+	proc Scroll(w: Window; focus, vertical: boolean; dir: integer) 
 		// scroll relative, by line or page increment or decrement
 		var 
 			msg: Controllers.ScrollMsg
@@ -235,7 +235,7 @@ module HostWindows
 	
 	// miscellaneous procedures
 	
-	proc ActualWnd*(): WinApi.HANDLE
+	proc ActualWnd*(): WinApi.HANDLE 
 	begin 
 		(* IF (fWindow # NIL) & ~fWindow.child & fWindow.used THEN RETURN fWindow.wnd
 		   ELSE RETURN main
@@ -251,7 +251,7 @@ module HostWindows
 		end 
 	end ActualWnd
 	
-	proc ThisWindow(wnd: WinApi.HANDLE): Window
+	proc ThisWindow(wnd: WinApi.HANDLE): Window 
 	// determine window by its WindowPtr
 	begin 
 		if wnd = cbViewer.wnd then
@@ -261,11 +261,11 @@ module HostWindows
 		end 
 	end ThisWindow
 	
-	proc AppendInt(var s: array of char; n: integer; useSeparators: boolean)
+	proc AppendInt(var s: array of wchar; n: integer; useSeparators: boolean) 
 		var 
 			len_: integer
 			i, j: integer
-			d: array 32 of char
+			d: array 32 of wchar
 	begin 
 		assert(n >= 0, 20)
 		i := 0
@@ -293,11 +293,11 @@ module HostWindows
 		end 
 	end AppendInt
 	
-	proc Append(var s: array of char; t: array of char)
+	proc Append(var s: array of wchar; t: array of wchar) 
 		var 
 			len_: integer
 			i, j: integer
-			ch: char
+			ch: wchar
 	begin 
 		len_ := len(s)
 		i := 0
@@ -314,7 +314,7 @@ module HostWindows
 		s[len_ - 1] := 0x
 	end Append
 	
-	proc StripTitle(var s: Views.Title)
+	proc StripTitle(var s: Views.Title) 
 		var 
 			i: integer
 	begin 
@@ -329,10 +329,10 @@ module HostWindows
 		end 
 	end StripTitle
 	
-	proc GenTitle(w: Window; name: array of char; var title: array of char)
+	proc GenTitle(w: Window; name: array of wchar; var title: array of wchar) 
 		// generate window title for a document
 		var 
-			newName: array 64 of char
+			newName: array 64 of wchar
 			i: integer
 	begin 
 		if w.sub then
@@ -362,10 +362,10 @@ module HostWindows
 		end 
 	end GenTitle
 	
-	proc GenPathTitle(w: Window; var title: array of char)
+	proc GenPathTitle(w: Window; var title: array of wchar) 
 		var 
 			loc: Files.Locator
-			ch: char
+			ch: wchar
 			s1, s2: HostFiles.FullName
 			i, j: integer
 	begin 
@@ -403,7 +403,7 @@ module HostWindows
 		Append(title, w.name)
 	end GenPathTitle
 	
-	proc ThisStyle(base, flags: set): set
+	proc ThisStyle(base, flags: set): set 
 	begin 
 		if ~(Windows.noHScroll in flags) then // hor scrollbar
 			incl(base, 20) 
@@ -420,14 +420,14 @@ module HostWindows
 	
 	// Hook
 	
-	proc (hk: Hook) Activate*(on: boolean) end // new abstract
-	proc (hk: Hook) Focus*(on: boolean) end // new abstract
-	proc (hk: Hook) Resize*(w, h: integer) end // new abstract
+	proc (hk: Hook) Activate*(on: boolean)  end // new abstract
+	proc (hk: Hook) Focus*(on: boolean)  end // new abstract
+	proc (hk: Hook) Resize*(w, h: integer)  end // new abstract
 	
 	
 	// Window creation
 	
-	proc OpenDoc(w: Window; l, t, r, b: integer; min_, max_: boolean)
+	proc OpenDoc(w: Window; l, t, r, b: integer; min_, max_: boolean) 
 		// first part of Open, called from directory.open
 		var 
 			dw, dh, res: integer
@@ -516,7 +516,7 @@ module HostWindows
 		res := WinApi.UpdateWindow(wnd)
 	end OpenDoc
 	
-	proc CreateDoc(wnd: WinApi.HANDLE; wParam, lParam: integer)
+	proc CreateDoc(wnd: WinApi.HANDLE; wParam, lParam: integer) 
 		// second part of Open, called from window handler
 		var 
 			res, cw, ch, u, dl, dt, dr, db: integer
@@ -642,7 +642,7 @@ module HostWindows
 		w.setup := true
 	end CreateDoc
 	
-	proc OpenDlg(w: Window; l, t, r, b: integer; min_, max_: boolean)
+	proc OpenDlg(w: Window; l, t, r, b: integer; min_, max_: boolean) 
 		// first part of Open, called from directory.open
 		var 
 			res, cx, cy, cw, ch: integer
@@ -696,7 +696,7 @@ module HostWindows
 		res := WinApi.UpdateWindow(wnd)
 	end OpenDlg
 	
-	proc CreateDlg(wnd: WinApi.HANDLE; wParam, lParam: integer)
+	proc CreateDlg(wnd: WinApi.HANDLE; wParam, lParam: integer) 
 		// second part of Open, called from window handler
 		var 
 			res, cw, ch, dl, dt, dr, db: integer
@@ -763,7 +763,7 @@ module HostWindows
 	
 	// Window
 	
-	proc (w: Window) ForwardCtrlMsg*(var msg: Controllers.Message) // extensible
+	proc (w: Window) ForwardCtrlMsg*(var msg: Controllers.Message)  // extensible
 		var 
 			d: boolean
 			res: integer
@@ -787,7 +787,7 @@ module HostWindows
 		end 
 	end ForwardCtrlMsg
 	
-	proc (w: Window) SetSize*(width, height: integer)
+	proc (w: Window) SetSize*(width, height: integer) 
 		var 
 			res, x, y, dw, dh: integer
 			cr, wr: WinApi.RECT
@@ -850,12 +850,12 @@ module HostWindows
 		end 
 	end SetSize
 	
-	proc (w: Window) SetTitle2*(title: Views.Title) // new
+	proc (w: Window) SetTitle2*(title: Views.Title)  // new
 		// assign name of window, generate title out of name, and update window title bar
 		var 
 			res: integer
 			h: Window
-			t: array 256 of char
+			t: array 256 of wchar
 	begin 
 		assert(w.wnd # 0, 20)
 		StripTitle(title)
@@ -867,7 +867,7 @@ module HostWindows
 		until h = w 
 	end SetTitle2
 	
-	proc (w: Window) SetTitle*(title: Views.Title)
+	proc (w: Window) SetTitle*(title: Views.Title) 
 	begin 
 		assert(w.wnd # 0, 20)
 		w.title := title
@@ -884,7 +884,7 @@ module HostWindows
 		w.SetTitle2(title)
 	end RefreshTitle
 	
-	proc (w: Window) GetTitle*(var title: Views.Title)
+	proc (w: Window) GetTitle*(var title: Views.Title) 
 		// get name of window
 		var 
 			res: integer
@@ -897,7 +897,7 @@ module HostWindows
 		end 
 	end GetTitle
 	
-	proc (w: Window) SetSpec*(loc: Files.Locator; name: Files.Name; conv: Converters.Converter)
+	proc (w: Window) SetSpec*(loc: Files.Locator; name: Files.Name; conv: Converters.Converter) 
 		var 
 			title: Views.Title
 	begin 
@@ -911,7 +911,7 @@ module HostWindows
 		end 
 	end SetSpec
 	
-	proc (w: Window) Mark(do_, wk: boolean) // new
+	proc (w: Window) Mark(do_, wk: boolean)  // new
 		var 
 			mark: Controllers.MarkMsg
 	begin 
@@ -921,7 +921,7 @@ module HostWindows
 		Properties.IncEra
 	end Mark
 	
-	proc (w: Window) MouseDown*(x, y, time: integer; modifiers: set)
+	proc (w: Window) MouseDown*(x, y, time: integer; modifiers: set) 
 		// handle a mouse down event in window
 		var 
 			pw, ph: integer
@@ -935,14 +935,14 @@ module HostWindows
 		Properties.IncEra
 	end MouseDown
 	
-	proc (w: Window) KeyDown*(ch: char; buttons: set)
+	proc (w: Window) KeyDown*(ch: wchar; buttons: set) 
 	begin 
 		w.KeyDown^(ch, buttons)
 		Properties.IncEra
 	end KeyDown
 	
 	
-	proc UpdateScrollbar(w: Window; vertical, focus: boolean)
+	proc UpdateScrollbar(w: Window; vertical, focus: boolean) 
 		var 
 			res, size_, sect, pos, type_, p, q, m: integer
 			valid: boolean
@@ -1002,7 +1002,7 @@ module HostWindows
 		end 
 	end UpdateScrollbar
 	
-	proc (w: Window) Scroll(code, p: integer; focus, vertical: boolean) // new
+	proc (w: Window) Scroll(code, p: integer; focus, vertical: boolean)  // new
 		var 
 			res, size_, sect, pos, type_: integer
 			valid, noBuf: boolean
@@ -1041,7 +1041,7 @@ module HostWindows
 		end 
 	end Scroll
 	
-	proc (w: Window) UpdateScrollbars(focus: boolean) // new
+	proc (w: Window) UpdateScrollbars(focus: boolean)  // new
 	begin 
 		if (WinApi.GetAsyncKeyState(1) >= 0) 
 			& (WinApi.GetAsyncKeyState(4) >= 0) 
@@ -1055,7 +1055,7 @@ module HostWindows
 		end 
 	end UpdateScrollbars
 	
-	proc (w: Window) UpdateCursor(x, y: integer; modifiers: set) // new
+	proc (w: Window) UpdateCursor(x, y: integer; modifiers: set)  // new
 		var 
 			pw, ph: integer
 			msg: Controllers.PollCursorMsg
@@ -1175,7 +1175,7 @@ module HostWindows
 	proc (d: Directory) Open*(
 		w: Windows.Window; doc: Documents.Document; flags: set; name: Views.Title
 		loc: Files.Locator; fname: Files.Name; conv: Converters.Converter
-		) // extensible
+		)  // extensible
 		var 
 			res: integer
 			v, bg: Window
@@ -1252,12 +1252,12 @@ module HostWindows
 		end 
 	end Open
 	
-	proc (d: Directory) First*(): Window
+	proc (d: Directory) First*(): Window 
 	begin 
 		return winAnchor.next
 	end First
 	
-	proc (d: Directory) Next*(w: Windows.Window): Window
+	proc (d: Directory) Next*(w: Windows.Window): Window 
 	begin 
 		if w # nil then
 			return w(Window).next 
@@ -1266,7 +1266,7 @@ module HostWindows
 		end 
 	end Next
 	
-	proc (d: Directory) New*(): Window // extensible
+	proc (d: Directory) New*(): Window  // extensible
 		var 
 			w: Window
 	begin 
@@ -1274,7 +1274,7 @@ module HostWindows
 		return w
 	end New
 	
-	proc (d: Directory) Focus*(target: boolean): Window
+	proc (d: Directory) Focus*(target: boolean): Window 
 	begin 
 		if target then
 			return tWindow 
@@ -1283,7 +1283,7 @@ module HostWindows
 		end 
 	end Focus
 	
-	proc (d: Directory) Select*(w: Windows.Window; lazy: boolean)
+	proc (d: Directory) Select*(w: Windows.Window; lazy: boolean) 
 		var 
 			res: integer
 	begin 
@@ -1309,12 +1309,12 @@ module HostWindows
 	end Select
 	
 	proc (d: Directory) GetThisWindow*(p: Ports.Port; px, py: integer
-		var x, y: integer; var w: Windows.Window)
+		var x, y: integer; var w: Windows.Window) 
 		var 
 			res, wpid: integer
 			wnd: WinApi.HANDLE
 			pt: WinApi.POINT
-			s: array 32 of char
+			s: array 32 of wchar
 	begin 
 		pt.x := px
 		pt.y := py
@@ -1339,7 +1339,7 @@ module HostWindows
 		end 
 	end GetThisWindow
 	
-	proc (d: Directory) Close*(w: Windows.Window)
+	proc (d: Directory) Close*(w: Windows.Window) 
 		var 
 			v, u: Windows.Window
 			h: Window
@@ -1361,7 +1361,7 @@ module HostWindows
 		end 
 	end Close
 	
-	proc (d: Directory) GetBounds*(var w, h: integer)
+	proc (d: Directory) GetBounds*(var w, h: integer) 
 		var 
 			rect: WinApi.RECT
 			res: integer
@@ -1374,9 +1374,9 @@ module HostWindows
 	
 	// window handlers
 	
-	proc CallHeapShow*(a: integer)
+	proc CallHeapShow*(a: integer) 
 		type 
-			P = proc (a: integer; t: array of char)
+			P = proc (a: integer; t: array of wchar)
 			V = record (Meta.Value) p: P end 
 		var 
 			i: Meta.Item
@@ -1395,7 +1395,7 @@ module HostWindows
 		end 
 	end CallHeapShow
 	
-	proc KeyModifiers(data: integer): set
+	proc KeyModifiers(data: integer): set 
 		var 
 			b: set
 	begin 
@@ -1415,7 +1415,7 @@ module HostWindows
 		return b
 	end KeyModifiers
 	
-	proc HandleKey(wnd: WinApi.HANDLE; code, ext: integer)
+	proc HandleKey(wnd: WinApi.HANDLE; code, ext: integer) 
 		var 
 			b: set
 			w: Window
@@ -1511,7 +1511,7 @@ module HostWindows
 		Properties.IncEra
 	end HandleKey
 	
-	proc HandleChar(wnd: WinApi.HANDLE; wParam, lParam: integer)
+	proc HandleChar(wnd: WinApi.HANDLE; wParam, lParam: integer) 
 		var 
 			w: Window
 			mod_: set
@@ -1527,7 +1527,7 @@ module HostWindows
 		end 
 	end HandleChar
 	
-	proc HandleMouse(wnd: WinApi.HANDLE; wParam, lParam: integer)
+	proc HandleMouse(wnd: WinApi.HANDLE; wParam, lParam: integer) 
 		var 
 			w: Window
 			isDown: boolean
@@ -1592,7 +1592,7 @@ module HostWindows
 		Properties.IncEra
 	end HandleMouse
 	
-	proc DeactivateWin(wnd: WinApi.HANDLE; wParam, lParam: integer)
+	proc DeactivateWin(wnd: WinApi.HANDLE; wParam, lParam: integer) 
 		var 
 			w: Window
 	begin 
@@ -1609,7 +1609,7 @@ module HostWindows
 		end 
 	end DeactivateWin
 	
-	proc ActivateWin(wnd: WinApi.HANDLE; wParam, lParam: integer)
+	proc ActivateWin(wnd: WinApi.HANDLE; wParam, lParam: integer) 
 		var 
 			res: integer
 			w: Window
@@ -1635,7 +1635,7 @@ module HostWindows
 		end 
 	end ActivateWin
 	
-	proc ActivateWindow*(w: Windows.Window; do_: boolean)
+	proc ActivateWindow*(w: Windows.Window; do_: boolean) 
 	begin 
 		if debug then
 			if do_ then
@@ -1662,7 +1662,7 @@ module HostWindows
 		end 
 	end ActivateWindow
 	
-	proc SizeWin(wnd: WinApi.HANDLE; w, h: integer)
+	proc SizeWin(wnd: WinApi.HANDLE; w, h: integer) 
 		var 
 			v: Window
 	begin 
@@ -1675,7 +1675,7 @@ module HostWindows
 		end 
 	end SizeWin
 	
-	proc ScrollWin(wnd: WinApi.HANDLE; wParam, vertical: integer)
+	proc ScrollWin(wnd: WinApi.HANDLE; wParam, vertical: integer) 
 		var 
 			w: Window
 	begin 
@@ -1685,7 +1685,7 @@ module HostWindows
 		end 
 	end ScrollWin
 	
-	proc WheelScroll(wnd: WinApi.HANDLE; wParam, lParam: integer)
+	proc WheelScroll(wnd: WinApi.HANDLE; wParam, lParam: integer) 
 		var 
 			w: Window
 			res, lines, delta, keys: integer
@@ -1773,7 +1773,7 @@ module HostWindows
 		end 
 	end WheelScroll
 	
-	proc InvalidateWin(wnd, dc: WinApi.HANDLE; paint: integer)
+	proc InvalidateWin(wnd, dc: WinApi.HANDLE; paint: integer) 
 		type 
 			RectPtr = pointer to WinApi.RECT
 		var 
@@ -1786,7 +1786,7 @@ module HostWindows
 		w.Restore(rp.left, rp.top, rp.right, rp.bottom)
 	end InvalidateWin
 	
-	proc PaintWin(wnd: WinApi.HANDLE; a, b: integer)
+	proc PaintWin(wnd: WinApi.HANDLE; a, b: integer) 
 		var 
 			w: Window
 	begin 
@@ -1794,7 +1794,7 @@ module HostWindows
 		w.Update
 	end PaintWin
 	
-	proc DocWinHandler(wnd: WinApi.HANDLE; message, wParam, lParam: integer): integer
+	proc DocWinHandler(wnd: WinApi.HANDLE; message, wParam, lParam: integer): integer 
 		var 
 			res, x, dx, dy: integer
 			w: Window
@@ -2037,7 +2037,7 @@ module HostWindows
 		return WinApi.DefMDIChildProcW(wnd, message, wParam, lParam)
 	end DocWinHandler
 	
-	proc DialogHandler(wnd: WinApi.HANDLE; message, wParam, lParam: integer): integer
+	proc DialogHandler(wnd: WinApi.HANDLE; message, wParam, lParam: integer): integer 
 		var 
 			res, x, dx, dy: integer
 			w: Window
@@ -2182,7 +2182,7 @@ module HostWindows
 	
 	// clipboard handling
 	
-	proc OpenClipboard*(doc: Documents.Document)
+	proc OpenClipboard*(doc: Documents.Document) 
 	begin 
 		new(cbViewer)
 		dir.Open(cbViewer, doc, {Windows.neverDirty}, "Clipboard", nil, "", nil)
@@ -2236,7 +2236,7 @@ module HostWindows
 	proc UpdateInfo
 		var 
 			res: integer
-			str: array 256 of char
+			str: array 256 of wchar
 	begin 
 		if memInStatus & ((alloc # Kernel.Allocated())(* OR (total # Kernel.Used()) *)) then
 			alloc := Kernel.Allocated()
@@ -2268,7 +2268,7 @@ module HostWindows
 	   END Check; *)
 	
 	
-	proc SetVisualScroll*(do_: boolean)
+	proc SetVisualScroll*(do_: boolean) 
 	begin 
 		if visualScroll # do_ then
 			visualScroll := do_
@@ -2319,13 +2319,13 @@ module HostWindows
 		Windows.dir.Update(nil)
 	end Idle
 	
-	proc ActivateMain*(do_: boolean)
+	proc ActivateMain*(do_: boolean) 
 	begin 
 		mainActive := do_
 	end ActivateMain
 	
 	
-	proc ResizeMainWindow*(type_, w, h: integer)
+	proc ResizeMainWindow*(type_, w, h: integer) 
 		var 
 			res, m: integer
 	begin 
@@ -2359,7 +2359,7 @@ module HostWindows
 		end 
 	end ResizeMainWindow
 	
-	proc SetMainBorderWidth*(l, t, r, b: integer)
+	proc SetMainBorderWidth*(l, t, r, b: integer) 
 		var 
 			res: integer
 			rect: WinApi.RECT
@@ -2372,7 +2372,7 @@ module HostWindows
 		ResizeMainWindow(0, rect.right, rect.bottom)
 	end SetMainBorderWidth
 	
-	proc GetMainBorder*(var l, t, r, b: integer)
+	proc GetMainBorder*(var l, t, r, b: integer) 
 		var 
 			res: integer
 			rect: WinApi.RECT
@@ -2419,7 +2419,7 @@ module HostWindows
 		end 
 	end SaveWindowState
 	
-	proc LoadWindowState()
+	proc LoadWindowState() 
 		var 
 			res: integer
 			wp: WinApi.WINDOWPLACEMENT
@@ -2487,7 +2487,7 @@ module HostWindows
 		end 
 	end LoadWindowState
 	
-	proc CreateMainWindows*(menuBar, winMenu: WinApi.HANDLE; Handler: WinApi.WNDPROC)
+	proc CreateMainWindows*(menuBar, winMenu: WinApi.HANDLE; Handler: WinApi.WNDPROC) 
 		var 
 			res: integer
 			class: WinApi.WNDCLASSW

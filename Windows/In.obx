@@ -45,7 +45,7 @@ module In
 		end 
 	end Open
 	
-	proc Char*(var ch: char)
+	proc Char*(var ch: wchar) 
 	begin 
 		if Done then
 			if s.rider.eot then
@@ -57,7 +57,7 @@ module In
 		end 
 	end Char
 	
-	proc Int*(var i: integer)
+	proc Int*(var i: integer) 
 	begin 
 		if Done then
 			s.Scan
@@ -69,7 +69,7 @@ module In
 		end 
 	end Int
 	
-	proc LongInt*(var l: longint)
+	proc LongInt*(var l: longint) 
 	begin 
 		if Done then
 			s.Scan
@@ -81,12 +81,12 @@ module In
 		end 
 	end LongInt
 	
-	proc Real*(var x: real)
+	proc Real*(var x: longreal) 
 	begin 
 		if Done then
 			s.Scan
 			if s.type_ = TextMappers.real_ then
-				x := (s.real_) 
+				x := short(s.real_) 
 			elsif s.type_ = TextMappers.int_ then 
 				x := s.int_ 
 			else 
@@ -95,7 +95,7 @@ module In
 		end 
 	end Real
 	
-	proc Name*(var name: array of char)
+	proc Name*(var name: array of wchar) 
 	begin 
 		if Done then
 			s.Scan
@@ -103,7 +103,7 @@ module In
 		end 
 	end Name
 	
-	proc String*(var str: array of char)
+	proc String*(var str: array of wchar) 
 	begin 
 		if Done then
 			s.Scan

@@ -55,53 +55,53 @@ module StdLog
 		Views.RestoreDomain(text.Domain())
 	end Flush
 	
-	proc Char*(ch: char)
+	proc Char*(ch: wchar) 
 	begin 
 		out.WriteChar(ch)
 		Flush
 	end Char
 	
-	proc Int*(i: longint)
+	proc Int*(i: longint) 
 	begin 
 		out.WriteChar(" ")
 		out.WriteInt(i)
 		Flush
 	end Int
 	
-	proc Real*(x: real)
+	proc Real*(x: longreal) 
 	begin 
 		out.WriteChar(" ")
 		out.WriteReal(x)
 		Flush
 	end Real
 	
-	proc String*(in str: array of char)
+	proc String*(in str: array of wchar) 
 	begin 
 		out.WriteString(str)
 		Flush
 	end String
 	
-	proc Bool*(x: boolean)
+	proc Bool*(x: boolean) 
 	begin 
 		out.WriteChar(" ")
 		out.WriteBool(x)
 		Flush
 	end Bool
 	
-	proc Set*(x: set)
+	proc Set*(x: set) 
 	begin 
 		out.WriteChar(" ")
 		out.WriteSet(x)
 		Flush
 	end Set
 	
-	proc IntForm*(x: longint; base, minWidth: integer; fillCh: char; showBase: boolean)
+	proc IntForm*(x: longint; base, minWidth: integer; fillCh: wchar; showBase: boolean) 
 	begin 
 		out.WriteIntForm(x, base, minWidth, fillCh, showBase)
 		Flush
 	end IntForm
 	
-	proc RealForm*(x: real; precision, minW, expW: integer; fillCh: char)
+	proc RealForm*(x: longreal; precision, minW, expW: integer; fillCh: wchar) 
 	begin 
 		out.WriteRealForm(x, precision, minW, expW, fillCh)
 		Flush
@@ -127,31 +127,31 @@ module StdLog
 		TextViews.ShowRange(text, text.Length(), text.Length(), TextViews.any)
 	end Para
 	
-	proc View*(v: Views.View)
+	proc View*(v: Views.View) 
 	begin 
 		out.WriteView(v)
 		Flush
 	end View
 	
-	proc ViewForm*(v: Views.View; w, h: integer)
+	proc ViewForm*(v: Views.View; w, h: integer) 
 	begin 
 		out.WriteViewForm(v, w, h)
 		Flush
 	end ViewForm
 	
-	proc ParamMsg*(in msg, p0, p1, p2: array of char)
+	proc ParamMsg*(in msg, p0, p1, p2: array of wchar) 
 	begin 
 		out.WriteParamMsg(msg, p0, p1, p2)
 		Flush
 	end ParamMsg
 	
-	proc Msg*(in msg: array of char)
+	proc Msg*(in msg: array of wchar) 
 	begin 
 		out.WriteMsg(msg)
 		Flush
 	end Msg
 	
-	proc (hook: ShowHook) ShowParamMsg(in s, p0, p1, p2: array of char)
+	proc (hook: ShowHook) ShowParamMsg(in s, p0, p1, p2: array of wchar) 
 	begin 
 		if Dialog.showsStatus then
 			Dialog.ShowParamStatus(s, p0, p1, p2)
@@ -170,13 +170,13 @@ module StdLog
 		end 
 	end ShowParamMsg
 	
-	proc (hook: ShowHook) ShowParamStatus(in s, p0, p1, p2: array of char)
+	proc (hook: ShowHook) ShowParamStatus(in s, p0, p1, p2: array of wchar) 
 	begin 
 		HostDialog.ShowParamStatus(s, p0, p1, p2)
 	end ShowParamStatus
 	
 	
-	proc NewView*(): TextViews.View
+	proc NewView*(): TextViews.View 
 		var 
 			v: TextViews.View
 	begin 
@@ -193,12 +193,12 @@ module StdLog
 	end New
 	
 	
-	proc SetDefaultRuler*(ruler: TextRulers.Ruler)
+	proc SetDefaultRuler*(ruler: TextRulers.Ruler) 
 	begin 
 		defruler := ruler
 	end SetDefaultRuler
 	
-	proc SetDir*(d: TextViews.Directory)
+	proc SetDir*(d: TextViews.Directory) 
 	begin 
 		assert(d # nil, 20)
 		dir := d
@@ -229,7 +229,7 @@ module StdLog
 	
 	// Sub support
 	
-	proc Guard(o: ANYPTR): boolean
+	proc Guard(o: ANYPTR): boolean 
 	begin 
 		return 
 			(o # nil) & 
@@ -270,7 +270,7 @@ module StdLog
 		end 
 	end SubFlush
 	
-	proc (log: LogHook) Guard*(o: ANYPTR): boolean
+	proc (log: LogHook) Guard*(o: ANYPTR): boolean 
 	begin 
 		return Guard(o)
 	end Guard
@@ -290,53 +290,53 @@ module StdLog
 		Dialog.Beep
 	end Beep
 	
-	proc (log: LogHook) Char*(ch: char)
+	proc (log: LogHook) Char*(ch: wchar) 
 	begin 
 		subOut.WriteChar(ch)
 		SubFlush
 	end Char
 	
-	proc (log: LogHook) Int*(n: integer)
+	proc (log: LogHook) Int*(n: integer) 
 	begin 
 		subOut.WriteChar(" ")
 		subOut.WriteInt(n)
 		SubFlush
 	end Int
 	
-	proc (log: LogHook) Real*(x: real)
+	proc (log: LogHook) Real*(x: longreal) 
 	begin 
 		subOut.WriteChar(" ")
 		subOut.WriteReal(x)
 		SubFlush
 	end Real
 	
-	proc (log: LogHook) String*(in str: array of char)
+	proc (log: LogHook) String*(in str: array of wchar) 
 	begin 
 		subOut.WriteString(str)
 		SubFlush
 	end String
 	
-	proc (log: LogHook) Bool*(x: boolean)
+	proc (log: LogHook) Bool*(x: boolean) 
 	begin 
 		subOut.WriteChar(" ")
 		subOut.WriteBool(x)
 		SubFlush
 	end Bool
 	
-	proc (log: LogHook) Set*(x: set)
+	proc (log: LogHook) Set*(x: set) 
 	begin 
 		subOut.WriteChar(" ")
 		subOut.WriteSet(x)
 		SubFlush
 	end Set
 	
-	proc (log: LogHook) IntForm*(x: integer; base, minWidth: integer; fillCh: char; showBase: boolean)
+	proc (log: LogHook) IntForm*(x: integer; base, minWidth: integer; fillCh: wchar; showBase: boolean) 
 	begin 
 		subOut.WriteIntForm(x, base, minWidth, fillCh, showBase)
 		SubFlush
 	end IntForm
 	
-	proc (log: LogHook) RealForm*(x: real; precision, minW, expW: integer; fillCh: char)
+	proc (log: LogHook) RealForm*(x: longreal; precision, minW, expW: integer; fillCh: wchar) 
 	begin 
 		subOut.WriteRealForm(x, precision, minW, expW, fillCh)
 		SubFlush
@@ -366,7 +366,7 @@ module StdLog
 		end 
 	end Para
 	
-	proc (log: LogHook) View*(v: ANYPTR)
+	proc (log: LogHook) View*(v: ANYPTR) 
 	begin 
 		if (v # nil) & (v is Views.View) then
 			subOut.WriteView(v(Views.View))
@@ -374,7 +374,7 @@ module StdLog
 		end 
 	end View
 	
-	proc (log: LogHook) ViewForm*(v: ANYPTR; w, h: integer)
+	proc (log: LogHook) ViewForm*(v: ANYPTR; w, h: integer) 
 	begin 
 		assert(v # nil, 20)
 		if (v # nil) & (v is Views.View) then
@@ -383,11 +383,11 @@ module StdLog
 		end 
 	end ViewForm
 	
-	proc (log: LogHook) ParamMsg*(in s, p0, p1, p2: array of char)
+	proc (log: LogHook) ParamMsg*(in s, p0, p1, p2: array of wchar) 
 		var 
-			msg: array 256 of char
+			msg: array 256 of wchar
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		if logAlerts then
 			if Log.synch then

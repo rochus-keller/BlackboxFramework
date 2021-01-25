@@ -38,16 +38,16 @@ module XhtmlStdFileWriters
 				up: Tag
 				inContent: boolean // subtag was entered, or text data written
 				preserve: boolean // write complete element on one line, no prettyprinting white space
-				name: array 256 of char 
+				name: array 256 of wchar 
 			end 
 	
 	// generic output procedures
 	
-	proc String(wr: Writer; in str: array of char)
+	proc String(wr: Writer; in str: array of wchar) 
 		var 
-			ch: char
+			ch: wchar
 			i, res: integer
-			s1: array 2 of char
+			s1: array 2 of wchar
 			utf8Str: array 4 of char
 			j: integer
 			u: char
@@ -75,11 +75,11 @@ module XhtmlStdFileWriters
 		end 
 	end String
 	
-	proc HtmlEncodedString(wr: Writer; in str: array of char)
+	proc HtmlEncodedString(wr: Writer; in str: array of wchar) 
 		var 
-			ch: char
+			ch: wchar
 			i: integer
-			entityStr: array 10 of char
+			entityStr: array 10 of wchar
 	begin 
 		i := 0
 		ch := str[0]
@@ -91,7 +91,7 @@ module XhtmlStdFileWriters
 		end 
 	end HtmlEncodedString
 	
-	proc Tabs(wr: Writer)
+	proc Tabs(wr: Writer) 
 		var 
 			i: integer
 	begin 
@@ -104,7 +104,7 @@ module XhtmlStdFileWriters
 		end 
 	end Tabs
 	
-	proc StartElemContent(wr: Writer)
+	proc StartElemContent(wr: Writer) 
 	begin  // complete start tag
 		String(wr, ">")
 		wr.Ln
@@ -114,7 +114,7 @@ module XhtmlStdFileWriters
 	
 	// methods
 	
-	proc (wr: Writer) Error(): XhtmlWriters.Error
+	proc (wr: Writer) Error(): XhtmlWriters.Error 
 	begin 
 		return nil
 	end Error
@@ -126,19 +126,19 @@ module XhtmlStdFileWriters
 		end 
 	end Ln
 	
-	proc (wr: Writer) Instruction(in piTarget, instruction: array of char)
+	proc (wr: Writer) Instruction(in piTarget, instruction: array of wchar) 
 	begin 
 		Tabs(wr)
 		String(wr, "<?" + piTarget + " " + instruction + "?>")
 	end Instruction
 	
-	proc (wr: Writer) Comment(in comment: array of char)
+	proc (wr: Writer) Comment(in comment: array of wchar) 
 	begin 
 		Tabs(wr)
 		String(wr, "<!--" + comment + "-->")
 	end Comment
 	
-	proc (wr: Writer) DocType(in rootName, pubidLiteral, sysidLiteral: array of char)
+	proc (wr: Writer) DocType(in rootName, pubidLiteral, sysidLiteral: array of wchar) 
 	begin 
 		assert(wr.level = 0, 100)
 		assert(rootName # "", 101)
@@ -153,7 +153,7 @@ module XhtmlStdFileWriters
 		wr.Ln
 	end DocType
 	
-	proc (wr: Writer) StartTag(in elem: array of char; preserve: boolean)
+	proc (wr: Writer) StartTag(in elem: array of wchar; preserve: boolean) 
 		var 
 			t: Tag
 	begin 
@@ -171,7 +171,7 @@ module XhtmlStdFileWriters
 		wr.current := t
 	end StartTag
 	
-	proc (wr: Writer) Attr(in name, value: array of char)
+	proc (wr: Writer) Attr(in name, value: array of wchar) 
 	begin 
 		assert(wr.level >= 1, 100)
 		String(wr, ' ' + name + '="')
@@ -179,7 +179,7 @@ module XhtmlStdFileWriters
 		String(wr, '"')
 	end Attr
 	
-	proc (wr: Writer) Data(in data: array of char)
+	proc (wr: Writer) Data(in data: array of wchar) 
 	begin 
 		assert(wr.level >= 1, 100)
 		if data # "" then
@@ -220,10 +220,10 @@ module XhtmlStdFileWriters
 	
 	// factory functions
 	
-	proc MakeFileSpec(in path: array of char; var loc: Files.Locator; var file: Files.Name)
+	proc MakeFileSpec(in path: array of wchar; var loc: Files.Locator; var file: Files.Name) 
 		var 
 			i, j: integer
-			ch: char
+			ch: wchar
 			s: Files.Name
 	begin 
 		loc := Files.dir.This("")
@@ -252,7 +252,7 @@ module XhtmlStdFileWriters
 		file := s
 	end MakeFileSpec
 	
-	proc New*(f: Files.File): XhtmlWriters.Writer
+	proc New*(f: Files.File): XhtmlWriters.Writer 
 		var 
 			wr: Writer
 	begin 
@@ -270,7 +270,7 @@ module XhtmlStdFileWriters
 		return wr
 	end New
 	
-	proc NewForPath*(in path: array of char): XhtmlWriters.Writer
+	proc NewForPath*(in path: array of wchar): XhtmlWriters.Writer 
 		var 
 			loc: Files.Locator
 			f: Files.File

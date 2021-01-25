@@ -113,7 +113,7 @@ module TextRulers
 				tab*: array maxTabs of Tab 
 			end 
 		
-		TabData = array maxTabs of char // radix character for decimal tabs
+		TabData = array maxTabs of wchar // radix character for decimal tabs
 		
 		Attributes* = pointer to (* extensible *) record (Stores.Store) 
 				init-: boolean // immutable once init holds
@@ -188,7 +188,7 @@ module TextRulers
 	
 	var 
 		dir-, stdDir-: Directory
-		defaultRadixChar*: char // for decimal tab
+		defaultRadixChar*: wchar // for decimal tab
 		tabDialogHook*: TabDialogHook // see TextCmds
 		
 		def: Attributes
@@ -198,11 +198,11 @@ module TextRulers
 		
 		marginGrid, minTabWidth, tabGrid: integer
 	
-	proc (hook: TabDialogHook) Open*(ruler: Ruler; tabIndex: integer) end // new abstract
-	proc (hook: TabDialogHook) Init*(ruler: Ruler; tabIndex: integer) end // new abstract
-	proc (hook: TabDialogHook) Refresh*(style: Style) end // new abstract
+	proc (hook: TabDialogHook) Open*(ruler: Ruler; tabIndex: integer)  end // new abstract
+	proc (hook: TabDialogHook) Init*(ruler: Ruler; tabIndex: integer)  end // new abstract
+	proc (hook: TabDialogHook) Refresh*(style: Style)  end // new abstract
 	
-	proc CopyTabs(in src: TabArray; in srcData: TabData; var dst: TabArray; var dstData: TabData)
+	proc CopyTabs(in src: TabArray; in srcData: TabData; var dst: TabArray; var dstData: TabData) 
 		// a TabArray is a 256 byte structure - copying of used parts is much faster than ":= all"
 		var 
 			i, n: integer
@@ -218,13 +218,13 @@ module TextRulers
 	end CopyTabs
 	
 	proc CopyTab(in src: TabArray; in srcData: TabData; srcIdx: integer
-		var dst: TabArray; var dstData: TabData; dstIdx: integer)
+		var dst: TabArray; var dstData: TabData; dstIdx: integer) 
 	begin 
 		dst.tab[dstIdx] := src.tab[srcIdx]
 		dstData[dstIdx] := srcData[srcIdx]
 	end CopyTab
 	
-	proc InitTab(x: integer; var tabs: TabArray; var tabsData: TabData; tabIndex: integer)
+	proc InitTab(x: integer; var tabs: TabArray; var tabsData: TabData; tabIndex: integer) 
 	begin 
 		tabs.tab[tabIndex].stop := x
 		tabs.tab[tabIndex].type_ := {}
@@ -233,7 +233,7 @@ module TextRulers
 	
 	// Attributes
 	
-	proc (a: Attributes) CopyFrom-(source: Stores.Store) // extensible
+	proc (a: Attributes) CopyFrom-(source: Stores.Store)  // extensible
 	begin 
 		with source: Attributes do 
 			assert(~a.init, 20)
@@ -251,7 +251,7 @@ module TextRulers
 		end 
 	end CopyFrom
 	
-	proc HasTabsData(a: Attributes): boolean
+	proc HasTabsData(a: Attributes): boolean 
 		var 
 			i: integer
 	begin 
@@ -263,7 +263,7 @@ module TextRulers
 		return i < a.tabs.len_
 	end HasTabsData
 	
-	proc (a: Attributes) Externalize-(var wr: Stores.Writer) // extensible
+	proc (a: Attributes) Externalize-(var wr: Stores.Writer)  // extensible
 		// pre: a.init
 		var 
 			i: integer
@@ -317,7 +317,7 @@ module TextRulers
 		end 
 	end Externalize
 	
-	proc (a: Attributes) Internalize-(var rd: Stores.Reader) // extensible
+	proc (a: Attributes) Internalize-(var rd: Stores.Reader)  // extensible
 		// pre: ~a.init
 		// post: a.init
 		var 
@@ -379,14 +379,14 @@ module TextRulers
 		end 
 	end Internalize
 	
-	proc Set(p: Prop; opt: integer; var x: integer; min_, max_, new_: integer)
+	proc Set(p: Prop; opt: integer; var x: integer; min_, max_, new_: integer) 
 	begin 
 		if opt in p.valid then
 			x := max(min_, min(max_, new_)) 
 		end 
 	end Set
 	
-	proc ModifyFromProp(a: Attributes; p: Properties.Property)
+	proc ModifyFromProp(a: Attributes; p: Properties.Property) 
 		const 
 			maxW = 10000 * mm
 			maxH = 32767 * point
@@ -428,12 +428,12 @@ module TextRulers
 		end 
 	end ModifyFromProp
 	
-	proc (a: Attributes) ModifyFromProp-(p: Properties.Property) // new extensible
+	proc (a: Attributes) ModifyFromProp-(p: Properties.Property)  // new extensible
 	begin 
 		ModifyFromProp(a, p)
 	end ModifyFromProp
 	
-	proc (a: Attributes) InitFromProp*(p: Properties.Property) // new extensible
+	proc (a: Attributes) InitFromProp*(p: Properties.Property)  // new extensible
 	// pre: ~a.init
 	// post: (a.init, p # NIL & x IN p.valid) => x set in a, else x defaults in a
 	begin 
@@ -451,7 +451,7 @@ module TextRulers
 		ModifyFromProp(a, p)
 	end InitFromProp
 	
-	proc (a: Attributes) Equals*(b: Attributes): boolean // new extensible
+	proc (a: Attributes) Equals*(b: Attributes): boolean  // new extensible
 		// pre: a.init, b.init
 		var 
 			i: integer
@@ -474,7 +474,7 @@ module TextRulers
 		end 
 	end Equals
 	
-	proc (a: Attributes) Prop*(): Properties.Property // new extensible
+	proc (a: Attributes) Prop*(): Properties.Property  // new extensible
 		// pre: a.init
 		// post: x attr in a => x IN p.valid, m set to value of attr in a
 		var 
@@ -498,7 +498,7 @@ module TextRulers
 	end Prop
 	
 	
-	proc ReadAttr*(var rd: Stores.Reader; var a: Attributes)
+	proc ReadAttr*(var rd: Stores.Reader; var a: Attributes) 
 		var 
 			st: Stores.Store
 			alien: AlienAttributes
@@ -516,7 +516,7 @@ module TextRulers
 		end 
 	end ReadAttr
 	
-	proc WriteAttr*(var wr: Stores.Writer; a: Attributes)
+	proc WriteAttr*(var wr: Stores.Writer; a: Attributes) 
 	begin 
 		assert(a # nil, 20)
 		assert(a.init, 21)
@@ -527,7 +527,7 @@ module TextRulers
 		end 
 	end WriteAttr
 	
-	proc ModifiedAttr*(a: Attributes; p: Properties.Property): Attributes
+	proc ModifiedAttr*(a: Attributes; p: Properties.Property): Attributes 
 		// pre: a.init
 		// post: x IN p.valid => x in new attr set to value in p, else set to value in a
 		var 
@@ -542,22 +542,22 @@ module TextRulers
 	
 	// AlienAttributes
 	
-	proc (a: AlienAttributes) Externalize-(var wr: Stores.Writer)
+	proc (a: AlienAttributes) Externalize-(var wr: Stores.Writer) 
 	begin 
 		halt(100)
 	end Externalize
 	
-	proc (a: AlienAttributes) Internalize-(var rd: Stores.Reader)
+	proc (a: AlienAttributes) Internalize-(var rd: Stores.Reader) 
 	begin 
 		halt(100)
 	end Internalize
 	
-	proc (a: AlienAttributes) InitFromProp*(p: Properties.Property)
+	proc (a: AlienAttributes) InitFromProp*(p: Properties.Property) 
 	begin 
 		a.InitFromProp^(nil)
 	end InitFromProp
 	
-	proc (a: AlienAttributes) ModifyFromProp-(p: Properties.Property)
+	proc (a: AlienAttributes) ModifyFromProp-(p: Properties.Property) 
 	begin 
 		// a.InitFromProp^(NIL)
 		a.InitFromProp(nil)
@@ -577,14 +577,14 @@ module TextRulers
 	
 	
 	
-	proc (s: Style) Externalize-(var wr: Stores.Writer) // extensible
+	proc (s: Style) Externalize-(var wr: Stores.Writer)  // extensible
 	begin 
 		s.Externalize^(wr)
 		wr.WriteVersion(maxStyleVersion)
 		WriteAttr(wr, s.attr)
 	end Externalize
 	
-	proc (s: Style) Internalize-(var rd: Stores.Reader) // extensible
+	proc (s: Style) Internalize-(var rd: Stores.Reader)  // extensible
 		var 
 			thisVersion: integer
 	begin 
@@ -600,7 +600,7 @@ module TextRulers
 		Stores.Join(s, s.attr)
 	end Internalize
 	
-	proc (s: Style) SetAttr*(attr: Attributes) // new extensible
+	proc (s: Style) SetAttr*(attr: Attributes)  // new extensible
 	// pre: attr.init
 	// post: s.attr = attr OR s.attr.Equals(attr)
 	begin 
@@ -608,7 +608,7 @@ module TextRulers
 		DoSetAttrOp(s, attr)
 	end SetAttr
 	
-	proc (s: Style) CopyFrom-(source: Stores.Store) // extensible
+	proc (s: Style) CopyFrom-(source: Stores.Store)  // extensible
 	begin 
 		with source: Style do 
 			assert(source.attr # nil, 21)
@@ -631,7 +631,7 @@ module TextRulers
 	
 	// Directory
 	
-	proc (d: Directory) SetAttr*(attr: Attributes) // new extensible
+	proc (d: Directory) SetAttr*(attr: Attributes)  // new extensible
 		// pre: attr.init
 		(* post: d.attr = ModifiedAttr(attr, p)
 		   [ p.valid = {opts, tabs}, p.tabs.len = 0, p.opts.mask = {noBreakInside.. parJoin}, p.opts.val = {} ] *)
@@ -651,10 +651,10 @@ module TextRulers
 		d.attr := attr
 	end SetAttr
 	
-	proc (d: Directory) NewStyle*(attr: Attributes): Style end // new abstract
-	proc (d: Directory) New*(style: Style): Ruler end // new abstract
+	proc (d: Directory) NewStyle*(attr: Attributes): Style  end // new abstract
+	proc (d: Directory) New*(style: Style): Ruler  end // new abstract
 	
-	proc (d: Directory) NewFromProp*(p: Prop): Ruler // new extensible
+	proc (d: Directory) NewFromProp*(p: Prop): Ruler  // new extensible
 	begin 
 		return d.New(d.NewStyle(ModifiedAttr(d.attr, p)))
 	end NewFromProp
@@ -668,7 +668,7 @@ module TextRulers
 	
 	// Ruler
 	
-	proc (r: Ruler) Externalize-(var wr: Stores.Writer) // extensible
+	proc (r: Ruler) Externalize-(var wr: Stores.Writer)  // extensible
 	begin 
 		assert(r.style # nil, 20)
 		r.Externalize^(wr)
@@ -676,7 +676,7 @@ module TextRulers
 		wr.WriteStore(r.style)
 	end Externalize
 	
-	proc (r: Ruler) InitStyle*(s: Style) // new
+	proc (r: Ruler) InitStyle*(s: Style)  // new
 	// pre: r.style = NIL, s # NIL, style.attr # NIL
 	// post: r.style = s
 	begin 
@@ -688,7 +688,7 @@ module TextRulers
 	end InitStyle
 	
 	
-	proc (r: Ruler) Internalize-(var rd: Stores.Reader) // extensible
+	proc (r: Ruler) Internalize-(var rd: Stores.Reader)  // extensible
 		var 
 			st: Stores.Store
 			thisVersion: integer
@@ -731,7 +731,7 @@ module TextRulers
 	
 	
 	
-	proc CopyOf*(r: Ruler; shallow: boolean): Ruler
+	proc CopyOf*(r: Ruler; shallow: boolean): Ruler 
 		var 
 			v: Views.View
 	begin 
@@ -743,7 +743,7 @@ module TextRulers
 	
 	// Prop
 	
-	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean)
+	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean) 
 		var 
 			valid: set
 			i: integer
@@ -941,7 +941,7 @@ module TextRulers
 	
 	
 	
-	proc SetFirst*(r: Ruler; x: integer)
+	proc SetFirst*(r: Ruler; x: integer) 
 	begin 
 		assert(r.style # nil, 20)
 		prop.valid := {first}
@@ -949,7 +949,7 @@ module TextRulers
 		r.style.SetAttr(ModifiedAttr(r.style.attr, prop))
 	end SetFirst
 	
-	proc SetLeft*(r: Ruler; x: integer)
+	proc SetLeft*(r: Ruler; x: integer) 
 	begin 
 		assert(r.style # nil, 20)
 		prop.valid := {left}
@@ -957,7 +957,7 @@ module TextRulers
 		r.style.SetAttr(ModifiedAttr(r.style.attr, prop))
 	end SetLeft
 	
-	proc SetRight*(r: Ruler; x: integer)
+	proc SetRight*(r: Ruler; x: integer) 
 	begin 
 		assert(r.style # nil, 20)
 		prop.valid := {right}
@@ -967,7 +967,7 @@ module TextRulers
 		r.style.SetAttr(ModifiedAttr(r.style.attr, prop))
 	end SetRight
 	
-	proc SetFixedRight*(r: Ruler; x: integer)
+	proc SetFixedRight*(r: Ruler; x: integer) 
 	begin 
 		assert(r.style # nil, 20)
 		prop.valid := {right, opts}
@@ -978,7 +978,7 @@ module TextRulers
 	end SetFixedRight
 	
 	
-	proc SetLead*(r: Ruler; h: integer)
+	proc SetLead*(r: Ruler; h: integer) 
 	begin 
 		assert(r.style # nil, 20)
 		prop.valid := {lead}
@@ -986,7 +986,7 @@ module TextRulers
 		r.style.SetAttr(ModifiedAttr(r.style.attr, prop))
 	end SetLead
 	
-	proc SetAsc*(r: Ruler; h: integer)
+	proc SetAsc*(r: Ruler; h: integer) 
 	begin 
 		assert(r.style # nil, 20)
 		prop.valid := {asc}
@@ -994,7 +994,7 @@ module TextRulers
 		r.style.SetAttr(ModifiedAttr(r.style.attr, prop))
 	end SetAsc
 	
-	proc SetDsc*(r: Ruler; h: integer)
+	proc SetDsc*(r: Ruler; h: integer) 
 	begin 
 		assert(r.style # nil, 20)
 		prop.valid := {dsc}
@@ -1002,7 +1002,7 @@ module TextRulers
 		r.style.SetAttr(ModifiedAttr(r.style.attr, prop))
 	end SetDsc
 	
-	proc SetGrid*(r: Ruler; h: integer)
+	proc SetGrid*(r: Ruler; h: integer) 
 	begin 
 		assert(r.style # nil, 20)
 		prop.valid := {grid}
@@ -1011,7 +1011,7 @@ module TextRulers
 	end SetGrid
 	
 	
-	proc SetLeftFlush*(r: Ruler)
+	proc SetLeftFlush*(r: Ruler) 
 	begin 
 		assert(r.style # nil, 20)
 		prop.valid := {opts}
@@ -1020,7 +1020,7 @@ module TextRulers
 		r.style.SetAttr(ModifiedAttr(r.style.attr, prop))
 	end SetLeftFlush
 	
-	proc SetRightFlush*(r: Ruler)
+	proc SetRightFlush*(r: Ruler) 
 	begin 
 		assert(r.style # nil, 20)
 		prop.valid := {opts}
@@ -1029,7 +1029,7 @@ module TextRulers
 		r.style.SetAttr(ModifiedAttr(r.style.attr, prop))
 	end SetRightFlush
 	
-	proc SetCentered*(r: Ruler)
+	proc SetCentered*(r: Ruler) 
 	begin 
 		assert(r.style # nil, 20)
 		prop.valid := {opts}
@@ -1038,7 +1038,7 @@ module TextRulers
 		r.style.SetAttr(ModifiedAttr(r.style.attr, prop))
 	end SetCentered
 	
-	proc SetJustified*(r: Ruler)
+	proc SetJustified*(r: Ruler) 
 	begin 
 		assert(r.style # nil, 20)
 		prop.valid := {opts}
@@ -1048,7 +1048,7 @@ module TextRulers
 	end SetJustified
 	
 	
-	proc SetNoBreakInside*(r: Ruler)
+	proc SetNoBreakInside*(r: Ruler) 
 	begin 
 		assert(r.style # nil, 20)
 		prop.valid := {opts}
@@ -1057,7 +1057,7 @@ module TextRulers
 		r.style.SetAttr(ModifiedAttr(r.style.attr, prop))
 	end SetNoBreakInside
 	
-	proc SetPageBreak*(r: Ruler)
+	proc SetPageBreak*(r: Ruler) 
 	begin 
 		assert(r.style # nil, 20)
 		prop.valid := {opts}
@@ -1066,7 +1066,7 @@ module TextRulers
 		r.style.SetAttr(ModifiedAttr(r.style.attr, prop))
 	end SetPageBreak
 	
-	proc SetParJoin*(r: Ruler)
+	proc SetParJoin*(r: Ruler) 
 	begin 
 		assert(r.style # nil, 20)
 		prop.valid := {opts}
@@ -1076,7 +1076,7 @@ module TextRulers
 	end SetParJoin
 	
 	
-	proc AddTab*(r: Ruler; x: integer)
+	proc AddTab*(r: Ruler; x: integer) 
 		var 
 			ra: Attributes
 			i: integer
@@ -1093,7 +1093,7 @@ module TextRulers
 		r.style.SetAttr(ModifiedAttr(ra, prop))
 	end AddTab
 	
-	proc MakeCenterTab*(r: Ruler)
+	proc MakeCenterTab*(r: Ruler) 
 		var 
 			ra: Attributes
 			i: integer
@@ -1108,7 +1108,7 @@ module TextRulers
 		r.style.SetAttr(ModifiedAttr(ra, prop))
 	end MakeCenterTab
 	
-	proc MakeRightTab*(r: Ruler)
+	proc MakeRightTab*(r: Ruler) 
 		var 
 			ra: Attributes
 			i: integer
@@ -1123,7 +1123,7 @@ module TextRulers
 		r.style.SetAttr(ModifiedAttr(ra, prop))
 	end MakeRightTab
 	
-	proc MakeBarTab*(r: Ruler)
+	proc MakeBarTab*(r: Ruler) 
 		var 
 			ra: Attributes
 			i: integer
@@ -1138,7 +1138,7 @@ module TextRulers
 		r.style.SetAttr(ModifiedAttr(ra, prop))
 	end MakeBarTab
 	
-	proc MakeDecimalTab*(r: Ruler; radixChar: char)
+	proc MakeDecimalTab*(r: Ruler; radixChar: wchar) 
 		var 
 			ra: Attributes
 			i: integer
@@ -1177,7 +1177,7 @@ module TextRulers
 		end 
 	end Do
 	
-	proc DoSetAttrOp(s: Style; attr: Attributes)
+	proc DoSetAttrOp(s: Style; attr: Attributes) 
 		var 
 			op: SetAttrOp
 	begin 
@@ -1199,12 +1199,12 @@ module TextRulers
 	
 	// grid definitions
 	
-	proc MarginGrid(x: integer): integer
+	proc MarginGrid(x: integer): integer 
 	begin 
 		return (x + marginGrid div 2) div marginGrid * marginGrid
 	end MarginGrid
 	
-	proc TabGrid(x: integer): integer
+	proc TabGrid(x: integer): integer 
 	begin 
 		return (x + tabGrid div 2) div tabGrid * tabGrid
 	end TabGrid
@@ -1212,17 +1212,17 @@ module TextRulers
 	
 	// nice graphical primitives
 	
-	proc DrawCenteredInt(f: Views.Frame; x, y, n: integer)
+	proc DrawCenteredInt(f: Views.Frame; x, y, n: integer) 
 		var 
 			sw: integer
-			s: array 32 of char
+			s: array 32 of wchar
 	begin 
 		Strings.IntToString(n, s)
 		sw := font.StringWidth(s)
 		f.DrawString(x - sw div 2, y, Ports.defaultColor, s, font)
 	end DrawCenteredInt
 	
-	proc DrawNiceRect(f: Views.Frame; l, t, r, b: integer)
+	proc DrawNiceRect(f: Views.Frame; l, t, r, b: integer) 
 		var 
 			u: integer
 	begin 
@@ -1232,11 +1232,11 @@ module TextRulers
 		f.DrawLine(r - u, t + u, r - u, b - u, u, Ports.grey25)
 	end DrawNiceRect
 	
-	proc DrawScale(f: Views.Frame; l, t, r, b, clipL, clipR: integer)
+	proc DrawScale(f: Views.Frame; l, t, r, b, clipL, clipR: integer) 
 		var 
 			u, h, x, px, sw: integer
 			i, n, d1, d2: integer
-			s: array 32 of char
+			s: array 32 of wchar
 	begin 
 		f.DrawRect(l, t, r, b, Ports.fill, Ports.grey12)
 		u := f.dot
@@ -1275,7 +1275,7 @@ module TextRulers
 		end 
 	end DrawScale
 	
-	proc InvertTabMark(f: Views.Frame; l, t, r, b: integer; type_: set; show: boolean)
+	proc InvertTabMark(f: Views.Frame; l, t, r, b: integer; type_: set; show: boolean) 
 		var 
 			u, u3, u6, x, left, top, right, bottom: integer
 	begin 
@@ -1314,7 +1314,7 @@ module TextRulers
 		end 
 	end InvertTabMark
 	
-	proc InvertFirstMark(f: Views.Frame; l, t, r, b: integer; show: boolean)
+	proc InvertFirstMark(f: Views.Frame; l, t, r, b: integer; show: boolean) 
 		var 
 			u, i, ih: integer
 	begin 
@@ -1333,7 +1333,7 @@ module TextRulers
 		end 
 	end InvertFirstMark
 	
-	proc InvertLeftMark(f: Views.Frame; l, t, r, b: integer; show: boolean)
+	proc InvertLeftMark(f: Views.Frame; l, t, r, b: integer; show: boolean) 
 		var 
 			u, i, ih: integer
 	begin 
@@ -1352,7 +1352,7 @@ module TextRulers
 		end 
 	end InvertLeftMark
 	
-	proc InvertRightMark(f: Views.Frame; l, t, r, b: integer; show: boolean)
+	proc InvertRightMark(f: Views.Frame; l, t, r, b: integer; show: boolean) 
 		var 
 			u, i, ih: integer
 	begin 
@@ -1383,7 +1383,7 @@ module TextRulers
 	
 	// marks
 	
-	proc SetMark(var m: Mark; r: StdRuler; px, py: integer; kind, index: integer)
+	proc SetMark(var m: Mark; r: StdRuler; px, py: integer; kind, index: integer) 
 	begin 
 		m.ruler := r
 		m.kind := kind
@@ -1421,7 +1421,7 @@ module TextRulers
 		end 
 	end SetMark
 	
-	proc Try(var m: Mark; r: StdRuler; px, py, x, y: integer; kind, index: integer)
+	proc Try(var m: Mark; r: StdRuler; px, py, x, y: integer; kind, index: integer) 
 	begin 
 		if m.kind = invalid then
 			SetMark(m, r, px, py, kind, index)
@@ -1440,7 +1440,7 @@ module TextRulers
 		end 
 	end Try
 	
-	proc InvertMark(var m: Mark; f: Views.Frame; show: boolean)
+	proc InvertMark(var m: Mark; f: Views.Frame; show: boolean) 
 	// pre: kind # invalid
 	begin 
 		case m.kind of 
@@ -1455,12 +1455,12 @@ module TextRulers
 		end 
 	end InvertMark
 	
-	proc HiliteMark(var m: Mark; f: Views.Frame; show: boolean)
+	proc HiliteMark(var m: Mark; f: Views.Frame; show: boolean) 
 	begin 
 		f.MarkRect(m.l, m.t, m.r - point, m.b - point, Ports.fill, Ports.hilite, show)
 	end HiliteMark
 	
-	proc HiliteThisMark(r: StdRuler; f: Views.Frame; kind: integer; show: boolean)
+	proc HiliteThisMark(r: StdRuler; f: Views.Frame; kind: integer; show: boolean) 
 		var 
 			m: Mark
 			px, w, h: integer
@@ -1473,7 +1473,7 @@ module TextRulers
 		end 
 	end HiliteThisMark
 	
-	proc DrawMark(var m: Mark; f: Views.Frame)
+	proc DrawMark(var m: Mark; f: Views.Frame) 
 		// pre: kind # invalid
 		var 
 			a: Attributes
@@ -1592,7 +1592,7 @@ module TextRulers
 	
 	proc GetMark(var m: Mark; r: StdRuler; f: Views.Frame
 		x, y: integer; canCreate: boolean
-		)
+		) 
 		// pre: ~canCreate OR (f # NIL)
 		var 
 			a: Attributes
@@ -1654,14 +1654,14 @@ module TextRulers
 		end 
 	end GetMark
 	
-	proc SelectMark(r: StdRuler; f: Views.Frame; in m: Mark)
+	proc SelectMark(r: StdRuler; f: Views.Frame; in m: Mark) 
 	begin 
 		r.sel := m.kind
 		r.px := m.px
 		r.py := m.py
 	end SelectMark
 	
-	proc DeselectMark(r: StdRuler; f: Views.Frame)
+	proc DeselectMark(r: StdRuler; f: Views.Frame) 
 	begin 
 		HiliteThisMark(r, f, r.sel, Ports.hide)
 		r.sel := invalid
@@ -1670,7 +1670,7 @@ module TextRulers
 	
 	// mark interaction
 	
-	proc Mode(r: StdRuler): integer
+	proc Mode(r: StdRuler): integer 
 		var 
 			a: Attributes
 			i: integer
@@ -1688,7 +1688,7 @@ module TextRulers
 		return i
 	end Mode
 	
-	proc GrabMark(var m: Mark; r: StdRuler; f: Views.Frame; x, y: integer; canCreate: boolean)
+	proc GrabMark(var m: Mark; r: StdRuler; f: Views.Frame; x, y: integer; canCreate: boolean) 
 	begin 
 		GetMark(m, r, f, x, y, canCreate)
 		DeselectMark(r, f)
@@ -1697,7 +1697,7 @@ module TextRulers
 		end 
 	end GrabMark
 	
-	proc TrackMark(var m: Mark; f: Views.Frame; x, y: integer; modifiers: set)
+	proc TrackMark(var m: Mark; f: Views.Frame; x, y: integer; modifiers: set) 
 		var 
 			px, py, w, h: integer
 	begin 
@@ -1754,7 +1754,7 @@ module TextRulers
 		end 
 	end TrackMark
 	
-	proc ShiftMarks(a: Attributes; p: Prop; mask: set; x0, dx: integer)
+	proc ShiftMarks(a: Attributes; p: Prop; mask: set; x0, dx: integer) 
 		var 
 			new_: set
 			i, j, t0, t1: integer
@@ -1810,7 +1810,7 @@ module TextRulers
 		end 
 	end ShiftMarks
 	
-	proc ShiftDependingMarks(var m: Mark; p: Prop)
+	proc ShiftDependingMarks(var m: Mark; p: Prop) 
 		var 
 			a: Attributes
 			dx, i: integer
@@ -1833,7 +1833,7 @@ module TextRulers
 		end 
 	end ShiftDependingMarks
 	
-	proc AdjustMarks(var m: Mark; f: Views.Frame; modifiers: set)
+	proc AdjustMarks(var m: Mark; f: Views.Frame; modifiers: set) 
 		var 
 			r: StdRuler
 			a: Attributes
@@ -2005,7 +2005,7 @@ module TextRulers
 		end 
 	end AdjustMarks
 	
-	proc OpenTabDlg(r: Ruler; tabIndex: integer)
+	proc OpenTabDlg(r: Ruler; tabIndex: integer) 
 		var 
 			tc: Kernel.Module
 	begin 
@@ -2017,7 +2017,7 @@ module TextRulers
 		end 
 	end OpenTabDlg
 	
-	proc InitTabDlg(r: Ruler; tabIndex: integer)
+	proc InitTabDlg(r: Ruler; tabIndex: integer) 
 	begin 
 		if tabDialogHook # nil then
 			tabDialogHook.Init(r, min(tabIndex, r.style.attr.tabs.len_ - 1)) 
@@ -2026,13 +2026,13 @@ module TextRulers
 	
 	// primitivies for standard ruler
 	
-	proc Track(r: StdRuler; f: Views.Frame; in msg: Controllers.TrackMsg)
+	proc Track(r: StdRuler; f: Views.Frame; in msg: Controllers.TrackMsg) 
 		var 
 			m: Mark
 			x, y, res: integer
 			modifiers: set
 			isDown: boolean
-			cmd: array 128 of char
+			cmd: array 128 of wchar
 			popup: boolean
 	begin 
 		popup := Controllers.popup in msg.modifiers
@@ -2066,7 +2066,7 @@ module TextRulers
 		end 
 	end Track
 	
-	proc Edit(r: StdRuler; f: Views.Frame; var msg: Controllers.EditMsg)
+	proc Edit(r: StdRuler; f: Views.Frame; var msg: Controllers.EditMsg) 
 		var 
 			v: Views.View
 	begin 
@@ -2084,7 +2084,7 @@ module TextRulers
 		end 
 	end Edit
 	
-	proc PollOps(r: StdRuler; f: Views.Frame; var msg: Controllers.PollOpsMsg)
+	proc PollOps(r: StdRuler; f: Views.Frame; var msg: Controllers.PollOpsMsg) 
 	begin 
 		msg.type_ := "TextRulers.Ruler"
 		msg.pasteType := "TextRulers.Ruler"
@@ -2092,7 +2092,7 @@ module TextRulers
 		msg.valid := {Controllers.copy_, Controllers.paste}
 	end PollOps
 	
-	proc SetProp(r: StdRuler; var msg: Properties.SetMsg; var requestFocus: boolean)
+	proc SetProp(r: StdRuler; var msg: Properties.SetMsg; var requestFocus: boolean) 
 		var 
 			a1: Attributes
 			px, py, g: integer
@@ -2146,7 +2146,7 @@ module TextRulers
 		end 
 	end SetProp
 	
-	proc PollProp(r: StdRuler; var msg: Properties.PollMsg)
+	proc PollProp(r: StdRuler; var msg: Properties.PollMsg) 
 		var 
 			p: Properties.StdProp
 	begin 
@@ -2173,7 +2173,7 @@ module TextRulers
 	
 	// StdStyle
 	
-	proc (r: StdStyle) Internalize(var rd: Stores.Reader)
+	proc (r: StdStyle) Internalize(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
@@ -2184,7 +2184,7 @@ module TextRulers
 		rd.ReadVersion(minVersion, maxStdStyleVersion, thisVersion)
 	end Internalize
 	
-	proc (r: StdStyle) Externalize(var wr: Stores.Writer)
+	proc (r: StdStyle) Externalize(var wr: Stores.Writer) 
 	begin 
 		r.Externalize^(wr)
 		wr.WriteVersion(maxStdStyleVersion)
@@ -2198,7 +2198,7 @@ module TextRulers
 	
 	// StdRuler
 	
-	proc (r: StdRuler) Internalize(var rd: Stores.Reader)
+	proc (r: StdRuler) Internalize(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
@@ -2213,24 +2213,24 @@ module TextRulers
 		r.sel := invalid
 	end Internalize
 	
-	proc (r: StdRuler) Externalize(var wr: Stores.Writer)
+	proc (r: StdRuler) Externalize(var wr: Stores.Writer) 
 	begin 
 		r.Externalize^(wr)
 		wr.WriteVersion(maxStdRulerVersion)
 	end Externalize
 	
-	proc (r: StdRuler) ThisModel(): Models.Model
+	proc (r: StdRuler) ThisModel(): Models.Model 
 	begin 
 		return r.style
 	end ThisModel
 	
-	proc (r: StdRuler) CopyFromModelView(source: Views.View; model: Models.Model)
+	proc (r: StdRuler) CopyFromModelView(source: Views.View; model: Models.Model) 
 	begin 
 		r.sel := invalid
 		r.InitStyle(model(Style))
 	end CopyFromModelView
 	
-	proc (ruler: StdRuler) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (ruler: StdRuler) Restore(f: Views.Frame; l, t, r, b: integer) 
 		var 
 			a: Attributes
 			m: Mark
@@ -2274,12 +2274,12 @@ module TextRulers
 		HiliteThisMark(ruler, f, Mode(ruler), Ports.show)
 	end Restore
 	
-	proc (ruler: StdRuler) RestoreMarks(f: Views.Frame; l, t, r, b: integer)
+	proc (ruler: StdRuler) RestoreMarks(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		HiliteThisMark(ruler, f, ruler.sel, Ports.show)
 	end RestoreMarks
 	
-	proc (r: StdRuler) GetBackground(var color: Ports.Color)
+	proc (r: StdRuler) GetBackground(var color: Ports.Color) 
 	begin 
 		color := Ports.background
 	end GetBackground
@@ -2291,7 +2291,7 @@ module TextRulers
 		Views.Broadcast(r, msg)
 	end Neutralize
 	
-	proc (r: StdRuler) HandleModelMsg(var msg: Models.Message)
+	proc (r: StdRuler) HandleModelMsg(var msg: Models.Message) 
 	begin 
 		with msg: UpdateMsg do 
 			Views.Update(r, Views.keepFrames) 
@@ -2299,7 +2299,7 @@ module TextRulers
 		end 
 	end HandleModelMsg
 	
-	proc (r: StdRuler) HandleViewMsg(f: Views.Frame; var msg: Views.Message)
+	proc (r: StdRuler) HandleViewMsg(f: Views.Frame; var msg: Views.Message) 
 	begin 
 		with msg: NeutralizeMsg do 
 			DeselectMark(r, f) 
@@ -2309,7 +2309,7 @@ module TextRulers
 	
 	proc (r: StdRuler) HandleCtrlMsg(f: Views.Frame
 		var msg: Controllers.Message; var focus: Views.View
-		)
+		) 
 		var 
 			requestFocus: boolean
 	begin 
@@ -2335,7 +2335,7 @@ module TextRulers
 		end 
 	end HandleCtrlMsg
 	
-	proc (r: StdRuler) HandlePropMsg(var msg: Properties.Message)
+	proc (r: StdRuler) HandlePropMsg(var msg: Properties.Message) 
 		var 
 			m: Mark
 			requestFocus: boolean
@@ -2368,7 +2368,7 @@ module TextRulers
 	
 	// StdDirectory
 	
-	proc (d: StdDirectory) NewStyle(attr: Attributes): Style
+	proc (d: StdDirectory) NewStyle(attr: Attributes): Style 
 		var 
 			s: StdStyle
 	begin 
@@ -2380,7 +2380,7 @@ module TextRulers
 		return s
 	end NewStyle
 	
-	proc (d: StdDirectory) New(style: Style): Ruler
+	proc (d: StdDirectory) New(style: Style): Ruler 
 		var 
 			r: StdRuler
 	begin 
@@ -2398,7 +2398,7 @@ module TextRulers
 	
 	proc GetValidRuler*(text: TextModels.Model; pos, hint: integer
 		var ruler: Ruler; var rpos: integer
-		)
+		) 
 		// pre: (hint < 0   OR   (ruler, rpos) is first ruler before hint  &  0 <= pos <= t.Length()
 		(* post: hint < rpos <= pos & rpos = Pos(ruler) & (no ruler in (rpos, pos])
 		   OR   ((ruler, rpos) unmodified) *)
@@ -2423,7 +2423,7 @@ module TextRulers
 		end 
 	end GetValidRuler
 	
-	proc SetDir*(d: Directory)
+	proc SetDir*(d: Directory) 
 	// pre: d # NIL, d.attr # NIL
 	// post: dir = d
 	begin 
@@ -2483,17 +2483,17 @@ module TextRulers
 		globRd := nil
 	end Cleaner
 	
-	proc GetRadixChar*(a: Attributes; tabIndex: integer): char
+	proc GetRadixChar*(a: Attributes; tabIndex: integer): wchar 
 	begin 
 		return a.tabsData[tabIndex]
 	end GetRadixChar
 	
-	proc SetRadixChar*(a: Attributes; tabIndex: integer; radixChar: char)
+	proc SetRadixChar*(a: Attributes; tabIndex: integer; radixChar: wchar) 
 	begin 
 		a.tabsData[tabIndex] := radixChar
 	end SetRadixChar
 	
-	proc SetRadixCharProp*(p: Prop; tabIndex: integer; radixChar: char)
+	proc SetRadixCharProp*(p: Prop; tabIndex: integer; radixChar: wchar) 
 	begin 
 		p.tabsData[tabIndex] := radixChar
 	end SetRadixCharProp

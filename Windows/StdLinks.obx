@@ -44,24 +44,24 @@ module StdLinks
 		
 		Link* = pointer to record (Views.View) 
 				leftSide-: boolean
-				cmd: pointer to array of char
+				cmd: pointer to array of wchar
 				close: integer 
 			end 
 		
 		Target* = pointer to record (Views.View) 
 				leftSide-: boolean
-				ident: pointer to array of char 
+				ident: pointer to array of wchar 
 			end 
 		
 		Prop* = pointer to record (Properties.Property) 
-				cmd*: pointer to array of char
+				cmd*: pointer to array of wchar
 				link-: boolean
 				close*: integer 
 			end 
 		
 		ChangeAttrOp = pointer to record (Stores.Operation) 
 				v: Views.View
-				cmd: pointer to array of char
+				cmd: pointer to array of wchar
 				close: integer
 				valid: set 
 			end 
@@ -74,14 +74,14 @@ module StdLinks
 		dir-, stdDir-: Directory
 		par-: Link
 		iconFont: Fonts.Typeface
-		linkLeft, linkRight, targetLeft, targetRight: array 3 of char
+		linkLeft, linkRight, targetLeft, targetRight: array 3 of wchar
 		coloredBackg: boolean
 		
 		cleaner: TrapCleaner
 		
 		dialog*: record 
-				cmd*: array 512 of char
-				type_-: array 32 of char
+				cmd*: array 512 of wchar
+				type_-: array 32 of wchar
 				close*: Dialog.List
 				known, valid: set
 				readOnly: boolean  // if container is read only
@@ -97,7 +97,7 @@ module StdLinks
 	
 	// Properties
 	
-	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean)
+	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean) 
 		var 
 			valid: set
 	begin 
@@ -123,7 +123,7 @@ module StdLinks
 	proc (op: ChangeAttrOp) Do
 		var 
 			v: Views.View
-			s: pointer to array of char
+			s: pointer to array of wchar
 			c: integer
 	begin 
 		v := op.v
@@ -148,7 +148,7 @@ module StdLinks
 		end 
 	end Do
 	
-	proc DoChangeAttrOp(v: Views.View; s: pointer to array of char; c: integer; valid: set)
+	proc DoChangeAttrOp(v: Views.View; s: pointer to array of wchar; c: integer; valid: set) 
 		var 
 			op: ChangeAttrOp
 	begin 
@@ -160,12 +160,12 @@ module StdLinks
 		end 
 		if cmd in valid then
 			new(op.cmd, len(s) + 1)
-			op.cmd^ := s 
+			op.cmd^ := s^ 
 		end 
 		Views.Do(v, "#Std:LinkChange", op)
 	end DoChangeAttrOp
 	
-	proc SetProp(v: Views.View; msg: Properties.SetMsg)
+	proc SetProp(v: Views.View; msg: Properties.SetMsg) 
 		var 
 			p: Properties.Property
 	begin 
@@ -181,7 +181,7 @@ module StdLinks
 		end 
 	end SetProp
 	
-	proc PollProp(v: Views.View; var msg: Properties.PollMsg)
+	proc PollProp(v: Views.View; var msg: Properties.PollMsg) 
 		var 
 			p: Prop
 	begin 
@@ -240,7 +240,7 @@ module StdLinks
 		Dialog.Update(dialog)
 	end InitDialog
 	
-	proc SetGuard*(var par: Dialog.Par)
+	proc SetGuard*(var par: Dialog.Par) 
 	begin 
 		if dialog.readOnly then
 			par.disabled := true 
@@ -262,7 +262,7 @@ module StdLinks
 		fingerprint := 0 // force actualization of fields
 	end Set
 	
-	proc LinkGuard*(var par: Dialog.Par)
+	proc LinkGuard*(var par: Dialog.Par) 
 	begin 
 		if dialog.known # {} then
 			if close in dialog.known then
@@ -273,7 +273,7 @@ module StdLinks
 		end 
 	end LinkGuard
 	
-	proc CmdGuard*(var par: Dialog.Par)
+	proc CmdGuard*(var par: Dialog.Par) 
 		var 
 			c: Containers.Controller
 			v: Views.View
@@ -301,7 +301,7 @@ module StdLinks
 		Controllers.ResetCurrentPath()
 	end CmdGuard
 	
-	proc CloseGuard*(var par: Dialog.Par)
+	proc CloseGuard*(var par: Dialog.Par) 
 	begin 
 		if ~(close in dialog.known) then
 			par.disabled := true 
@@ -313,28 +313,28 @@ module StdLinks
 		end 
 	end CloseGuard
 	
-	proc Notifier*(idx, op, from, to_: integer)
+	proc Notifier*(idx, op, from, to_: integer) 
 	begin 
 		if op = Dialog.changed then
 			incl(dialog.valid, idx) 
 		end 
 	end Notifier
 	
-	proc (d: Directory) NewLink*(in cmd: array of char): Link end // new abstract
-	proc (d: Directory) NewTarget*(in ident: array of char): Target end // new abstract
+	proc (d: Directory) NewLink*(in cmd: array of wchar): Link  end // new abstract
+	proc (d: Directory) NewTarget*(in ident: array of wchar): Target  end // new abstract
 	
 	
-	proc InFrame(f: Views.Frame; x, y: integer): boolean
+	proc InFrame(f: Views.Frame; x, y: integer): boolean 
 	begin 
 		return (f.l <= x) & (x < f.r) & (f.t <= y) & (y < f.b)
 	end InFrame
 	
-	proc Mark(f: Views.Frame; show: boolean)
+	proc Mark(f: Views.Frame; show: boolean) 
 	begin 
 		f.MarkRect(f.l, f.t, f.r, f.b, Ports.fill, Ports.hilite, show)
 	end Mark
 	
-	proc ThisPos(v: TextViews.View; f: Views.Frame; x, y: integer): integer
+	proc ThisPos(v: TextViews.View; f: Views.Frame; x, y: integer): integer 
 		// "corrected" v.ThisPos: does not adjust position when crossing 50% boundary of characters
 		var 
 			loc: TextViews.Location
@@ -348,7 +348,7 @@ module StdLinks
 		return pos
 	end ThisPos
 	
-	proc GetLinkPair(this: Link; var l, r: Link)
+	proc GetLinkPair(this: Link; var l, r: Link) 
 		// POST: BalancedPair(l, r) & (l # r) & (l = this OR r = this) OR  (l = r = NIL)
 		var 
 			t: TextModels.Model
@@ -398,7 +398,7 @@ module StdLinks
 		end 
 	end GetLinkPair
 	
-	proc GetTargetPair(this: Target; var l, r: Target)
+	proc GetTargetPair(this: Target; var l, r: Target) 
 		// POST: BalancedPair(l, r) & (l # r) & (l = this OR r = this) OR  (l = r = NIL)
 		var 
 			t: TextModels.Model
@@ -448,13 +448,13 @@ module StdLinks
 		end 
 	end GetTargetPair
 	
-	proc GetRange(l, r: Views.View; var beg, end_: integer)
+	proc GetRange(l, r: Views.View; var beg, end_: integer) 
 	begin 
 		beg := l.context(TextModels.Context).Pos()
 		end_ := r.context(TextModels.Context).Pos() + 1
 	end GetRange
 	
-	proc MarkRange(v: TextViews.View; f: Views.Frame; beg, end_: integer; show: boolean)
+	proc MarkRange(v: TextViews.View; f: Views.Frame; beg, end_: integer; show: boolean) 
 		var 
 			b, e: TextViews.Location
 			r, t: integer
@@ -477,7 +477,7 @@ module StdLinks
 		end 
 	end MarkRange
 	
-	proc Reveal(left, right: Views.View; str: array of char; opname: Stores.OpName)
+	proc Reveal(left, right: Views.View; str: array of wchar; opname: Stores.OpName) 
 		var 
 			con: TextModels.Context
 			t: TextModels.Model
@@ -511,7 +511,7 @@ module StdLinks
 		Models.EndScript(t, op)
 	end Reveal
 	
-	proc RevealCmd(v: Link)
+	proc RevealCmd(v: Link) 
 		var 
 			left, right: Link
 	begin 
@@ -525,7 +525,7 @@ module StdLinks
 		end 
 	end RevealCmd
 	
-	proc RevealTarget(targ: Target)
+	proc RevealTarget(targ: Target) 
 		var 
 			left, right: Target
 	begin 
@@ -539,7 +539,7 @@ module StdLinks
 		end 
 	end RevealTarget
 	
-	proc CallCmd(v: Link; close: boolean)
+	proc CallCmd(v: Link; close: boolean) 
 		var 
 			res: integer
 	begin 
@@ -555,7 +555,7 @@ module StdLinks
 		Kernel.PopTrapCleaner(cleaner)
 	end CallCmd
 	
-	proc TrackSingle(f: Views.Frame; var in_: boolean)
+	proc TrackSingle(f: Views.Frame; var in_: boolean) 
 		var 
 			x, y: integer
 			modifiers: set
@@ -576,7 +576,7 @@ module StdLinks
 	end TrackSingle
 	
 	proc TrackRange(v: TextViews.View; f: Views.Frame; l, r: Views.View; x, y: integer
-		var in_: boolean)
+		var in_: boolean) 
 		var 
 			pos, beg, end_: integer
 			modifiers: set
@@ -602,10 +602,10 @@ module StdLinks
 	end TrackRange
 	
 	proc OpenProperties(l, r: Views.View; c: TextControllers.Controller
-		in type_, cmd: array of char; close: integer; known: set)
+		in type_, cmd: array of wchar; close: integer; known: set) 
 		var 
 			beg, end_, res: integer
-			linksProp: array 256 of char
+			linksProp: array 256 of wchar
 	begin 
 		GetRange(l, r, beg, end_)
 		c.SetSelection(beg, end_)
@@ -624,7 +624,7 @@ module StdLinks
 	end OpenProperties
 	
 	proc Track(v: Link; f: Views.Frame; c: TextControllers.Controller
-		x, y: integer; modifiers: set)
+		x, y: integer; modifiers: set) 
 		// PRE: (c # NIL) & (f.view.ThisModel() = v.context.ThisModel())  OR  (c = NIL) & (f.view = v)
 		var 
 			l, r: Link
@@ -655,7 +655,7 @@ module StdLinks
 	end Track
 	
 	proc TrackTarget(targ: Target; f: Views.Frame; c: TextControllers.Controller
-		x, y: integer; modifiers: set)
+		x, y: integer; modifiers: set) 
 		var 
 			in_: boolean
 			l, r: Target
@@ -682,7 +682,7 @@ module StdLinks
 		end 
 	end TrackTarget
 	
-	proc (v: Link) CopyFromSimpleView-(source: Views.View)
+	proc (v: Link) CopyFromSimpleView-(source: Views.View) 
 	begin 
 		with source: Link do 
 			assert(source.leftSide = (source.cmd # nil), 100)
@@ -697,7 +697,7 @@ module StdLinks
 		end 
 	end CopyFromSimpleView
 	
-	proc (t: Target) CopyFromSimpleView-(source: Views.View)
+	proc (t: Target) CopyFromSimpleView-(source: Views.View) 
 	begin 
 		with source: Target do 
 			assert(source.leftSide = (source.ident # nil), 100)
@@ -711,7 +711,7 @@ module StdLinks
 		end 
 	end CopyFromSimpleView
 	
-	proc (v: Link) Internalize-(var rd: Stores.Reader)
+	proc (v: Link) Internalize-(var rd: Stores.Reader) 
 		var 
 			len_, version, pos: integer
 	begin 
@@ -750,10 +750,10 @@ module StdLinks
 		end 
 	end Internalize
 	
-	proc HasWideChars(in s: array of char): boolean
+	proc HasWideChars(in s: array of wchar): boolean 
 		var 
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		ch := s[0]
@@ -768,7 +768,7 @@ module StdLinks
 	   0: 'cmd' stored as ASCII, standard closing behavior only
 	   1: like 0 but 'close' attribute added for non-standard closing behavior
 	   2. like 1 but 'cmd' stored as Unicode *)
-	proc (v: Link) Externalize-(var wr: Stores.Writer)
+	proc (v: Link) Externalize-(var wr: Stores.Writer) 
 		var 
 			pos, version: integer
 	begin 
@@ -804,7 +804,7 @@ module StdLinks
 		end 
 	end Externalize
 	
-	proc (t: Target) Internalize-(var rd: Stores.Reader)
+	proc (t: Target) Internalize-(var rd: Stores.Reader) 
 		var 
 			len_, version: integer
 	begin 
@@ -834,7 +834,7 @@ module StdLinks
 	(* version history for left side Target:
 	   0: 'ident' stored as ASCII
 	   1: like 0 but 'ident' stored as Unicode *)
-	proc (t: Target) Externalize-(var wr: Stores.Writer)
+	proc (t: Target) Externalize-(var wr: Stores.Writer) 
 		var 
 			version: integer
 	begin 
@@ -858,7 +858,7 @@ module StdLinks
 		end 
 	end Externalize
 	
-	proc RestoreView(v: Views.View; f: Views.Frame; icon: array of char)
+	proc RestoreView(v: Views.View; f: Views.Frame; icon: array of wchar) 
 		var 
 			c: Models.Context
 			a: TextModels.Attributes
@@ -882,7 +882,7 @@ module StdLinks
 		f.DrawString(1 * Ports.mm div 2, asc, color, icon, font)
 	end RestoreView
 	
-	proc (v: Link) Restore*(f: Views.Frame; l, t, r, b: integer)
+	proc (v: Link) Restore*(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		if v.leftSide then
 			RestoreView(v, f, linkLeft) 
@@ -891,7 +891,7 @@ module StdLinks
 		end 
 	end Restore
 	
-	proc (targ: Target) Restore*(f: Views.Frame; l, t, r, b: integer)
+	proc (targ: Target) Restore*(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		if targ.leftSide then
 			RestoreView(targ, f, targetLeft) 
@@ -900,7 +900,7 @@ module StdLinks
 		end 
 	end Restore
 	
-	proc SizePref(v: Views.View; icon: array of char; var msg: Properties.SizePref)
+	proc SizePref(v: Views.View; icon: array of wchar; var msg: Properties.SizePref) 
 		var 
 			c: Models.Context
 			a: TextModels.Attributes
@@ -919,7 +919,7 @@ module StdLinks
 		msg.h := asc + dsc
 	end SizePref
 	
-	proc (v: Link) HandlePropMsg-(var msg: Properties.Message)
+	proc (v: Link) HandlePropMsg-(var msg: Properties.Message) 
 		var 
 			a: TextModels.Attributes
 			c: Models.Context
@@ -967,7 +967,7 @@ module StdLinks
 		end 
 	end HandlePropMsg
 	
-	proc (targ: Target) HandlePropMsg-(var msg: Properties.Message)
+	proc (targ: Target) HandlePropMsg-(var msg: Properties.Message) 
 		var 
 			a: TextModels.Attributes
 			c: Models.Context
@@ -1016,7 +1016,7 @@ module StdLinks
 	end HandlePropMsg
 	
 	proc isHot(v: Views.View; f: Views.Frame; leftSide: boolean; c: TextControllers.Controller
-		x, y: integer; mod_: set): boolean
+		x, y: integer; mod_: set): boolean 
 		var 
 			pos, beg, end_: integer
 	begin 
@@ -1038,7 +1038,7 @@ module StdLinks
 	end isHot
 	
 	proc (v: Link) HandleCtrlMsg*(f: Views.Frame
-		var msg: Controllers.Message; var focus: Views.View)
+		var msg: Controllers.Message; var focus: Views.View) 
 	begin 
 		with msg: Controllers.PollCursorMsg do 
 			msg.cursor := Ports.refCursor 
@@ -1059,7 +1059,7 @@ module StdLinks
 	end HandleCtrlMsg
 	
 	proc (targ: Target) HandleCtrlMsg*(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 	begin 
 		with msg: Controllers.TrackMsg do 
 			TrackTarget(targ, f, nil, msg.x, msg.y, msg.modifiers) 
@@ -1073,28 +1073,28 @@ module StdLinks
 		end 
 	end HandleCtrlMsg
 	
-	proc (v: Link) GetCmd*(var cmd: array of char) // new
+	proc (v: Link) GetCmd*(var cmd: array of wchar)  // new
 	begin 
 		assert(v.leftSide, 20)
 		assert(v.cmd # nil, 100)
-		cmd := v.cmd
+		cmd := v.cmd^
 	end GetCmd
 	
-	proc (t: Target) GetIdent*(var ident: array of char) // new
+	proc (t: Target) GetIdent*(var ident: array of wchar)  // new
 	begin 
 		assert(t.leftSide, 20)
 		assert(t.ident # nil, 100)
-		ident := t.ident
+		ident := t.ident^
 	end GetIdent
 	
 	// --------------- create commands and menu guards ------------------------
 	
-	proc GetParam(c: TextControllers.Controller; var param: array of char
-		var lbrBeg, lbrEnd, rbrBeg, rbrEnd: integer)
+	proc GetParam(c: TextControllers.Controller; var param: array of wchar
+		var lbrBeg, lbrEnd, rbrBeg, rbrEnd: integer) 
 		var 
 			rd: TextModels.Reader
 			i, beg, end_: integer
-			ch0, ch1, ch2: char
+			ch0, ch1, ch2: wchar
 	begin 
 		param[0] := 0x
 		lbrBeg := -1
@@ -1141,21 +1141,21 @@ module StdLinks
 		end 
 	end GetParam
 	
-	proc CreateGuard*(var par: Dialog.Par)
+	proc CreateGuard*(var par: Dialog.Par) 
 		var 
-			param: array 512 of char
+			param: array 512 of wchar
 			lbrBeg, lbrEnd, rbrBeg, rbrEnd: integer
 	begin 
 		GetParam(TextControllers.Focus(), param, lbrBeg, lbrEnd, rbrBeg, rbrEnd)
 		par.disabled := param = ""
 	end CreateGuard
 	
-	proc InsertionAttr(c: TextControllers.Controller; pos: integer): TextModels.Attributes
+	proc InsertionAttr(c: TextControllers.Controller; pos: integer): TextModels.Attributes 
 		var 
 			rd: TextModels.Reader
 			r: TextRulers.Ruler
 			a: TextModels.Attributes
-			ch: char
+			ch: wchar
 	begin 
 		rd := c.text.NewReader(nil)
 		a := nil
@@ -1173,7 +1173,7 @@ module StdLinks
 			lbrBeg, lbrEnd, rbrBeg, rbrEnd, beg, end_: integer
 			left, right: Link
 			c: TextControllers.Controller
-			cmd: array 512 of char
+			cmd: array 512 of wchar
 			op: Stores.Operation
 			w: TextModels.Writer
 			a: TextModels.Attributes
@@ -1229,7 +1229,7 @@ module StdLinks
 			lbrBeg, lbrEnd, rbrBeg, rbrEnd, beg, end_: integer
 			left, right: Target
 			c: TextControllers.Controller
-			ident: array 512 of char
+			ident: array 512 of wchar
 			op: Stores.Operation
 			w: TextModels.Writer
 			a: TextModels.Attributes
@@ -1277,7 +1277,7 @@ module StdLinks
 		end 
 	end CreateTarget
 	
-	proc ShowTarget*(in ident: array of char)
+	proc ShowTarget*(in ident: array of wchar) 
 		var 
 			c: TextControllers.Controller
 			rd: TextModels.Reader
@@ -1310,7 +1310,7 @@ module StdLinks
 	
 	// programming interface
 	
-	proc (d: StdDirectory) NewLink(in cmd: array of char): Link
+	proc (d: StdDirectory) NewLink(in cmd: array of wchar): Link 
 		var 
 			link: Link
 			i: integer
@@ -1331,7 +1331,7 @@ module StdLinks
 		return link
 	end NewLink
 	
-	proc (d: StdDirectory) NewTarget(in ident: array of char): Target
+	proc (d: StdDirectory) NewTarget(in ident: array of wchar): Target 
 		var 
 			t: Target
 			i: integer
@@ -1351,7 +1351,7 @@ module StdLinks
 		return t
 	end NewTarget
 	
-	proc SetDir*(d: Directory)
+	proc SetDir*(d: Directory) 
 	begin 
 		assert(d # nil, 20)
 		dir := d

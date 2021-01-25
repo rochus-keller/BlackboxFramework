@@ -124,18 +124,18 @@ module Windows
 	
 	// Window
 	
-	proc (w: Window) Init*(port: Ports.Port) // new
+	proc (w: Window) Init*(port: Ports.Port)  // new
 	begin 
 		assert(w.port = nil, 20)
 		assert(port # nil, 21)
 		w.port := port
 	end Init
 	
-	proc (w: Window) SetTitle*(title: Views.Title) end // new abstract
-	proc (w: Window) GetTitle*(var title: Views.Title) end // new abstract
-	proc (w: Window) RefreshTitle*() end // new abstract
+	proc (w: Window) SetTitle*(title: Views.Title)  end // new abstract
+	proc (w: Window) GetTitle*(var title: Views.Title)  end // new abstract
+	proc (w: Window) RefreshTitle*()  end // new abstract
 	
-	proc (w: Window) SetSpec*(loc: Files.Locator; name: Files.Name; conv: Converters.Converter) // new extensible
+	proc (w: Window) SetSpec*(loc: Files.Locator; name: Files.Name; conv: Converters.Converter)  // new extensible
 		var 
 			u: Window
 	begin 
@@ -148,7 +148,7 @@ module Windows
 		until u = w 
 	end SetSpec
 	
-	proc (w: Window) Restore*(l, t, r, b: integer) // new
+	proc (w: Window) Restore*(l, t, r, b: integer)  // new
 		var 
 			f: Views.Frame
 			u, pw, ph: integer
@@ -179,12 +179,12 @@ module Windows
 		Views.ValidateRoot(w.frame)
 	end Update
 	
-	proc (w: Window) GetSize*(var width, height: integer) // new extensible
+	proc (w: Window) GetSize*(var width, height: integer)  // new extensible
 	begin 
 		w.port.GetSize(width, height)
 	end GetSize
 	
-	proc (w: Window) SetSize*(width, height: integer) // new extensible
+	proc (w: Window) SetSize*(width, height: integer)  // new extensible
 		var 
 			c: Containers.Controller
 			w0, h0: integer
@@ -200,21 +200,21 @@ module Windows
 		end 
 	end SetSize
 	
-	proc (w: Window) BroadcastModelMsg*(var msg: Models.Message) // new extensible
+	proc (w: Window) BroadcastModelMsg*(var msg: Models.Message)  // new extensible
 	begin 
 		if w.frame # nil then
 			Views.BroadcastModelMsg(w.frame, msg) 
 		end 
 	end BroadcastModelMsg
 	
-	proc (w: Window) BroadcastViewMsg*(var msg: Views.Message) // new extensible
+	proc (w: Window) BroadcastViewMsg*(var msg: Views.Message)  // new extensible
 	begin 
 		if w.frame # nil then
 			Views.BroadcastViewMsg(w.frame, msg) 
 		end 
 	end BroadcastViewMsg
 	
-	proc (w: Window) ForwardCtrlMsg*(var msg: Controllers.Message) // new extensible
+	proc (w: Window) ForwardCtrlMsg*(var msg: Controllers.Message)  // new extensible
 	begin 
 		if w.frame # nil then
 			with msg: Controllers.CursorMessage do 
@@ -226,9 +226,9 @@ module Windows
 		end 
 	end ForwardCtrlMsg
 	
-	proc (w: Window) MouseDown*(x, y, time: integer; modifiers: set) end // new abstract
+	proc (w: Window) MouseDown*(x, y, time: integer; modifiers: set)  end // new abstract
 	
-	proc (w: Window) KeyDown*(ch: char; modifiers: set) // new extensible
+	proc (w: Window) KeyDown*(ch: wchar; modifiers: set)  // new extensible
 		var 
 			key: Controllers.EditMsg
 	begin 
@@ -279,7 +279,7 @@ module Windows
 	
 	// Directory
 	
-	proc (d: Directory) NewSequencer*(): Sequencers.Sequencer // new
+	proc (d: Directory) NewSequencer*(): Sequencers.Sequencer  // new
 		var 
 			s: StdSequencer
 	begin 
@@ -289,15 +289,15 @@ module Windows
 	end NewSequencer
 	
 	
-	proc (d: Directory) First*(): Window end // new abstract
-	proc (d: Directory) Next*(w: Window): Window end // new abstract
+	proc (d: Directory) First*(): Window  end // new abstract
+	proc (d: Directory) Next*(w: Window): Window  end // new abstract
 	
-	proc (d: Directory) New*(): Window end // new abstract
+	proc (d: Directory) New*(): Window  end // new abstract
 	
 	proc (d: Directory) Open*(w: Window; doc: Documents.Document
 		flags: set; name: Views.Title
 		loc: Files.Locator; fname: Files.Name
-		conv: Converters.Converter) // new extensible
+		conv: Converters.Converter)  // new extensible
 		
 		var 
 			v: Views.View
@@ -346,7 +346,7 @@ module Windows
 		w.SetSpec(loc, fname, conv)
 	end Open
 	
-	proc (d: Directory) OpenSubWindow*(w: Window; doc: Documents.Document; flags: set; name: Views.Title) // new extensible
+	proc (d: Directory) OpenSubWindow*(w: Window; doc: Documents.Document; flags: set; name: Views.Title)  // new extensible
 		var 
 			u: Window
 			title: Views.Title
@@ -372,12 +372,12 @@ module Windows
 		end 
 	end OpenSubWindow
 	
-	proc (d: Directory) Focus*(target: boolean): Window end // new abstract
-	proc (d: Directory) GetThisWindow*(p: Ports.Port; px, py: integer; var x, y: integer; var w: Window) end // new abstract
-	proc (d: Directory) Select*(w: Window; lazy: boolean) end // new abstract
-	proc (d: Directory) Close*(w: Window) end // new abstract
+	proc (d: Directory) Focus*(target: boolean): Window  end // new abstract
+	proc (d: Directory) GetThisWindow*(p: Ports.Port; px, py: integer; var x, y: integer; var w: Window)  end // new abstract
+	proc (d: Directory) Select*(w: Window; lazy: boolean)  end // new abstract
+	proc (d: Directory) Close*(w: Window)  end // new abstract
 	
-	proc (d: Directory) Update*(w: Window) // new
+	proc (d: Directory) Update*(w: Window)  // new
 		var 
 			u: Window
 	begin 
@@ -392,27 +392,27 @@ module Windows
 		end 
 	end Update
 	
-	proc (d: Directory) GetBounds*(var w, h: integer) end // new abstract
+	proc (d: Directory) GetBounds*(var w, h: integer)  end // new abstract
 	
 	
 	// RootContext
 	
-	proc (c: RootContext) GetSize(var w, h: integer)
+	proc (c: RootContext) GetSize(var w, h: integer) 
 	begin 
 		c.win.port.GetSize(w, h)
 		w := w * c.win.port.unit
 		h := h * c.win.port.unit
 	end GetSize
 	
-	proc (c: RootContext) SetSize(w, h: integer)
+	proc (c: RootContext) SetSize(w, h: integer) 
 	end SetSize
 	
-	proc (c: RootContext) Normalize(): boolean
+	proc (c: RootContext) Normalize(): boolean 
 	begin 
 		return true
 	end Normalize
 	
-	proc (c: RootContext) ThisModel(): Models.Model
+	proc (c: RootContext) ThisModel(): Models.Model 
 	begin 
 		return nil
 	end ThisModel
@@ -420,7 +420,7 @@ module Windows
 	
 	// sequencing utilities
 	
-	proc Prepend(s: Script; st: Stores.Store; in name: Stores.OpName; op: Stores.Operation)
+	proc Prepend(s: Script; st: Stores.Store; in name: Stores.OpName; op: Stores.Operation) 
 		var 
 			e: OpElem
 	begin 
@@ -433,19 +433,19 @@ module Windows
 		s.list := e
 	end Prepend
 	
-	proc Push(var list, e: OpElem)
+	proc Push(var list, e: OpElem) 
 	begin 
 		e.next := list
 		list := e
 	end Push
 	
-	proc Pop(var list, e: OpElem)
+	proc Pop(var list, e: OpElem) 
 	begin 
 		e := list
 		list := list.next
 	end Pop
 	
-	proc Reduce(var list: OpElem; max_: integer)
+	proc Reduce(var list: OpElem; max_: integer) 
 		var 
 			e: OpElem
 	begin 
@@ -459,7 +459,7 @@ module Windows
 		end 
 	end Reduce
 	
-	proc (r: Reducer) Reduce(full: boolean)
+	proc (r: Reducer) Reduce(full: boolean) 
 		var 
 			e: OpElem
 			n: integer
@@ -492,7 +492,7 @@ module Windows
 		Kernel.InstallReducer(r)
 	end Reduce
 	
-	proc Reset(s: StdSequencer)
+	proc Reset(s: StdSequencer) 
 	begin 
 		s.trapEra := Kernel.trapCount
 		if (s.entryLevel # 0) or (s.nestLevel # 0) then
@@ -511,7 +511,7 @@ module Windows
 		end 
 	end Reset
 	
-	proc Neutralize(st: Stores.Store)
+	proc Neutralize(st: Stores.Store) 
 		var 
 			neutralize: Models.NeutralizeMsg
 	begin 
@@ -525,7 +525,7 @@ module Windows
 		end 
 	end Neutralize
 	
-	proc Do(s: StdSequencer; st: Stores.Store; op: Stores.Operation)
+	proc Do(s: StdSequencer; st: Stores.Store; op: Stores.Operation) 
 	begin 
 		inc(s.entryLevel)
 		s.lastSt := nil
@@ -535,7 +535,7 @@ module Windows
 		dec(s.entryLevel)
 	end Do
 	
-	proc AffectsDoc(s: StdSequencer; st: Stores.Store): boolean
+	proc AffectsDoc(s: StdSequencer; st: Stores.Store): boolean 
 		var 
 			v, w: Window
 	begin 
@@ -574,7 +574,7 @@ module Windows
 	
 	// StdSequencer
 	
-	proc (s: StdSequencer) Handle(var msg: ANYREC)
+	proc (s: StdSequencer) Handle(var msg: ANYREC) 
 		// send message to all windows attached to s
 		var 
 			w: Window
@@ -611,12 +611,12 @@ module Windows
 	end Handle
 	
 	
-	proc (s: StdSequencer) Dirty(): boolean
+	proc (s: StdSequencer) Dirty(): boolean 
 	begin 
 		return s.modLevel > 0
 	end Dirty
 	
-	proc (s: StdSequencer) SetDirty(dirty: boolean)
+	proc (s: StdSequencer) SetDirty(dirty: boolean) 
 	begin 
 		if dirty then
 			inc(s.modLevel) 
@@ -625,7 +625,7 @@ module Windows
 		end 
 	end SetDirty
 	
-	proc (s: StdSequencer) LastOp(st: Stores.Store): Stores.Operation
+	proc (s: StdSequencer) LastOp(st: Stores.Store): Stores.Operation 
 	begin 
 		assert(st # nil, 20)
 		if s.lastSt = st then
@@ -636,7 +636,7 @@ module Windows
 	end LastOp
 	
 	
-	proc (s: StdSequencer) BeginScript(in name: Stores.OpName; var script: Stores.Operation)
+	proc (s: StdSequencer) BeginScript(in name: Stores.OpName; var script: Stores.Operation) 
 		var 
 			sop: Script
 	begin 
@@ -658,7 +658,7 @@ module Windows
 		script := sop
 	end BeginScript
 	
-	proc (s: StdSequencer) Do(st: Stores.Store; in name: Stores.OpName; op: Stores.Operation)
+	proc (s: StdSequencer) Do(st: Stores.Store; in name: Stores.OpName; op: Stores.Operation) 
 		var 
 			e: OpElem
 	begin 
@@ -697,7 +697,7 @@ module Windows
 		end 
 	end Do
 	
-	proc (s: StdSequencer) Bunch(st: Stores.Store)
+	proc (s: StdSequencer) Bunch(st: Stores.Store) 
 		var 
 			lastOp: Stores.Operation
 	begin 
@@ -718,7 +718,7 @@ module Windows
 		end 
 	end Bunch
 	
-	proc (s: StdSequencer) EndScript(script: Stores.Operation)
+	proc (s: StdSequencer) EndScript(script: Stores.Operation) 
 		var 
 			e: OpElem
 	begin 
@@ -770,7 +770,7 @@ module Windows
 		s.lastOp := nil
 	end StopBunching
 	
-	proc (s: StdSequencer) BeginModification(type_: integer; st: Stores.Store)
+	proc (s: StdSequencer) BeginModification(type_: integer; st: Stores.Store) 
 	begin 
 		if s.trapEra # Kernel.trapCount then
 			Reset(s) 
@@ -797,7 +797,7 @@ module Windows
 		end 
 	end BeginModification
 	
-	proc (s: StdSequencer) EndModification(type_: integer; st: Stores.Store)
+	proc (s: StdSequencer) EndModification(type_: integer; st: Stores.Store) 
 	begin 
 		if s.trapEra # Kernel.trapCount then
 			Reset(s) 
@@ -822,7 +822,7 @@ module Windows
 		end 
 	end EndModification
 	
-	proc (s: StdSequencer) CanUndo(): boolean
+	proc (s: StdSequencer) CanUndo(): boolean 
 		var 
 			op: OpElem
 	begin 
@@ -836,7 +836,7 @@ module Windows
 		return op # nil
 	end CanUndo
 	
-	proc (s: StdSequencer) CanRedo(): boolean
+	proc (s: StdSequencer) CanRedo(): boolean 
 		var 
 			op: OpElem
 	begin 
@@ -850,7 +850,7 @@ module Windows
 		return op # nil
 	end CanRedo
 	
-	proc (s: StdSequencer) GetUndoName(var name: Stores.OpName)
+	proc (s: StdSequencer) GetUndoName(var name: Stores.OpName) 
 		var 
 			op: OpElem
 	begin 
@@ -868,7 +868,7 @@ module Windows
 		end 
 	end GetUndoName
 	
-	proc (s: StdSequencer) GetRedoName(var name: Stores.OpName)
+	proc (s: StdSequencer) GetRedoName(var name: Stores.OpName) 
 		var 
 			op: OpElem
 	begin 
@@ -932,7 +932,7 @@ module Windows
 	
 	// Forwarder
 	
-	proc (f: Forwarder) Forward(target: boolean; var msg: Controllers.Message)
+	proc (f: Forwarder) Forward(target: boolean; var msg: Controllers.Message) 
 		var 
 			w: Window
 	begin 
@@ -942,7 +942,7 @@ module Windows
 		end 
 	end Forward
 	
-	proc (f: Forwarder) Transfer(var msg: Controllers.TransferMessage)
+	proc (f: Forwarder) Transfer(var msg: Controllers.TransferMessage) 
 		var 
 			w: Window
 			h: Views.Frame
@@ -969,7 +969,7 @@ module Windows
 	
 	// miscellaneous
 	
-	proc SetDir*(d: Directory)
+	proc SetDir*(d: Directory) 
 	begin 
 		assert(d # nil, 20)
 		if stdDir = nil then
@@ -980,7 +980,7 @@ module Windows
 	
 	// reuse of open documents; relevant flags are isAux, isTool, allowDuplicates
 	proc GetBySpec*(loc: Files.Locator; name: Files.Name; conv: Converters.Converter
-		flags: set): Window
+		flags: set): Window 
 		var 
 			tool, aux: boolean
 			w: Window
@@ -1003,7 +1003,7 @@ module Windows
 	end GetBySpec
 	
 	proc SelectBySpec*(loc: Files.Locator; name: Files.Name; conv: Converters.Converter
-		flags: set; var done: boolean)
+		flags: set; var done: boolean) 
 		var 
 			w: Window
 	begin 
@@ -1016,11 +1016,11 @@ module Windows
 		end 
 	end SelectBySpec
 	
-	proc SelectByTitle*(v: Views.View; flags: set; title: Views.Title; var done: boolean)
+	proc SelectByTitle*(v: Views.View; flags: set; title: Views.Title; var done: boolean) 
 		var 
 			w: Window
 			t: Views.Title
-			n1, n2: array 64 of char
+			n1, n2: array 64 of wchar
 	begin 
 		done := false
 		if v # nil then
@@ -1049,7 +1049,7 @@ module Windows
 	end SelectByTitle
 	
 	
-	proc (h: Hook) Omnicast(var msg: ANYREC)
+	proc (h: Hook) Omnicast(var msg: ANYREC) 
 		var 
 			w: Window
 	begin 
@@ -1062,7 +1062,7 @@ module Windows
 		end 
 	end Omnicast
 	
-	proc RestoreSequencer(seq: Sequencers.Sequencer)
+	proc RestoreSequencer(seq: Sequencers.Sequencer) 
 		var 
 			w: Window
 	begin 
@@ -1076,7 +1076,7 @@ module Windows
 		end 
 	end RestoreSequencer
 	
-	proc (h: Hook) RestoreDomain(d: Stores.Domain)
+	proc (h: Hook) RestoreDomain(d: Stores.Domain) 
 		var 
 			seq: ANYPTR
 	begin 
@@ -1093,7 +1093,7 @@ module Windows
 	
 	// SequencerDirectory
 	
-	proc (d: SequencerDirectory) New(): Sequencers.Sequencer
+	proc (d: SequencerDirectory) New(): Sequencers.Sequencer 
 	begin 
 		return dir.NewSequencer()
 	end New

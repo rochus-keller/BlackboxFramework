@@ -1315,7 +1315,7 @@ definition WinCtl
 		NMTTDISPINFOW = cstruct 
 				hdr: WinApi.NMHDR
 				lpszText: WinApi.PtrWSTR
-				szText: carray 80 of char
+				szText: carray 80 of wchar
 				hinst: WinApi.HINSTANCE
 				uFlags: set
 				lParam: WinApi.LPARAM 

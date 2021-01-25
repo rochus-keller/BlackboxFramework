@@ -66,7 +66,7 @@ module XhtmlExporter
 				wr: XhtmlWriters.Writer 
 			end 
 	
-	proc Invariant(e: Exporter)
+	proc Invariant(e: Exporter) 
 	begin 
 		assert(e # nil, 100)
 		assert(e.inPara or e.inTable or (e.attr = nil), 101) // (~e.inPara & ~e.inTable) => (e.attr = NIL)
@@ -79,10 +79,10 @@ module XhtmlExporter
 		assert(e.wr # nil, 109)
 	end Invariant
 	
-	proc ColorToString(c: integer; var str: array of char)
+	proc ColorToString(c: integer; var str: array of wchar) 
 		var 
 			red, green, blue: integer
-			h: array 16 of char
+			h: array 16 of wchar
 	begin 
 		red := c mod 256
 		c := c div 256
@@ -101,12 +101,12 @@ module XhtmlExporter
 	
 	
 	
-	proc SetAttr(e: Exporter; newAttr: TextModels.Attributes)
+	proc SetAttr(e: Exporter; newAttr: TextModels.Attributes) 
 		// nesting: <span> <b> <i> text </i> </b> </span>
 		const 
 			bold = (Fonts.normal + Fonts.bold) div 2
 		var 
-			s, tmp: array 256 of char
+			s, tmp: array 256 of wchar
 	begin 
 		if (e.attr # newAttr) & ((e.attr = nil) or (newAttr = nil) or ~e.attr.Equals(newAttr)) then
 			if e.attr # nil then // close all special attributes
@@ -180,10 +180,10 @@ module XhtmlExporter
 		end 
 	end SetAttr
 	
-	proc BeginPara(e: Exporter)
+	proc BeginPara(e: Exporter) 
 		var 
-			attr: array 128 of char
-			str: array 64 of char
+			attr: array 128 of wchar
+			str: array 64 of wchar
 	begin 
 		if ~e.inPara & ~e.inLink & ~e.inTable then
 			e.wr.StartTag("p", XhtmlWriters.preserve)
@@ -235,7 +235,7 @@ module XhtmlExporter
 		end 
 	end BeginPara
 	
-	proc EndPara(e: Exporter)
+	proc EndPara(e: Exporter) 
 	begin 
 		if e.inPara then
 			SetAttr(e, nil)
@@ -245,7 +245,7 @@ module XhtmlExporter
 		end 
 	end EndPara
 	
-	proc Alignment(r: TextRulers.Ruler; tabIndex: integer): integer
+	proc Alignment(r: TextRulers.Ruler; tabIndex: integer): integer 
 		var 
 			a: integer
 			type_: set
@@ -267,7 +267,7 @@ module XhtmlExporter
 		return a
 	end Alignment
 	
-	proc BeginRow(e: Exporter)
+	proc BeginRow(e: Exporter) 
 	begin 
 		if ~e.inRow then
 			assert(~e.inField, 21)
@@ -277,7 +277,7 @@ module XhtmlExporter
 		end 
 	end BeginRow
 	
-	proc BeginField(e: Exporter)
+	proc BeginField(e: Exporter) 
 		var 
 			a: integer
 	begin 
@@ -296,7 +296,7 @@ module XhtmlExporter
 		end 
 	end BeginField
 	
-	proc EndField(e: Exporter)
+	proc EndField(e: Exporter) 
 	begin 
 		if e.inField then
 			assert(~e.inPara, 21)
@@ -306,7 +306,7 @@ module XhtmlExporter
 		end 
 	end EndField
 	
-	proc BeginTable(e: Exporter)
+	proc BeginTable(e: Exporter) 
 	begin 
 		if ~e.inTable then
 			assert(~e.inRow, 21)
@@ -319,7 +319,7 @@ module XhtmlExporter
 		end 
 	end BeginTable
 	
-	proc EndRow(e: Exporter)
+	proc EndRow(e: Exporter) 
 		var 
 			n, i: integer
 	begin 
@@ -352,7 +352,7 @@ module XhtmlExporter
 		assert(~e.inPara, 23)
 	end EndRow
 	
-	proc EndTable(e: Exporter)
+	proc EndTable(e: Exporter) 
 	begin 
 		if e.inTable then
 			EndRow(e)
@@ -361,7 +361,7 @@ module XhtmlExporter
 		end 
 	end EndTable
 	
-	proc BegOfTable(v: Views.View): boolean
+	proc BegOfTable(v: Views.View): boolean 
 	begin 
 		if v # nil then
 			return XhtmlTextTableMarkers.IsOpenMark(v) 
@@ -370,7 +370,7 @@ module XhtmlExporter
 		end 
 	end BegOfTable
 	
-	proc EndOfTable(v: Views.View): boolean
+	proc EndOfTable(v: Views.View): boolean 
 	begin 
 		if v # nil then
 			return XhtmlTextTableMarkers.IsCloseMark(v) 
@@ -379,9 +379,9 @@ module XhtmlExporter
 		end 
 	end EndOfTable
 	
-	proc BeginHref(e: Exporter; v: StdLinks.Link)
+	proc BeginHref(e: Exporter; v: StdLinks.Link) 
 		var 
-			s, cmd: array 256 of char
+			s, cmd: array 256 of wchar
 			pos: integer
 	begin 
 		assert(~e.inLink, 20)
@@ -406,7 +406,7 @@ module XhtmlExporter
 		e.inLink := true
 	end BeginHref
 	
-	proc EndHref(e: Exporter)
+	proc EndHref(e: Exporter) 
 	begin 
 		if e.inLink then
 			SetAttr(e, nil)
@@ -415,9 +415,9 @@ module XhtmlExporter
 		end 
 	end EndHref
 	
-	proc Anchor(e: Exporter; v: StdLinks.Target)
+	proc Anchor(e: Exporter; v: StdLinks.Target) 
 		var 
-			s: array 256 of char
+			s: array 256 of wchar
 	begin 
 		assert(~e.inLink, 20)
 		v.GetIdent(s)
@@ -426,7 +426,7 @@ module XhtmlExporter
 		e.wr.EndTag
 	end Anchor
 	
-	proc View(e: Exporter; rd: TextModels.Reader)
+	proc View(e: Exporter; rd: TextModels.Reader) 
 		var 
 			v: Views.View
 	begin 
@@ -459,7 +459,7 @@ module XhtmlExporter
 		end 
 	end View
 	
-	proc GetTitle(v: Stores.Store; var title: Views.Title)
+	proc GetTitle(v: Stores.Store; var title: Views.Title) 
 		var 
 			win: Windows.Window
 	begin 
@@ -474,11 +474,11 @@ module XhtmlExporter
 		end 
 	end GetTitle
 	
-	proc WriteHtmlEncoded(e: Exporter; in title: Views.Title)
+	proc WriteHtmlEncoded(e: Exporter; in title: Views.Title) 
 		var 
 			i: integer
-			ch: char
-			str: array 10 of char
+			ch: wchar
+			str: array 10 of wchar
 	begin 
 		i := 0
 		ch := title[0]
@@ -490,14 +490,14 @@ module XhtmlExporter
 		end 
 	end WriteHtmlEncoded
 	
-	proc ExportText*(s: Stores.Store; f: Files.File)
+	proc ExportText*(s: Stores.Store; f: Files.File) 
 		var 
 			e: Exporter
 			t: TextModels.Model
 			rd: TextModels.Reader
 			len_: integer // number of characters that remain to be translated
-			ch: char
-			str, tmp: array 256 of char
+			ch: wchar
+			str, tmp: array 256 of wchar
 			title: Views.Title
 	begin 
 		assert(s # nil, 20)

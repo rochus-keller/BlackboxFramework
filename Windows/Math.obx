@@ -23,17 +23,17 @@ module Math
 	import SYSTEM
 	
 	var 
-		eps, e: real
+		eps, e: longreal
 	
 	
 	// code procedures for 80387 math coprocessor
 	
-	proc FLD(x: real) end // [code] 0H // Rochus: added 0H
-	proc TOP(): real end // [code] 0H // Rochus: added 0H
-	proc FSW(): integer end // [code] 0DFH 0E0H
-	proc FSWs(): set end // [code] 0DFH 0E0H
-	proc ST0(): real end // [code] 0D9H 0C0H
-	proc ST1(): real end // [code] 0D9H 0C1H
+	proc FLD(x: longreal)  end // [code] 0H // Rochus: added 0H
+	proc TOP(): longreal  end // [code] 0H // Rochus: added 0H
+	proc FSW(): integer  end // [code] 0DFH 0E0H
+	proc FSWs(): set  end // [code] 0DFH 0E0H
+	proc ST0(): longreal  end // [code] 0D9H 0C0H
+	proc ST1(): longreal  end // [code] 0D9H 0C1H
 	
 	proc FXCH end // [code] 0D9H 0C9H
 	proc FLDst0 end // [code] 0D9H 0C0H // doublicate st[0]
@@ -86,7 +86,7 @@ module Math
 	proc F2XM1 end // [code] 0D9H 0F0H // 2^st[0] - 1, |st[0]| <= 1
 	
 	
-	proc IsNaN(x: real): boolean
+	proc IsNaN(x: longreal): boolean 
 	begin 
 		FLD(x)
 		FXAM
@@ -98,19 +98,19 @@ module Math
 	
 	// REAL precision
 	
-	proc Pi*(): real
+	proc Pi*(): longreal 
 	begin 
 		FLDPI
 		return TOP()
 	end Pi
 	
-	proc Eps*(): real
+	proc Eps*(): longreal 
 	begin 
 		return eps
 	end Eps
 	
 	
-	proc Sqrt*(x: real): real
+	proc Sqrt*(x: longreal): longreal 
 	begin 
 		// Kernel error #143, argument of Sqrt must not be negative
 		FLD(x)
@@ -120,7 +120,7 @@ module Math
 	end Sqrt
 	
 	
-	proc Exp*(x: real): real
+	proc Exp*(x: longreal): longreal 
 	begin 
 		// 2 ^ (x * 1/ln(2))
 		FLD(x)
@@ -143,7 +143,7 @@ module Math
 		return TOP()
 	end Exp
 	
-	proc Ln*(x: real): real
+	proc Ln*(x: longreal): longreal 
 	begin 
 		// Kernel error #143, argument of Ln must not be negative
 		// ln(2) * ld(x)
@@ -154,7 +154,7 @@ module Math
 		return TOP()
 	end Ln
 	
-	proc Log*(x: real): real
+	proc Log*(x: longreal): longreal 
 	begin 
 		// Kernel error #143, argument of Log must not be negative
 		// log(2) * ld(x)
@@ -165,7 +165,7 @@ module Math
 		return TOP()
 	end Log
 	
-	proc Power*(x, y: real): real
+	proc Power*(x, y: longreal): longreal 
 	begin 
 		assert(x >= 0, 20)
 		assert((x # 0.0) or (y # 0.0), 21)
@@ -193,7 +193,7 @@ module Math
 		return TOP()
 	end Power
 	
-	proc IntPower*(x: real; n: integer): real
+	proc IntPower*(x: longreal; n: integer): longreal 
 	begin 
 		FLD1
 		FLD(x)
@@ -218,7 +218,7 @@ module Math
 	end IntPower
 	
 	
-	proc Sin*(x: real): real
+	proc Sin*(x: longreal): longreal 
 	begin 
 		// Kernel error #143, ABS(x) # INF
 		FLD(x)
@@ -231,7 +231,7 @@ module Math
 		return TOP()
 	end Sin
 	
-	proc Cos*(x: real): real
+	proc Cos*(x: longreal): longreal 
 	begin 
 		// Kernel error #143, ABS(x) # INF
 		FLD(x)
@@ -244,7 +244,7 @@ module Math
 		return TOP()
 	end Cos
 	
-	proc Tan*(x: real): real
+	proc Tan*(x: longreal): longreal 
 	begin 
 		// Kernel error #143, ABS(x) # INF
 		FLD(x)
@@ -257,7 +257,7 @@ module Math
 		return TOP()
 	end Tan
 	
-	proc SinCos*(x: real; var s, c: real)
+	proc SinCos*(x: longreal; var s, c: longreal) 
 	begin 
 		// Kernel error #143, ABS(x) # INF
 		FLD(x)
@@ -273,7 +273,7 @@ module Math
 		end 
 	end SinCos
 	
-	proc ArcSin*(x: real): real
+	proc ArcSin*(x: longreal): longreal 
 	begin 
 		// Kernel error #143, -1.0 <= x <= 1.0
 		// atan2(x, sqrt(1 - x*x))
@@ -289,7 +289,7 @@ module Math
 		return TOP()
 	end ArcSin
 	
-	proc ArcCos*(x: real): real
+	proc ArcCos*(x: longreal): longreal 
 	begin 
 		// Kernel error #143, -1.0 <= x <= 1.0
 		// atan2(sqrt(1 - x*x), x)
@@ -304,7 +304,7 @@ module Math
 		return TOP()
 	end ArcCos
 	
-	proc ArcTan*(x: real): real
+	proc ArcTan*(x: longreal): longreal 
 	begin 
 		// atan2(x, 1)
 		FLD(x)
@@ -313,7 +313,7 @@ module Math
 		return TOP()
 	end ArcTan
 	
-	proc ArcTan2*(y, x: real): real
+	proc ArcTan2*(y, x: longreal): longreal 
 	begin 
 		FLD(y)
 		FLD(x)
@@ -323,7 +323,7 @@ module Math
 	end ArcTan2
 	
 	
-	proc Sinh*(x: real): real
+	proc Sinh*(x: longreal): longreal 
 	begin 
 		// IF IsNaN(x) THEN RETURN x END;
 		if x = 0 then // +/- zero
@@ -365,7 +365,7 @@ module Math
 		return TOP() * 0.5
 	end Sinh
 	
-	proc Cosh*(x: real): real
+	proc Cosh*(x: longreal): longreal 
 	begin 
 		// IF IsNaN(x) THEN RETURN x END;
 		// 2^(abs(x) * 1/ln(2))
@@ -392,7 +392,7 @@ module Math
 		return TOP() * 0.5
 	end Cosh
 	
-	proc Tanh*(x: real): real
+	proc Tanh*(x: longreal): longreal 
 	begin 
 		// IF IsNaN(x) THEN RETURN x END;
 		if x = 0 then // +/- zero
@@ -438,7 +438,7 @@ module Math
 		return TOP()
 	end Tanh
 	
-	proc ArcSinh*(x: real): real
+	proc ArcSinh*(x: longreal): longreal 
 	begin 
 		// IF IsNaN(x) THEN RETURN x END;
 		if x = 0 then // +/- zero
@@ -474,7 +474,7 @@ module Math
 		return TOP()
 	end ArcSinh
 	
-	proc ArcCosh*(x: real): real
+	proc ArcCosh*(x: longreal): longreal 
 	begin 
 		// 20, x >= 1.0
 		// IF IsNaN(x) THEN RETURN x END;
@@ -492,7 +492,7 @@ module Math
 		return TOP()
 	end ArcCosh
 	
-	proc ArcTanh*(x: real): real
+	proc ArcTanh*(x: longreal): longreal 
 	begin 
 		// 20, -1.0 <= x <= 1.0
 		// IF IsNaN(x) THEN RETURN x END;
@@ -530,7 +530,7 @@ module Math
 	end ArcTanh
 	
 	
-	proc Floor*(x: real): real
+	proc Floor*(x: longreal): longreal 
 	begin 
 		FLD(x)
 		FLDst0
@@ -545,7 +545,7 @@ module Math
 		return TOP()
 	end Floor
 	
-	proc Ceiling*(x: real): real
+	proc Ceiling*(x: longreal): longreal 
 	begin 
 		FLD(x)
 		FLDst0
@@ -560,7 +560,7 @@ module Math
 		return TOP()
 	end Ceiling
 	
-	proc Round*(x: real): real
+	proc Round*(x: longreal): longreal 
 	begin 
 		FLD(x)
 		if abs(ST0()) = inf then
@@ -577,7 +577,7 @@ module Math
 		return TOP()
 	end Round
 	
-	proc Trunc*(x: real): real
+	proc Trunc*(x: longreal): longreal 
 	begin 
 		FLD(x)
 		FLDst0
@@ -602,7 +602,7 @@ module Math
 		return TOP()
 	end Trunc
 	
-	proc Frac*(x: real): real
+	proc Frac*(x: longreal): longreal 
 	begin 
 		// Kernel error #143, x # INF  &  x # -INF
 		FLD(x)
@@ -628,7 +628,7 @@ module Math
 		return TOP()
 	end Frac
 	
-	proc Mod1*(x: real): real
+	proc Mod1*(x: longreal): longreal 
 	begin 
 		// Kernel error #143, x # INF  &  x # -INF
 		FLD(x)
@@ -645,7 +645,7 @@ module Math
 		return TOP()
 	end Mod1
 	
-	proc Sign*(x: real): real
+	proc Sign*(x: longreal): longreal 
 	begin 
 		FLD(x)
 		FXAM
@@ -663,7 +663,7 @@ module Math
 		end 
 	end Sign
 	
-	proc SignBit*(x: real): boolean // IEEE 754-2008, section 5.7.2
+	proc SignBit*(x: longreal): boolean  // IEEE 754-2008, section 5.7.2
 		var 
 			s: set
 	begin 
@@ -671,7 +671,7 @@ module Math
 		return 31 in s
 	end SignBit
 	
-	proc CopySign*(x, y: real): real // IEEE 754-2008, section 5.5.1
+	proc CopySign*(x, y: longreal): longreal  // IEEE 754-2008, section 5.5.1
 		var 
 			s: set
 	begin 
@@ -683,7 +683,7 @@ module Math
 		end 
 	end CopySign
 	
-	proc Mantissa*(x: real): real
+	proc Mantissa*(x: longreal): longreal 
 	begin 
 		FLD(x)
 		FXAM
@@ -711,7 +711,7 @@ module Math
 		end 
 	end Mantissa
 	
-	proc Exponent*(x: real): integer // COMPILER DEPENDENT
+	proc Exponent*(x: longreal): integer  // COMPILER DEPENDENT
 		var  // e is set by FSTPDe!
 			e: integer
 	begin 
@@ -734,7 +734,7 @@ module Math
 		end 
 	end Exponent
 	
-	proc Real*(m: real; e: integer): real
+	proc Real*(m: longreal; e: integer): longreal 
 		var 
 			s: set
 	begin 

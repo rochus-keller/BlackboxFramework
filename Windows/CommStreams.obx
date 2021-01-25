@@ -30,28 +30,28 @@ module CommStreams
 		remoteAdrInUse* = 6
 	
 	type 
-		Adr* = pointer to array of char
+		Adr* = pointer to array of wchar
 		
 		Stream* = pointer to (* abstract *) record end 
 		
 		StreamAllocator* = proc 
-			(localAdr, remoteAdr: array of char; var s: Stream; var res: integer)
+			(localAdr, remoteAdr: array of wchar; var s: Stream; var res: integer)
 		
 		Listener* = pointer to (* abstract *) record end 
 		
 		ListenerAllocator* = proc 
-			(localAdr: array of char; var l: Listener; var res: integer)
+			(localAdr: array of wchar; var l: Listener; var res: integer)
 	
 	
-	proc (s: Stream) RemoteAdr*(): Adr end // new abstract
-	proc (s: Stream) IsConnected*(): boolean end // new abstract
+	proc (s: Stream) RemoteAdr*(): Adr  end // new abstract
+	proc (s: Stream) IsConnected*(): boolean  end // new abstract
 	proc (s: Stream) WriteBytes*(
-		in x: array of byte; beg, len_: integer; var written: integer) end // new abstract
+		in x: array of byte; beg, len_: integer; var written: integer)  end // new abstract
 	proc (s: Stream) ReadBytes*(
-		var x: array of byte; beg, len_: integer; var read: integer) end // new abstract
+		var x: array of byte; beg, len_: integer; var read: integer)  end // new abstract
 	proc (s: Stream) Close* end // new abstract
 	
-	proc NewStream*(protocol, localAdr, remoteAdr: array of char; var s: Stream; var res: integer)
+	proc NewStream*(protocol, localAdr, remoteAdr: array of wchar; var s: Stream; var res: integer) 
 		var 
 			ok: boolean
 			m, p: Meta.Item
@@ -75,11 +75,11 @@ module CommStreams
 		end 
 	end NewStream
 	
-	proc (l: Listener) LocalAdr*(): Adr end // new abstract
-	proc (l: Listener) Accept*(var s: Stream) end // new abstract
+	proc (l: Listener) LocalAdr*(): Adr  end // new abstract
+	proc (l: Listener) Accept*(var s: Stream)  end // new abstract
 	proc (l: Listener) Close* end // new abstract
 	
-	proc NewListener*(protocol, localAdr: array of char; var l: Listener; var res: integer)
+	proc NewListener*(protocol, localAdr: array of wchar; var l: Listener; var res: integer) 
 		var 
 			ok: boolean
 			m, p: Meta.Item

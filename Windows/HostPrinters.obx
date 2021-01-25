@@ -61,13 +61,13 @@ module HostPrinters
 		current: Printers.Printer
 		aborted: boolean
 		
-		sa, sb, sc: array 64 of char
+		sa, sb, sc: array 64 of wchar
 		err: integer
 		
 		jobLevel: integer
 	
 	
-	proc PrinterDC(devNames, devMode: WinApi.HANDLE): WinApi.HANDLE
+	proc PrinterDC(devNames, devMode: WinApi.HANDLE): WinApi.HANDLE 
 		var 
 			adr: integer
 			i: shortint
@@ -78,11 +78,11 @@ module HostPrinters
 		adr := WinApi.GlobalLock(devNames)
 		dm := SYSTEM.VAL(WinApi.PtrDEVMODEW, WinApi.GlobalLock(devMode))
 		SYSTEM.GET(adr + 0, i)
-		a := SYSTEM.VAL(WinApi.PtrWSTR, adr + i * size(char))
+		a := SYSTEM.VAL(WinApi.PtrWSTR, adr + i * size(wchar))
 		SYSTEM.GET(adr + 2, i)
-		b := SYSTEM.VAL(WinApi.PtrWSTR, adr + i * size(char))
+		b := SYSTEM.VAL(WinApi.PtrWSTR, adr + i * size(wchar))
 		SYSTEM.GET(adr + 4, i)
-		c := SYSTEM.VAL(WinApi.PtrWSTR, adr + i * size(char))
+		c := SYSTEM.VAL(WinApi.PtrWSTR, adr + i * size(wchar))
 		dc := WinApi.CreateDCW(a, b, c, dm^)
 		if dc = 0 then
 			dc := WinApi.CreateDCW(a, b, c, nil) 
@@ -92,7 +92,7 @@ module HostPrinters
 		return dc
 	end PrinterDC
 	
-	proc SetupPrinter(p: Printer; dc: WinApi.HANDLE)
+	proc SetupPrinter(p: Printer; dc: WinApi.HANDLE) 
 		var 
 			res, w, h, pw, ph, nx, ny, unit, ux, uy: integer
 			pt: WinApi.POINT
@@ -143,7 +143,7 @@ module HostPrinters
 		port.SetSize(w, h)
 	end SetupPrinter
 	
-	proc NewPrinter*(devNames, devMode: WinApi.HANDLE): Printers.Printer
+	proc NewPrinter*(devNames, devMode: WinApi.HANDLE): Printers.Printer 
 		var 
 			p: Printer
 			dc: WinApi.HANDLE
@@ -163,14 +163,14 @@ module HostPrinters
 		return p
 	end NewPrinter
 	
-	proc SetCurrent*(devNames, devMode: WinApi.HANDLE) // used in HostDialog
+	proc SetCurrent*(devNames, devMode: WinApi.HANDLE)  // used in HostDialog
 	begin 
 		if devNames # 0 then
 			current := NewPrinter(devNames, devMode) 
 		end 
 	end SetCurrent
 	
-	proc GetCurrent*(var devNames, devMode: WinApi.HANDLE) // used in HostDialog
+	proc GetCurrent*(var devNames, devMode: WinApi.HANDLE)  // used in HostDialog
 	begin 
 		if current # nil then
 			with current: Printer do 
@@ -180,7 +180,7 @@ module HostPrinters
 		end 
 	end GetCurrent
 	
-	proc GetPage*(p: Printers.Printer; var w, h: integer)
+	proc GetPage*(p: Printers.Printer; var w, h: integer) 
 		var 
 			l, t, r, b: integer
 	begin 
@@ -192,7 +192,7 @@ module HostPrinters
 	end GetPage
 	
 	
-	proc Error(res: integer): integer
+	proc Error(res: integer): integer 
 	begin 
 		if res = -1 then
 			res := WinApi.GetLastError() 
@@ -209,11 +209,11 @@ module HostPrinters
 		aborted := true
 	end Cancel
 	
-	proc AbortHandler(dc: WinApi.HANDLE; error: integer): integer
+	proc AbortHandler(dc: WinApi.HANDLE; error: integer): integer 
 		var 
 			res: integer
 			msg: WinApi.MSG
-			s: array 32 of char
+			s: array 32 of wchar
 	begin 
 		while WinApi.PeekMessageW(msg, 0, 0, 0, 1) # 0 do 
 			res := WinApi.TranslateMessage(msg)
@@ -264,7 +264,7 @@ module HostPrinters
 	   END NewRider; *)
 	
 	
-	proc (p: Printer) OpenJob(var copies: integer; name: array of char)
+	proc (p: Printer) OpenJob(var copies: integer; name: array of wchar) 
 		var 
 			res: integer
 			info: WinApi.DOCINFOW
@@ -347,7 +347,7 @@ module HostPrinters
 		end 
 	end ClosePage
 	
-	proc (p: Printer) SetOrientation(landscape: boolean)
+	proc (p: Printer) SetOrientation(landscape: boolean) 
 		var 
 			res, w, h: integer
 			dc: WinApi.HANDLE
@@ -398,7 +398,7 @@ module HostPrinters
 	
 	// Directory
 	
-	proc (d: Directory) Default(): Printers.Printer
+	proc (d: Directory) Default(): Printers.Printer 
 		var 
 			res: integer
 			prt: WinDlg.PRINTDLGW
@@ -420,12 +420,12 @@ module HostPrinters
 		end 
 	end Default
 	
-	proc (d: Directory) Current(): Printers.Printer
+	proc (d: Directory) Current(): Printers.Printer 
 	begin 
 		return current
 	end Current
 	
-	proc (d: Directory) Available(): boolean
+	proc (d: Directory) Available(): boolean 
 	begin 
 		return current # nil
 	end Available

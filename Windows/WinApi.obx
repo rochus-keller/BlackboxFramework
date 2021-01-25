@@ -32,8 +32,8 @@ definition WinApi
 	type  // base types
 		PtrVoid = integer
 		PtrSTR = unsafe pointer to carray of char
-		PtrWSTR = unsafe pointer to carray of char
-		DATE = real
+		PtrWSTR = unsafe pointer to carray of wchar
+		DATE = longreal
 		CY = longint
 		ACCESS_MASK = set
 		SECURITY_INFORMATION = set
@@ -6553,7 +6553,7 @@ definition WinApi
 				NextEntryOffset: integer
 				Action: integer
 				FileNameLength: integer
-				FileName: carray 1 of char 
+				FileName: carray 1 of wchar 
 			end 
 		PtrFILE_NOTIFY_INFORMATION = unsafe pointer to FILE_NOTIFY_INFORMATION
 		PACCESS_TOKEN = PtrVoid
@@ -7115,7 +7115,7 @@ definition WinApi
 		PtrIMAGE_RESOURCE_DIRECTORY_STRING = unsafe pointer to IMAGE_RESOURCE_DIRECTORY_STRING
 		IMAGE_RESOURCE_DIR_STRING_U = cstruct 
 				Length: shortint
-				NameString: carray 1 of char 
+				NameString: carray 1 of wchar 
 			end 
 		PtrIMAGE_RESOURCE_DIR_STRING_U = unsafe pointer to IMAGE_RESOURCE_DIR_STRING_U
 		IMAGE_RESOURCE_DATA_ENTRY = cstruct 
@@ -7475,7 +7475,7 @@ definition WinApi
 				dwCurrentRxQueue: integer
 				dwProvSpec1: integer
 				dwProvSpec2: integer
-				wcProvChar: carray 1 of char 
+				wcProvChar: carray 1 of wchar 
 			end 
 		PtrCOMMPROP = unsafe pointer to COMMPROP
 		COMSTAT = cstruct 
@@ -7540,7 +7540,7 @@ definition WinApi
 				dwProviderSubType: integer
 				dwProviderOffset: integer
 				dwProviderSize: integer
-				wcProviderData: carray 1 of char 
+				wcProviderData: carray 1 of wchar 
 			end 
 		PtrCOMMCONFIG = unsafe pointer to COMMCONFIG
 		SYSTEM_INFO = cstruct 
@@ -7692,10 +7692,10 @@ definition WinApi
 		PtrBY_HANDLE_FILE_INFORMATION = unsafe pointer to BY_HANDLE_FILE_INFORMATION
 		TIME_ZONE_INFORMATION = cstruct 
 				Bias: integer
-				StandardName: carray 32 of char
+				StandardName: carray 32 of wchar
 				StandardDate: SYSTEMTIME
 				StandardBias: integer
-				DaylightName: carray 32 of char
+				DaylightName: carray 32 of wchar
 				DaylightDate: SYSTEMTIME
 				DaylightBias: integer 
 			end 
@@ -7706,7 +7706,7 @@ definition WinApi
 				dwStreamAttributes: set
 				Size: longint
 				dwStreamNameSize: integer
-				cStreamName: carray 1 of char 
+				cStreamName: carray 1 of wchar 
 			end 
 		PtrWIN32_STREAM_ID = unsafe pointer to WIN32_STREAM_ID
 		STARTUPINFOA = cstruct 
@@ -7775,8 +7775,8 @@ definition WinApi
 				nFileSizeLow: integer
 				dwReserved0: integer
 				dwReserved1: integer
-				cFileName: carray 260 of char
-				cAlternateFileName: carray 14 of char 
+				cFileName: carray 260 of wchar
+				cAlternateFileName: carray 14 of wchar 
 			end 
 		PtrWIN32_FIND_DATAW = unsafe pointer to WIN32_FIND_DATAW
 		WIN32_FIND_DATA = WIN32_FIND_DATAA
@@ -7806,8 +7806,8 @@ definition WinApi
 		PtrHW_PROFILE_INFOA = unsafe pointer to HW_PROFILE_INFOA
 		HW_PROFILE_INFOW = cstruct 
 				dwDockInfo: integer
-				szHwProfileGuid: carray 39 of char
-				szHwProfileName: carray 80 of char 
+				szHwProfileGuid: carray 39 of wchar
+				szHwProfileName: carray 80 of wchar 
 			end 
 		PtrHW_PROFILE_INFOW = unsafe pointer to HW_PROFILE_INFOW
 		HW_PROFILE_INFO = HW_PROFILE_INFOA
@@ -7827,7 +7827,7 @@ definition WinApi
 				dwMinorVersion: integer
 				dwBuildNumber: integer
 				dwPlatformId: integer
-				szCSDVersion: carray 128 of char 
+				szCSDVersion: carray 128 of wchar 
 			end 
 		PtrOSVERSIONINFOW = unsafe pointer to OSVERSIONINFOW
 		OSVERSIONINFO = OSVERSIONINFOA
@@ -7940,7 +7940,7 @@ definition WinApi
 				lcsGammaRed: integer
 				lcsGammaGreen: integer
 				lcsGammaBlue: integer
-				lcsFilename: carray 260 of char 
+				lcsFilename: carray 260 of wchar 
 			end 
 		PtrLOGCOLORSPACEW = unsafe pointer to LOGCOLORSPACEW
 		LOGCOLORSPACE = LOGCOLORSPACEA
@@ -8115,10 +8115,10 @@ definition WinApi
 				tmOverhang: integer
 				tmDigitizedAspectX: integer
 				tmDigitizedAspectY: integer
-				tmFirstChar: char
-				tmLastChar: char
-				tmDefaultChar: char
-				tmBreakChar: char
+				tmFirstChar: wchar
+				tmLastChar: wchar
+				tmDefaultChar: wchar
+				tmBreakChar: wchar
 				tmItalic: char
 				tmUnderlined: char
 				tmStruckOut: char
@@ -8167,10 +8167,10 @@ definition WinApi
 				tmOverhang: integer
 				tmDigitizedAspectX: integer
 				tmDigitizedAspectY: integer
-				tmFirstChar: char
-				tmLastChar: char
-				tmDefaultChar: char
-				tmBreakChar: char
+				tmFirstChar: wchar
+				tmLastChar: wchar
+				tmDefaultChar: wchar
+				tmBreakChar: wchar
 				tmItalic: char
 				tmUnderlined: char
 				tmStruckOut: char
@@ -8269,7 +8269,7 @@ definition WinApi
 				lfClipPrecision: char
 				lfQuality: char
 				lfPitchAndFamily: char
-				lfFaceName: carray 32 of char 
+				lfFaceName: carray 32 of wchar 
 			end 
 		PtrLOGFONTW = unsafe pointer to LOGFONTW
 		LOGFONT = LOGFONTA
@@ -8282,8 +8282,8 @@ definition WinApi
 		PtrENUMLOGFONTA = unsafe pointer to ENUMLOGFONTA
 		ENUMLOGFONTW = cstruct 
 				elfLogFont: LOGFONTW
-				elfFullName: carray 64 of char
-				elfStyle: carray 32 of char 
+				elfFullName: carray 64 of wchar
+				elfStyle: carray 32 of wchar 
 			end 
 		PtrENUMLOGFONTW = unsafe pointer to ENUMLOGFONTW
 		ENUMLOGFONT = ENUMLOGFONTA
@@ -8297,9 +8297,9 @@ definition WinApi
 		PtrENUMLOGFONTEXA = unsafe pointer to ENUMLOGFONTEXA
 		ENUMLOGFONTEXW = cstruct 
 				elfLogFont: LOGFONTW
-				elfFullName: carray 64 of char
-				elfStyle: carray 32 of char
-				elfScript: carray 32 of char 
+				elfFullName: carray 64 of wchar
+				elfStyle: carray 32 of wchar
+				elfScript: carray 32 of wchar 
 			end 
 		PtrENUMLOGFONTEXW = unsafe pointer to ENUMLOGFONTEXW
 		ENUMLOGFONTEX = ENUMLOGFONTEXA
@@ -8332,8 +8332,8 @@ definition WinApi
 		PtrEXTLOGFONTA = unsafe pointer to EXTLOGFONTA
 		EXTLOGFONTW = cstruct 
 				elfLogFont: LOGFONTW
-				elfFullName: carray 64 of char
-				elfStyle: carray 32 of char
+				elfFullName: carray 64 of wchar
+				elfStyle: carray 32 of wchar
 				elfVersion: integer
 				elfStyleSize: integer
 				elfMatch: integer
@@ -8383,7 +8383,7 @@ definition WinApi
 			end 
 		PtrDEVMODEA = unsafe pointer to DEVMODEA
 		DEVMODEW = cstruct 
-				dmDeviceName: carray 32 of char
+				dmDeviceName: carray 32 of wchar
 				dmSpecVersion: shortint
 				dmDriverVersion: shortint
 				dmSize: shortint
@@ -8402,7 +8402,7 @@ definition WinApi
 				dmYResolution: shortint
 				dmTTOption: shortint
 				dmCollate: shortint
-				dmFormName: carray 32 of char
+				dmFormName: carray 32 of wchar
 				dmLogPixels: shortint
 				dmBitsPerPel: integer
 				dmPelsWidth: integer
@@ -9760,7 +9760,7 @@ definition WinApi
 		MENUITEMTEMPLATE = cstruct 
 				mtOption: shortint
 				mtID: shortint
-				mtString: carray 1 of char 
+				mtString: carray 1 of wchar 
 			end 
 		PtrMENUITEMTEMPLATE = unsafe pointer to MENUITEMTEMPLATE
 		ICONINFO = cstruct 
@@ -9831,8 +9831,8 @@ definition WinApi
 		PtrMULTIKEYHELPA = unsafe pointer to MULTIKEYHELPA
 		MULTIKEYHELPW = cstruct 
 				mkSize: integer
-				mkKeylist: char
-				szKeyphrase: carray 1 of char 
+				mkKeylist: wchar
+				szKeyphrase: carray 1 of wchar 
 			end 
 		PtrMULTIKEYHELPW = unsafe pointer to MULTIKEYHELPW
 		MULTIKEYHELP = MULTIKEYHELPA
@@ -9854,7 +9854,7 @@ definition WinApi
 				dx: integer
 				dy: integer
 				wMax: integer
-				rgchMember: carray 2 of char 
+				rgchMember: carray 2 of wchar 
 			end 
 		PtrHELPWININFOW = unsafe pointer to HELPWININFOW
 		HELPWININFO = HELPWININFOA
@@ -10112,7 +10112,7 @@ definition WinApi
 				wVirtualKeyCode: shortint
 				wVirtualScanCode: shortint
 				uChar: cstruct 
-						UnicodeChar: char
+						UnicodeChar: wchar
 						AsciiChar: char 
 					end 
 				dwControlKeyState: set 
@@ -10150,7 +10150,7 @@ definition WinApi
 		PtrINPUT_RECORD = unsafe pointer to INPUT_RECORD
 		CHAR_INFO = cstruct 
 				Char: cstruct 
-						UnicodeChar: char
+						UnicodeChar: wchar
 						AsciiChar: char 
 					end 
 				Attributes: shortint 
@@ -10375,7 +10375,7 @@ definition WinApi
 				dwTime: integer
 				hsz: HSZ
 				hTask: HANDLE
-				str: carray 1 of char 
+				str: carray 1 of wchar 
 			end 
 		PtrMONHSZSTRUCTW = unsafe pointer to MONHSZSTRUCTW
 		MONHSZSTRUCT = MONHSZSTRUCTA
@@ -10538,7 +10538,7 @@ definition WinApi
 				uFlags: set
 				uCallbackMessage: integer
 				hIcon: HICON
-				szTip: carray 64 of char 
+				szTip: carray 64 of wchar 
 			end 
 		PtrNOTIFYICONDATAW = unsafe pointer to NOTIFYICONDATAW
 		NOTIFYICONDATA = NOTIFYICONDATAA
@@ -10555,8 +10555,8 @@ definition WinApi
 				hIcon: HICON
 				iIcon: integer
 				dwAttributes: set
-				szDisplayName: carray 260 of char
-				szTypeName: carray 80 of char 
+				szDisplayName: carray 260 of wchar
+				szTypeName: carray 80 of wchar 
 			end 
 		PtrSHFILEINFOW = unsafe pointer to SHFILEINFOW
 		SHFILEINFO = SHFILEINFOA
@@ -15312,7 +15312,7 @@ definition WinApi
 	proc IsCharAlphaA(ch: char): BOOL 
 	// END IsCharAlphaA;
 	
-	proc IsCharAlphaW(ch: char): BOOL 
+	proc IsCharAlphaW(ch: wchar): BOOL 
 	// END IsCharAlphaW;
 	
 	proc IsCharAlpha(ch: char): BOOL 
@@ -15321,7 +15321,7 @@ definition WinApi
 	proc IsCharAlphaNumericA(ch: char): BOOL 
 	// END IsCharAlphaNumericA;
 	
-	proc IsCharAlphaNumericW(ch: char): BOOL 
+	proc IsCharAlphaNumericW(ch: wchar): BOOL 
 	// END IsCharAlphaNumericW;
 	
 	proc IsCharAlphaNumeric(ch: char): BOOL 
@@ -15330,7 +15330,7 @@ definition WinApi
 	proc IsCharUpperA(ch: char): BOOL 
 	// END IsCharUpperA;
 	
-	proc IsCharUpperW(ch: char): BOOL 
+	proc IsCharUpperW(ch: wchar): BOOL 
 	// END IsCharUpperW;
 	
 	proc IsCharUpper(ch: char): BOOL 
@@ -15339,7 +15339,7 @@ definition WinApi
 	proc IsCharLowerA(ch: char): BOOL 
 	// END IsCharLowerA;
 	
-	proc IsCharLowerW(ch: char): BOOL 
+	proc IsCharLowerW(ch: wchar): BOOL 
 	// END IsCharLowerW;
 	
 	proc IsCharLower(ch: char): BOOL 
@@ -15396,7 +15396,7 @@ definition WinApi
 	proc VkKeyScanA(ch: char): shortint 
 	// END VkKeyScanA;
 	
-	proc VkKeyScanW(ch: char): shortint 
+	proc VkKeyScanW(ch: wchar): shortint 
 	// END VkKeyScanW;
 	
 	proc VkKeyScan(ch: char): shortint 
@@ -15405,7 +15405,7 @@ definition WinApi
 	proc VkKeyScanExA(ch: char; dwhkl: HKL): shortint 
 	// END VkKeyScanExA;
 	
-	proc VkKeyScanExW(ch: char; dwhkl: HKL): shortint 
+	proc VkKeyScanExW(ch: wchar; dwhkl: HKL): shortint 
 	// END VkKeyScanExW;
 	
 	proc VkKeyScanEx(ch: char; dwhkl: HKL): shortint 
@@ -16704,7 +16704,7 @@ definition WinApi
 	proc FillConsoleOutputCharacterA(hConsoleOutput: HANDLE; cCharacter: char; nLength: integer; dwWriteCoord: COORD; var lpNumberOfCharsWritten: integer): BOOL 
 	// END FillConsoleOutputCharacterA;
 	
-	proc FillConsoleOutputCharacterW(hConsoleOutput: HANDLE; cCharacter: char; nLength: integer; dwWriteCoord: COORD; var lpNumberOfCharsWritten: integer): BOOL 
+	proc FillConsoleOutputCharacterW(hConsoleOutput: HANDLE; cCharacter: wchar; nLength: integer; dwWriteCoord: COORD; var lpNumberOfCharsWritten: integer): BOOL 
 	// END FillConsoleOutputCharacterW;
 	
 	proc FillConsoleOutputCharacter(hConsoleOutput: HANDLE; cCharacter: char; nLength: integer; dwWriteCoord: COORD; var lpNumberOfCharsWritten: integer): BOOL 

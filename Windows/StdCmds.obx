@@ -37,7 +37,7 @@ module StdCmds
 			end 
 		layout*: record 
 				wType*, hType*: integer
-				width*, height*: real
+				width*, height*: longreal
 				doc: Documents.Document
 				u: integer 
 			end 
@@ -50,7 +50,7 @@ module StdCmds
 	
 	// auxiliary procedures
 	
-	proc StdProp(): Properties.StdProp
+	proc StdProp(): Properties.StdProp 
 	begin 
 		if propEra # Properties.era then
 			Properties.CollectStdProp(props)
@@ -59,10 +59,10 @@ module StdCmds
 		return props
 	end StdProp
 	
-	proc Append(var s: array of char; t: array of char)
+	proc Append(var s: array of wchar; t: array of wchar) 
 		var 
 			len_, i, j: integer
-			ch: char
+			ch: wchar
 	begin 
 		len_ := len(s)
 		i := 0
@@ -81,42 +81,42 @@ module StdCmds
 	
 	// standard commands
 	
-	proc OpenAuxDialog*(file, title: array of char)
+	proc OpenAuxDialog*(file, title: array of wchar) 
 		var 
 			v: Views.View
 	begin 
 		StdApi.OpenAuxDialog(file, title, v)
 	end OpenAuxDialog
 	
-	proc OpenToolDialog*(file, title: array of char)
+	proc OpenToolDialog*(file, title: array of wchar) 
 		var 
 			v: Views.View
 	begin 
 		StdApi.OpenToolDialog(file, title, v)
 	end OpenToolDialog
 	
-	proc OpenDoc*(file: array of char)
+	proc OpenDoc*(file: array of wchar) 
 		var 
 			v: Views.View
 	begin 
 		StdApi.OpenDoc(file, v)
 	end OpenDoc
 	
-	proc OpenCopyOf*(file: array of char)
+	proc OpenCopyOf*(file: array of wchar) 
 		var 
 			v: Views.View
 	begin 
 		StdApi.OpenCopyOf(file, v)
 	end OpenCopyOf
 	
-	proc OpenAux*(file, title: array of char)
+	proc OpenAux*(file, title: array of wchar) 
 		var 
 			v: Views.View
 	begin 
 		StdApi.OpenAux(file, title, v)
 	end OpenAux
 	
-	proc OpenBrowser*(file, title: array of char)
+	proc OpenBrowser*(file, title: array of wchar) 
 		var 
 			v: Views.View
 	begin 
@@ -277,7 +277,7 @@ module StdCmds
 	
 	// font menu commands
 	
-	proc Font*(typeface: Fonts.Typeface)
+	proc Font*(typeface: Fonts.Typeface) 
 		// set the selection to the given font family
 		var 
 			p: Properties.StdProp
@@ -388,7 +388,7 @@ module StdCmds
 		Properties.EmitProp(nil, p)
 	end Strikeout
 	
-	proc Size*(size_: integer)
+	proc Size*(size_: integer) 
 		// set the selection to the given font size
 		var 
 			p: Properties.StdProp
@@ -423,7 +423,7 @@ module StdCmds
 		end 
 	end InitSizeDialog
 	
-	proc Color*(color: Ports.Color)
+	proc Color*(color: Ports.Color) 
 		// set the color attributes of the selection
 		var 
 			p: Properties.StdProp
@@ -544,21 +544,21 @@ module StdCmds
 		end 
 	end InitLayoutDialog
 	
-	proc WidthGuard*(var par: Dialog.Par)
+	proc WidthGuard*(var par: Dialog.Par) 
 	begin 
 		if layout.wType # fix then
 			par.readOnly := true 
 		end 
 	end WidthGuard
 	
-	proc HeightGuard*(var par: Dialog.Par)
+	proc HeightGuard*(var par: Dialog.Par) 
 	begin 
 		if layout.hType # fix then
 			par.readOnly := true 
 		end 
 	end HeightGuard
 	
-	proc TypeNotifier*(op, from, to_: integer)
+	proc TypeNotifier*(op, from, to_: integer) 
 		var 
 			w, h, l, t, r, b: integer
 			d: boolean
@@ -617,11 +617,11 @@ module StdCmds
 	
 	// properties
 	
-	proc GetCmd(name: array of char; var cmd: array of char)
+	proc GetCmd(name: array of wchar; var cmd: array of wchar) 
 		var 
 			i, j: integer
-			ch, lch: char
-			key: array 256 of char
+			ch, lch: wchar
+			key: array 256 of wchar
 	begin 
 		i := 0
 		ch := name[0]
@@ -656,12 +656,12 @@ module StdCmds
 		end 
 	end GetCmd
 	
-	proc SearchCmd(call: boolean; var found: boolean)
+	proc SearchCmd(call: boolean; var found: boolean) 
 		var 
 			p: Properties.Property
 			std: boolean
 			v: Views.View
-			cmd: array 256 of char
+			cmd: array 256 of wchar
 			pos, res: integer
 	begin 
 		Controllers.SetCurrentPath(Controllers.targetPath)
@@ -735,7 +735,7 @@ module StdCmds
 		SearchCmd(true, found)
 	end ShowProp
 	
-	proc ShowPropGuard*(var par: Dialog.Par)
+	proc ShowPropGuard*(var par: Dialog.Par) 
 		var 
 			found: boolean
 	begin 
@@ -748,7 +748,7 @@ module StdCmds
 	
 	// container commands
 	
-	proc ActFocus(): Containers.Controller
+	proc ActFocus(): Containers.Controller 
 		var 
 			c: Containers.Controller
 			v: Views.View
@@ -877,7 +877,7 @@ module StdCmds
 		end 
 	end RecalcAllSizes
 	
-	proc SetMode(opts: set)
+	proc SetMode(opts: set) 
 		var 
 			c: Containers.Controller
 			v: Views.View
@@ -906,7 +906,7 @@ module StdCmds
 		end 
 	end SetMode
 	
-	proc GetMode(var found: boolean; var opts: set)
+	proc GetMode(var found: boolean; var opts: set) 
 		var 
 			c: Containers.Controller
 			gm: Containers.GetOpts
@@ -954,7 +954,7 @@ module StdCmds
 	
 	// standard guards
 	
-	proc ToggleNoFocusGuard*(var par: Dialog.Par)
+	proc ToggleNoFocusGuard*(var par: Dialog.Par) 
 		var 
 			c: Containers.Controller
 			v: Views.View
@@ -976,12 +976,12 @@ module StdCmds
 		end 
 	end ToggleNoFocusGuard
 	
-	proc ReadOnlyGuard*(var par: Dialog.Par)
+	proc ReadOnlyGuard*(var par: Dialog.Par) 
 	begin 
 		par.readOnly := true
 	end ReadOnlyGuard
 	
-	proc WindowGuard*(var par: Dialog.Par)
+	proc WindowGuard*(var par: Dialog.Par) 
 		var 
 			w: Windows.Window
 	begin 
@@ -991,7 +991,7 @@ module StdCmds
 		end 
 	end WindowGuard
 	
-	proc ModelViewGuard*(var par: Dialog.Par)
+	proc ModelViewGuard*(var par: Dialog.Par) 
 		var 
 			w: Windows.Window
 	begin 
@@ -999,7 +999,7 @@ module StdCmds
 		par.disabled := (w = nil) or (w.doc.ThisView().ThisModel() = nil)
 	end ModelViewGuard
 	
-	proc SetMaskModeGuard*(var par: Dialog.Par)
+	proc SetMaskModeGuard*(var par: Dialog.Par) 
 		const 
 			mode = {Containers.noSelection, Containers.noFocus, Containers.noCaret}
 		var 
@@ -1014,7 +1014,7 @@ module StdCmds
 		end 
 	end SetMaskModeGuard
 	
-	proc SetEditModeGuard*(var par: Dialog.Par)
+	proc SetEditModeGuard*(var par: Dialog.Par) 
 		const 
 			mode = {Containers.noSelection, Containers.noFocus, Containers.noCaret}
 		var 
@@ -1029,7 +1029,7 @@ module StdCmds
 		end 
 	end SetEditModeGuard
 	
-	proc SetLayoutModeGuard*(var par: Dialog.Par)
+	proc SetLayoutModeGuard*(var par: Dialog.Par) 
 		const 
 			mode = {Containers.noSelection, Containers.noFocus, Containers.noCaret}
 		var 
@@ -1044,7 +1044,7 @@ module StdCmds
 		end 
 	end SetLayoutModeGuard
 	
-	proc SetBrowserModeGuard*(var par: Dialog.Par)
+	proc SetBrowserModeGuard*(var par: Dialog.Par) 
 		const 
 			mode = {Containers.noSelection, Containers.noFocus, Containers.noCaret}
 		var 
@@ -1059,7 +1059,7 @@ module StdCmds
 		end 
 	end SetBrowserModeGuard
 	
-	proc SelectionGuard*(var par: Dialog.Par)
+	proc SelectionGuard*(var par: Dialog.Par) 
 		var 
 			ops: Controllers.PollOpsMsg
 	begin 
@@ -1069,7 +1069,7 @@ module StdCmds
 		end 
 	end SelectionGuard
 	
-	proc SingletonGuard*(var par: Dialog.Par)
+	proc SingletonGuard*(var par: Dialog.Par) 
 		var 
 			ops: Controllers.PollOpsMsg
 	begin 
@@ -1079,7 +1079,7 @@ module StdCmds
 		end 
 	end SingletonGuard
 	
-	proc SelectAllGuard*(var par: Dialog.Par)
+	proc SelectAllGuard*(var par: Dialog.Par) 
 		var 
 			ops: Controllers.PollOpsMsg
 	begin 
@@ -1089,7 +1089,7 @@ module StdCmds
 		end 
 	end SelectAllGuard
 	
-	proc CaretGuard*(var par: Dialog.Par)
+	proc CaretGuard*(var par: Dialog.Par) 
 		var 
 			ops: Controllers.PollOpsMsg
 	begin 
@@ -1099,7 +1099,7 @@ module StdCmds
 		end 
 	end CaretGuard
 	
-	proc PasteCharGuard*(var par: Dialog.Par)
+	proc PasteCharGuard*(var par: Dialog.Par) 
 		var 
 			ops: Controllers.PollOpsMsg
 	begin 
@@ -1109,7 +1109,7 @@ module StdCmds
 		end 
 	end PasteCharGuard
 	
-	proc PasteLCharGuard*(var par: Dialog.Par)
+	proc PasteLCharGuard*(var par: Dialog.Par) 
 		var 
 			ops: Controllers.PollOpsMsg
 	begin 
@@ -1119,7 +1119,7 @@ module StdCmds
 		end 
 	end PasteLCharGuard
 	
-	proc PasteViewGuard*(var par: Dialog.Par)
+	proc PasteViewGuard*(var par: Dialog.Par) 
 		var 
 			ops: Controllers.PollOpsMsg
 	begin 
@@ -1129,14 +1129,14 @@ module StdCmds
 		end 
 	end PasteViewGuard
 	
-	proc ContainerGuard*(var par: Dialog.Par)
+	proc ContainerGuard*(var par: Dialog.Par) 
 	begin 
 		if Containers.Focus() = nil then
 			par.disabled := true 
 		end 
 	end ContainerGuard
 	
-	proc UndoGuard*(var par: Dialog.Par)
+	proc UndoGuard*(var par: Dialog.Par) 
 		var 
 			f: Windows.Window
 			opName: Stores.OpName
@@ -1153,7 +1153,7 @@ module StdCmds
 		end 
 	end UndoGuard
 	
-	proc RedoGuard*(var par: Dialog.Par)
+	proc RedoGuard*(var par: Dialog.Par) 
 		var 
 			f: Windows.Window
 			opName: Stores.OpName
@@ -1170,7 +1170,7 @@ module StdCmds
 		end 
 	end RedoGuard
 	
-	proc PlainGuard*(var par: Dialog.Par)
+	proc PlainGuard*(var par: Dialog.Par) 
 		var 
 			props: Properties.StdProp
 	begin 
@@ -1184,7 +1184,7 @@ module StdCmds
 		end 
 	end PlainGuard
 	
-	proc BoldGuard*(var par: Dialog.Par)
+	proc BoldGuard*(var par: Dialog.Par) 
 		var 
 			props: Properties.StdProp
 	begin 
@@ -1196,7 +1196,7 @@ module StdCmds
 		end 
 	end BoldGuard
 	
-	proc ItalicGuard*(var par: Dialog.Par)
+	proc ItalicGuard*(var par: Dialog.Par) 
 		var 
 			props: Properties.StdProp
 	begin 
@@ -1208,7 +1208,7 @@ module StdCmds
 		end 
 	end ItalicGuard
 	
-	proc UnderlineGuard*(var par: Dialog.Par)
+	proc UnderlineGuard*(var par: Dialog.Par) 
 		var 
 			props: Properties.StdProp
 	begin 
@@ -1220,7 +1220,7 @@ module StdCmds
 		end 
 	end UnderlineGuard
 	
-	proc StrikeoutGuard*(var par: Dialog.Par)
+	proc StrikeoutGuard*(var par: Dialog.Par) 
 		var 
 			props: Properties.StdProp
 	begin 
@@ -1232,7 +1232,7 @@ module StdCmds
 		end 
 	end StrikeoutGuard
 	
-	proc SizeGuard*(size_: integer; var par: Dialog.Par)
+	proc SizeGuard*(size_: integer; var par: Dialog.Par) 
 		var 
 			props: Properties.StdProp
 	begin 
@@ -1244,7 +1244,7 @@ module StdCmds
 		end 
 	end SizeGuard
 	
-	proc ColorGuard*(color: integer; var par: Dialog.Par)
+	proc ColorGuard*(color: integer; var par: Dialog.Par) 
 		var 
 			props: Properties.StdProp
 	begin 
@@ -1256,7 +1256,7 @@ module StdCmds
 		end 
 	end ColorGuard
 	
-	proc DefaultFontGuard*(var par: Dialog.Par)
+	proc DefaultFontGuard*(var par: Dialog.Par) 
 		var 
 			props: Properties.StdProp
 	begin 
@@ -1268,7 +1268,7 @@ module StdCmds
 		end 
 	end DefaultFontGuard
 	
-	proc TypefaceGuard*(var par: Dialog.Par)
+	proc TypefaceGuard*(var par: Dialog.Par) 
 		var 
 			props: Properties.StdProp
 	begin 
@@ -1281,7 +1281,7 @@ module StdCmds
 	
 	// standard notifiers
 	
-	proc DefaultOnDoubleClick*(op, from, to_: integer)
+	proc DefaultOnDoubleClick*(op, from, to_: integer) 
 		var 
 			msg: Controllers.EditMsg
 			c: Containers.Controller

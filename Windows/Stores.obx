@@ -60,9 +60,9 @@ module Stores
 	
 	
 	type 
-		TypeName* = array 64 of char
+		TypeName* = array 64 of wchar
 		TypePath* = array 16 of TypeName
-		OpName* = array 32 of char
+		OpName* = array 32 of wchar
 		
 		Domain* = pointer to (* limited *) record 
 				sequencer: ANYPTR
@@ -169,13 +169,13 @@ module Stores
 		c.d.s := nil
 	end Cleanup
 	
-	proc (d: Domain) SetSequencer*(sequencer: ANYPTR) // new
+	proc (d: Domain) SetSequencer*(sequencer: ANYPTR)  // new
 	begin 
 		assert(d.sequencer = nil)
 		d.sequencer := sequencer
 	end SetSequencer
 	
-	proc (d: Domain) GetSequencer*(): ANYPTR // new
+	proc (d: Domain) GetSequencer*(): ANYPTR  // new
 	begin 
 		return d.sequencer
 	end GetSequencer
@@ -183,12 +183,12 @@ module Stores
 	
 	// Operation
 	
-	proc (op: Operation) Do*() end // new abstract
+	proc (op: Operation) Do*()  end // new abstract
 	
 	
 	// Store
 	
-	proc NewDomain(initialized: boolean): Domain
+	proc NewDomain(initialized: boolean): Domain 
 		var 
 			d: Domain
 	begin 
@@ -201,7 +201,7 @@ module Stores
 		return d
 	end NewDomain
 	
-	proc DomainOf(s: Store): Domain
+	proc DomainOf(s: Store): Domain 
 		var 
 			d, p, q, r: Domain
 	begin 
@@ -227,7 +227,7 @@ module Stores
 		return d
 	end DomainOf
 	
-	proc (s: Store) Domain*(): Domain // new
+	proc (s: Store) Domain*(): Domain  // new
 		var 
 			d: Domain
 	begin 
@@ -238,9 +238,9 @@ module Stores
 		return d
 	end Domain
 	
-	proc (s: Store) CopyFrom-(source: Store) end // new empty
+	proc (s: Store) CopyFrom-(source: Store)  end // new empty
 	
-	proc (s: Store) Internalize-(var rd: Reader) // new extensible
+	proc (s: Store) Internalize-(var rd: Reader)  // new extensible
 		var 
 			thisVersion: integer
 	begin 
@@ -251,9 +251,9 @@ module Stores
 		end 
 	end Internalize
 	
-	proc (s: Store) ExternalizeAs-(var s1: Store) end // new empty
+	proc (s: Store) ExternalizeAs-(var s1: Store)  end // new empty
 	
-	proc (s: Store) Externalize-(var wr: Writer) // new extensible
+	proc (s: Store) Externalize-(var wr: Writer)  // new extensible
 	begin 
 		wr.WriteVersion(maxStoreVersion)
 		if s.isElem then
@@ -264,7 +264,7 @@ module Stores
 	
 	// Alien
 	
-	proc (a: Alien) CopyFrom-(source: Store)
+	proc (a: Alien) CopyFrom-(source: Store) 
 		var 
 			s, c, cp: AlienComp
 			piece: AlienPiece
@@ -302,12 +302,12 @@ module Stores
 		end 
 	end CopyFrom
 	
-	proc (a: Alien) Internalize-(var rd: Reader)
+	proc (a: Alien) Internalize-(var rd: Reader) 
 	begin 
 		halt(100)
 	end Internalize
 	
-	proc (a: Alien) Externalize-(var w: Writer)
+	proc (a: Alien) Externalize-(var w: Writer) 
 	begin 
 		halt(100)
 	end Externalize
@@ -315,10 +315,10 @@ module Stores
 	
 	// types
 	
-	proc GetThisTypeName(t: Kernel.Type; var type_: TypeName)
+	proc GetThisTypeName(t: Kernel.Type; var type_: TypeName) 
 		var 
 			i, j: integer
-			ch: char
+			ch: wchar
 			modName, name: Kernel.Name
 	begin 
 		Kernel.GetModName(t.mod_, modName)
@@ -353,15 +353,15 @@ module Stores
 		end 
 	end GetThisTypeName
 	
-	proc ThisType(type_: TypeName): Kernel.Type
+	proc ThisType(type_: TypeName): Kernel.Type 
 		var 
 			m: Kernel.Module
 			t: Kernel.Type
 			i, j: integer
-			ch: char
+			ch: wchar
 			typ, mod_: Kernel.Name
 			res: integer
-			str: array 256 of char
+			str: array 256 of wchar
 	begin 
 		assert(type_ # "", 20)
 		i := 0
@@ -415,7 +415,7 @@ module Stores
 		return t
 	end ThisType
 	
-	proc SameType(in x, y: TypeName): boolean
+	proc SameType(in x, y: TypeName): boolean 
 		var 
 			i: integer
 	begin 
@@ -432,7 +432,7 @@ module Stores
 		end 
 	end SameType
 	
-	proc SamePath(t: Kernel.Type; var path: TypePath): boolean
+	proc SamePath(t: Kernel.Type; var path: TypePath): boolean 
 		// check whether t coincides with path
 		var 
 			tn: TypeName
@@ -448,7 +448,7 @@ module Stores
 		return SameType(tn, path[i])
 	end SamePath
 	
-	proc NewStore(t: Kernel.Type): Store
+	proc NewStore(t: Kernel.Type): Store 
 		var 
 			p: ANYPTR
 	begin 
@@ -462,7 +462,7 @@ module Stores
 	
 	// type dictionary
 	
-	proc GetThisType(var d: TypeDict; id: integer; var type_: TypeName)
+	proc GetThisType(var d: TypeDict; id: integer; var type_: TypeName) 
 		// pre: (id, t) IN dict
 		var 
 			h, p: TypeDict
@@ -485,7 +485,7 @@ module Stores
 		assert(type_ # "", 100)
 	end GetThisType
 	
-	proc ThisId(var d: TypeDict; t: TypeName): integer
+	proc ThisId(var d: TypeDict; t: TypeName): integer 
 		// pre: t # ""
 		// post: res = id if (t, id) in dict, res = -1 else
 		var 
@@ -515,7 +515,7 @@ module Stores
 		return id
 	end ThisId
 	
-	proc ThisBaseId(var d: TypeDict; id: integer): integer
+	proc ThisBaseId(var d: TypeDict; id: integer): integer 
 		// post: res = id if base(t) # NIL, res = -1 if base(t) = NIL; res >= 0 => T(res) = base(t)
 		var 
 			h, p: TypeDict
@@ -538,7 +538,7 @@ module Stores
 		return baseId
 	end ThisBaseId
 	
-	proc AddType(var d, h: TypeDict; id: integer; type_: TypeName)
+	proc AddType(var d, h: TypeDict; id: integer; type_: TypeName) 
 		var 
 			k: integer
 	begin 
@@ -553,7 +553,7 @@ module Stores
 		h.baseId[k] := -1
 	end AddType
 	
-	proc AddBaseId(h: TypeDict; id, baseId: integer)
+	proc AddBaseId(h: TypeDict; id, baseId: integer) 
 		var 
 			k: integer
 	begin 
@@ -561,7 +561,7 @@ module Stores
 		h.baseId[k] := baseId
 	end AddBaseId
 	
-	proc InitTypeDict(var d, h: TypeDict; var nextID: integer)
+	proc InitTypeDict(var d, h: TypeDict; var nextID: integer) 
 	begin 
 		d := nil
 		h := nil
@@ -571,7 +571,7 @@ module Stores
 	
 	// store dictionary - used to maintain referential sharing
 	
-	proc ThisStore(var d: StoreDict; id: integer): Store
+	proc ThisStore(var d: StoreDict; id: integer): Store 
 		// pre: (id, s) IN dict
 		var 
 			h, p: StoreDict
@@ -596,7 +596,7 @@ module Stores
 		return s
 	end ThisStore
 	
-	proc AddStore(var d, h: StoreDict; s: Store)
+	proc AddStore(var d, h: StoreDict; s: Store) 
 		var 
 			k: integer
 	begin 
@@ -610,7 +610,7 @@ module Stores
 		h.elem[k] := s
 	end AddStore
 	
-	proc InitStoreDict(var d, h: StoreDict; var nextID: integer)
+	proc InitStoreDict(var d, h: StoreDict; var nextID: integer) 
 	begin 
 		d := nil
 		h := nil
@@ -620,14 +620,14 @@ module Stores
 	
 	// support for type mapping
 	
-	proc ReadPath(var rd: Reader; var path: TypePath)
+	proc ReadPath(var rd: Reader; var path: TypePath) 
 		var 
 			h: TypeDict
 			id, extId: integer
 			i: integer
 			kind: char
 		
-		proc ReadUtf8(var x: array of char)
+		proc ReadUtf8(var x: array of wchar) 
 			var 
 				utf8: Kernel.Utf8Name
 				res: integer
@@ -637,7 +637,7 @@ module Stores
 			assert(res = 0)
 		end ReadUtf8
 		
-		proc AddPathComp(var rd: Reader)
+		proc AddPathComp(var rd: Reader) 
 		begin 
 			if h # nil then
 				AddBaseId(h, extId, rd.nextTypeId) 
@@ -682,13 +682,13 @@ module Stores
 		path[i] := ""
 	end ReadPath
 	
-	proc WritePath(var wr: Writer; var path: TypePath)
+	proc WritePath(var wr: Writer; var path: TypePath) 
 		var 
 			h: TypeDict
 			id, extId: integer
 			i, n: integer
 		
-		proc WriteUtf8(in x: array of char)
+		proc WriteUtf8(in x: array of wchar) 
 			var 
 				utf8: Kernel.Utf8Name
 				res: integer
@@ -747,7 +747,7 @@ module Stores
 		end 
 	end WritePath
 	
-	proc WriteType(var wr: Writer; t: Kernel.Type)
+	proc WriteType(var wr: Writer; t: Kernel.Type) 
 		var 
 			path: TypePath
 			n, i: integer
@@ -766,7 +766,7 @@ module Stores
 	
 	// support for alien mapping
 	
-	proc InternalizeAlien(var rd: Reader; var comps: AlienComp; down, pos, len_: integer)
+	proc InternalizeAlien(var rd: Reader; var comps: AlienComp; down, pos, len_: integer) 
 		var 
 			h, p: AlienComp
 			piece: AlienPiece
@@ -817,7 +817,7 @@ module Stores
 		rd.SetPos(end_)
 	end InternalizeAlien
 	
-	proc ExternalizePiece(var wr: Writer; file: Files.File; p: AlienPiece)
+	proc ExternalizePiece(var wr: Writer; file: Files.File; p: AlienPiece) 
 		var 
 			r: Files.Reader
 			w: Files.Writer
@@ -840,7 +840,7 @@ module Stores
 		end 
 	end ExternalizePiece
 	
-	proc ExternalizeAlien(var wr: Writer; file: Files.File; comps: AlienComp)
+	proc ExternalizeAlien(var wr: Writer; file: Files.File; comps: AlienComp) 
 		var 
 			p: AlienComp
 	begin 
@@ -858,7 +858,7 @@ module Stores
 	
 	// Reader
 	
-	proc (var rd: Reader) ConnectTo*(f: Files.File) // new
+	proc (var rd: Reader) ConnectTo*(f: Files.File)  // new
 	// pre: rd.rider = NIL  OR  f = NIL
 	begin 
 		if f = nil then
@@ -875,17 +875,17 @@ module Stores
 		rd.readAlien := false
 	end ConnectTo
 	
-	proc (var rd: Reader) SetPos*(pos: integer) // new
+	proc (var rd: Reader) SetPos*(pos: integer)  // new
 	begin 
 		rd.rider.SetPos(pos)
 	end SetPos
 	
-	proc (var rd: Reader) Pos*(): integer // new
+	proc (var rd: Reader) Pos*(): integer  // new
 	begin 
 		return rd.rider.Pos()
 	end Pos
 	
-	proc (var rd: Reader) ReadBool*(var x: boolean) // new
+	proc (var rd: Reader) ReadBool*(var x: boolean)  // new
 		var 
 			b: byte
 	begin 
@@ -893,12 +893,12 @@ module Stores
 		x := b # 0
 	end ReadBool
 	
-	proc (var rd: Reader) ReadSChar*(var x: char) // new
+	proc (var rd: Reader) ReadSChar*(var x: char)  // new
 	begin 
 		rd.rider.ReadByte(SYSTEM.VAL(byte, x))
 	end ReadSChar
 	
-	proc (var rd: Reader) ReadXChar*(var x: char) // new
+	proc (var rd: Reader) ReadXChar*(var x: wchar)  // new
 		var 
 			c: char
 	begin 
@@ -906,7 +906,7 @@ module Stores
 		x := c
 	end ReadXChar
 	
-	proc (var rd: Reader) ReadChar*(var x: char) // new
+	proc (var rd: Reader) ReadChar*(var x: wchar)  // new
 		var  // little endian, big endian
 			le: array 2 of byte
 	begin 
@@ -914,12 +914,12 @@ module Stores
 		x := chr(le[0] mod 256 + (le[1] mod 256) * 256)
 	end ReadChar
 	
-	proc (var rd: Reader) ReadByte*(var x: byte) // new
+	proc (var rd: Reader) ReadByte*(var x: byte)  // new
 	begin 
 		rd.rider.ReadByte(x)
 	end ReadByte
 	
-	proc (var rd: Reader) ReadSInt*(var x: shortint) // new
+	proc (var rd: Reader) ReadSInt*(var x: shortint)  // new
 		var  // little endian, big endian
 			le, be: array 2 of byte
 	begin 
@@ -933,7 +933,7 @@ module Stores
 		end 
 	end ReadSInt
 	
-	proc (var rd: Reader) ReadXInt*(var x: integer) // new
+	proc (var rd: Reader) ReadXInt*(var x: integer)  // new
 		var  // little endian, big endian
 			le, be: array 2 of byte
 	begin 
@@ -947,7 +947,7 @@ module Stores
 		end 
 	end ReadXInt
 	
-	proc (var rd: Reader) ReadInt*(var x: integer) // new
+	proc (var rd: Reader) ReadInt*(var x: integer)  // new
 		var  // little endian, big endian
 			le, be: array 4 of byte
 	begin 
@@ -963,7 +963,7 @@ module Stores
 		end 
 	end ReadInt
 	
-	proc (var rd: Reader) ReadLong*(var x: longint) // new
+	proc (var rd: Reader) ReadLong*(var x: longint)  // new
 		var  // little endian, big endian
 			le, be: array 8 of byte
 	begin 
@@ -983,7 +983,7 @@ module Stores
 		end 
 	end ReadLong
 	
-	proc (var rd: Reader) ReadSReal*(var x: real) // new
+	proc (var rd: Reader) ReadSReal*(var x: real)  // new
 		var  // little endian, big endian
 			le, be: array 4 of byte
 	begin 
@@ -999,7 +999,7 @@ module Stores
 		end 
 	end ReadSReal
 	
-	proc (var rd: Reader) ReadXReal*(var x: real) // new
+	proc (var rd: Reader) ReadXReal*(var x: longreal)  // new
 		var  // little endian, big endian
 			le, be: array 4 of byte
 	begin 
@@ -1015,13 +1015,13 @@ module Stores
 		end 
 	end ReadXReal
 	
-	proc (var rd: Reader) ReadReal*(var x: real) // new
+	proc (var rd: Reader) ReadReal*(var x: longreal)  // new
 		var  // little endian, big endian
 			le, be: array 8 of byte
 	begin 
 		rd.rider.ReadBytes(le, 0, 8)
 		if Kernel.littleEndian then
-			x := SYSTEM.VAL(real, le) 
+			x := SYSTEM.VAL(longreal, le) 
 		else 
 			be[0] := le[7]
 			be[1] := le[6]
@@ -1031,11 +1031,11 @@ module Stores
 			be[5] := le[2]
 			be[6] := le[1]
 			be[7] := le[0]
-			x := SYSTEM.VAL(real, be) 
+			x := SYSTEM.VAL(longreal, be) 
 		end 
 	end ReadReal
 	
-	proc (var rd: Reader) ReadSet*(var x: set) // new
+	proc (var rd: Reader) ReadSet*(var x: set)  // new
 		var  // little endian, big endian
 			le, be: array 4 of byte
 	begin 
@@ -1051,7 +1051,7 @@ module Stores
 		end 
 	end ReadSet
 	
-	proc (var rd: Reader) ReadSString*(var x: array of char) // new
+	proc (var rd: Reader) ReadSString*(var x: array of char)  // new
 		var 
 			i: integer
 			ch: char
@@ -1064,10 +1064,10 @@ module Stores
 		until ch = 0x 
 	end ReadSString
 	
-	proc (var rd: Reader) ReadXString*(var x: array of char) // new
+	proc (var rd: Reader) ReadXString*(var x: array of wchar)  // new
 		var 
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		repeat 
@@ -1077,10 +1077,10 @@ module Stores
 		until ch = 0x 
 	end ReadXString
 	
-	proc (var rd: Reader) ReadString*(var x: array of char) // new
+	proc (var rd: Reader) ReadString*(var x: array of wchar)  // new
 		var 
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		repeat 
@@ -1090,9 +1090,9 @@ module Stores
 		until ch = 0x 
 	end ReadString
 	
-	proc AlienReport(cause: integer)
+	proc AlienReport(cause: integer) 
 		var 
-			s, e: array 32 of char
+			s, e: array 32 of wchar
 	begin 
 		case cause of 
 			| alienVersion: 
@@ -1108,9 +1108,9 @@ module Stores
 		Report("#System:AlienCause ^0 ^1 ^2", s, e, "")
 	end AlienReport
 	
-	proc AlienTypeReport(cause: integer; t: array of char)
+	proc AlienTypeReport(cause: integer; t: array of wchar) 
 		var 
-			s: array 64 of char
+			s: array 64 of wchar
 	begin 
 		case cause of 
 			| inconsistentType: 
@@ -1127,7 +1127,7 @@ module Stores
 		Report(s, t, "", "")
 	end AlienTypeReport
 	
-	proc (var rd: Reader) TurnIntoAlien*(cause: integer) // new
+	proc (var rd: Reader) TurnIntoAlien*(cause: integer)  // new
 	begin 
 		assert(cause > 0, 20)
 		rd.cancelled := true
@@ -1136,7 +1136,7 @@ module Stores
 		AlienReport(cause)
 	end TurnIntoAlien
 	
-	proc (var rd: Reader) ReadVersion*(min_, max_: integer; var version: integer) // new
+	proc (var rd: Reader) ReadVersion*(min_, max_: integer; var version: integer)  // new
 		var 
 			v: byte
 	begin 
@@ -1147,7 +1147,7 @@ module Stores
 		end 
 	end ReadVersion
 	
-	proc (var rd: Reader) ReadStore*(var x: Store) // new
+	proc (var rd: Reader) ReadStore*(var x: Store)  // new
 		var 
 			a: Alien
 			t: Kernel.Type
@@ -1317,7 +1317,7 @@ module Stores
 	
 	// Writer
 	
-	proc (var wr: Writer) ConnectTo*(f: Files.File) // new
+	proc (var wr: Writer) ConnectTo*(f: Files.File)  // new
 	// pre: wr.rider = NIL  OR  f = NIL
 	begin 
 		if f = nil then
@@ -1338,17 +1338,17 @@ module Stores
 		wr.writtenStore := nil
 	end ConnectTo
 	
-	proc (var wr: Writer) SetPos*(pos: integer) // new
+	proc (var wr: Writer) SetPos*(pos: integer)  // new
 	begin 
 		wr.rider.SetPos(pos)
 	end SetPos
 	
-	proc (var wr: Writer) Pos*(): integer // new
+	proc (var wr: Writer) Pos*(): integer  // new
 	begin 
 		return wr.rider.Pos()
 	end Pos
 	
-	proc (var wr: Writer) WriteBool*(x: boolean) // new
+	proc (var wr: Writer) WriteBool*(x: boolean)  // new
 	begin 
 		if x then
 			wr.rider.WriteByte(1) 
@@ -1357,12 +1357,12 @@ module Stores
 		end 
 	end WriteBool
 	
-	proc (var wr: Writer) WriteSChar*(x: char) // new
+	proc (var wr: Writer) WriteSChar*(x: char)  // new
 	begin 
 		wr.rider.WriteByte(SYSTEM.VAL(byte, x))
 	end WriteSChar
 	
-	proc (var wr: Writer) WriteXChar*(x: char) // new
+	proc (var wr: Writer) WriteXChar*(x: wchar)  // new
 		var 
 			c: char
 	begin 
@@ -1370,7 +1370,7 @@ module Stores
 		wr.rider.WriteByte(SYSTEM.VAL(byte, c))
 	end WriteXChar
 	
-	proc (var wr: Writer) WriteChar*(x: char) // new
+	proc (var wr: Writer) WriteChar*(x: wchar)  // new
 		type 
 			a = array 2 of byte
 		var  // little endian, big endian
@@ -1386,12 +1386,12 @@ module Stores
 		wr.rider.WriteBytes(le, 0, 2)
 	end WriteChar
 	
-	proc (var wr: Writer) WriteByte*(x: byte) // new
+	proc (var wr: Writer) WriteByte*(x: byte)  // new
 	begin 
 		wr.rider.WriteByte(x)
 	end WriteByte
 	
-	proc (var wr: Writer) WriteSInt*(x: shortint) // new
+	proc (var wr: Writer) WriteSInt*(x: shortint)  // new
 		type 
 			a = array 2 of byte
 		var  // little endian, big endian
@@ -1407,7 +1407,7 @@ module Stores
 		wr.rider.WriteBytes(le, 0, 2)
 	end WriteSInt
 	
-	proc (var wr: Writer) WriteXInt*(x: integer) // new
+	proc (var wr: Writer) WriteXInt*(x: integer)  // new
 		type 
 			a = array 2 of byte
 		var  // little endian, big endian
@@ -1425,7 +1425,7 @@ module Stores
 		wr.rider.WriteBytes(le, 0, 2)
 	end WriteXInt
 	
-	proc (var wr: Writer) WriteInt*(x: integer) // new
+	proc (var wr: Writer) WriteInt*(x: integer)  // new
 		type 
 			a = array 4 of byte
 		var  // little endian, big endian
@@ -1443,7 +1443,7 @@ module Stores
 		wr.rider.WriteBytes(le, 0, 4)
 	end WriteInt
 	
-	proc (var wr: Writer) WriteLong*(x: longint) // new
+	proc (var wr: Writer) WriteLong*(x: longint)  // new
 		type 
 			a = array 8 of byte
 		var  // little endian, big endian
@@ -1465,7 +1465,7 @@ module Stores
 		wr.rider.WriteBytes(le, 0, 8)
 	end WriteLong
 	
-	proc (var wr: Writer) WriteSReal*(x: real) // new
+	proc (var wr: Writer) WriteSReal*(x: real)  // new
 		type 
 			a = array 4 of byte
 		var  // little endian, big endian
@@ -1483,14 +1483,14 @@ module Stores
 		wr.rider.WriteBytes(le, 0, 4)
 	end WriteSReal
 	
-	proc (var wr: Writer) WriteXReal*(x: real) // new
+	proc (var wr: Writer) WriteXReal*(x: longreal)  // new
 		type 
 			a = array 4 of byte
 		var  // little endian, big endian
 			y: real
 			le, be: a
 	begin 
-		y := (x)
+		y := short(x)
 		if Kernel.littleEndian then
 			le := SYSTEM.VAL(a, y) 
 		else 
@@ -1503,7 +1503,7 @@ module Stores
 		wr.rider.WriteBytes(le, 0, 4)
 	end WriteXReal
 	
-	proc (var wr: Writer) WriteReal*(x: real) // new
+	proc (var wr: Writer) WriteReal*(x: longreal)  // new
 		type 
 			a = array 8 of byte
 		var  // little endian, big endian
@@ -1525,7 +1525,7 @@ module Stores
 		wr.rider.WriteBytes(le, 0, 8)
 	end WriteReal
 	
-	proc (var wr: Writer) WriteSet*(x: set) // new
+	proc (var wr: Writer) WriteSet*(x: set)  // new
 		// SIZE(SET) = 4
 		type 
 			a = array 4 of byte
@@ -1544,7 +1544,7 @@ module Stores
 		wr.rider.WriteBytes(le, 0, 4)
 	end WriteSet
 	
-	proc (var wr: Writer) WriteSString*(in x: array of char) // new
+	proc (var wr: Writer) WriteSString*(in x: array of char)  // new
 		var 
 			i: integer
 			ch: char
@@ -1559,10 +1559,10 @@ module Stores
 		wr.WriteSChar(0x)
 	end WriteSString
 	
-	proc (var wr: Writer) WriteXString*(in x: array of char) // new
+	proc (var wr: Writer) WriteXString*(in x: array of wchar)  // new
 		var 
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		ch := x[0]
@@ -1574,10 +1574,10 @@ module Stores
 		wr.WriteSChar(0x)
 	end WriteXString
 	
-	proc (var wr: Writer) WriteString*(in x: array of char) // new
+	proc (var wr: Writer) WriteString*(in x: array of wchar)  // new
 		var 
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		ch := x[0]
@@ -1589,12 +1589,12 @@ module Stores
 		wr.WriteChar(0x)
 	end WriteString
 	
-	proc (var wr: Writer) WriteVersion*(version: integer) // new
+	proc (var wr: Writer) WriteVersion*(version: integer)  // new
 	begin 
 		wr.WriteByte(short(short(version)))
 	end WriteVersion
 	
-	proc (var wr: Writer) WriteStore*(x: Store) // new
+	proc (var wr: Writer) WriteStore*(x: Store)  // new
 		var 
 			t: Kernel.Type
 			pos1, pos2, pos: integer
@@ -1701,14 +1701,14 @@ module Stores
 	
 	// miscellaneous
 	
-	proc Report*(in msg, p0, p1, p2: array of char)
+	proc Report*(in msg, p0, p1, p2: array of wchar) 
 	begin 
 		if logReports then
 			Dialog.ShowParamMsg(msg, p0, p1, p2) 
 		end 
 	end Report
 	
-	proc BeginCloning(d: Domain)
+	proc BeginCloning(d: Domain) 
 	begin 
 		assert(d # nil, 20)
 		inc(d.level)
@@ -1724,7 +1724,7 @@ module Stores
 		end 
 	end BeginCloning
 	
-	proc EndCloning(d: Domain)
+	proc EndCloning(d: Domain) 
 	begin 
 		assert(d # nil, 20)
 		dec(d.level)
@@ -1735,7 +1735,7 @@ module Stores
 		end 
 	end EndCloning
 	
-	proc CopyOf*(s: Store): Store
+	proc CopyOf*(s: Store): Store 
 		var 
 			h: Store
 			c: StoreDict
@@ -1789,7 +1789,7 @@ module Stores
 		return h
 	end CopyOf
 	
-	proc ExternalizeProxy*(s: Store): Store
+	proc ExternalizeProxy*(s: Store): Store 
 	begin 
 		if s # nil then
 			s.ExternalizeAs(s) 
@@ -1797,7 +1797,7 @@ module Stores
 		return s
 	end ExternalizeProxy
 	
-	proc InitDomain*(s: Store)
+	proc InitDomain*(s: Store) 
 		var 
 			d: Domain
 	begin 
@@ -1811,7 +1811,7 @@ module Stores
 		end 
 	end InitDomain
 	
-	proc Join*(s0, s1: Store)
+	proc Join*(s0, s1: Store) 
 		var 
 			d0, d1: Domain
 	begin 
@@ -1843,7 +1843,7 @@ module Stores
 		end 
 	end Join
 	
-	proc Joined*(s0, s1: Store): boolean
+	proc Joined*(s0, s1: Store): boolean 
 		var 
 			d0, d1: Domain
 	begin 
@@ -1854,7 +1854,7 @@ module Stores
 		return (s0 = s1) or ((d0 = d1) & (d0 # nil))
 	end Joined
 	
-	proc Unattached*(s: Store): boolean
+	proc Unattached*(s: Store): boolean 
 	begin 
 		assert(s # nil, 20)
 		return (s.dlink = nil) or s.dlink.copyDomain

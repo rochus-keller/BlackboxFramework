@@ -45,12 +45,12 @@ module StdClocks
 		actionIsAlive: boolean
 	
 	
-	proc Cos(r, g: integer): integer
+	proc Cos(r, g: integer): integer 
 	begin 
 		return short(entier(r * Math.Cos(2 * Math.Pi() * g / 60) + 0.5))
 	end Cos
 	
-	proc Sin(r, g: integer): integer
+	proc Sin(r, g: integer): integer 
 	begin 
 		return short(entier(r * Math.Sin(2 * Math.Pi() * g / 60) + 0.5))
 	end Sin
@@ -79,20 +79,20 @@ module StdClocks
 	
 	// View
 	
-	proc DrawTick(f: Views.Frame; m, d0, d1, s, g: integer; c: Ports.Color)
+	proc DrawTick(f: Views.Frame; m, d0, d1, s, g: integer; c: Ports.Color) 
 	begin 
 		f.DrawLine(m + Sin(d0, g), m - Cos(d0, g), m + Sin(d1, g), m - Cos(d1, g), s, c)
 	end DrawTick
 	
 	
-	proc (v: StdView) Externalize(var wr: Stores.Writer)
+	proc (v: StdView) Externalize(var wr: Stores.Writer) 
 	begin 
 		v.Externalize^(wr)
 		wr.WriteVersion(maxVersion)
 		wr.WriteByte(9)
 	end Externalize
 	
-	proc (v: StdView) Internalize(var rd: Stores.Reader)
+	proc (v: StdView) Internalize(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 			format: byte
@@ -107,14 +107,14 @@ module StdClocks
 		end 
 	end Internalize
 	
-	proc (v: StdView) CopyFromSimpleView(source: Views.View)
+	proc (v: StdView) CopyFromSimpleView(source: Views.View) 
 	begin 
 		with source: StdView do 
 			v.time.second := -1 
 		end 
 	end CopyFromSimpleView
 	
-	proc (v: StdView) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (v: StdView) Restore(f: Views.Frame; l, t, r, b: integer) 
 		var 
 			c: Models.Context
 			a: TextModels.Attributes
@@ -172,7 +172,7 @@ module StdClocks
 		DrawTick(f, m, sd0, sd1, ss, time.second, color)
 	end Restore
 	
-	proc (v: StdView) HandleModelMsg(var msg: Models.Message)
+	proc (v: StdView) HandleModelMsg(var msg: Models.Message) 
 		var 
 			w, h: integer
 	begin 
@@ -186,7 +186,7 @@ module StdClocks
 		end 
 	end HandleModelMsg
 	
-	proc SizePref(v: StdView; var p: Properties.SizePref)
+	proc SizePref(v: StdView; var p: Properties.SizePref) 
 	begin 
 		if (p.w > Views.undefined) & (p.h > Views.undefined) then
 			Properties.ProportionalConstraint(1, 1, p.fixedW, p.fixedH, p.w, p.h)
@@ -200,7 +200,7 @@ module StdClocks
 		end 
 	end SizePref
 	
-	proc (v: StdView) HandlePropMsg(var msg: Properties.Message)
+	proc (v: StdView) HandlePropMsg(var msg: Properties.Message) 
 	begin 
 		with msg: Properties.Preference do 
 			with msg: Properties.SizePref do 
@@ -214,7 +214,7 @@ module StdClocks
 	
 	// allocation
 	
-	proc New*(): Views.View
+	proc New*(): Views.View 
 		var 
 			v: StdView
 	begin 

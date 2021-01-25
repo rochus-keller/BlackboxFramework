@@ -81,7 +81,7 @@ module CommObxStreamsClient
 	end Do
 	
 	
-	proc Start(s: Sender)
+	proc Start(s: Sender) 
 		var 
 			stream: CommStreams.Stream
 			res: integer
@@ -120,7 +120,7 @@ module CommObxStreamsClient
 			c: TextControllers.Controller
 			beg, end_, i, len_: integer
 			rd: TextModels.Reader
-			ch: char
+			ch: wchar
 			s: Sender
 	begin 
 		c := TextControllers.Focus()

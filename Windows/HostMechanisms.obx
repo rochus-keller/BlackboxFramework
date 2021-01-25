@@ -67,7 +67,7 @@ module HostMechanisms
 	
 	// focus borders
 	
-	proc Fixed(host: Views.Frame; v: Views.View): boolean
+	proc Fixed(host: Views.Frame; v: Views.View): boolean 
 		var 
 			sp: Properties.ResizePref
 			c: Containers.Controller
@@ -81,11 +81,11 @@ module HostMechanisms
 		return sp.fixed
 	end Fixed
 	
-	proc PaintFocusBorder(f: Views.Frame; focus: Views.View; l, t, r, b: integer)
+	proc PaintFocusBorder(f: Views.Frame; focus: Views.View; l, t, r, b: integer) 
 		var 
 			u, s, w, h, mx, my, l0, t0, r0, b0: integer
 		
-		proc PaintHandle(x, y: integer; l, t, r, b: boolean)
+		proc PaintHandle(x, y: integer; l, t, r, b: boolean) 
 		begin 
 			if l then
 				f.DrawRect(x - u, y, x, y + s, Ports.fill, Ports.background) 
@@ -140,11 +140,11 @@ module HostMechanisms
 	end PaintFocusBorder
 	
 	proc (hook: Hook) FocusBorderCursor*(f: Views.Frame; view: Views.View; l, t, r, b: integer
-		x, y: integer): integer
+		x, y: integer): integer 
 		var 
 			s, u, w, h, mx, my, cursor: integer
 		
-		proc CheckHandle(x0, y0: integer; c: integer)
+		proc CheckHandle(x0, y0: integer; c: integer) 
 		begin 
 			if (x >= x0 - u) & (x <= x0 + s) & (y >= y0 - u) & (y <= y0 + s) then
 				cursor := c 
@@ -180,7 +180,7 @@ module HostMechanisms
 		return cursor
 	end FocusBorderCursor
 	
-	proc RestoreBorderArea(f: Views.Frame; l, t, r, b: integer)
+	proc RestoreBorderArea(f: Views.Frame; l, t, r, b: integer) 
 		// restore area under destructive border mark
 		var 
 			g: Views.RootFrame
@@ -209,7 +209,7 @@ module HostMechanisms
 	
 	proc (hook: Hook) MarkFocusBorder*(
 		host: Views.Frame; focus: Views.View; l, t, r, b: integer; show: boolean
-		)
+		) 
 	begin 
 		if focus # nil then
 			if show then
@@ -223,12 +223,12 @@ module HostMechanisms
 	
 	// selection borders
 	
-	proc PaintSelBorder(f: Views.Frame; view: Views.View; l, t, r, b: integer)
+	proc PaintSelBorder(f: Views.Frame; view: Views.View; l, t, r, b: integer) 
 		var 
 			u, d, w, h, mx, my, l0, t0, r0, b0: integer
 			sizeable: boolean
 		
-		proc PaintHandle(x, y: integer)
+		proc PaintHandle(x, y: integer) 
 			var 
 				s: integer
 				ci, co: Ports.Color
@@ -293,11 +293,11 @@ module HostMechanisms
 	end PaintSelBorder
 	
 	proc (hook: Hook) SelBorderCursor*(f: Views.Frame; view: Views.View; l, t, r, b: integer
-		x, y: integer): integer
+		x, y: integer): integer 
 		var 
 			d, u, w, h, mx, my, cursor: integer
 		
-		proc CheckHandle(x0, y0: integer; c: integer)
+		proc CheckHandle(x0, y0: integer; c: integer) 
 		begin 
 			if (x >= x0 - d) & (x <= x0 + d) & (y >= y0 - d) & (y <= y0 + d) then
 				cursor := c 
@@ -339,7 +339,7 @@ module HostMechanisms
 		return cursor
 	end SelBorderCursor
 	
-	proc RestoreViewArea(f: Views.Frame; l, t, r, b: integer)
+	proc RestoreViewArea(f: Views.Frame; l, t, r, b: integer) 
 		// restore area under destructive selection mark
 		var 
 			g: Views.RootFrame
@@ -363,7 +363,7 @@ module HostMechanisms
 	
 	proc (hook: Hook) MarkSingletonBorder*(
 		host: Views.Frame; view: Views.View; l, t, r, b: integer; show: boolean
-		)
+		) 
 	begin 
 		if view # nil then
 			if show then
@@ -392,7 +392,7 @@ module HostMechanisms
 	proc (hook: Hook) TrackToResize*(host: Views.Frame; view: Views.View
 		minW, maxW, minH, maxH: integer
 		var l, t, r, b: integer; var op: integer
-		var x, y: integer; var buttons: set)
+		var x, y: integer; var buttons: set) 
 		var 
 			isDown: boolean
 			m: set
@@ -510,7 +510,7 @@ module HostMechanisms
 	
 	proc (this: IDropSource) QueryContinueDrag(
 		escapePressed: WinApi.BOOL; keyState: set
-		): COM.RESULT
+		): COM.RESULT 
 	begin 
 		if this.key = {} then
 			this.key := keyState * (WinApi.MK_LBUTTON + WinApi.MK_MBUTTON + WinApi.MK_RBUTTON) 
@@ -524,7 +524,7 @@ module HostMechanisms
 		end 
 	end QueryContinueDrag
 	
-	proc (this: IDropSource) GiveFeedback(effect: set): COM.RESULT
+	proc (this: IDropSource) GiveFeedback(effect: set): COM.RESULT 
 	begin 
 		return WinApi.DRAGDROP_S_USEDEFAULTCURSORS
 	end GiveFeedback
@@ -532,7 +532,7 @@ module HostMechanisms
 	
 	// IDropTarget
 	
-	proc InstallDropTarget*(wnd: WinApi.HWND; win: Windows.Window)
+	proc InstallDropTarget*(wnd: WinApi.HWND; win: Windows.Window) 
 		var 
 			drop: IDropTarget
 			res: COM.RESULT
@@ -543,14 +543,14 @@ module HostMechanisms
 		res := WinOle.RegisterDragDrop(wnd, drop)
 	end InstallDropTarget
 	
-	proc RemoveDropTarget*(wnd: WinApi.HWND)
+	proc RemoveDropTarget*(wnd: WinApi.HWND) 
 		var 
 			res: COM.RESULT
 	begin 
 		res := WinOle.RevokeDragDrop(wnd)
 	end RemoveDropTarget
 	
-	proc PollDrop(d: IDropTarget; show: boolean)
+	proc PollDrop(d: IDropTarget; show: boolean) 
 		var 
 			msg: Controllers.PollDropMsg
 			w, h: integer
@@ -579,7 +579,7 @@ module HostMechanisms
 		targetY := msg.y
 	end PollDrop
 	
-	proc Drop(d: IDropTarget; v: Views.View; w, h: integer; isSingle: boolean)
+	proc Drop(d: IDropTarget; v: Views.View; w, h: integer; isSingle: boolean) 
 		var 
 			msg: Controllers.DropMsg
 			pw, ph: integer
@@ -601,7 +601,7 @@ module HostMechanisms
 		d.win.ForwardCtrlMsg(msg)
 	end Drop
 	
-	proc AppendMenu(menu: WinApi.HANDLE; id: integer; name: Dialog.String)
+	proc AppendMenu(menu: WinApi.HANDLE; id: integer; name: Dialog.String) 
 		var 
 			res: integer
 	begin 
@@ -609,7 +609,7 @@ module HostMechanisms
 		res := WinApi.AppendMenuW(menu, {}, id, name)
 	end AppendMenu
 	
-	proc ShowPopup(f: Views.Frame; x, y: integer; var effect: set)
+	proc ShowPopup(f: Views.Frame; x, y: integer; var effect: set) 
 		var 
 			res: integer
 			menu, wnd: WinApi.HANDLE
@@ -649,7 +649,7 @@ module HostMechanisms
 		end 
 	end ShowPopup
 	
-	proc Effect(mask, keyState: set): set
+	proc Effect(mask, keyState: set): set 
 		var 
 			effect: set
 	begin 
@@ -671,7 +671,7 @@ module HostMechanisms
 	end Effect
 	
 	proc (this: IDropTarget) DragEnter(dataObj: WinOle.IDataObject; keyState: set; pt: WinApi.POINT
-		var effect: set): COM.RESULT
+		var effect: set): COM.RESULT 
 		var 
 			res: integer
 			s: boolean
@@ -706,7 +706,7 @@ module HostMechanisms
 		return WinApi.S_OK
 	end DragEnter
 	
-	proc (this: IDropTarget) DragOver(keyState: set; pt: WinApi.POINT; var effect: set): COM.RESULT
+	proc (this: IDropTarget) DragOver(keyState: set; pt: WinApi.POINT; var effect: set): COM.RESULT 
 		var 
 			res: integer
 	begin 
@@ -728,7 +728,7 @@ module HostMechanisms
 		return WinApi.S_OK
 	end DragOver
 	
-	proc (this: IDropTarget) DragLeave(): COM.RESULT
+	proc (this: IDropTarget) DragLeave(): COM.RESULT 
 	begin 
 		if (this.type_ # "") & (this.win # nil) then
 			PollDrop(this, Controllers.hide) 
@@ -739,7 +739,7 @@ module HostMechanisms
 	end DragLeave
 	
 	proc (this: IDropTarget) Drop(dataObj: WinOle.IDataObject; keyState: set; pt: WinApi.POINT
-		var effect: set): COM.RESULT
+		var effect: set): COM.RESULT 
 		var 
 			res, w, h: integer
 			v: Views.View
@@ -814,7 +814,7 @@ module HostMechanisms
 	proc (hook: Hook) TrackToDrop*(f: Views.Frame; view: Views.View
 		isSingle: boolean; w, h, rx, ry: integer
 		var dest: Views.Frame; var destX, destY: integer; var op: integer
-		var x, y: integer; var buttons: set)
+		var x, y: integer; var buttons: set) 
 		var 
 			res: COM.RESULT
 			mask, mode: set
@@ -866,7 +866,7 @@ module HostMechanisms
 		dropView := nil
 	end TrackToDrop
 	
-	proc PickMode(f, dest: Views.Frame; x, y: integer): integer
+	proc PickMode(f, dest: Views.Frame; x, y: integer): integer 
 		var 
 			mode, cursor: integer
 	begin 
@@ -893,7 +893,7 @@ module HostMechanisms
 	
 	proc (hook: Hook) TrackToPick*(f: Views.Frame
 		var dest: Views.Frame; var destX, destY: integer; var op: integer
-		var x, y: integer; var buttons: set)
+		var x, y: integer; var buttons: set) 
 		var 
 			d, d0: Views.Frame
 			dx, dy, x0, y0, x1, y1: integer
@@ -945,15 +945,15 @@ module HostMechanisms
 	
 	proc (hook: Hook) PopUpAndSelect*(f: Views.Frame
 		n, this: integer
-		string: array of array of char
+		string: array of array of wchar
 		enabled, checked: array of boolean
 		var i: integer
-		var x, y: integer; var buttons: set)
+		var x, y: integer; var buttons: set) 
 		var 
 			res, j: integer
 			menu, wnd: WinApi.HANDLE
 			pt: WinApi.POINT
-			t: array 256 of char
+			t: array 256 of wchar
 			s: set
 	begin 
 		assert(0 < n, 20)

@@ -51,7 +51,7 @@ module HostPictures
 	
 	// Mac Pictures
 	
-	proc ReadWord(rd: Files.Reader; var x: integer)
+	proc ReadWord(rd: Files.Reader; var x: integer) 
 		var 
 			b: byte
 	begin 
@@ -61,7 +61,7 @@ module HostPictures
 		x := x + b mod 256
 	end ReadWord
 	
-	proc ReadByte(rd: Files.Reader; var x: integer)
+	proc ReadByte(rd: Files.Reader; var x: integer) 
 		var 
 			b: byte
 	begin 
@@ -69,19 +69,19 @@ module HostPictures
 		x := b
 	end ReadByte
 	
-	proc Skip(rd: Files.Reader; n: integer)
+	proc Skip(rd: Files.Reader; n: integer) 
 	begin 
 		rd.SetPos(rd.Pos() + n)
 	end Skip
 	
-	proc DrawMacPicture(v: StdView; f: Views.Frame; w, h: integer)
+	proc DrawMacPicture(v: StdView; f: Views.Frame; w, h: integer) 
 		var 
 			rd: Files.Reader
 			res, end_, len_, x, y, z, l, t, r, b, u: integer
 			op: integer
 			v2, clipped: boolean
 			fgnd, bgnd: Ports.Color
-			str: array 256 of char
+			str: array 256 of wchar
 			size_, style: integer
 			p: HostPorts.Port
 			dc: WinApi.HANDLE
@@ -90,7 +90,7 @@ module HostPictures
 			rl, rt, rr, rb, dl, dt, dr, db, ol, ot, or_, ob, al, at, ar, ab, as, aa, gl, gt, gr, gb, ow, oh, lx, ly, tx, ty, plen: integer
 			actPen, actBrush, nullPen, nullBrush, fillBrush, bgndBrush, bitmap, font: WinApi.HANDLE
 		
-		proc Point(var x, y: integer)
+		proc Point(var x, y: integer) 
 		begin 
 			ReadWord(rd, y)
 			y := (y + 32768) mod 65536 - 32768
@@ -98,7 +98,7 @@ module HostPictures
 			x := (x + 32768) mod 65536 - 32768
 		end Point
 		
-		proc Data(n: integer)
+		proc Data(n: integer) 
 			var 
 				b: byte
 		begin 
@@ -108,7 +108,7 @@ module HostPictures
 			end 
 		end Data
 		
-		proc Region(var l, t, r, b: integer)
+		proc Region(var l, t, r, b: integer) 
 			var 
 				len_: integer
 		begin 
@@ -120,7 +120,7 @@ module HostPictures
 			Data(len_ - 10)
 		end Region
 		
-		proc Poly(var poly: array of WinApi.POINT; var len_: integer)
+		proc Poly(var poly: array of WinApi.POINT; var len_: integer) 
 			var 
 				i: integer
 		begin 
@@ -137,7 +137,7 @@ module HostPictures
 			end 
 		end Poly
 		
-		proc Pattern(var brush: WinApi.HANDLE)
+		proc Pattern(var brush: WinApi.HANDLE) 
 			var 
 				pat: array 8 of shortint
 				i: integer
@@ -156,7 +156,7 @@ module HostPictures
 			brush := WinApi.CreatePatternBrush(bitmap)
 		end Pattern
 		
-		proc Pen(x, y: integer)
+		proc Pen(x, y: integer) 
 		begin 
 			if x < y then
 				x := y 
@@ -170,7 +170,7 @@ module HostPictures
 			end 
 		end Pen
 		
-		proc String(var s: array of char; var len_: integer)
+		proc String(var s: array of wchar; var len_: integer) 
 			var 
 				b: byte
 				i: integer
@@ -191,7 +191,7 @@ module HostPictures
 			s[i] := 0x
 		end String
 		
-		proc PixMap(var rowBytes, height: integer; var v2: boolean)
+		proc PixMap(var rowBytes, height: integer; var v2: boolean) 
 			var 
 				x: integer
 		begin 
@@ -239,7 +239,7 @@ module HostPictures
 			end 
 		end ColorTab
 		
-		proc PixData(rowBytes, height: integer; v2: boolean)
+		proc PixData(rowBytes, height: integer; v2: boolean) 
 			var 
 				n, m: integer
 				b: byte
@@ -285,7 +285,7 @@ module HostPictures
 			end 
 		end PixData
 		
-		proc BitMap(isRegion: boolean)
+		proc BitMap(isRegion: boolean) 
 			var 
 				x, y, w, h, l, t, r, b: integer
 				v2: boolean
@@ -368,7 +368,7 @@ module HostPictures
 			res := WinApi.DeleteObject(old)
 		end NewFont
 		
-		proc LineTo(x, y: integer)
+		proc LineTo(x, y: integer) 
 			var 
 				res: integer
 		begin 
@@ -379,10 +379,10 @@ module HostPictures
 			end 
 		end LineTo
 		
-		proc Text(x, y: integer)
+		proc Text(x, y: integer) 
 			var 
 				res, len_: integer
-				str: array 256 of char
+				str: array 256 of wchar
 		begin 
 			String(str, len_)
 			if ~clipped then
@@ -390,7 +390,7 @@ module HostPictures
 			end 
 		end Text
 		
-		proc Rectangle(l, t, r, b: integer)
+		proc Rectangle(l, t, r, b: integer) 
 			var 
 				res: integer
 		begin 
@@ -399,7 +399,7 @@ module HostPictures
 			end 
 		end Rectangle
 		
-		proc RoundRect(l, t, r, b, w, h: integer)
+		proc RoundRect(l, t, r, b, w, h: integer) 
 			var 
 				res: integer
 		begin 
@@ -408,7 +408,7 @@ module HostPictures
 			end 
 		end RoundRect
 		
-		proc Ellipse(l, t, r, b: integer)
+		proc Ellipse(l, t, r, b: integer) 
 			var 
 				res: integer
 		begin 
@@ -417,7 +417,7 @@ module HostPictures
 			end 
 		end Ellipse
 		
-		proc Polyline(var poly: array of WinApi.POINT; len_: integer)
+		proc Polyline(var poly: array of WinApi.POINT; len_: integer) 
 			var 
 				res: integer
 		begin 
@@ -426,7 +426,7 @@ module HostPictures
 			end 
 		end Polyline
 		
-		proc Polygon(var poly: array of WinApi.POINT; len_: integer)
+		proc Polygon(var poly: array of WinApi.POINT; len_: integer) 
 			var 
 				res: integer
 		begin 
@@ -925,7 +925,7 @@ module HostPictures
 	
 	
 	
-	proc Evaluate(v: StdView)
+	proc Evaluate(v: StdView) 
 		var 
 			len_, adr: integer
 			rd: Files.Reader
@@ -957,7 +957,7 @@ module HostPictures
 	
 	// View
 	
-	proc (v: StdView) Internalize(var rd: Stores.Reader)
+	proc (v: StdView) Internalize(var rd: Stores.Reader) 
 		var 
 			m: Model
 			thisVersion: integer
@@ -988,7 +988,7 @@ module HostPictures
 		rd.SetPos(m.pos + m.len_)
 	end Internalize
 	
-	proc (v: StdView) Externalize(var wr: Stores.Writer)
+	proc (v: StdView) Externalize(var wr: Stores.Writer) 
 		var 
 			len_, res: integer
 			r: Files.Reader
@@ -1021,12 +1021,12 @@ module HostPictures
 		end 
 	end Externalize
 	
-	proc (v: StdView) ThisModel(): Models.Model
+	proc (v: StdView) ThisModel(): Models.Model 
 	begin 
 		return nil
 	end ThisModel
 	
-	proc (v: StdView) CopyFromSimpleView(source: Views.View)
+	proc (v: StdView) CopyFromSimpleView(source: Views.View) 
 	begin 
 		// v.CopyFrom^(source);
 		with source: StdView do 
@@ -1039,7 +1039,7 @@ module HostPictures
 		end 
 	end CopyFromSimpleView
 	
-	proc (v: StdView) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (v: StdView) Restore(f: Views.Frame; l, t, r, b: integer) 
 		var 
 			rd: HostPorts.Rider
 			res, u, w, h: integer
@@ -1058,12 +1058,12 @@ module HostPictures
 	
 	proc (v: StdView) GetBkgndFor(
 		f: Views.Frame; var col: Ports.Color; var homogeneous: boolean
-		) // new
+		)  // new
 	begin 
 		col := Ports.background
 	end GetBkgndFor
 	
-	proc (v: StdView) HandlePropMsg(var msg: Properties.Message)
+	proc (v: StdView) HandlePropMsg(var msg: Properties.Message) 
 	begin 
 		with msg: Properties.SizePref do 
 			if (msg.w > Views.undefined) & (msg.h > Views.undefined) then
@@ -1093,14 +1093,14 @@ module HostPictures
 	
 	proc GenMetafileMedium(
 		mf: WinApi.HMETAFILEPICT; unk: COM.IUnknown; var sm: WinOle.STGMEDIUM
-		)
+		) 
 	begin 
 		sm.tymed := WinOle.TYMED_MFPICT
 		sm.u.hMetaFilePict := mf
 		sm.pUnkForRelease := unk
 	end GenMetafileMedium
 	
-	proc MediumMetafile(var sm: WinOle.STGMEDIUM): WinApi.HMETAFILEPICT
+	proc MediumMetafile(var sm: WinOle.STGMEDIUM): WinApi.HMETAFILEPICT 
 	begin 
 		assert(sm.tymed = WinOle.TYMED_MFPICT, 20)
 		return sm.u.hMetaFilePict
@@ -1109,7 +1109,7 @@ module HostPictures
 	
 	proc ImportDPict*(
 		var med: WinOle.STGMEDIUM; var v: Views.View; var w, h: integer; var isSingle: boolean
-		)
+		) 
 		var 
 			sv: StdView
 			res, len_, sw, sh, u, mode: integer
@@ -1162,7 +1162,7 @@ module HostPictures
 	
 	proc ExportDPict*(
 		v: Views.View; w, h, x, y: integer; isSingle: boolean; var med: WinOle.STGMEDIUM
-		)
+		) 
 		var 
 			res, u: integer
 			mf: WinApi.HMETAFILE
@@ -1292,7 +1292,7 @@ module HostPictures
 	
 	
 	
-	proc PictType*(v: Views.View): integer
+	proc PictType*(v: Views.View): integer 
 	begin 
 		with v: StdView do 
 			return v.type_ 

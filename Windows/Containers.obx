@@ -127,7 +127,7 @@ module Containers
 		SetOpts* = record (Views.PropMessage) 
 				valid*, opts*: set 
 			end 
-	proc (c: Controller) InitView2*(v: Views.View) end // new empty
+	proc (c: Controller) InitView2*(v: Views.View)  end // new empty
 	// called by view's Neutralize
 	// called by view's HandleModelMsg after handling msg
 	// called by view's HandleViewMsg after handling msg
@@ -136,7 +136,7 @@ module Containers
 	
 	// Model
 	
-	proc (m: Model) Internalize-(var rd: Stores.Reader) // extensible
+	proc (m: Model) Internalize-(var rd: Stores.Reader)  // extensible
 		var 
 			thisVersion: integer
 	begin 
@@ -147,21 +147,21 @@ module Containers
 		rd.ReadVersion(minVersion, maxModelVersion, thisVersion)
 	end Internalize
 	
-	proc (m: Model) Externalize-(var wr: Stores.Writer) // extensible
+	proc (m: Model) Externalize-(var wr: Stores.Writer)  // extensible
 	begin 
 		m.Externalize^(wr)
 		wr.WriteVersion(maxModelVersion)
 	end Externalize
 	
-	proc (m: Model) GetEmbeddingLimits*(var minW, maxW, minH, maxH: integer) end // new abstract
-	proc (m: Model) ReplaceView*(old, new_: Views.View) end // new abstract
-	proc (m: Model) InitFrom-(source: Model) end // new empty
+	proc (m: Model) GetEmbeddingLimits*(var minW, maxW, minH, maxH: integer)  end // new abstract
+	proc (m: Model) ReplaceView*(old, new_: Views.View)  end // new abstract
+	proc (m: Model) InitFrom-(source: Model)  end // new empty
 	
 	// View
 	
-	proc (v: View) AcceptableModel-(m: Model): boolean end // new abstract
-	proc (v: View) InitModel2-(m: Model) end // new empty
-	proc (v: View) InitModel*(m: Model) // new
+	proc (v: View) AcceptableModel-(m: Model): boolean  end // new abstract
+	proc (v: View) InitModel2-(m: Model)  end // new empty
+	proc (v: View) InitModel*(m: Model)  // new
 	begin 
 		assert((v.model = nil) or (v.model = m), 20)
 		assert(m # nil, 21)
@@ -172,10 +172,10 @@ module Containers
 	end InitModel
 	
 	
-	proc (v: View) Externalize2-(var rd: Stores.Writer) end // new empty
-	proc (v: View) Internalize2-(var rd: Stores.Reader) end // new empty
+	proc (v: View) Externalize2-(var rd: Stores.Writer)  end // new empty
+	proc (v: View) Internalize2-(var rd: Stores.Reader)  end // new empty
 	
-	proc (v: View) Internalize-(var rd: Stores.Reader)
+	proc (v: View) Internalize-(var rd: Stores.Reader) 
 		var 
 			st: Stores.Store
 			c: Controller
@@ -220,7 +220,7 @@ module Containers
 		v.Internalize2(rd)
 	end Internalize
 	
-	proc (v: View) Externalize-(var wr: Stores.Writer)
+	proc (v: View) Externalize-(var wr: Stores.Writer) 
 	begin 
 		assert(v.model # nil, 20)
 		v.Externalize^(wr)
@@ -234,9 +234,9 @@ module Containers
 		v.Externalize2(wr)
 	end Externalize
 	
-	proc (v: View) CopyFromModelView2-(source: Views.View; model: Models.Model) end // new empty
+	proc (v: View) CopyFromModelView2-(source: Views.View; model: Models.Model)  end // new empty
 	
-	proc (v: View) CopyFromModelView-(source: Views.View; model: Models.Model)
+	proc (v: View) CopyFromModelView-(source: Views.View; model: Models.Model) 
 		var 
 			c: Controller
 	begin 
@@ -259,12 +259,12 @@ module Containers
 		v.CopyFromModelView2(source, model)
 	end CopyFromModelView
 	
-	proc (v: View) ThisModel*(): Model // extensible
+	proc (v: View) ThisModel*(): Model  // extensible
 	begin 
 		return v.model
 	end ThisModel
 	
-	proc (v: View) SetController*(c: Controller) // new
+	proc (v: View) SetController*(c: Controller)  // new
 		var 
 			op: ViewOp
 	begin 
@@ -279,14 +279,14 @@ module Containers
 		end 
 	end SetController
 	
-	proc (v: View) ThisController*(): Controller // new extensible
+	proc (v: View) ThisController*(): Controller  // new extensible
 	begin 
 		return v.controller
 	end ThisController
 	
-	proc (v: View) GetRect*(f: Views.Frame; view: Views.View; var l, t, r, b: integer) end // new abstract
+	proc (v: View) GetRect*(f: Views.Frame; view: Views.View; var l, t, r, b: integer)  end // new abstract
 	
-	proc (v: View) RestoreMarks*(f: Views.Frame; l, t, r, b: integer)
+	proc (v: View) RestoreMarks*(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		if v.controller # nil then
 			v.controller.RestoreMarks(f, l, t, r, b) 
@@ -300,7 +300,7 @@ module Containers
 		end 
 	end Neutralize
 	
-	proc (v: View) ConsiderFocusRequestBy-(view: Views.View)
+	proc (v: View) ConsiderFocusRequestBy-(view: Views.View) 
 	begin 
 		if v.controller # nil then
 			v.controller.ConsiderFocusRequestBy(view) 
@@ -308,14 +308,14 @@ module Containers
 	end ConsiderFocusRequestBy
 	
 	
-	proc (v: View) HandleModelMsg2-(var msg: Models.Message) end // new empty
-	proc (v: View) HandleViewMsg2-(f: Views.Frame; var msg: Views.Message) end // new empty
-	proc (v: View) HandlePropMsg2-(var p: Properties.Message) end // new empty
+	proc (v: View) HandleModelMsg2-(var msg: Models.Message)  end // new empty
+	proc (v: View) HandleViewMsg2-(f: Views.Frame; var msg: Views.Message)  end // new empty
+	proc (v: View) HandlePropMsg2-(var p: Properties.Message)  end // new empty
 	proc (v: View) HandleCtrlMsg2-(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View) end // new empty
+		var focus: Views.View)  end // new empty
 	
 	
-	proc (v: View) HandleModelMsg-(var msg: Models.Message)
+	proc (v: View) HandleModelMsg-(var msg: Models.Message) 
 	begin 
 		v.HandleModelMsg2(msg)
 		if v.controller # nil then
@@ -323,7 +323,7 @@ module Containers
 		end 
 	end HandleModelMsg
 	
-	proc (v: View) HandleViewMsg-(f: Views.Frame; var msg: Views.Message)
+	proc (v: View) HandleViewMsg-(f: Views.Frame; var msg: Views.Message) 
 	begin 
 		v.HandleViewMsg2(f, msg)
 		if v.controller # nil then
@@ -331,7 +331,7 @@ module Containers
 		end 
 	end HandleViewMsg
 	
-	proc (v: View) HandleCtrlMsg*(f: Views.Frame; var msg: Controllers.Message; var focus: Views.View)
+	proc (v: View) HandleCtrlMsg*(f: Views.Frame; var msg: Controllers.Message; var focus: Views.View) 
 	begin 
 		if v.controller # nil then
 			v.controller.HandleCtrlMsg(f, msg, focus) 
@@ -349,7 +349,7 @@ module Containers
 		end 
 	end HandleCtrlMsg
 	
-	proc (v: View) HandlePropMsg-(var p: Properties.Message)
+	proc (v: View) HandlePropMsg-(var p: Properties.Message) 
 	begin 
 		v.HandlePropMsg2(p)
 		if v.controller # nil then
@@ -360,10 +360,10 @@ module Containers
 	
 	// Controller
 	
-	proc (c: Controller) Externalize2-(var rd: Stores.Writer) end // new empty
-	proc (c: Controller) Internalize2-(var rd: Stores.Reader) end // new empty
+	proc (c: Controller) Externalize2-(var rd: Stores.Writer)  end // new empty
+	proc (c: Controller) Internalize2-(var rd: Stores.Reader)  end // new empty
 	
-	proc (c: Controller) Internalize-(var rd: Stores.Reader)
+	proc (c: Controller) Internalize-(var rd: Stores.Reader) 
 		var 
 			v: integer
 	begin 
@@ -379,7 +379,7 @@ module Containers
 		c.Internalize2(rd)
 	end Internalize
 	
-	proc (c: Controller) Externalize-(var wr: Stores.Writer)
+	proc (c: Controller) Externalize-(var wr: Stores.Writer) 
 	begin 
 		c.Externalize^(wr)
 		wr.WriteVersion(maxCtrlVersion)
@@ -387,7 +387,7 @@ module Containers
 		c.Externalize2(wr)
 	end Externalize
 	
-	proc (c: Controller) CopyFrom-(source: Stores.Store) // extensible
+	proc (c: Controller) CopyFrom-(source: Stores.Store)  // extensible
 	begin 
 		with source: Controller do 
 			c.opts := source.opts
@@ -397,7 +397,7 @@ module Containers
 		end 
 	end CopyFrom
 	
-	proc (c: Controller) InitView*(v: Views.View) // new
+	proc (c: Controller) InitView*(v: Views.View)  // new
 		var 
 			view: View
 			model: Model
@@ -422,7 +422,7 @@ module Containers
 		c.InitView2(v)
 	end InitView
 	
-	proc (c: Controller) ThisView*(): View // new extensible
+	proc (c: Controller) ThisView*(): View  // new extensible
 	begin 
 		return c.view
 	end ThisView
@@ -430,7 +430,7 @@ module Containers
 	
 	// options
 	
-	proc (c: Controller) SetOpts*(opts: set) // new extensible
+	proc (c: Controller) SetOpts*(opts: set)  // new extensible
 		var 
 			op: ControllerOp
 	begin 
@@ -447,21 +447,21 @@ module Containers
 	
 	// subclass hooks
 	
-	proc (c: Controller) GetContextType*(var type_: Stores.TypeName) end // new abstract
-	proc (c: Controller) GetValidOps*(var valid: set) end // new abstract
-	proc (c: Controller) NativeModel*(m: Models.Model): boolean end // new abstract
-	proc (c: Controller) NativeView*(v: Views.View): boolean end // new abstract
-	proc (c: Controller) NativeCursorAt*(f: Views.Frame; x, y: integer): integer end // new abstract
-	proc (c: Controller) PickNativeProp*(f: Views.Frame; x, y: integer; var p: Properties.Property) end // new empty
-	proc (c: Controller) PollNativeProp*(selection: boolean; var p: Properties.Property; var truncated: boolean) end // new empty
-	proc (c: Controller) SetNativeProp*(selection: boolean; old, p: Properties.Property) end // new empty
+	proc (c: Controller) GetContextType*(var type_: Stores.TypeName)  end // new abstract
+	proc (c: Controller) GetValidOps*(var valid: set)  end // new abstract
+	proc (c: Controller) NativeModel*(m: Models.Model): boolean  end // new abstract
+	proc (c: Controller) NativeView*(v: Views.View): boolean  end // new abstract
+	proc (c: Controller) NativeCursorAt*(f: Views.Frame; x, y: integer): integer  end // new abstract
+	proc (c: Controller) PickNativeProp*(f: Views.Frame; x, y: integer; var p: Properties.Property)  end // new empty
+	proc (c: Controller) PollNativeProp*(selection: boolean; var p: Properties.Property; var truncated: boolean)  end // new empty
+	proc (c: Controller) SetNativeProp*(selection: boolean; old, p: Properties.Property)  end // new empty
 	
-	proc (c: Controller) MakeViewVisible*(v: Views.View) end // new empty
+	proc (c: Controller) MakeViewVisible*(v: Views.View)  end // new empty
 	
-	proc (c: Controller) GetFirstView*(selection: boolean; var v: Views.View) end // new abstract
-	proc (c: Controller) GetNextView*(selection: boolean; var v: Views.View) end // new abstract
+	proc (c: Controller) GetFirstView*(selection: boolean; var v: Views.View)  end // new abstract
+	proc (c: Controller) GetNextView*(selection: boolean; var v: Views.View)  end // new abstract
 	
-	proc (c: Controller) GetPrevView*(selection: boolean; var v: Views.View) // new extensible
+	proc (c: Controller) GetPrevView*(selection: boolean; var v: Views.View)  // new extensible
 		var 
 			p, q: Views.View
 	begin 
@@ -479,12 +479,12 @@ module Containers
 		end 
 	end GetPrevView
 	
-	proc (c: Controller) CanDrop*(f: Views.Frame; x, y: integer): boolean // new extensible
+	proc (c: Controller) CanDrop*(f: Views.Frame; x, y: integer): boolean  // new extensible
 	begin 
 		return true
 	end CanDrop
 	
-	proc (c: Controller) GetSelectionBounds*(f: Views.Frame; var x, y, w, h: integer) // new extensible
+	proc (c: Controller) GetSelectionBounds*(f: Views.Frame; var x, y, w, h: integer)  // new extensible
 		var 
 			g: Views.Frame
 			v: Views.View
@@ -507,39 +507,39 @@ module Containers
 	proc (c: Controller) MarkDropTarget*(src, dst: Views.Frame
 		sx, sy, dx, dy, w, h, rx, ry: integer
 		type_: Stores.TypeName
-		isSingle, show: boolean) end // new empty
+		isSingle, show: boolean)  end // new empty
 	
 	proc (c: Controller) Drop*(src, dst: Views.Frame; sx, sy, dx, dy, w, h, rx, ry: integer
-		view: Views.View; isSingle: boolean) end // new abstract
+		view: Views.View; isSingle: boolean)  end // new abstract
 	
 	proc (c: Controller) MarkPickTarget*(src, dst: Views.Frame
-		sx, sy, dx, dy: integer; show: boolean) end // new empty
+		sx, sy, dx, dy: integer; show: boolean)  end // new empty
 	
-	proc (c: Controller) TrackMarks*(f: Views.Frame; x, y: integer; units, extend, add: boolean) end // new abstract
-	proc (c: Controller) Resize*(view: Views.View; l, t, r, b: integer) end // new abstract
+	proc (c: Controller) TrackMarks*(f: Views.Frame; x, y: integer; units, extend, add: boolean)  end // new abstract
+	proc (c: Controller) Resize*(view: Views.View; l, t, r, b: integer)  end // new abstract
 	proc (c: Controller) DeleteSelection* end // new abstract
-	proc (c: Controller) MoveLocalSelection*(src, dst: Views.Frame; sx, sy, dx, dy: integer) end // new abstract
-	proc (c: Controller) CopyLocalSelection*(src, dst: Views.Frame; sx, sy, dx, dy: integer) end // new abstract
-	proc (c: Controller) SelectionCopy*(): Model end // new abstract
-	proc (c: Controller) NativePaste*(m: Models.Model; f: Views.Frame) end // new abstract
-	proc (c: Controller) ArrowChar*(f: Views.Frame; ch: char; units, select: boolean) end // new abstract
-	proc (c: Controller) ControlChar*(f: Views.Frame; ch: char) end // new abstract
-	proc (c: Controller) PasteChar*(ch: char) end // new abstract
-	proc (c: Controller) PasteView*(f: Views.Frame; v: Views.View; w, h: integer) end // new abstract
+	proc (c: Controller) MoveLocalSelection*(src, dst: Views.Frame; sx, sy, dx, dy: integer)  end // new abstract
+	proc (c: Controller) CopyLocalSelection*(src, dst: Views.Frame; sx, sy, dx, dy: integer)  end // new abstract
+	proc (c: Controller) SelectionCopy*(): Model  end // new abstract
+	proc (c: Controller) NativePaste*(m: Models.Model; f: Views.Frame)  end // new abstract
+	proc (c: Controller) ArrowChar*(f: Views.Frame; ch: wchar; units, select: boolean)  end // new abstract
+	proc (c: Controller) ControlChar*(f: Views.Frame; ch: wchar)  end // new abstract
+	proc (c: Controller) PasteChar*(ch: wchar)  end // new abstract
+	proc (c: Controller) PasteView*(f: Views.Frame; v: Views.View; w, h: integer)  end // new abstract
 	
 	
 	// selection
 	
-	proc (c: Controller) HasSelection*(): boolean // new extensible
+	proc (c: Controller) HasSelection*(): boolean  // new extensible
 	// extended by subclass to include intrinsic selections
 	begin 
 		assert(c.model # nil, 20)
 		return c.singleton # nil
 	end HasSelection
 	
-	proc (c: Controller) Selectable*(): boolean end // new abstract
+	proc (c: Controller) Selectable*(): boolean  end // new abstract
 	
-	proc (c: Controller) Singleton*(): Views.View // new // LEAF
+	proc (c: Controller) Singleton*(): Views.View  // new // LEAF
 	begin 
 		if c = nil then
 			return nil 
@@ -548,7 +548,7 @@ module Containers
 		end 
 	end Singleton
 	
-	proc (c: Controller) SetSingleton*(s: Views.View) // new extensible
+	proc (c: Controller) SetSingleton*(s: Views.View)  // new extensible
 		// extended by subclass to adjust intrinsic selections
 		var 
 			con: Models.Context
@@ -576,13 +576,13 @@ module Containers
 		end 
 	end SetSingleton
 	
-	proc (c: Controller) SelectAll*(select: boolean) end // new abstract
+	proc (c: Controller) SelectAll*(select: boolean)  end // new abstract
 	// replaced by subclass to include intrinsic selections
 	
-	proc (c: Controller) InSelection*(f: Views.Frame; x, y: integer): boolean end // new abstract
+	proc (c: Controller) InSelection*(f: Views.Frame; x, y: integer): boolean  end // new abstract
 	// replaced by subclass to include intrinsic selections
 	
-	proc (c: Controller) MarkSelection*(f: Views.Frame; show: boolean) // new extensible
+	proc (c: Controller) MarkSelection*(f: Views.Frame; show: boolean)  // new extensible
 	// replaced by subclass to include intrinsic selections
 	begin 
 		MarkSingleton(c, f, show)
@@ -591,13 +591,13 @@ module Containers
 	
 	// focus
 	
-	proc (c: Controller) ThisFocus*(): Views.View // new extensible
+	proc (c: Controller) ThisFocus*(): Views.View  // new extensible
 	begin 
 		assert(c.model # nil, 20)
 		return c.focus
 	end ThisFocus
 	
-	proc (c: Controller) SetFocus*(focus: Views.View) // new // LEAF
+	proc (c: Controller) SetFocus*(focus: Views.View)  // new // LEAF
 		var 
 			focus0: Views.View
 			con: Models.Context
@@ -632,7 +632,7 @@ module Containers
 		end 
 	end SetFocus
 	
-	proc (c: Controller) ConsiderFocusRequestBy*(view: Views.View) // new
+	proc (c: Controller) ConsiderFocusRequestBy*(view: Views.View)  // new
 		var 
 			con: Models.Context
 	begin 
@@ -649,13 +649,13 @@ module Containers
 	
 	// caret
 	
-	proc (c: Controller) HasCaret*(): boolean end // new abstract
-	proc (c: Controller) MarkCaret*(f: Views.Frame; show: boolean) end // new abstract
+	proc (c: Controller) HasCaret*(): boolean  end // new abstract
+	proc (c: Controller) MarkCaret*(f: Views.Frame; show: boolean)  end // new abstract
 	
 	
 	// general marking protocol
 	
-	proc CheckMaskFocus(c: Controller; f: Views.Frame; var focus: Views.View)
+	proc CheckMaskFocus(c: Controller; f: Views.Frame; var focus: Views.View) 
 		var 
 			v: Views.View
 	begin 
@@ -674,15 +674,15 @@ module Containers
 		end 
 	end CheckMaskFocus
 	
-	proc (c: Controller) Mark*(f: Views.Frame; l, t, r, b: integer; show: boolean) // new extensible
+	proc (c: Controller) Mark*(f: Views.Frame; l, t, r, b: integer; show: boolean)  // new extensible
 	begin 
 		MarkFocus(c, f, show)
 		c.MarkSelection(f, show)
 		c.MarkCaret(f, show)
 	end Mark
 	
-	proc (c: Controller) RestoreMarks2-(f: Views.Frame; l, t, r, b: integer) end // new empty
-	proc (c: Controller) RestoreMarks*(f: Views.Frame; l, t, r, b: integer) // new
+	proc (c: Controller) RestoreMarks2-(f: Views.Frame; l, t, r, b: integer)  end // new empty
+	proc (c: Controller) RestoreMarks*(f: Views.Frame; l, t, r, b: integer)  // new
 	begin 
 		if f.mark then
 			c.Mark(f, l, t, r, b, show)
@@ -703,12 +703,12 @@ module Containers
 	
 	// message handlers
 	
-	proc (c: Controller) HandleModelMsg*(var msg: Models.Message) // new extensible
+	proc (c: Controller) HandleModelMsg*(var msg: Models.Message)  // new extensible
 	begin 
 		assert(c.model # nil, 20)
 	end HandleModelMsg
 	
-	proc (c: Controller) HandleViewMsg*(f: Views.Frame; var msg: Views.Message) // new extensible
+	proc (c: Controller) HandleViewMsg*(f: Views.Frame; var msg: Views.Message)  // new extensible
 		var 
 			g: Views.Frame
 			mark: Controllers.MarkMsg
@@ -743,8 +743,8 @@ module Containers
 	end HandleViewMsg
 	
 	
-	proc CollectControlPref(c: Controller; focus: Views.View; ch: char; cyclic: boolean
-		var v: Views.View; var getFocus, accepts: boolean)
+	proc CollectControlPref(c: Controller; focus: Views.View; ch: wchar; cyclic: boolean
+		var v: Views.View; var getFocus, accepts: boolean) 
 		var 
 			first, w: Views.View
 			p: Properties.ControlPref
@@ -797,7 +797,7 @@ module Containers
 		accepts := false
 	end CollectControlPref
 	
-	proc (c: Controller) HandlePropMsg*(var msg: Properties.Message) // new extensible
+	proc (c: Controller) HandlePropMsg*(var msg: Properties.Message)  // new extensible
 		var 
 			v: Views.View
 	begin 
@@ -833,9 +833,9 @@ module Containers
 	
 	// Directory
 	
-	proc (d: Directory) NewController*(opts: set): Controller end // new abstract
+	proc (d: Directory) NewController*(opts: set): Controller  end // new abstract
 	
-	proc (d: Directory) New*(): Controller // new extensible
+	proc (d: Directory) New*(): Controller  // new extensible
 	begin 
 		return d.NewController({})
 	end New
@@ -885,7 +885,7 @@ module Containers
 	
 	// Controller implementation support
 	
-	proc BorderVisible(c: Controller; f: Views.Frame): boolean
+	proc BorderVisible(c: Controller; f: Views.Frame): boolean 
 	begin 
 		if 31 in c.opts then
 			return true 
@@ -899,7 +899,7 @@ module Containers
 		return true
 	end BorderVisible
 	
-	proc MarkFocus(c: Controller; f: Views.Frame; show: boolean)
+	proc MarkFocus(c: Controller; f: Views.Frame; show: boolean) 
 		var 
 			focus: Views.View
 			f1: Views.Frame
@@ -918,7 +918,7 @@ module Containers
 		end 
 	end MarkFocus
 	
-	proc MarkSingleton*(c: Controller; f: Views.Frame; show: boolean)
+	proc MarkSingleton*(c: Controller; f: Views.Frame; show: boolean) 
 		var 
 			l, t, r, b: integer
 	begin 
@@ -931,7 +931,7 @@ module Containers
 		end 
 	end MarkSingleton
 	
-	proc FadeMarks*(c: Controller; show: boolean)
+	proc FadeMarks*(c: Controller; show: boolean) 
 		var 
 			msg: FadeMsg
 			v: Views.View
@@ -957,7 +957,7 @@ module Containers
 	
 	// handle controller messages in editor mode
 	
-	proc ClaimFocus(v: Views.View): boolean
+	proc ClaimFocus(v: Views.View): boolean 
 		var 
 			p: Properties.FocusPref
 	begin 
@@ -968,7 +968,7 @@ module Containers
 		return p.setFocus
 	end ClaimFocus
 	
-	proc ClaimFocusAt(v: Views.View; f, g: Views.Frame; x, y: integer; mask: boolean): boolean
+	proc ClaimFocusAt(v: Views.View; f, g: Views.Frame; x, y: integer; mask: boolean): boolean 
 		var 
 			p: Properties.FocusPref
 	begin 
@@ -981,7 +981,7 @@ module Containers
 		return p.setFocus & (mask or ~p.hotFocus)
 	end ClaimFocusAt
 	
-	proc NeedFocusAt(v: Views.View; f, g: Views.Frame; x, y: integer): boolean
+	proc NeedFocusAt(v: Views.View; f, g: Views.Frame; x, y: integer): boolean 
 		var 
 			p: Properties.FocusPref
 	begin 
@@ -995,7 +995,7 @@ module Containers
 	end NeedFocusAt
 	
 	
-	proc TrackToResize(c: Controller; f: Views.Frame; v: Views.View; x, y: integer; buttons: set)
+	proc TrackToResize(c: Controller; f: Views.Frame; v: Views.View; x, y: integer; buttons: set) 
 		var 
 			minW, maxW, minH, maxH, l, t, r, b, w0, h0, w, h: integer
 			op: integer
@@ -1023,7 +1023,7 @@ module Containers
 	end TrackToResize
 	
 	proc TrackToDrop(c: Controller; f: Views.Frame; var x, y: integer; buttons: set
-		var pass: boolean)
+		var pass: boolean) 
 		var 
 			dest: Views.Frame
 			m: Models.Model
@@ -1101,7 +1101,7 @@ module Containers
 	end TrackToDrop
 	
 	proc TrackToPick(c: Controller; f: Views.Frame; x, y: integer; buttons: set
-		var pass: boolean)
+		var pass: boolean) 
 		var 
 			p: Properties.Property
 			dest: Views.Frame
@@ -1127,7 +1127,7 @@ module Containers
 		end 
 	end TrackToPick
 	
-	proc MarkViews(f: Views.Frame)
+	proc MarkViews(f: Views.Frame) 
 		var 
 			x, y: integer
 			isDown: boolean
@@ -1142,7 +1142,7 @@ module Containers
 		Views.MarkBorders(root)
 	end MarkViews
 	
-	proc Track(c: Controller; f: Views.Frame; var msg: Controllers.TrackMsg; var focus: Views.View)
+	proc Track(c: Controller; f: Views.Frame; var msg: Controllers.TrackMsg; var focus: Views.View) 
 		var 
 			res, l, t, r, b: integer
 			cursor: integer
@@ -1239,7 +1239,7 @@ module Containers
 		end 
 	end Track
 	
-	proc CopyView(source: Controller; var view: Views.View; var w, h: integer)
+	proc CopyView(source: Controller; var view: Views.View; var w, h: integer) 
 		var 
 			s: Views.View
 			m: Model
@@ -1262,7 +1262,7 @@ module Containers
 		end 
 	end CopyView
 	
-	proc Paste(c: Controller; f: Views.Frame; v: Views.View; w, h: integer)
+	proc Paste(c: Controller; f: Views.Frame; v: Views.View; w, h: integer) 
 		var 
 			m: Models.Model
 	begin 
@@ -1276,7 +1276,7 @@ module Containers
 		end 
 	end Paste
 	
-	proc GetValidOps(c: Controller; var valid: set)
+	proc GetValidOps(c: Controller; var valid: set) 
 	begin 
 		valid := {}
 		c.GetValidOps(valid)
@@ -1289,7 +1289,7 @@ module Containers
 	
 	
 	proc Transfer(c: Controller; f: Views.Frame
-		var msg: Controllers.TransferMessage; var focus: Views.View)
+		var msg: Controllers.TransferMessage; var focus: Views.View) 
 		var 
 			g: Views.Frame
 			inSelection: boolean
@@ -1349,7 +1349,7 @@ module Containers
 		end 
 	end Transfer
 	
-	proc FocusHasSel(): boolean
+	proc FocusHasSel(): boolean 
 		var 
 			msg: Controllers.PollOpsMsg
 	begin 
@@ -1357,7 +1357,7 @@ module Containers
 		return msg.selectable & (Controllers.copy_ in msg.valid)
 	end FocusHasSel
 	
-	proc FocusEditor(): Controller
+	proc FocusEditor(): Controller 
 		var 
 			msg: PollFocusMsg
 	begin 
@@ -1369,7 +1369,7 @@ module Containers
 	end FocusEditor
 	
 	proc Edit(c: Controller; f: Views.Frame
-		var msg: Controllers.EditMsg; var focus: Views.View)
+		var msg: Controllers.EditMsg; var focus: Views.View) 
 		var 
 			g: Views.Frame
 			v: Views.View
@@ -1460,7 +1460,7 @@ module Containers
 		end 
 	end Edit
 	
-	proc PollCursor(c: Controller; f: Views.Frame; var msg: Controllers.PollCursorMsg; var focus: Views.View)
+	proc PollCursor(c: Controller; f: Views.Frame; var msg: Controllers.PollCursorMsg; var focus: Views.View) 
 		var 
 			l, t, r, b: integer
 			cursor: integer
@@ -1517,7 +1517,7 @@ module Containers
 	end PollCursor
 	
 	proc PollOps(c: Controller; f: Views.Frame
-		var msg: Controllers.PollOpsMsg; var focus: Views.View)
+		var msg: Controllers.PollOpsMsg; var focus: Views.View) 
 	begin 
 		if focus = nil then
 			msg.type_ := ""
@@ -1530,7 +1530,7 @@ module Containers
 		end 
 	end PollOps
 	
-	proc ReplaceView(c: Controller; old, new_: Views.View)
+	proc ReplaceView(c: Controller; old, new_: Views.View) 
 	begin 
 		assert(old.context # nil, 20)
 		assert((new_.context = nil) or (new_.context = old.context), 22)
@@ -1545,7 +1545,7 @@ module Containers
 		end 
 	end ReplaceView
 	
-	proc ViewProp(v: Views.View): Properties.Property
+	proc ViewProp(v: Views.View): Properties.Property 
 		var 
 			poll: Properties.PollMsg
 	begin 
@@ -1554,7 +1554,7 @@ module Containers
 		return poll.prop
 	end ViewProp
 	
-	proc SetViewProp(v: Views.View; old, p: Properties.Property)
+	proc SetViewProp(v: Views.View; old, p: Properties.Property) 
 		var 
 			set_: Properties.SetMsg
 	begin 
@@ -1563,7 +1563,7 @@ module Containers
 		Views.HandlePropMsg(v, set_)
 	end SetViewProp
 	
-	proc SizeProp(v: Views.View): Properties.Property
+	proc SizeProp(v: Views.View): Properties.Property 
 		var 
 			sp: Properties.SizeProp
 	begin 
@@ -1574,7 +1574,7 @@ module Containers
 		return sp
 	end SizeProp
 	
-	proc SetSizeProp(v: Views.View; p: Properties.SizeProp)
+	proc SetSizeProp(v: Views.View; p: Properties.SizeProp) 
 		var 
 			w, h: integer
 	begin 
@@ -1590,7 +1590,7 @@ module Containers
 		v.context.SetSize(w, h)
 	end SetSizeProp
 	
-	proc ThisProp(c: Controller; direct: boolean): Properties.Property
+	proc ThisProp(c: Controller; direct: boolean): Properties.Property 
 		const  // 50 // bound number of polled embedded views
 			scanCutoff = max(integer)
 		var 
@@ -1642,7 +1642,7 @@ module Containers
 		return vp
 	end ThisProp
 	
-	proc SetProp(c: Controller; old, p: Properties.Property; direct: boolean)
+	proc SetProp(c: Controller; old, p: Properties.Property; direct: boolean) 
 		type 
 			ViewList = pointer to record next: ViewList; view: Views.View end 
 		var 
@@ -1695,7 +1695,7 @@ module Containers
 	end SetProp
 	
 	proc (c: Controller) HandleCtrlMsg*(f: Views.Frame
-		var msg: Controllers.Message; var focus: Views.View) // new extensible
+		var msg: Controllers.Message; var focus: Views.View)  // new extensible
 	begin 
 		focus := c.focus
 		with msg: Controllers.PollCursorMsg do 
@@ -1739,7 +1739,7 @@ module Containers
 	
 	// miscellaneous
 	
-	proc Focus*(): Controller
+	proc Focus*(): Controller 
 		var 
 			msg: PollFocusMsg
 	begin 
@@ -1750,7 +1750,7 @@ module Containers
 		return msg.ctrl
 	end Focus
 	
-	proc FocusSingleton*(): Views.View
+	proc FocusSingleton*(): Views.View 
 		var 
 			c: Controller
 			v: Views.View
@@ -1764,7 +1764,7 @@ module Containers
 		return v
 	end FocusSingleton
 	
-	proc CloneOf*(m: Model): Model
+	proc CloneOf*(m: Model): Model 
 		var 
 			h: Model
 	begin 

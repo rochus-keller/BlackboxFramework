@@ -40,7 +40,7 @@ module Integers
 	var 
 		zero, one, two, buf6: Integer
 	
-	proc CopyOf(x: Integer; len_: Index): Integer
+	proc CopyOf(x: Integer; len_: Index): Integer 
 		var 
 			buf: Integer
 	begin 
@@ -55,7 +55,7 @@ module Integers
 	
 	// Operations on Digits
 	
-	proc Add(x, y, sum: Integer; xL, yL: Index; var sumL: Index)
+	proc Add(x, y, sum: Integer; xL, yL: Index; var sumL: Index) 
 		var 
 			i, l: Index
 			c: Digit
@@ -85,7 +85,7 @@ module Integers
 		sumL := i
 	end Add
 	
-	proc Subtract(x, y, dif: Integer; xL, yL: Index; var difL: Index)
+	proc Subtract(x, y, dif: Integer; xL, yL: Index; var difL: Index) 
 		var 
 			i: Index
 			c, d: Digit
@@ -123,7 +123,7 @@ module Integers
 		assert(c div B = 0, 100)
 	end Subtract
 	
-	proc OneDigitMult(a, b: Buffer; var c: Buffer)
+	proc OneDigitMult(a, b: Buffer; var c: Buffer) 
 		var 
 			i: Index
 			carry, factor: DoubleDigit
@@ -144,7 +144,7 @@ module Integers
 		c.len_ := i
 	end OneDigitMult
 	
-	proc SimpleMult(a, b: Buffer; var c: Buffer)
+	proc SimpleMult(a, b: Buffer; var c: Buffer) 
 		var 
 			i, j, k: Index
 			c0, c1: DoubleDigit
@@ -202,7 +202,7 @@ module Integers
 		end 
 	end SimpleMult
 	
-	proc AddBuf(a, b: Buffer; var c: Buffer) // c := a + b
+	proc AddBuf(a, b: Buffer; var c: Buffer)  // c := a + b
 		var 
 			i: Index
 			carry: Digit
@@ -232,7 +232,7 @@ module Integers
 		c.len_ := i
 	end AddBuf
 	
-	proc AddToBuf(var a: Buffer; b: Buffer; shift: Index) // a := a + b * B^shift
+	proc AddToBuf(var a: Buffer; b: Buffer; shift: Index)  // a := a + b * B^shift
 		var 
 			i, n: Index
 			carry: Digit
@@ -276,7 +276,7 @@ module Integers
 		a.len_ := max(i, a.len_)
 	end AddToBuf
 	
-	proc SubtractFromBuf(var a: Buffer; b, c: Buffer) // a := a - b - c
+	proc SubtractFromBuf(var a: Buffer; b, c: Buffer)  // a := a - b - c
 		var 
 			i: Index
 			carry: Digit
@@ -305,7 +305,7 @@ module Integers
 		end 
 	end SubtractFromBuf
 	
-	proc KStep(a, b: Buffer; var c: Buffer; stack: Buffer)
+	proc KStep(a, b: Buffer; var c: Buffer; stack: Buffer) 
 		var 
 			n2, i: Index
 			a0, a1, b0, b1, c0, c1, h: Buffer
@@ -399,7 +399,7 @@ module Integers
 		end 
 	end KStep
 	
-	proc Karatsuba(x, y, pro: Integer; xL, yL: Index; var proL: Index)
+	proc Karatsuba(x, y, pro: Integer; xL, yL: Index; var proL: Index) 
 		var 
 			a, b, c, stack: Buffer
 	begin 
@@ -418,7 +418,7 @@ module Integers
 		proL := c.len_
 	end Karatsuba
 	
-	proc Multiply(x, y, pro: Integer; xL, yL: Index; var proL: Index)
+	proc Multiply(x, y, pro: Integer; xL, yL: Index; var proL: Index) 
 		var 
 			i, j, k: Index
 			c0, c1: DoubleDigit
@@ -494,7 +494,7 @@ module Integers
 		end 
 	end Multiply
 	
-	proc DecomposeQuoRem(x, y: Integer; xL, yL: Index)
+	proc DecomposeQuoRem(x, y: Integer; xL, yL: Index) 
 		var 
 			ix, iy, j: Index
 			d, q, h, yLead, ySecond: DoubleDigit
@@ -586,7 +586,7 @@ module Integers
 	
 	proc GetQuoRem(x, y: Integer; xL, yL: Index; xNeg, yNeg: boolean
 		quo, rem: Integer; var quoL, remL: Index; var quoNeg, remNeg: boolean
-		doQuo, doRem: boolean)
+		doQuo, doRem: boolean) 
 		var 
 			i: Index
 			c: Digit
@@ -647,7 +647,7 @@ module Integers
 		end 
 	end GetQuoRem
 	
-	proc BinPower(x: Integer; exp: integer; y: Integer; xL: Index; var yL: Index)
+	proc BinPower(x: Integer; exp: integer; y: Integer; xL: Index; var yL: Index) 
 		var 
 			zL: Index
 			b: integer
@@ -685,7 +685,7 @@ module Integers
 	
 	// Data Format Support
 	
-	proc New(nofDigits: Index): Integer
+	proc New(nofDigits: Index): Integer 
 		var 
 			x: Integer
 	begin 
@@ -693,7 +693,7 @@ module Integers
 		return x
 	end New
 	
-	proc SetLength(x: Integer; len_: Index; negative: boolean)
+	proc SetLength(x: Integer; len_: Index; negative: boolean) 
 		var 
 			low, high: Digit
 	begin 
@@ -708,7 +708,7 @@ module Integers
 		x[len(x^) - 2] := high
 	end SetLength
 	
-	proc GetLength(x: Integer; var len_: Index; var negative: boolean)
+	proc GetLength(x: Integer; var len_: Index; var negative: boolean) 
 		var 
 			low, high: Digit
 	begin 
@@ -721,7 +721,7 @@ module Integers
 	
 	// Exported Services
 	
-	proc Long*(x: longint): Integer
+	proc Long*(x: longint): Integer 
 		var 
 			i: Index
 			negative: boolean
@@ -744,7 +744,7 @@ module Integers
 		return int_
 	end Long
 	
-	proc Short*(x: Integer): longint
+	proc Short*(x: Integer): longint 
 		var 
 			i: Index
 			res: longint
@@ -762,15 +762,15 @@ module Integers
 		return res
 	end Short
 	
-	proc Entier*(x: real): Integer
+	proc Entier*(x: longreal): Integer 
 		var 
 			mL, yL, i: Index
-			mx: real
+			mx: longreal
 			ex: integer
 			neg: boolean
 			y, z: Integer
 		
-		proc Inc(m: Integer; var mL: Index)
+		proc Inc(m: Integer; var mL: Index) 
 			var 
 				i: Index
 		begin 
@@ -786,7 +786,7 @@ module Integers
 			end 
 		end Inc
 		
-		proc Double(m: Integer; var mL: Index)
+		proc Double(m: Integer; var mL: Index) 
 			var 
 				i: Index
 				c: Digit
@@ -857,10 +857,10 @@ module Integers
 		return y
 	end Entier
 	
-	proc Float*(x: Integer): real
+	proc Float*(x: Integer): longreal 
 		var 
 			i: Index
-			y: real
+			y: longreal
 			negative: boolean
 	begin 
 		y := 0
@@ -875,7 +875,7 @@ module Integers
 		return y
 	end Float
 	
-	proc Sign*(x: Integer): integer
+	proc Sign*(x: Integer): integer 
 		var 
 			len_: Index
 			negative: boolean
@@ -890,7 +890,7 @@ module Integers
 		end 
 	end Sign
 	
-	proc Abs*(x: Integer): Integer
+	proc Abs*(x: Integer): Integer 
 		var 
 			len_: Index
 			negative: boolean
@@ -910,7 +910,7 @@ module Integers
 		return y
 	end Abs
 	
-	proc Digits10Of*(x: Integer): integer
+	proc Digits10Of*(x: Integer): integer 
 		var 
 			i, n: Index
 			d: Digit
@@ -929,7 +929,7 @@ module Integers
 		return n
 	end Digits10Of
 	
-	proc ThisDigit10*(x: Integer; exp10: integer): char
+	proc ThisDigit10*(x: Integer; exp10: integer): wchar 
 		var 
 			i, n: Index
 			d: Digit
@@ -952,7 +952,7 @@ module Integers
 		return chr(ord("0") + d)
 	end ThisDigit10
 	
-	proc Compare*(x, y: Integer): integer
+	proc Compare*(x, y: Integer): integer 
 		var 
 			xL, yL: Index
 			res: integer
@@ -990,7 +990,7 @@ module Integers
 		return res
 	end Compare
 	
-	proc AddOp(x, y: Integer; subtract: boolean): Integer
+	proc AddOp(x, y: Integer; subtract: boolean): Integer 
 		var 
 			i, d, xL, yL, intL: Index
 			xNeg, yNeg: boolean
@@ -1041,17 +1041,17 @@ module Integers
 		return int_
 	end AddOp
 	
-	proc Sum*(x, y: Integer): Integer
+	proc Sum*(x, y: Integer): Integer 
 	begin 
 		return AddOp(x, y, false)
 	end Sum
 	
-	proc Difference*(x, y: Integer): Integer
+	proc Difference*(x, y: Integer): Integer 
 	begin 
 		return AddOp(x, y, true)
 	end Difference
 	
-	proc Product*(x, y: Integer): Integer
+	proc Product*(x, y: Integer): Integer 
 		var 
 			xL, yL, intL: Index
 			neg, xNeg, yNeg: boolean
@@ -1091,7 +1091,7 @@ module Integers
 		return int_
 	end Product
 	
-	proc Quotient*(x, y: Integer): Integer
+	proc Quotient*(x, y: Integer): Integer 
 		var 
 			xL, yL, intL, remL: Index
 			xNeg, yNeg, qNeg, rNeg: boolean
@@ -1121,7 +1121,7 @@ module Integers
 		return int_
 	end Quotient
 	
-	proc Remainder*(x, y: Integer): Integer
+	proc Remainder*(x, y: Integer): Integer 
 		var 
 			xL, yL, intL, quoL: Index
 			xNeg, yNeg, qNeg, rNeg: boolean
@@ -1142,7 +1142,7 @@ module Integers
 		return int_
 	end Remainder
 	
-	proc QuoRem*(x, y: Integer; var quo, rem: Integer)
+	proc QuoRem*(x, y: Integer; var quo, rem: Integer) 
 		var 
 			xL, yL, quoL, remL: Index
 			xNeg, yNeg, qNeg, rNeg: boolean
@@ -1174,7 +1174,7 @@ module Integers
 		end 
 	end QuoRem
 	
-	proc GCD*(x, y: Integer): Integer
+	proc GCD*(x, y: Integer): Integer 
 		var 
 			xL, yL, i: Index
 			h: Digit
@@ -1225,7 +1225,7 @@ module Integers
 		return int_
 	end GCD
 	
-	proc Power*(x: Integer; exp: integer): Integer
+	proc Power*(x: Integer; exp: integer): Integer 
 		var 
 			xL, intL: Index
 			negative: boolean
@@ -1260,11 +1260,11 @@ module Integers
 	
 	// Read from and Write to String and File
 	
-	proc ConvertFromString*(in s: array of char; var x: Integer)
+	proc ConvertFromString*(in s: array of wchar; var x: Integer) 
 		var 
 			i, j, k: integer
 			dig, b: Digit
-			ch: char
+			ch: wchar
 			negative: boolean
 			new_: Integer
 	begin 
@@ -1328,7 +1328,7 @@ module Integers
 		end 
 	end ConvertFromString
 	
-	proc ConvertToString*(x: Integer; var s: array of char)
+	proc ConvertToString*(x: Integer; var s: array of wchar) 
 		var 
 			j: Index
 			i: integer
@@ -1373,7 +1373,7 @@ module Integers
 		s[i] := 0x
 	end ConvertToString
 	
-	proc Internalize*(r: Files.Reader; var x: Integer)
+	proc Internalize*(r: Files.Reader; var x: Integer) 
 		var 
 			len_: Index
 			n, version: integer
@@ -1419,7 +1419,7 @@ module Integers
 		end 
 	end Internalize
 	
-	proc Externalize*(w: Files.Writer; x: Integer)
+	proc Externalize*(w: Files.Writer; x: Integer) 
 		var 
 			len_, l: Index
 			d: Digit
@@ -1427,7 +1427,7 @@ module Integers
 			negative: boolean
 			buf: array 4 of byte
 		
-		proc Byte(x: integer): byte
+		proc Byte(x: integer): byte 
 		begin 
 			assert((x >= min(byte)) & (x <= max(byte) - min(byte)), 20)
 			if x > max(byte) then

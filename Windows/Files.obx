@@ -33,8 +33,8 @@ module Files
 		stationery* = 4
 	
 	type 
-		Name* = array 256 of char
-		Type* = array 16 of char
+		Name* = array 256 of wchar
+		Type* = array 16 of wchar
 		
 		FileInfo* = pointer to record 
 				next*: FileInfo
@@ -73,51 +73,51 @@ module Files
 		objType-, symType-, docType-: Type // file types
 	
 	
-	proc (l: Locator) This*(in path: array of char): Locator end // new abstract
+	proc (l: Locator) This*(in path: array of wchar): Locator  end // new abstract
 	
-	proc (f: File) InitType*(type_: Type) // new
+	proc (f: File) InitType*(type_: Type)  // new
 	begin 
 		assert(~f.init, 20)
 		f.type_ := type_
 		f.init := true
 	end InitType
 	
-	proc (f: File) Length*(): integer end // new abstract
-	proc (f: File) NewReader*(old: Reader): Reader end // new abstract
-	proc (f: File) NewWriter*(old: Writer): Writer end // new abstract
-	proc (f: File) Flush*() end // new abstract
+	proc (f: File) Length*(): integer  end // new abstract
+	proc (f: File) NewReader*(old: Reader): Reader  end // new abstract
+	proc (f: File) NewWriter*(old: Writer): Writer  end // new abstract
+	proc (f: File) Flush*()  end // new abstract
 	proc (f: File) Register*(name: Name; type_: Type; ask: boolean
-		var res: integer) end // new abstract
-	proc (f: File) Close*() end // new abstract
-	proc (f: File) Closed*(): boolean end // new abstract
-	proc (f: File) Shared*(): boolean end // new abstract
+		var res: integer)  end // new abstract
+	proc (f: File) Close*()  end // new abstract
+	proc (f: File) Closed*(): boolean  end // new abstract
+	proc (f: File) Shared*(): boolean  end // new abstract
 	
 	
-	proc (r: Reader) Base*(): File end // new abstract
-	proc (r: Reader) Pos*(): integer end // new abstract
-	proc (r: Reader) SetPos*(pos: integer) end // new abstract
-	proc (r: Reader) ReadByte*(var x: byte) end // new abstract
-	proc (r: Reader) ReadBytes*(var x: array of byte; beg, len_: integer) end // new abstract
+	proc (r: Reader) Base*(): File  end // new abstract
+	proc (r: Reader) Pos*(): integer  end // new abstract
+	proc (r: Reader) SetPos*(pos: integer)  end // new abstract
+	proc (r: Reader) ReadByte*(var x: byte)  end // new abstract
+	proc (r: Reader) ReadBytes*(var x: array of byte; beg, len_: integer)  end // new abstract
 	
-	proc (w: Writer) Base*(): File end // new abstract
-	proc (w: Writer) Pos*(): integer end // new abstract
-	proc (w: Writer) SetPos*(pos: integer) end // new abstract
-	proc (w: Writer) WriteByte*(x: byte) end // new abstract
-	proc (w: Writer) WriteBytes*(in x: array of byte; beg, len_: integer) end // new abstract
+	proc (w: Writer) Base*(): File  end // new abstract
+	proc (w: Writer) Pos*(): integer  end // new abstract
+	proc (w: Writer) SetPos*(pos: integer)  end // new abstract
+	proc (w: Writer) WriteByte*(x: byte)  end // new abstract
+	proc (w: Writer) WriteBytes*(in x: array of byte; beg, len_: integer)  end // new abstract
 	
-	proc (d: Directory) This*(in path: array of char): Locator end // new abstract
-	proc (d: Directory) New*(loc: Locator; ask: boolean): File end // new abstract
-	proc (d: Directory) Old*(loc: Locator; name: Name; shared: boolean): File end // new abstract
-	proc (d: Directory) Temp*(): File end // new abstract
-	proc (d: Directory) Delete*(loc: Locator; name: Name) end // new abstract
-	proc (d: Directory) Rename*(loc: Locator; old, new_: Name; ask: boolean) end // new abstract
+	proc (d: Directory) This*(in path: array of wchar): Locator  end // new abstract
+	proc (d: Directory) New*(loc: Locator; ask: boolean): File  end // new abstract
+	proc (d: Directory) Old*(loc: Locator; name: Name; shared: boolean): File  end // new abstract
+	proc (d: Directory) Temp*(): File  end // new abstract
+	proc (d: Directory) Delete*(loc: Locator; name: Name)  end // new abstract
+	proc (d: Directory) Rename*(loc: Locator; old, new_: Name; ask: boolean)  end // new abstract
 	proc (d: Directory) SameFile*(loc0: Locator; name0: Name; loc1: Locator
-		name1: Name): boolean end // new abstract
-	proc (d: Directory) FileList*(loc: Locator): FileInfo end // new abstract
-	proc (d: Directory) LocList*(loc: Locator): LocInfo end // new abstract
-	proc (d: Directory) GetFileName*(name: Name; type_: Type; var filename: Name) end // new abstract
+		name1: Name): boolean  end // new abstract
+	proc (d: Directory) FileList*(loc: Locator): FileInfo  end // new abstract
+	proc (d: Directory) LocList*(loc: Locator): LocInfo  end // new abstract
+	proc (d: Directory) GetFileName*(name: Name; type_: Type; var filename: Name)  end // new abstract
 	
-	proc SetDir*(d: Directory)
+	proc SetDir*(d: Directory) 
 	begin 
 		assert(d # nil, 20)
 		dir := d

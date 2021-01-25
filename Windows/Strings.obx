@@ -34,18 +34,18 @@ module Strings
 	var 
 		maxExp: integer
 		maxDig: integer
-		factor: real // 10^maxDig
-		digits: array 17 of char
-		toUpper, toLower: array 256 of char
+		factor: longreal // 10^maxDig
+		digits: array 17 of wchar
+		toUpper, toLower: array 256 of wchar
 	
 	
 	// integer conversions
 	
-	proc IntToString*(x: longint; var s: array of char)
+	proc IntToString*(x: longint; var s: array of wchar) 
 		var 
 			j, k: integer
-			ch: char
-			a: array 32 of char
+			ch: wchar
+			a: array 32 of wchar
 	begin 
 		if x # min(longint) then
 			if x < 0 then
@@ -80,13 +80,13 @@ module Strings
 		s[k] := 0x
 	end IntToString
 	
-	proc IntToStringForm*(x: longint; form, minWidth: integer; fillCh: char
-		showBase: boolean; var s: array of char)
+	proc IntToStringForm*(x: longint; form, minWidth: integer; fillCh: wchar
+		showBase: boolean; var s: array of wchar) 
 		var 
 			base, i, j, k, si: integer
 			mSign: boolean
-			a: array 128 of char
-			c1, c5, c10: char
+			a: array 128 of wchar
+			c1, c5, c10: wchar
 	begin 
 		assert((form = charCode) or (form = hexadecimal) or (form = roman) or ((form >= 2) & (form <= 16)), 20)
 		assert(minWidth >= 0, 22)
@@ -249,12 +249,12 @@ module Strings
 		end 
 	end IntToStringForm
 	
-	proc StringToInt*(in s: array of char; var x: integer; var res: integer)
+	proc StringToInt*(in s: array of wchar; var x: integer; var res: integer) 
 		const 
 			hexLimit = max(integer) div 8 + 1
 		var 
 			i, j, k, digits: integer
-			ch, top: char
+			ch, top: wchar
 			neg: boolean
 			base: integer
 	begin 
@@ -391,12 +391,12 @@ module Strings
 		end 
 	end StringToInt
 	
-	proc StringToLInt*(in s: array of char; var x: longint; var res: integer)
+	proc StringToLInt*(in s: array of wchar; var x: longint; var res: integer) 
 		const 
 			hexLimit = max(longint) div 8 + 1
 		var 
 			i, j, k, digits: integer
-			ch, top: char
+			ch, top: wchar
 			neg: boolean
 			base: integer
 	begin 
@@ -536,11 +536,11 @@ module Strings
 	
 	// real conversions
 	
-	proc RealToStringForm*(x: real; precision, minW, expW: integer; fillCh: char
-		var s: array of char)
+	proc RealToStringForm*(x: longreal; precision, minW, expW: integer; fillCh: wchar
+		var s: array of wchar) 
 		var 
 			exp, len_, i, j, n, k, p: integer
-			m: array 80 of char
+			m: array 80 of wchar
 			neg: boolean
 	begin 
 		assert((precision > 0), (* & (precision <= 18) *)20)
@@ -760,17 +760,17 @@ module Strings
 		end 
 	end RealToStringForm
 	
-	proc RealToString*(x: real; var s: array of char)
+	proc RealToString*(x: longreal; var s: array of wchar) 
 	begin 
 		RealToStringForm(x, 16, 0, 0, digitspace, s)
 	end RealToString
 	
 	
-	proc StringToReal*(in s: array of char; var x: real; var res: integer)
+	proc StringToReal*(in s: array of wchar; var x: longreal; var res: integer) 
 		var 
 			first, last, point, e, n, i, exp: integer
-			y: real
-			ch: char
+			y: longreal
+			ch: wchar
 			neg, negExp, dig: boolean
 	begin 
 		res := 0
@@ -876,7 +876,7 @@ module Strings
 			x := (x + y) * Math.IntPower(10, exp - n) 
 		elsif exp = maxExp then 
 			x := (x + y) * (Math.IntPower(10, exp - n) / 16)
-			if x <= max(real) / 16 then
+			if x <= max(longreal) / 16 then
 				x := x * 16 
 			else  // overflow
 				res := 1 
@@ -892,22 +892,22 @@ module Strings
 	
 	// set conversions
 	
-	proc SetToString*(x: set; var str: array of char)
+	proc SetToString*(x: set; var str: array of wchar) 
 		var 
 			len_, i: integer
 		
-		proc AppendChar(ch: char)
+		proc AppendChar(ch: wchar) 
 		begin 
 			assert(len_ < len(str), 23)
 			str[len_] := ch
 			inc(len_)
 		end AppendChar
 		
-		proc AppendInt(x: integer)
+		proc AppendInt(x: integer) 
 			var 
 				i: integer
-				ch: char
-				buf: array 32 of char
+				ch: wchar
+				buf: array 32 of wchar
 		begin 
 			IntToString(x, buf)
 			ch := buf[0]
@@ -949,10 +949,10 @@ module Strings
 		AppendChar(0x)
 	end SetToString
 	
-	proc StringToSet*(in s: array of char; var x: set; var res: integer)
+	proc StringToSet*(in s: array of wchar; var x: set; var res: integer) 
 		var 
 			next, x1: integer
-			ch: char
+			ch: wchar
 		
 		proc NextChar
 		begin 
@@ -966,7 +966,7 @@ module Strings
 			end 
 		end NextChar
 		
-		proc ParseInt(): integer
+		proc ParseInt(): integer 
 			var 
 				intval: integer
 		begin 
@@ -985,7 +985,7 @@ module Strings
 			return intval
 		end ParseInt
 		
-		proc ParseRange()
+		proc ParseRange() 
 			var 
 				x2, i: integer
 		begin 
@@ -1045,7 +1045,7 @@ module Strings
 	
 	// ----------------------------- general purpose character classes and conversions ---------------------------
 	
-	proc IsUpper*(ch: char): boolean
+	proc IsUpper*(ch: wchar): boolean 
 	begin 
 		if ord(ch) < 256 then
 			return toLower[ord(ch)] # ch 
@@ -1054,7 +1054,7 @@ module Strings
 		end 
 	end IsUpper
 	
-	proc Upper*(ch: char): char
+	proc Upper*(ch: wchar): wchar 
 	begin 
 		if ord(ch) < 256 then
 			return toUpper[ord(ch)] 
@@ -1063,7 +1063,7 @@ module Strings
 		end 
 	end Upper
 	
-	proc IsLower*(ch: char): boolean
+	proc IsLower*(ch: wchar): boolean 
 	begin 
 		if ord(ch) < 256 then
 			return toUpper[ord(ch)] # ch 
@@ -1072,7 +1072,7 @@ module Strings
 		end 
 	end IsLower
 	
-	proc Lower*(ch: char): char
+	proc Lower*(ch: wchar): wchar 
 	begin 
 		if ord(ch) < 256 then
 			return toLower[ord(ch)] 
@@ -1081,7 +1081,7 @@ module Strings
 		end 
 	end Lower
 	
-	proc IsAlpha*(ch: char): boolean
+	proc IsAlpha*(ch: wchar): boolean 
 	begin 
 		case ch of 
 			"a" .. "z", "A" .. "Z": 
@@ -1095,19 +1095,19 @@ module Strings
 		end 
 	end IsAlpha
 	
-	proc IsNumeric*(ch: char): boolean
+	proc IsNumeric*(ch: wchar): boolean 
 	begin 
 		return ("0" <= ch) & (ch <= "9")
 	end IsNumeric
 	
-	proc IsAlphaNumeric*(ch: char): boolean
+	proc IsAlphaNumeric*(ch: wchar): boolean 
 	begin 
 		return IsAlpha(ch) or IsNumeric(ch)
 	end IsAlphaNumeric
 	
 	// ----------------------------- Component Pascal character classes ---------------------------
 	
-	proc IsIdentStart*(ch: char): boolean
+	proc IsIdentStart*(ch: wchar): boolean 
 	begin 
 		case ch of 
 			"a" .. "z", "A" .. "Z", "_": 
@@ -1121,7 +1121,7 @@ module Strings
 		end 
 	end IsIdentStart
 	
-	proc IsIdent*(ch: char): boolean
+	proc IsIdent*(ch: wchar): boolean 
 	begin 
 		// returns IsIdentStart(ch) OR IsNumeric(ch); optimized because heavily used in the compiler
 		case ch of 
@@ -1138,7 +1138,7 @@ module Strings
 	
 	// ----------------------------- string manipulation routines ---------------------------
 	
-	proc Valid*(in s: array of char): boolean
+	proc Valid*(in s: array of wchar): boolean 
 		var 
 			i: integer
 	begin 
@@ -1149,7 +1149,7 @@ module Strings
 		return i < len(s)
 	end Valid
 	
-	proc ToUpper*(in in_: array of char; var out: array of char)
+	proc ToUpper*(in in_: array of wchar; var out: array of wchar) 
 		var 
 			i, max_: integer
 	begin 
@@ -1166,7 +1166,7 @@ module Strings
 		out[i] := 0x
 	end ToUpper
 	
-	proc ToLower*(in in_: array of char; var out: array of char)
+	proc ToLower*(in in_: array of wchar; var out: array of wchar) 
 		var 
 			i, max_: integer
 	begin 
@@ -1183,22 +1183,22 @@ module Strings
 		out[i] := 0x
 	end ToLower
 	
-	proc Utf8ToString*(in in_: array of char; var out: array of char; var res: integer)
+	proc Utf8ToString*(in in_: array of char; var out: array of wchar; var res: integer) 
 	begin 
 		Kernel.Utf8ToString(in_, out, res)
 	end Utf8ToString
 	
-	proc StringToUtf8*(in in_: array of char; var out: array of char; var res: integer)
+	proc StringToUtf8*(in in_: array of wchar; var out: array of char; var res: integer) 
 	begin 
 		Kernel.StringToUtf8(in_, out, res)
 	end StringToUtf8
 	
-	proc Replace*(var s: array of char; pos, len_: integer; in rep: array of char)
+	proc Replace*(var s: array of wchar; pos, len_: integer; in rep: array of wchar) 
 		// replace stretch s[pos]..s[pos+len-1] with rep
 		// insert semantics if len = 0; delete semantics if LEN(rep$) = 0
 		var 
 			i, j, k, max_, lenS: integer
-			ch: char
+			ch: wchar
 	begin 
 		assert(len_ >= 0, 20)
 		assert(pos >= 0, 21)
@@ -1245,7 +1245,7 @@ module Strings
 		end 
 	end Replace
 	
-	proc Extract*(s: array of char; pos, len_: integer; var res: array of char)
+	proc Extract*(s: array of wchar; pos, len_: integer; var res: array of wchar) 
 		var 
 			i, j, max_: integer
 	begin 
@@ -1265,7 +1265,7 @@ module Strings
 		res[j] := 0x
 	end Extract
 	
-	proc Find*(in s: array of char; in pat: array of char; start: integer; var pos: integer)
+	proc Find*(in s: array of wchar; in pat: array of wchar; start: integer; var pos: integer) 
 		var 
 			j: integer
 	begin 
@@ -1309,7 +1309,7 @@ module Strings
 		end 
 		toUpper[ord("ÿ")] := "Ÿ"
 		digits := "0123456789ABCDEF"
-		maxExp := short(entier(Math.Log(max(real)))) + 1
+		maxExp := short(entier(Math.Log(max(longreal)))) + 1
 		maxDig := short(entier(-Math.Log(Math.Eps())))
 		factor := Math.IntPower(10, maxDig)
 	end Init

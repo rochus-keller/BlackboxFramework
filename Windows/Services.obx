@@ -47,7 +47,7 @@ module Services
 		trapCnt: integer
 	
 	
-	proc Ticks*(): longint
+	proc Ticks*(): longint 
 		var 
 			t: longint
 	begin 
@@ -58,9 +58,9 @@ module Services
 	
 	// Action
 	
-	proc (a: Action) Do-() end // new abstract
+	proc (a: Action) Do-()  end // new abstract
 	
-	proc In(l, a: Action): boolean
+	proc In(l, a: Action): boolean 
 	begin 
 		while (l # nil) & (l # a) do 
 			l := l.next 
@@ -68,7 +68,7 @@ module Services
 		return l # nil
 	end In
 	
-	proc Incl(var l: Action; a: Action)
+	proc Incl(var l: Action; a: Action) 
 	begin 
 		if l # nil then
 			a.next := l 
@@ -76,7 +76,7 @@ module Services
 		l := a
 	end Incl
 	
-	proc Excl(var l: Action; a: Action)
+	proc Excl(var l: Action; a: Action) 
 		var 
 			p0, p1: Action
 	begin 
@@ -98,7 +98,7 @@ module Services
 		end 
 	end Excl
 	
-	proc Exec(a: Action)
+	proc Exec(a: Action) 
 		var 
 			t: Kernel.Type
 	begin 
@@ -124,7 +124,7 @@ module Services
 		trapCnt := Kernel.trapCount // all traps are handled now
 	end Cleanup
 	
-	proc DoLater*(a: Action; notBefore: longint)
+	proc DoLater*(a: Action; notBefore: longint) 
 	// Register action a. If a is already registered, its notBefore value is updated instead.
 	begin 
 		assert(a # nil, 20)
@@ -137,7 +137,7 @@ module Services
 		end 
 	end DoLater
 	
-	proc RemoveAction*(a: Action)
+	proc RemoveAction*(a: Action) 
 	// Unregister action a. If a is not registered, nothing happens
 	begin 
 		if a # nil then
@@ -146,7 +146,7 @@ module Services
 		end 
 	end RemoveAction
 	
-	proc IterateOverActions(time: longint)
+	proc IterateOverActions(time: longint) 
 		var 
 			p: Action
 	begin 
@@ -194,7 +194,7 @@ module Services
 	
 	// type handling functions
 	
-	proc ThisDesc(in type_: array of char; load: boolean): Kernel.Type
+	proc ThisDesc(in type_: array of wchar; load: boolean): Kernel.Type 
 		const 
 			record_ = 1
 			pointer_ = 3
@@ -202,7 +202,7 @@ module Services
 			m: Kernel.Module
 			t: Kernel.Type
 			i, j: integer
-			ch: char
+			ch: wchar
 			typ, mod_: Kernel.Name
 	begin 
 		assert(type_ # "", 20)
@@ -249,10 +249,10 @@ module Services
 		return t
 	end ThisDesc
 	
-	proc GetTypeName*(in rec: ANYREC; var type_: array of char)
+	proc GetTypeName*(in rec: ANYREC; var type_: array of wchar) 
 		var 
 			i, j: integer
-			ch: char
+			ch: wchar
 			t: Kernel.Type
 			modName, name: Kernel.Name
 	begin 
@@ -285,12 +285,12 @@ module Services
 	
 	end GetTypeName
 	
-	proc SameType*(in ra, rb: ANYREC): boolean
+	proc SameType*(in ra, rb: ANYREC): boolean 
 	begin 
 		return Kernel.TypeOf(ra) = Kernel.TypeOf(rb)
 	end SameType
 	
-	proc IsExtensionOf*(in ra, rb: ANYREC): boolean
+	proc IsExtensionOf*(in ra, rb: ANYREC): boolean 
 		var 
 			ta, tb: Kernel.Type
 	begin 
@@ -299,7 +299,7 @@ module Services
 		return ta.base[tb.id div 16 mod 16] = tb
 	end IsExtensionOf
 	
-	proc Is*(in rec: ANYREC; in type_: array of char): boolean
+	proc Is*(in rec: ANYREC; in type_: array of wchar): boolean 
 		var 
 			ta, tb: Kernel.Type
 	begin 
@@ -312,7 +312,7 @@ module Services
 		end 
 	end Is
 	
-	proc Extends*(in type_, base: array of char): boolean
+	proc Extends*(in type_, base: array of wchar): boolean 
 		var 
 			ta, tb: Kernel.Type
 	begin 
@@ -326,7 +326,7 @@ module Services
 		end 
 	end Extends
 	
-	proc Level*(in type_: array of char): integer
+	proc Level*(in type_: array of wchar): integer 
 		var 
 			t: Kernel.Type
 	begin 
@@ -334,7 +334,7 @@ module Services
 		return t.id div 16 mod 16
 	end Level
 	
-	proc TypeLevel*(in rec: ANYREC): integer
+	proc TypeLevel*(in rec: ANYREC): integer 
 		var 
 			t: Kernel.Type
 	begin 
@@ -346,7 +346,7 @@ module Services
 		end 
 	end TypeLevel
 	
-	proc AdrOf*(in rec: ANYREC): integer
+	proc AdrOf*(in rec: ANYREC): integer 
 	begin 
 		return SYSTEM.ADR(rec)
 	end AdrOf

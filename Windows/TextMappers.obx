@@ -64,7 +64,7 @@ module TextMappers
 		acceptUnderscores = true
 	
 	type 
-		String* = array 256 of char
+		String* = array 256 of wchar
 		
 		Scanner* = record 
 				opts-: set
@@ -73,11 +73,11 @@ module TextMappers
 				type_*: integer
 				start*, lines*, paras*: integer // update by Skip
 				
-				char_*: char // valid iff type = char
+				char_*: wchar // valid iff type = char
 				int_*: integer // valid iff type = int
 				base*: integer // valid iff type IN {int, lint}
 				lint*: longint // valid iff type IN {int, lint}
-				real_*: real // valid iff type = real
+				real_*: longreal // valid iff type = real
 				bool*: boolean // valid iff type = bool
 				set_*: set // valid iff type = set
 				len_*: integer // valid iff type IN {string, int, lint}
@@ -93,7 +93,7 @@ module TextMappers
 	// Scanner
 	
 	
-	proc Get(var s: Scanner; var ch: char)
+	proc Get(var s: Scanner; var ch: wchar) 
 	begin 
 		s.rider.ReadChar(ch)
 		if ({returnViews, maskViews} * s.opts = {returnViews}) & (s.rider.view # nil) then
@@ -102,10 +102,10 @@ module TextMappers
 		end 
 	end Get
 	
-	proc Real(var s: Scanner)
+	proc Real(var s: Scanner) 
 		var 
 			res: integer
-			ch: char
+			ch: wchar
 	begin 
 		s.type_ := real_
 		s.string[s.len_] := "."
@@ -138,10 +138,10 @@ module TextMappers
 		end 
 	end Real
 	
-	proc Integer(var s: Scanner)
+	proc Integer(var s: Scanner) 
 		var 
 			n, k, res: integer
-			ch: char
+			ch: wchar
 			hex: boolean
 	begin 
 		s.type_ := int_
@@ -205,10 +205,10 @@ module TextMappers
 		end 
 	end Integer
 	
-	proc Number(var s: Scanner; neg: boolean)
+	proc Number(var s: Scanner; neg: boolean) 
 		var 
 			m: integer
-			ch: char
+			ch: wchar
 	begin 
 		s.len_ := 0
 		m := 0
@@ -238,10 +238,10 @@ module TextMappers
 		end 
 	end Number
 	
-	proc Cardinal(var s: Scanner; var n: integer)
+	proc Cardinal(var s: Scanner; var n: integer) 
 		var 
 			k: integer
-			ch: char
+			ch: wchar
 	begin 
 		n := 0
 		s.Skip(ch)
@@ -260,10 +260,10 @@ module TextMappers
 		end 
 	end Cardinal
 	
-	proc Set(var s: Scanner)
+	proc Set(var s: Scanner) 
 		var 
 			n, m, start: integer
-			ch: char
+			ch: wchar
 	begin 
 		s.type_ := set_
 		start := s.start
@@ -319,9 +319,9 @@ module TextMappers
 		s.start := start
 	end Set
 	
-	proc Boolean(var s: Scanner)
+	proc Boolean(var s: Scanner) 
 		var 
-			ch: char
+			ch: wchar
 	begin 
 		s.type_ := bool
 		Get(s, ch)
@@ -341,10 +341,10 @@ module TextMappers
 		end 
 	end Boolean
 	
-	proc Name(var s: Scanner)
+	proc Name(var s: Scanner) 
 		var 
 			max_: integer
-			ch: char
+			ch: wchar
 	begin 
 		s.type_ := string
 		s.len_ := 0
@@ -370,10 +370,10 @@ module TextMappers
 		s.string[s.len_] := 0x
 	end Name
 	
-	proc DoubleQuotedString(var s: Scanner)
+	proc DoubleQuotedString(var s: Scanner) 
 		var 
 			max_, pos: integer
-			ch: char
+			ch: wchar
 	begin 
 		pos := s.rider.Pos()
 		s.type_ := string
@@ -395,10 +395,10 @@ module TextMappers
 		end 
 	end DoubleQuotedString
 	
-	proc SingleQuotedString(var s: Scanner)
+	proc SingleQuotedString(var s: Scanner) 
 		var 
 			max_, pos: integer
-			ch: char
+			ch: wchar
 	begin 
 		pos := s.rider.Pos()
 		s.type_ := string
@@ -424,9 +424,9 @@ module TextMappers
 		end 
 	end SingleQuotedString
 	
-	proc Char(var s: Scanner)
+	proc Char(var s: Scanner) 
 		var 
-			ch: char
+			ch: wchar
 	begin 
 		ch := s.rider.char_
 		if ch # 0x then
@@ -440,9 +440,9 @@ module TextMappers
 		end 
 	end Char
 	
-	proc View(var s: Scanner)
+	proc View(var s: Scanner) 
 		var 
-			ch: char
+			ch: wchar
 	begin 
 		s.type_ := view
 		s.view := s.rider.view
@@ -460,7 +460,7 @@ module TextMappers
 	end View
 	
 	
-	proc (var s: Scanner) ConnectTo*(text: TextModels.Model) // new
+	proc (var s: Scanner) ConnectTo*(text: TextModels.Model)  // new
 	begin 
 		if text # nil then
 			s.rider := text.NewReader(s.rider)
@@ -471,7 +471,7 @@ module TextMappers
 		end 
 	end ConnectTo
 	
-	proc (var s: Scanner) SetPos*(pos: integer) // new
+	proc (var s: Scanner) SetPos*(pos: integer)  // new
 	begin 
 		s.rider.SetPos(pos)
 		s.start := pos
@@ -480,17 +480,17 @@ module TextMappers
 		s.type_ := invalid
 	end SetPos
 	
-	proc (var s: Scanner) SetOpts*(opts: set) // new
+	proc (var s: Scanner) SetOpts*(opts: set)  // new
 	begin 
 		s.opts := opts
 	end SetOpts
 	
-	proc (var s: Scanner) Pos*(): integer // new
+	proc (var s: Scanner) Pos*(): integer  // new
 	begin 
 		return s.rider.Pos()
 	end Pos
 	
-	proc (var s: Scanner) Skip*(var ch: char) // new
+	proc (var s: Scanner) Skip*(var ch: wchar)  // new
 		var 
 			c, v: boolean
 	begin 
@@ -532,7 +532,7 @@ module TextMappers
 	proc (var s: Scanner) Scan* // new
 		var 
 			sign, neg: boolean
-			ch: char
+			ch: wchar
 	begin 
 		s.Skip(ch)
 		if s.type_ # eot then
@@ -601,10 +601,10 @@ module TextMappers
 	
 	// scanning utilities
 	
-	proc IsQualIdent*(in s: array of char): boolean
+	proc IsQualIdent*(in s: array of wchar): boolean 
 		var 
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		ch := s[0]
 		i := 1
@@ -628,11 +628,11 @@ module TextMappers
 		end 
 	end IsQualIdent
 	
-	proc ScanQualIdent*(var s: Scanner; var x: array of char; var done: boolean)
+	proc ScanQualIdent*(var s: Scanner; var x: array of wchar; var done: boolean) 
 		var 
 			mod_: String
 			i, j, len_, start: integer
-			ch: char
+			ch: wchar
 	begin 
 		done := false
 		if s.type_ = string then
@@ -682,7 +682,7 @@ module TextMappers
 	// Formatter
 	
 	
-	proc (var f: Formatter) ConnectTo*(text: TextModels.Model) // new
+	proc (var f: Formatter) ConnectTo*(text: TextModels.Model)  // new
 	begin 
 		if text # nil then
 			f.rider := text.NewWriter(f.rider)
@@ -692,18 +692,18 @@ module TextMappers
 		end 
 	end ConnectTo
 	
-	proc (in f: Formatter) SetPos*(pos: integer) // new
+	proc (in f: Formatter) SetPos*(pos: integer)  // new
 	begin 
 		f.rider.SetPos(pos)
 	end SetPos
 	
-	proc (in f: Formatter) Pos*(): integer // new
+	proc (in f: Formatter) Pos*(): integer  // new
 	begin 
 		return f.rider.Pos()
 	end Pos
 	
 	
-	proc (in f: Formatter) WriteChar*(x: char) // new
+	proc (in f: Formatter) WriteChar*(x: wchar)  // new
 	begin 
 		if (x >= " ") & (x # 7fx) then
 			f.rider.WriteChar(x) 
@@ -714,12 +714,12 @@ module TextMappers
 		end 
 	end WriteChar
 	
-	proc (in f: Formatter) WriteInt*(x: longint) // new
+	proc (in f: Formatter) WriteInt*(x: longint)  // new
 	begin 
 		f.WriteIntForm(x, decimal, 0, TextModels.digitspace, hideBase)
 	end WriteInt
 	
-	proc (in f: Formatter) WriteSString*(x: array of char) // new
+	proc (in f: Formatter) WriteSString*(x: array of char)  // new
 		var 
 			i: integer
 	begin 
@@ -730,7 +730,7 @@ module TextMappers
 		end 
 	end WriteSString
 	
-	proc (in f: Formatter) WriteString*(x: array of char) // new
+	proc (in f: Formatter) WriteString*(x: array of wchar)  // new
 		var 
 			i: integer
 	begin 
@@ -741,15 +741,15 @@ module TextMappers
 		end 
 	end WriteString
 	
-	proc (in f: Formatter) WriteReal*(x: real) // new
+	proc (in f: Formatter) WriteReal*(x: longreal)  // new
 		var 
-			m: array 256 of char
+			m: array 256 of wchar
 	begin 
 		Strings.RealToString(x, m)
 		f.WriteString(m)
 	end WriteReal
 	
-	proc (in f: Formatter) WriteBool*(x: boolean) // new
+	proc (in f: Formatter) WriteBool*(x: boolean)  // new
 	begin 
 		if x then
 			f.WriteString("$TRUE") 
@@ -758,9 +758,9 @@ module TextMappers
 		end 
 	end WriteBool
 	
-	proc (in f: Formatter) WriteSet*(x: set) // new
+	proc (in f: Formatter) WriteSet*(x: set)  // new
 		var 
-			str: array 128 of char
+			str: array 128 of wchar
 	begin 
 		Strings.SetToString(x, str)
 		f.WriteString(str)
@@ -781,43 +781,43 @@ module TextMappers
 		f.rider.WriteChar(PARA)
 	end WritePara
 	
-	proc (in f: Formatter) WriteView*(v: Views.View) // new
+	proc (in f: Formatter) WriteView*(v: Views.View)  // new
 	begin 
 		f.WriteViewForm(v, Views.undefined, Views.undefined)
 	end WriteView
 	
 	
 	proc (in f: Formatter) WriteIntForm*(x: longint
-		base, minWidth: integer; fillCh: char; showBase: boolean
-		) // new
+		base, minWidth: integer; fillCh: wchar; showBase: boolean
+		)  // new
 		var 
-			s: array 80 of char
+			s: array 80 of wchar
 	begin 
 		Strings.IntToStringForm(x, base, minWidth, fillCh, showBase, s)
 		f.WriteString(s)
 	end WriteIntForm
 	
-	proc (in f: Formatter) WriteRealForm*(x: real
-		precision, minW, expW: integer; fillCh: char
-		) // new
+	proc (in f: Formatter) WriteRealForm*(x: longreal
+		precision, minW, expW: integer; fillCh: wchar
+		)  // new
 		var 
-			s: array 256 of char
+			s: array 256 of wchar
 	begin 
 		Strings.RealToStringForm(x, precision, minW, expW, fillCh, s)
 		f.WriteString(s)
 	end WriteRealForm
 	
 	
-	proc (in f: Formatter) WriteViewForm*(v: Views.View; w, h: integer) // new
+	proc (in f: Formatter) WriteViewForm*(v: Views.View; w, h: integer)  // new
 	begin 
 		f.rider.WriteView(v, w, h)
 	end WriteViewForm
 	
-	proc (in f: Formatter) WriteParamMsg*(msg, p0, p1, p2: array of char) // new
+	proc (in f: Formatter) WriteParamMsg*(msg, p0, p1, p2: array of wchar)  // new
 		var 
-			s: array 256 of char
+			s: array 256 of wchar
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		Dialog.MapParamString(msg, p0, p1, p2, s)
 		i := 0
@@ -837,7 +837,7 @@ module TextMappers
 		end 
 	end WriteParamMsg
 	
-	proc (in f: Formatter) WriteMsg*(msg: array of char) // new
+	proc (in f: Formatter) WriteMsg*(msg: array of wchar)  // new
 	begin 
 		f.WriteParamMsg(msg, "", "", "")
 	end WriteMsg

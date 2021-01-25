@@ -115,7 +115,7 @@ module HostPorts
 	
 	// Port
 	
-	proc (p: Port) SetSize*(w, h: integer)
+	proc (p: Port) SetSize*(w, h: integer) 
 	begin 
 		assert(w >= 0, 20)
 		assert(h >= 0, 21)
@@ -123,13 +123,13 @@ module HostPorts
 		p.h := h
 	end SetSize
 	
-	proc (p: Port) GetSize*(var w, h: integer)
+	proc (p: Port) GetSize*(var w, h: integer) 
 	begin 
 		w := p.w
 		h := p.h
 	end GetSize
 	
-	proc (p: Port) NewRider*(): Rider
+	proc (p: Port) NewRider*(): Rider 
 		var 
 			h: Rider
 	begin 
@@ -138,7 +138,7 @@ module HostPorts
 		return h
 	end NewRider
 	
-	proc (p: Port) SetDC*(dc, wnd: WinApi.HANDLE) // new
+	proc (p: Port) SetDC*(dc, wnd: WinApi.HANDLE)  // new
 		var 
 			res: integer
 	begin 
@@ -154,7 +154,7 @@ module HostPorts
 		p.wnd := wnd
 	end SetDC
 	
-	proc (p: Port) OpenBuffer*(l, t, r, b: integer)
+	proc (p: Port) OpenBuffer*(l, t, r, b: integer) 
 		var 
 			res: integer
 			dc: WinApi.HANDLE
@@ -235,14 +235,14 @@ module HostPorts
 	
 	// Rider
 	
-	proc (rd: Rider) Base*(): Ports.Port // extensible
+	proc (rd: Rider) Base*(): Ports.Port  // extensible
 	begin 
 		assert(rd.port # nil, 20)
 		assert(rd.port.dc # 0, 21)
 		return rd.port
 	end Base
 	
-	proc (rd: Rider) SetRect*(l, t, r, b: integer)
+	proc (rd: Rider) SetRect*(l, t, r, b: integer) 
 	begin 
 		assert((l <= r) & (t <= b), 20)
 		assert(rd.port # nil, 21)
@@ -252,7 +252,7 @@ module HostPorts
 		rd.b := b
 	end SetRect
 	
-	proc (rd: Rider) GetRect*(var l, t, r, b: integer)
+	proc (rd: Rider) GetRect*(var l, t, r, b: integer) 
 	begin 
 		l := rd.l
 		t := rd.t
@@ -260,7 +260,7 @@ module HostPorts
 		b := rd.b
 	end GetRect
 	
-	proc SetClipRegion(rd: Rider; dc: WinApi.HANDLE)
+	proc SetClipRegion(rd: Rider; dc: WinApi.HANDLE) 
 		var 
 			res, res1: integer
 	begin 
@@ -272,7 +272,7 @@ module HostPorts
 		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b)
 	end SetClipRegion
 	
-	proc (rd: Rider) InitPort*(port: Port) // new
+	proc (rd: Rider) InitPort*(port: Port)  // new
 	begin 
 		assert(rd.port = nil, 20)
 		assert(port # nil, 21)
@@ -282,13 +282,13 @@ module HostPorts
 		rd.dy := 0
 	end InitPort
 	
-	proc (rd: Rider) Move*(dx, dy: integer)
+	proc (rd: Rider) Move*(dx, dy: integer) 
 	begin 
 		inc(rd.dx, dx)
 		inc(rd.dy, dy)
 	end Move
 	
-	proc (rd: Rider) DrawRect*(l, t, r, b, s: integer; col: Ports.Color)
+	proc (rd: Rider) DrawRect*(l, t, r, b, s: integer; col: Ports.Color) 
 		var 
 			res, h: integer
 			p: Port
@@ -342,7 +342,7 @@ module HostPorts
 		end 
 	end DrawRect
 	
-	proc (rd: Rider) DrawOval*(l, t, r, b, s: integer; col: Ports.Color)
+	proc (rd: Rider) DrawOval*(l, t, r, b, s: integer; col: Ports.Color) 
 		var 
 			res, h: integer
 			p: Port
@@ -397,7 +397,7 @@ module HostPorts
 		end 
 	end DrawOval
 	
-	proc (rd: Rider) DrawLine*(x0, y0, x1, y1, s: integer; col: Ports.Color)
+	proc (rd: Rider) DrawLine*(x0, y0, x1, y1, s: integer; col: Ports.Color) 
 		var 
 			res: integer
 			pt: WinApi.POINT
@@ -434,7 +434,7 @@ module HostPorts
 	
 	proc (rd: Rider) DrawPath*(
 		in pts: array of Ports.Point; n, s: integer; col: Ports.Color; path: integer
-		)
+		) 
 		
 		type 
 			PAP = unsafe pointer to carray of WinApi.POINT
@@ -449,7 +449,7 @@ module HostPorts
 			polyPtr: pointer to array of Ports.Point
 			polyLen: integer
 		
-		proc Bezier(x0, y0, xd0, yd0, x1, y1, xd1, yd1: integer)
+		proc Bezier(x0, y0, xd0, yd0, x1, y1, xd1, yd1: integer) 
 			var 
 				x, y, xd, yd, i: integer
 		begin 
@@ -573,7 +573,7 @@ module HostPorts
 		end 
 	end DrawPath
 	
-	proc (rd: Rider) MarkRect*(l, t, r, b, s, mode: integer; show: boolean)
+	proc (rd: Rider) MarkRect*(l, t, r, b, s, mode: integer; show: boolean) 
 		var 
 			res: integer
 			p: Port
@@ -644,7 +644,7 @@ module HostPorts
 	end MarkRect
 	
 	
-	proc (rd: Rider) Scroll*(dx, dy: integer)
+	proc (rd: Rider) Scroll*(dx, dy: integer) 
 		var 
 			res: integer
 			p: Port
@@ -688,21 +688,21 @@ module HostPorts
 	end Scroll
 	
 	
-	proc (rd: Rider) SetCursor*(cursor: integer)
+	proc (rd: Rider) SetCursor*(cursor: integer) 
 		var 
 			old: WinApi.HANDLE
 	begin 
 		old := WinApi.SetCursor(cursors[cursor])
 	end SetCursor
 	
-	proc SetMouseState*(x, y: integer; but: set; isDown: boolean)
+	proc SetMouseState*(x, y: integer; but: set; isDown: boolean) 
 	begin 
 		mx := x
 		my := y
 		mb := but
 	end SetMouseState
 	
-	proc (rd: Rider) Input*(var x, y: integer; var modifiers: set; var isDown: boolean)
+	proc (rd: Rider) Input*(var x, y: integer; var modifiers: set; var isDown: boolean) 
 		var 
 			msg: WinApi.MSG
 			wnd, mw: WinApi.HANDLE
@@ -802,7 +802,7 @@ module HostPorts
 	
 	proc (rd: Rider) DrawSString*(
 		x, y: integer; col: Ports.Color; in s: array of char; font: Fonts.Font
-		)
+		) 
 		var 
 			res, i, a, b, c, w, u, n: integer
 			p: Port
@@ -893,7 +893,7 @@ module HostPorts
 	
 	proc (rd: Rider) SCharIndex*(
 		x, pos: integer; in s: array of char; font: Fonts.Font
-		): integer
+		): integer 
 		var 
 			d, u, i, n, a, b, c, w: integer
 			df: HostFonts.DevFont
@@ -943,7 +943,7 @@ module HostPorts
 	
 	proc (rd: Rider) SCharPos*(
 		x, index: integer; in s: array of char; font: Fonts.Font
-		): integer
+		): integer 
 		var 
 			i, u, n, a, b, c, w: integer
 			df: HostFonts.DevFont
@@ -990,15 +990,15 @@ module HostPorts
 	end SCharPos
 	
 	proc (rd: Rider) DrawString*(
-		x, y: integer; col: Ports.Color; in s: array of char; font: Fonts.Font
-		)
+		x, y: integer; col: Ports.Color; in s: array of wchar; font: Fonts.Font
+		) 
 		var 
 			res, i, a, b, c, n, w, u: integer
 			p: Port
 			dc, old: WinApi.HANDLE
 			df: HostFonts.DevFont
 			dx: array 1024 of integer
-			s1: array 1024 of char
+			s1: array 1024 of wchar
 			fsp: boolean
 	begin 
 		assert(rd.port # nil, 100)
@@ -1090,7 +1090,7 @@ module HostPorts
 		end 
 	end DrawString
 	
-	proc (rd: Rider) DrawSpace*(x, y, w: integer; col: Ports.Color; font: Fonts.Font)
+	proc (rd: Rider) DrawSpace*(x, y, w: integer; col: Ports.Color; font: Fonts.Font) 
 		var 
 			right, res, u: integer
 			dx: array 1 of integer
@@ -1129,7 +1129,7 @@ module HostPorts
 		end 
 	end DrawSpace
 	
-	proc (rd: Rider) CharIndex*(x, pos: integer; in s: array of char; font: Fonts.Font): integer
+	proc (rd: Rider) CharIndex*(x, pos: integer; in s: array of wchar; font: Fonts.Font): integer 
 		var 
 			res, d, u, i, a, b, c, w, n: integer
 			df: HostFonts.DevFont
@@ -1183,7 +1183,7 @@ module HostPorts
 		return i
 	end CharIndex
 	
-	proc (rd: Rider) CharPos*(x, index: integer; in s: array of char; font: Fonts.Font): integer
+	proc (rd: Rider) CharPos*(x, index: integer; in s: array of wchar; font: Fonts.Font): integer 
 		var 
 			res, i, u, a, b, c, w, d, n: integer
 			df: HostFonts.DevFont
@@ -1237,7 +1237,7 @@ module HostPorts
 		return x
 	end CharPos
 	
-	proc (rd: Rider) SaveRect*(l, t, r, b: integer; var res: integer)
+	proc (rd: Rider) SaveRect*(l, t, r, b: integer; var res: integer) 
 		var 
 			rs: integer
 			p: Port
@@ -1277,7 +1277,7 @@ module HostPorts
 		end 
 	end SaveRect
 	
-	proc (rd: Rider) RestoreRect*(l, t, r, b: integer; dispose: boolean)
+	proc (rd: Rider) RestoreRect*(l, t, r, b: integer; dispose: boolean) 
 		var 
 			res: integer
 			p: Port
@@ -1317,7 +1317,7 @@ module HostPorts
 		end 
 	end RestoreRect
 	
-	proc (rd: Rider) CopyFrom*(sdc: WinApi.HANDLE; x, y: integer) // new
+	proc (rd: Rider) CopyFrom*(sdc: WinApi.HANDLE; x, y: integer)  // new
 		var 
 			res: integer
 			p: Port
@@ -1338,7 +1338,7 @@ module HostPorts
 		end 
 	end CopyFrom
 	
-	proc (rd: Rider) DrawBitmap*(bmdc: WinApi.HANDLE; bw, bh, x, y, w, h: integer) // new
+	proc (rd: Rider) DrawBitmap*(bmdc: WinApi.HANDLE; bw, bh, x, y, w, h: integer)  // new
 		var 
 			res, u: integer
 			p: Port
@@ -1363,7 +1363,7 @@ module HostPorts
 		res := WinApi.RestoreDC(dc, -1)
 	end DrawBitmap
 	
-	proc (rd: Rider) DrawMetafile*(mf: WinApi.HANDLE; mode, x, y, w, h: integer) // new
+	proc (rd: Rider) DrawMetafile*(mf: WinApi.HANDLE; mode, x, y, w, h: integer)  // new
 		var 
 			res, oldMode, u: integer
 			p: Port

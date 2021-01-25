@@ -31,7 +31,7 @@ module XhtmlTextTableMarkers
 	
 	// View
 	
-	proc (v: View) Internalize(var rd: Stores.Reader)
+	proc (v: View) Internalize(var rd: Stores.Reader) 
 		var 
 			version: integer
 	begin 
@@ -45,14 +45,14 @@ module XhtmlTextTableMarkers
 		end 
 	end Internalize
 	
-	proc (v: View) Externalize(var wr: Stores.Writer)
+	proc (v: View) Externalize(var wr: Stores.Writer) 
 	begin 
 		// v is initialized
 		wr.WriteVersion(maxVersion)
 		wr.WriteBool(v.openMark)
 	end Externalize
 	
-	proc (v: View) CopyFromSimpleView(source: Views.View)
+	proc (v: View) CopyFromSimpleView(source: Views.View) 
 	begin 
 		// v is not initialized
 		// v.Domain() = NIL
@@ -64,7 +64,7 @@ module XhtmlTextTableMarkers
 		end 
 	end CopyFromSimpleView
 	
-	proc (v: View) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (v: View) Restore(f: Views.Frame; l, t, r, b: integer) 
 		var 
 			w, h, s: integer
 	begin 
@@ -85,7 +85,7 @@ module XhtmlTextTableMarkers
 		end 
 	end Restore
 	
-	proc (v: View) HandleCtrlMsg(f: Views.Frame; var msg: Controllers.Message; var focus: Views.View)
+	proc (v: View) HandleCtrlMsg(f: Views.Frame; var msg: Controllers.Message; var focus: Views.View) 
 	begin 
 		// f # NIL
 		// focus = NIL
@@ -99,7 +99,7 @@ module XhtmlTextTableMarkers
 		end 
 	end HandleCtrlMsg
 	
-	proc (v: View) HandlePropMsg(var msg: Properties.Message)
+	proc (v: View) HandlePropMsg(var msg: Properties.Message) 
 		const 
 			viewHeight = 2 * Ports.mm
 	begin 
@@ -118,17 +118,17 @@ module XhtmlTextTableMarkers
 	
 	// miscellaneous
 	
-	proc IsOpenMark*(v: Views.View): boolean
+	proc IsOpenMark*(v: Views.View): boolean 
 	begin 
 		return (v # nil) & (v is View) & v(View).openMark
 	end IsOpenMark
 	
-	proc IsCloseMark*(v: Views.View): boolean
+	proc IsCloseMark*(v: Views.View): boolean 
 	begin 
 		return (v # nil) & (v is View) & ~v(View).openMark
 	end IsCloseMark
 	
-	proc New*(openMark: boolean): Views.View
+	proc New*(openMark: boolean): Views.View 
 		var 
 			v: View
 	begin 

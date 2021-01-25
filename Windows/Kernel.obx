@@ -96,7 +96,7 @@ module Kernel
 	
 	
 	type 
-		Name* = array nameLen of char
+		Name* = array nameLen of wchar
 		Utf8Name* = array nameLen of char
 		Command* = proc 
 		
@@ -128,7 +128,7 @@ module Kernel
 				ptroffs-: array any of integer  // array of any length
 			end 
 		
-		Object* = pointer to ObjDesc
+		Object* = unsafe pointer to ObjDesc
 		
 		ObjDesc* = cstruct 
 				fprint-: integer
@@ -185,7 +185,7 @@ module Kernel
 		
 		LoaderHook* = pointer to (* abstract *) record (Hook) 
 				res*: integer
-				importing*, imported*, object*: array 256 of char 
+				importing*, imported*, object*: array 256 of wchar 
 			end 
 		
 		Block = unsafe pointer to cstruct 
@@ -195,7 +195,7 @@ module Kernel
 				first: integer  // arrays: first element
 			end 
 		
-		FreeBlock = pointer to FreeDesc
+		FreeBlock = unsafe pointer to FreeDesc
 		
 		FreeDesc = cstruct 
 				tag: Type // f.tag = ADR(f.size)
@@ -225,7 +225,7 @@ module Kernel
 		
 		PtrType = record v: S.PTR end  // used for array of pointer
 		Char8Type = record v: char end 
-		Char16Type = record v: char end 
+		Char16Type = record v: wchar end 
 		Int8Type = record v: byte end 
 		Int16Type = record v: shortint end 
 		Int32Type = record v: integer end 
@@ -233,7 +233,7 @@ module Kernel
 		BoolType = record v: boolean end 
 		SetType = record v: set end 
 		Real32Type = record v: real end 
-		Real64Type = record v: real end 
+		Real64Type = record v: longreal end 
 		ProcType = record v: proc  end 
 		UPtrType = record v: integer end 
 		IntPtrType = record p: COM.IUnknown end  // used for array of interface pointer
@@ -251,7 +251,7 @@ module Kernel
 		
 		// Exception handling
 		
-		ExcpFramePtr* = pointer to ExcpFrame
+		ExcpFramePtr* = unsafe pointer to ExcpFrame
 		ExcpFrame* = (* extensible *) cstruct 
 				link*: ExcpFramePtr
 				handler*: proc (excpRec: WinApi.PtrEXCEPTION_RECORD
@@ -334,12 +334,12 @@ module Kernel
 	proc PushDI end // [code] 057H
 	proc PopDI end // [code] 05FH
 	proc LdSP8 end // [code] 08DH 065H 0F8H
-	proc Return0(ret: integer) end // [code] 0C3H
-	proc ReturnCX(ret: integer) end // [code] 05AH 001H 0CCH 0FFH 0E2H
+	proc Return0(ret: integer)  end // [code] 0C3H
+	proc ReturnCX(ret: integer)  end // [code] 05AH 001H 0CCH 0FFH 0E2H
 	// POP DX; ADD SP,CX; JP DX
-	proc FPageWord(offs: integer): integer end // [code] 64H 8BH 0H // MOV EAX,FS:[EAX]
-	proc InstallExcp*(var e: ExcpFrame) end // [code] 64H 8BH 0DH 0 0 0 0 89H 8 64H 0A3H 0 0 0 0
-	proc RemoveExcp*(var e: ExcpFrame) end // [code] 8BH 0 64H 0A3H 0 0 0 0
+	proc FPageWord(offs: integer): integer  end // [code] 64H 8BH 0H // MOV EAX,FS:[EAX]
+	proc InstallExcp*(var e: ExcpFrame)  end // [code] 64H 8BH 0DH 0 0 0 0 89H 8 64H 0A3H 0 0 0 0
+	proc RemoveExcp*(var e: ExcpFrame)  end // [code] 8BH 0 64H 0A3H 0 0 0 0
 	
 	// code procedures for fpu
 	
@@ -349,7 +349,7 @@ module Kernel
 	
 	// code procedure for memory erase
 	
-	proc Erase(adr, words: integer) end // [code] 089H 0C7H 031H 0C0H 059H 0F2H 0ABH
+	proc Erase(adr, words: integer)  end // [code] 089H 0C7H 031H 0C0H 059H 0F2H 0ABH
 	// MOV EDI, EAX
 	// XOR EAX, EAX
 	// POP ECX
@@ -461,48 +461,48 @@ module Kernel
 	
 	
 	
-	proc (var id: Identifier) Identified*(): boolean end // new abstract
-	proc (r: Reducer) Reduce*(full: boolean) end // new abstract
+	proc (var id: Identifier) Identified*(): boolean  end // new abstract
+	proc (r: Reducer) Reduce*(full: boolean)  end // new abstract
 	proc (c: TrapCleaner) Cleanup* end // new empty
 	
 	
 	// meta extension suport
 	
-	proc (e: ItemExt) Lookup*(name: array of char; var i: ANYREC) end // new abstract
-	proc (e: ItemExt) Index*(index: integer; var elem: ANYREC) end // new abstract
-	proc (e: ItemExt) Deref*(var ref: ANYREC) end // new abstract
+	proc (e: ItemExt) Lookup*(name: array of wchar; var i: ANYREC)  end // new abstract
+	proc (e: ItemExt) Index*(index: integer; var elem: ANYREC)  end // new abstract
+	proc (e: ItemExt) Deref*(var ref: ANYREC)  end // new abstract
 	
-	proc (e: ItemExt) Valid*(): boolean end // new abstract
-	proc (e: ItemExt) Size*(): integer end // new abstract
-	proc (e: ItemExt) BaseTyp*(): integer end // new abstract
-	proc (e: ItemExt) Len*(): integer end // new abstract
+	proc (e: ItemExt) Valid*(): boolean  end // new abstract
+	proc (e: ItemExt) Size*(): integer  end // new abstract
+	proc (e: ItemExt) BaseTyp*(): integer  end // new abstract
+	proc (e: ItemExt) Len*(): integer  end // new abstract
 	
-	proc (e: ItemExt) Call*(var ok: boolean) end // new abstract
-	proc (e: ItemExt) BoolVal*(): boolean end // new abstract
-	proc (e: ItemExt) PutBoolVal*(x: boolean) end // new abstract
-	proc (e: ItemExt) CharVal*(): char end // new abstract
-	proc (e: ItemExt) PutCharVal*(x: char) end // new abstract
-	proc (e: ItemExt) IntVal*(): integer end // new abstract
-	proc (e: ItemExt) PutIntVal*(x: integer) end // new abstract
-	proc (e: ItemExt) LongVal*(): longint end // new abstract
-	proc (e: ItemExt) PutLongVal*(x: longint) end // new abstract
-	proc (e: ItemExt) RealVal*(): real end // new abstract
-	proc (e: ItemExt) PutRealVal*(x: real) end // new abstract
-	proc (e: ItemExt) SetVal*(): set end // new abstract
-	proc (e: ItemExt) PutSetVal*(x: set) end // new abstract
-	proc (e: ItemExt) PtrVal*(): ANYPTR end // new abstract
-	proc (e: ItemExt) PutPtrVal*(x: ANYPTR) end // new abstract
+	proc (e: ItemExt) Call*(var ok: boolean)  end // new abstract
+	proc (e: ItemExt) BoolVal*(): boolean  end // new abstract
+	proc (e: ItemExt) PutBoolVal*(x: boolean)  end // new abstract
+	proc (e: ItemExt) CharVal*(): wchar  end // new abstract
+	proc (e: ItemExt) PutCharVal*(x: wchar)  end // new abstract
+	proc (e: ItemExt) IntVal*(): integer  end // new abstract
+	proc (e: ItemExt) PutIntVal*(x: integer)  end // new abstract
+	proc (e: ItemExt) LongVal*(): longint  end // new abstract
+	proc (e: ItemExt) PutLongVal*(x: longint)  end // new abstract
+	proc (e: ItemExt) RealVal*(): longreal  end // new abstract
+	proc (e: ItemExt) PutRealVal*(x: longreal)  end // new abstract
+	proc (e: ItemExt) SetVal*(): set  end // new abstract
+	proc (e: ItemExt) PutSetVal*(x: set)  end // new abstract
+	proc (e: ItemExt) PtrVal*(): ANYPTR  end // new abstract
+	proc (e: ItemExt) PutPtrVal*(x: ANYPTR)  end // new abstract
 	proc (e: ItemExt) GetSStringVal*(var x: array of char
-		var ok: boolean) end // new abstract
+		var ok: boolean)  end // new abstract
 	proc (e: ItemExt) PutSStringVal*(in x: array of char
-		var ok: boolean) end // new abstract
-	proc (e: ItemExt) GetStringVal*(var x: array of char; var ok: boolean) end // new abstract
-	proc (e: ItemExt) PutStringVal*(in x: array of char; var ok: boolean) end // new abstract
+		var ok: boolean)  end // new abstract
+	proc (e: ItemExt) GetStringVal*(var x: array of wchar; var ok: boolean)  end // new abstract
+	proc (e: ItemExt) PutStringVal*(in x: array of wchar; var ok: boolean)  end // new abstract
 	
 	
 	// -------------------- miscellaneous tools --------------------
 	
-	proc IsAlpha*(ch: char): boolean
+	proc IsAlpha*(ch: wchar): boolean 
 		var 
 			type_: shortint
 			res: integer
@@ -512,18 +512,18 @@ module Kernel
 		return bits(WinApi.C1_ALPHA) * bits(type_) # {}
 	end IsAlpha
 	
-	proc Upper*(ch: char): char
+	proc Upper*(ch: wchar): wchar 
 	begin 
 		if ("a" <= ch) & (ch <= "z") then // common case optimized
 			return cap(ch) 
 		elsif ch > 7fx then 
-			return S.VAL(char, WinApi.CharUpperW(S.VAL(WinApi.PtrWSTR, ord(ch)))) 
+			return S.VAL(wchar, WinApi.CharUpperW(S.VAL(WinApi.PtrWSTR, ord(ch)))) 
 		else 
 			return ch 
 		end 
 	end Upper
 	
-	proc IsUpper*(ch: char): boolean
+	proc IsUpper*(ch: wchar): boolean 
 	begin 
 		if ("A" <= ch) & (ch <= "Z") then
 			return true 
@@ -534,18 +534,18 @@ module Kernel
 		end 
 	end IsUpper
 	
-	proc Lower*(ch: char): char
+	proc Lower*(ch: wchar): wchar 
 	begin 
 		if ("A" <= ch) & (ch <= "Z") then
 			return chr(ord(ch) + 32) 
 		elsif ch > 7fx then 
-			return S.VAL(char, WinApi.CharLowerW(S.VAL(WinApi.PtrWSTR, ord(ch)))) 
+			return S.VAL(wchar, WinApi.CharLowerW(S.VAL(WinApi.PtrWSTR, ord(ch)))) 
 		else 
 			return ch 
 		end 
 	end Lower
 	
-	proc IsLower*(ch: char): boolean
+	proc IsLower*(ch: wchar): boolean 
 	begin 
 		if ("a" <= ch) & (ch <= "z") then
 			return true 
@@ -556,13 +556,13 @@ module Kernel
 		end 
 	end IsLower
 	
-	proc Utf8ToString*(in in_: array of char; var out: array of char
-		var res: integer)
+	proc Utf8ToString*(in in_: array of char; var out: array of wchar
+		var res: integer) 
 		var 
 			i, j, val_, max_: integer
 			ch: char
 		
-		proc FormatError()
+		proc FormatError() 
 		begin  // format error
 			out := in_
 			res := 2
@@ -625,8 +625,8 @@ module Kernel
 		end 
 	end Utf8ToString
 	
-	proc StringToUtf8*(in in_: array of char; var out: array of char
-		var res: integer)
+	proc StringToUtf8*(in in_: array of wchar; var out: array of char
+		var res: integer) 
 		var 
 			i, j, val_, max_: integer
 	begin 
@@ -661,11 +661,11 @@ module Kernel
 		end 
 	end StringToUtf8
 	
-	proc SplitName*(name: array of char; var head, tail: array of char)
+	proc SplitName*(name: array of wchar; var head, tail: array of wchar) 
 		// portable
 		var 
 			i, j: integer
-			ch, lch: char
+			ch, lch: wchar
 	begin 
 		i := 0
 		ch := name[0]
@@ -699,11 +699,11 @@ module Kernel
 		end 
 	end SplitName
 	
-	proc MakeFileName*(var name: array of char; type_: array of char)
+	proc MakeFileName*(var name: array of wchar; type_: array of wchar) 
 		var 
 			i, j: integer
-			ext: array 8 of char
-			ch: char
+			ext: array 8 of wchar
+			ch: wchar
 	begin 
 		i := 0
 		while (name[i] # 0x) & (name[i] # ".") do 
@@ -735,7 +735,7 @@ module Kernel
 		end 
 	end MakeFileName
 	
-	proc Time*(): longint
+	proc Time*(): longint 
 		var 
 			t: integer
 	begin 
@@ -747,14 +747,14 @@ module Kernel
 		return shift * 100000000h + t
 	end Time
 	
-	proc Beep*()
+	proc Beep*() 
 		var 
 			res: integer
 	begin 
 		res := WinApi.MessageBeep(bits(-1))
 	end Beep
 	
-	proc SearchProcVar*(var_: integer; var m: Module; var adr: integer)
+	proc SearchProcVar*(var_: integer; var m: Module; var adr: integer) 
 	begin 
 		adr := var_
 		m := nil
@@ -772,7 +772,7 @@ module Kernel
 	
 	// -------------------- system memory management ---------------------
 	
-	proc GrowHeapMem(size_: integer; var c: Cluster)
+	proc GrowHeapMem(size_: integer; var c: Cluster) 
 		// grow to at least size bytes, typically at least 256 kbytes are allocated
 		const 
 			N = 262144
@@ -792,7 +792,7 @@ module Kernel
 	// post: (c.size unchanged) OR (c.size >= size)
 	end GrowHeapMem
 	
-	proc AllocHeapMem(size_: integer; var c: Cluster)
+	proc AllocHeapMem(size_: integer; var c: Cluster) 
 		// allocate at least size bytes, typically at least 256 kbytes are allocated
 		const  // 1.5 GByte, see note on Stack Size
 			M = 1536 * 100000h
@@ -847,7 +847,7 @@ module Kernel
 	// post: (c = NIL) OR (c MOD 16 = 0) & (c.size >= size)
 	end AllocHeapMem
 	
-	proc FreeHeapMem(c: Cluster)
+	proc FreeHeapMem(c: Cluster) 
 		var 
 			res: integer
 	begin 
@@ -858,7 +858,7 @@ module Kernel
 		end 
 	end FreeHeapMem
 	
-	proc HeapFull(size_: integer): boolean
+	proc HeapFull(size_: integer): boolean 
 		var 
 			ms: WinApi.MEMORYSTATUS
 	begin 
@@ -868,7 +868,7 @@ module Kernel
 		return used + size_ > ms.dwTotalPhys
 	end HeapFull
 	
-	proc AllocModMem*(descSize, modSize: integer; var descAdr, modAdr: integer)
+	proc AllocModMem*(descSize, modSize: integer; var descAdr, modAdr: integer) 
 		var 
 			res: integer
 	begin 
@@ -886,7 +886,7 @@ module Kernel
 		end 
 	end AllocModMem
 	
-	proc DeallocModMem*(descSize, modSize, descAdr, modAdr: integer)
+	proc DeallocModMem*(descSize, modSize, descAdr, modAdr: integer) 
 		var 
 			res: integer
 	begin 
@@ -895,7 +895,7 @@ module Kernel
 		res := WinApi.VirtualFree(modAdr, 0, {15}) // release
 	end DeallocModMem
 	
-	proc InvalModMem(modSize, modAdr: integer)
+	proc InvalModMem(modSize, modAdr: integer) 
 		var 
 			res: integer
 	begin 
@@ -903,7 +903,7 @@ module Kernel
 		res := WinApi.VirtualFree(modAdr, modSize, {14}) // decommit
 	end InvalModMem
 	
-	proc IsReadable*(from, to_: integer): boolean
+	proc IsReadable*(from, to_: integer): boolean 
 	// check wether memory between from (incl.) and to (excl.) may be read
 	begin 
 		return WinApi.IsBadReadPtr(from, to_ - from) = 0
@@ -912,7 +912,7 @@ module Kernel
 	
 	// --------------------- COM reference counting --------------------
 	
-	proc AddRef*(p: integer): integer // COMPILER DEPENDENT
+	proc AddRef*(p: integer): integer  // COMPILER DEPENDENT
 	begin 
 		ADDREF
 	(* INC(p.ref);
@@ -922,7 +922,7 @@ module Kernel
 	
 	end AddRef
 	
-	proc Release*(p: integer): integer // COMPILER DEPENDENT
+	proc Release*(p: integer): integer  // COMPILER DEPENDENT
 	begin 
 		RELEASE
 	(* IF p.unk # NIL THEN p.unk.Release() END;
@@ -932,7 +932,7 @@ module Kernel
 	
 	end Release
 	
-	proc Release2*(p: integer): integer // COMPILER DEPENDENT
+	proc Release2*(p: integer): integer  // COMPILER DEPENDENT
 	begin 
 		CALLREL
 		RELEASE
@@ -944,7 +944,7 @@ module Kernel
 	
 	end Release2
 	
-	proc RecFinalizer(obj: ANYPTR)
+	proc RecFinalizer(obj: ANYPTR) 
 		var 
 			i: integer
 			type_: Type
@@ -963,7 +963,7 @@ module Kernel
 		end 
 	end RecFinalizer
 	
-	proc ArrFinalizer(obj: S.PTR)
+	proc ArrFinalizer(obj: S.PTR) 
 		var 
 			last, adr, i, j: integer
 			type_: Type
@@ -989,7 +989,7 @@ module Kernel
 		end 
 	end ArrFinalizer
 	
-	proc ReleaseIPtrs(mod_: Module)
+	proc ReleaseIPtrs(mod_: Module) 
 		var 
 			i: integer
 			p: IntPtr
@@ -1008,7 +1008,7 @@ module Kernel
 	
 	// --------------------- NEW implementation (portable) --------------------
 	
-	proc NewRec*(typ: integer): integer // implementation of NEW(ptr)
+	proc NewRec*(typ: integer): integer  // implementation of NEW(ptr)
 		var 
 			size_: integer
 			b: Block
@@ -1048,7 +1048,7 @@ module Kernel
 		end 
 	end NewRec
 	
-	proc NewArr*(eltyp, nofelem, nofdim: integer): integer // impl. of NEW(ptr, dim0, dim1, ...)
+	proc NewArr*(eltyp, nofelem, nofdim: integer): integer  // impl. of NEW(ptr, dim0, dim1, ...)
 		var 
 			b: Block
 			size_, headSize: integer
@@ -1124,7 +1124,7 @@ module Kernel
 	
 	// -------------------- handler installation (portable) ---------------------
 	
-	proc ThisFinObj*(var id: Identifier): ANYPTR
+	proc ThisFinObj*(var id: Identifier): ANYPTR 
 		var 
 			l: FList
 	begin 
@@ -1142,23 +1142,23 @@ module Kernel
 		return nil
 	end ThisFinObj
 	
-	proc InstallReducer*(r: Reducer)
+	proc InstallReducer*(r: Reducer) 
 	begin 
 		r.next := reducers
 		reducers := r
 	end InstallReducer
 	
-	proc InstallTrapViewer*(h: Handler)
+	proc InstallTrapViewer*(h: Handler) 
 	begin 
 		trapViewer := h
 	end InstallTrapViewer
 	
-	proc InstallTrapChecker*(h: Handler)
+	proc InstallTrapChecker*(h: Handler) 
 	begin 
 		trapChecker := h
 	end InstallTrapChecker
 	
-	proc PushTrapCleaner*(c: TrapCleaner)
+	proc PushTrapCleaner*(c: TrapCleaner) 
 		var 
 			t: TrapCleaner
 	begin 
@@ -1171,7 +1171,7 @@ module Kernel
 		trapStack := c
 	end PushTrapCleaner
 	
-	proc PopTrapCleaner*(c: TrapCleaner)
+	proc PopTrapCleaner*(c: TrapCleaner) 
 		var 
 			t: TrapCleaner
 	begin 
@@ -1182,7 +1182,7 @@ module Kernel
 		end 
 	end PopTrapCleaner
 	
-	proc InstallCleaner*(p: Command)
+	proc InstallCleaner*(p: Command) 
 		var 
 			c: CList
 	begin 
@@ -1193,7 +1193,7 @@ module Kernel
 		cleaners := c
 	end InstallCleaner
 	
-	proc RemoveCleaner*(p: Command)
+	proc RemoveCleaner*(p: Command) 
 		var 
 			c0, c: CList
 	begin 
@@ -1237,14 +1237,14 @@ module Kernel
 	
 	// -------------------- meta information (portable) ---------------------
 	
-	proc (h: LoaderHook) ThisMod*(in name: array of char): Module end // new abstract
+	proc (h: LoaderHook) ThisMod*(in name: array of wchar): Module  end // new abstract
 	
-	proc SetLoaderHook*(h: LoaderHook)
+	proc SetLoaderHook*(h: LoaderHook) 
 	begin 
 		loader := h
 	end SetLoaderHook
 	
-	proc InitModule(mod_: Module) // initialize linked modules
+	proc InitModule(mod_: Module)  // initialize linked modules
 		var 
 			body: Command
 	begin 
@@ -1260,7 +1260,7 @@ module Kernel
 		end 
 	end InitModule
 	
-	proc ThisLoadedMod*(in name: array of char): Module // loaded modules only
+	proc ThisLoadedMod*(in name: array of wchar): Module  // loaded modules only
 		var 
 			m: Module
 			res: integer
@@ -1282,7 +1282,7 @@ module Kernel
 		return m
 	end ThisLoadedMod
 	
-	proc ThisMod*(in name: array of char): Module
+	proc ThisMod*(in name: array of wchar): Module 
 	begin 
 		if loader # nil then
 			loader.res := done
@@ -1292,14 +1292,14 @@ module Kernel
 		end 
 	end ThisMod
 	
-	proc LoadMod*(in name: array of char)
+	proc LoadMod*(in name: array of wchar) 
 		var 
 			m: Module
 	begin 
 		m := ThisMod(name)
 	end LoadMod
 	
-	proc GetLoaderResult*(var res: integer; var importing, imported, object: array of char)
+	proc GetLoaderResult*(var res: integer; var importing, imported, object: array of wchar) 
 	begin 
 		if loader # nil then
 			res := loader.res
@@ -1314,7 +1314,7 @@ module Kernel
 		end 
 	end GetLoaderResult
 	
-	proc ThisObject*(mod_: Module; in name: array of char): Object
+	proc ThisObject*(mod_: Module; in name: array of wchar): Object 
 		var 
 			l, r, m, res: integer
 			p: StrPtr
@@ -1339,7 +1339,7 @@ module Kernel
 		return nil
 	end ThisObject
 	
-	proc ThisDesc*(mod_: Module; fprint: integer): Object
+	proc ThisDesc*(mod_: Module; fprint: integer): Object 
 		var 
 			i, n: integer
 	begin 
@@ -1354,7 +1354,7 @@ module Kernel
 		return nil
 	end ThisDesc
 	
-	proc ThisField*(rec: Type; in name: array of char): Object
+	proc ThisField*(rec: Type; in name: array of wchar): Object 
 		var 
 			n, res: integer
 			p: StrPtr
@@ -1378,7 +1378,7 @@ module Kernel
 		return nil
 	end ThisField
 	
-	proc ThisCommand*(mod_: Module; in name: array of char): Command
+	proc ThisCommand*(mod_: Module; in name: array of wchar): Command 
 		var 
 			x: Object
 			sig: Signature
@@ -1393,7 +1393,7 @@ module Kernel
 		return nil
 	end ThisCommand
 	
-	proc ThisType*(mod_: Module; in name: array of char): Type
+	proc ThisType*(mod_: Module; in name: array of wchar): Type 
 		var 
 			x: Object
 	begin 
@@ -1405,17 +1405,17 @@ module Kernel
 		end 
 	end ThisType
 	
-	proc TypeOf*(in rec: ANYREC): Type
+	proc TypeOf*(in rec: ANYREC): Type 
 	begin 
 		return S.VAL(Type, S.TYP(rec))
 	end TypeOf
 	
-	proc LevelOf*(t: Type): shortint
+	proc LevelOf*(t: Type): shortint 
 	begin 
 		return short(t.id div 16 mod 16)
 	end LevelOf
 	
-	proc NewObj*(var o: S.PTR; t: Type)
+	proc NewObj*(var o: S.PTR; t: Type) 
 		var 
 			i: integer
 	begin 
@@ -1433,7 +1433,7 @@ module Kernel
 		end 
 	end NewObj
 	
-	proc GetModName*(mod_: Module; var name: Name)
+	proc GetModName*(mod_: Module; var name: Name) 
 		var 
 			res: integer
 	begin 
@@ -1441,7 +1441,7 @@ module Kernel
 		assert(res = 0)
 	end GetModName
 	
-	proc GetObjName*(mod_: Module; obj: Object; var name: Name)
+	proc GetObjName*(mod_: Module; obj: Object; var name: Name) 
 		var 
 			p: StrPtr
 			res: integer
@@ -1451,7 +1451,7 @@ module Kernel
 		assert(res = 0)
 	end GetObjName
 	
-	proc GetTypeName*(t: Type; var name: Name)
+	proc GetTypeName*(t: Type; var name: Name) 
 		var 
 			p: StrPtr
 			res: integer
@@ -1461,7 +1461,7 @@ module Kernel
 		assert(res = 0)
 	end GetTypeName
 	
-	proc RegisterMod*(mod_: Module)
+	proc RegisterMod*(mod_: Module) 
 		var 
 			i: integer
 			t: WinApi.SYSTEMTIME
@@ -1489,7 +1489,7 @@ module Kernel
 		end 
 	end RegisterMod
 	
-	proc UnloadMod*(mod_: Module)
+	proc UnloadMod*(mod_: Module) 
 		var 
 			i: integer
 			t: Command
@@ -1526,10 +1526,10 @@ module Kernel
 	
 	// -------------------- dynamic procedure call ---------------------// COMPILER DEPENDENT
 	
-	proc PUSH(p: integer) end // [code] 050H // push AX
-	proc CALL(a: integer) end // [code] 0FFH 0D0H // call AX
-	proc RETI(): longint end // [code] 0H // Rochus: add 0H
-	proc RETR(): real end // [code] 0H // Rochus: add 0H
+	proc PUSH(p: integer)  end // [code] 050H // push AX
+	proc CALL(a: integer)  end // [code] 0FFH 0D0H // call AX
+	proc RETI(): longint  end // [code] 0H // Rochus: add 0H
+	proc RETR(): longreal  end // [code] 0H // Rochus: add 0H
 	
 	(* type				par
 	   32 bit scalar	value
@@ -1540,11 +1540,11 @@ module Kernel
 	   open array	address length_N-1 .. length_0 *)
 	
 	
-	proc Call*(adr: integer; sig: Signature; in par: array of integer; n: integer): longint
+	proc Call*(adr: integer; sig: Signature; in par: array of integer; n: integer): longint 
 		var 
 			p, kind, sp, size_: integer
 			typ: Type
-			r: real
+			r: longreal
 	begin 
 		p := sig.num
 		while p > 0 do  // push parameters from right to left
@@ -1602,7 +1602,7 @@ module Kernel
 		assert(n = 0)
 		if S.VAL(integer, sig.retStruct) = 7 then // shortreal
 			CALL(adr)
-			return S.VAL(integer, (RETR()))  // return value in fpu register
+			return S.VAL(integer, short(RETR()))  // return value in fpu register
 		elsif S.VAL(integer, sig.retStruct) = 8 then  // real
 			CALL(adr)
 			r := RETR()
@@ -1615,13 +1615,13 @@ module Kernel
 	
 	// -------------------- reference information (portable) ---------------------
 	
-	proc RefCh(var ref: integer; var ch: char)
+	proc RefCh(var ref: integer; var ch: char) 
 	begin 
 		S.GET(ref, ch)
 		inc(ref)
 	end RefCh
 	
-	proc RefNum(var ref: integer; var x: integer)
+	proc RefNum(var ref: integer; var x: integer) 
 		var 
 			s, n: integer
 			ch: char
@@ -1637,7 +1637,7 @@ module Kernel
 		x := n + ash(ord(ch) mod 64 - ord(ch) div 64 * 64, s)
 	end RefNum
 	
-	proc RefName(var ref: integer; var n: Utf8Name)
+	proc RefName(var ref: integer; var n: Utf8Name) 
 		var 
 			i: integer
 			ch: char
@@ -1652,7 +1652,7 @@ module Kernel
 		n[i] := 0x
 	end RefName
 	
-	proc GetRefProc*(var ref: integer; var adr: integer; var name: Utf8Name)
+	proc GetRefProc*(var ref: integer; var adr: integer; var name: Utf8Name) 
 		var 
 			ch: char
 	begin 
@@ -1682,7 +1682,7 @@ module Kernel
 	end GetRefProc
 	
 	proc GetRefVar*(var ref: integer; var mode, form: char; var desc: Type
-		var adr: integer; var name: Utf8Name)
+		var adr: integer; var name: Utf8Name) 
 	begin 
 		S.GET(ref, mode)
 		desc := nil
@@ -1704,7 +1704,7 @@ module Kernel
 		end 
 	end GetRefVar
 	
-	proc SourcePos*(mod_: Module; codePos: integer): integer
+	proc SourcePos*(mod_: Module; codePos: integer): integer 
 		var 
 			ref, pos, ad, d: integer
 			ch: char
@@ -1752,7 +1752,7 @@ module Kernel
 	
 	// -------------------- dynamic link libraries ---------------------
 	
-	proc LoadDll*(in name: array of char; var ok: boolean)
+	proc LoadDll*(in name: array of wchar; var ok: boolean) 
 		var 
 			h: WinApi.HANDLE
 	begin 
@@ -1763,7 +1763,7 @@ module Kernel
 		end 
 	end LoadDll
 	
-	proc ThisDllObj*(mode, fprint: integer; in dll, name: array of char): integer
+	proc ThisDllObj*(mode, fprint: integer; in dll, name: array of wchar): integer 
 		var 
 			ad: WinApi.FARPROC
 			h: WinApi.HANDLE
@@ -1784,7 +1784,7 @@ module Kernel
 	
 	// -------------------- garbage collector (portable) ---------------------
 	
-	proc Mark(this: Block)
+	proc Mark(this: Block) 
 		var 
 			father, son: Block
 			tag: Type
@@ -1879,7 +1879,7 @@ module Kernel
 	   END Next; *)
 	
 	
-	proc Next(b: Block): Block end // [code] 08BH 008H 080H 0E1H 0FCH 08BH 009H 0F6H 000H 002H 074H 008H 003H 048H 004H 029H 0C1H 083H 0E9H 004H 083H 0C1H 013H 080H 0E1H 0F0H 001H 0C8H // next block in same cluster
+	proc Next(b: Block): Block  end // [code] 08BH 008H 080H 0E1H 0FCH 08BH 009H 0F6H 000H 002H 074H 008H 003H 048H 004H 029H 0C1H 083H 0E9H 004H 083H 0C1H 013H 080H 0E1H 0F0H 001H 0C8H // next block in same cluster
 	(* MOV	ECX,[EAX]	b.tag
 	   AND	CL,0FCH	b.tag DIV * 4
 	   MOV	ECX,[ECX]	size
@@ -1971,7 +1971,7 @@ module Kernel
 	(* coroutine stacks are only checked if they are anchored in globals. If all coroutine stacks were checked,
 	   unreferenced coroutines would survive forever because the stack contains a reference to the coroutine.
 	   mainCoroutine and currentCoroutine are always anchored globally. *)
-	proc MarkReferencedCoroutines(min_, max_: integer)
+	proc MarkReferencedCoroutines(min_, max_: integer) 
 		var 
 			c, stop: Coroutine
 			sp, sb, tag, p: integer
@@ -2117,7 +2117,7 @@ module Kernel
 		end 
 	end CheckFinalizers
 	
-	proc ExecFinalizer(a, b, c: integer)
+	proc ExecFinalizer(a, b, c: integer) 
 		var 
 			f: FList
 			fin: proc (this: ANYPTR)
@@ -2148,7 +2148,7 @@ module Kernel
 		wouldFinalize := false
 	end CallFinalizers
 	
-	proc Insert(blk: FreeBlock; size_: integer) // insert block in free list
+	proc Insert(blk: FreeBlock; size_: integer)  // insert block in free list
 		var 
 			i: integer
 	begin 
@@ -2159,7 +2159,7 @@ module Kernel
 		free[i] := blk
 	end Insert
 	
-	proc Sweep(dealloc: boolean)
+	proc Sweep(dealloc: boolean) 
 		var 
 			cluster, last, c: Cluster
 			blk, next: Block
@@ -2254,14 +2254,14 @@ module Kernel
 		end 
 	end FastCollect
 	
-	proc WouldFinalize*(): boolean
+	proc WouldFinalize*(): boolean 
 	begin 
 		return wouldFinalize
 	end WouldFinalize
 	
 	// --------------------- memory allocation (portable) --------------------
 	
-	proc OldBlock(size_: integer): FreeBlock // size MOD 16 = 0
+	proc OldBlock(size_: integer): FreeBlock  // size MOD 16 = 0
 		var 
 			b, l: FreeBlock
 			s, i: integer
@@ -2292,7 +2292,7 @@ module Kernel
 		return b
 	end OldBlock
 	
-	proc LastBlock(limit: integer): FreeBlock // size MOD 16 = 0
+	proc LastBlock(limit: integer): FreeBlock  // size MOD 16 = 0
 		var 
 			b, l: FreeBlock
 			s, i: integer
@@ -2320,7 +2320,7 @@ module Kernel
 		return b
 	end LastBlock
 	
-	proc NewBlock(size_: integer): Block
+	proc NewBlock(size_: integer): Block 
 		var 
 			tsize, a, s: integer
 			b: FreeBlock
@@ -2435,17 +2435,17 @@ module Kernel
 		return S.VAL(Block, b)
 	end NewBlock
 	
-	proc Allocated*(): integer
+	proc Allocated*(): integer 
 	begin 
 		return allocated
 	end Allocated
 	
-	proc Used*(): integer
+	proc Used*(): integer 
 	begin 
 		return used
 	end Used
 	
-	proc Root*(): integer
+	proc Root*(): integer 
 	begin 
 		return S.VAL(integer, root)
 	end Root
@@ -2453,14 +2453,14 @@ module Kernel
 	
 	// -------------------- Trap Handling ---------------------
 	
-	proc Start*(code: Command)
+	proc Start*(code: Command) 
 	begin 
 		restart := code
 		S.GETREG(SP, baseStack) // save base stack
 		code()
 	end Start
 	
-	proc Quit*(exitCode: integer)
+	proc Quit*(exitCode: integer) 
 		var 
 			m: Module
 			term: Command
@@ -2494,10 +2494,10 @@ module Kernel
 		end 
 	end Quit
 	
-	proc FatalError*(id: integer; str: array of char)
+	proc FatalError*(id: integer; str: array of wchar) 
 		var 
 			res: integer
-			title: array 16 of char
+			title: array 16 of wchar
 	begin 
 		title := "Error xy"
 		title[6] := chr(id div 10 + ord("0"))
@@ -2522,9 +2522,9 @@ module Kernel
 			modName, name: Name
 			res: integer
 			n: Utf8Name
-			out: array 1024 of char
+			out: array 1024 of wchar
 		
-		proc WriteString(in s: array of char)
+		proc WriteString(in s: array of wchar) 
 			var 
 				i: integer
 		begin 
@@ -2536,7 +2536,7 @@ module Kernel
 			end 
 		end WriteString
 		
-		proc WriteHex(x, n: integer)
+		proc WriteHex(x, n: integer) 
 			var 
 				i, y: integer
 		begin 
@@ -2687,7 +2687,7 @@ module Kernel
 		end 
 	end TrapCleanup
 	
-	proc Unwind(f: ExcpFramePtr) // COMPILER DEPENDENT
+	proc Unwind(f: ExcpFramePtr)  // COMPILER DEPENDENT
 		const  // offset of Label: from proc start
 			Label = 27
 	begin 
@@ -2713,7 +2713,7 @@ module Kernel
 	end ResetStackGuard
 	
 	proc TrapHandler(excpRec: WinApi.PtrEXCEPTION_RECORD; estFrame: ExcpFramePtr
-		context: WinApi.PtrCONTEXT; dispCont: integer): integer
+		context: WinApi.PtrCONTEXT; dispCont: integer): integer 
 	// same parameter size as Try
 	begin 
 		if excpRec^.ExceptionFlags * {1, 2} = {} then
@@ -2852,12 +2852,12 @@ module Kernel
 		end 
 	end TrapHandler
 	
-	proc SetTrapGuard*(on: boolean)
+	proc SetTrapGuard*(on: boolean) 
 	begin 
 		guarded := on
 	end SetTrapGuard
 	
-	proc Try*(h: TryHandler; a, b, c: integer) // COMPILER DEPENDENT
+	proc Try*(h: TryHandler; a, b, c: integer)  // COMPILER DEPENDENT
 		// same parameter size as TrapHandler
 		var  // no other local variables!
 			excp: ExcpFrame
@@ -2871,7 +2871,7 @@ module Kernel
 	end Try
 	
 	proc InterfaceTrapHandler*(excpRec, estFrame, context, 
-		dispCont: integer): integer // known to compiler
+		dispCont: integer): integer  // known to compiler
 		var 
 			res: integer
 	begin 
@@ -2892,7 +2892,7 @@ module Kernel
 	
 	// -------------------- keyboard interrupt handling ---------------------
 	
-	proc KeyboardWatcher(main: integer): integer // runs in a thread
+	proc KeyboardWatcher(main: integer): integer  // runs in a thread
 		type 
 			P = proc (w: integer): integer
 		var 
@@ -2964,7 +2964,7 @@ module Kernel
 	
 	// -------------------- coroutine support ---------------------
 	
-	proc BeginCoroutines*(var main: Coroutine)
+	proc BeginCoroutines*(var main: Coroutine) 
 	begin 
 		assert(main # nil, 20)
 		if mainCoroutine = nil then
@@ -3000,7 +3000,7 @@ module Kernel
 	end EndCoroutines
 	
 	proc AddCoroutine*(this: Coroutine; startProc: proc (par: integer); par: integer
-		stackMin, stackMax: integer; var done: boolean)
+		stackMin, stackMax: integer; var done: boolean) 
 	begin 
 		assert(this.fiber = 0, 20) // reuse of 'this'  without RemoveCoroutine
 		this.stackBase := 0 // reset because of possible reuse of 'this'
@@ -3023,13 +3023,13 @@ module Kernel
 		end 
 	end AddCoroutine
 	
-	proc SetCoroutineBase*(this: Coroutine)
+	proc SetCoroutineBase*(this: Coroutine) 
 	begin 
 		assert(this.stackBase = 0)
 		this.stackBase := S.ADR(this) + size(ANYPTR) // COMPILER DEPENDENT
 	end SetCoroutineBase
 	
-	proc RemoveCoroutine*(this: Coroutine)
+	proc RemoveCoroutine*(this: Coroutine) 
 		var 
 			t: TrapCleaner
 			chk: Handler
@@ -3056,7 +3056,7 @@ module Kernel
 		end 
 	end RemoveCoroutine
 	
-	proc TransferCoroutine*(target: Coroutine)
+	proc TransferCoroutine*(target: Coroutine) 
 	begin 
 		assert(target.next # nil, 20)
 		if target # currentCoroutine then

@@ -51,19 +51,19 @@ module CommTCP
 	
 	// auxiliary procedures
 	
-	proc CopyOfAdrString(a: CommStreams.Adr): CommStreams.Adr
+	proc CopyOfAdrString(a: CommStreams.Adr): CommStreams.Adr 
 		var 
 			b: CommStreams.Adr
 	begin 
 		new(b, len(a))
-		b^ := a
+		b^ := a^
 		return b
 	end CopyOfAdrString
 	
-	proc Error(msg: array of char; errno: integer)
+	proc Error(msg: array of wchar; errno: integer) 
 		var 
-			s: array 128 of char
-			errnostr: array 8 of char
+			s: array 128 of wchar
+			errnostr: array 8 of wchar
 	begin 
 		if debug then
 			case errno of 
@@ -87,7 +87,7 @@ module CommTCP
 		end 
 	end Error
 	
-	proc IsIPAddress(name: array of char): boolean
+	proc IsIPAddress(name: array of wchar): boolean 
 		// returns TRUE iff name only contains decimal digits and "." characters
 		var 
 			i: integer
@@ -99,11 +99,11 @@ module CommTCP
 		return name[i] = 0x
 	end IsIPAddress
 	
-	proc ParseAdr(adr: array of char; var addr: array of char; var port: integer; var ok: boolean)
+	proc ParseAdr(adr: array of wchar; var addr: array of wchar; var port: integer; var ok: boolean) 
 		// parse address specification with syntax addr [ ":" portnumber ]
 		var 
 			i, j, res: integer
-			portstr: array 16 of char
+			portstr: array 16 of wchar
 	begin 
 		i := 0
 		j := 0
@@ -134,9 +134,9 @@ module CommTCP
 		end 
 	end ParseAdr
 	
-	proc ParseLocalAdr(in adr: array of char
-		var peername: array of char; var port: integer; var ok: boolean
-		)
+	proc ParseLocalAdr(in adr: array of wchar
+		var peername: array of wchar; var port: integer; var ok: boolean
+		) 
 		var 
 			i, res: integer
 	begin 
@@ -159,7 +159,7 @@ module CommTCP
 		end 
 	end ParseLocalAdr
 	
-	proc NameToAdr(in peername: array of char; var inaddr: WinNet.in_addr; var ok: boolean)
+	proc NameToAdr(in peername: array of wchar; var inaddr: WinNet.in_addr; var ok: boolean) 
 		var 
 			hostentry: WinNet.Ptrhostent
 			shortPName: array 64 of char
@@ -179,10 +179,10 @@ module CommTCP
 		end 
 	end NameToAdr
 	
-	proc MakeAdr(adr: WinNet.sockaddr_in; var s: CommStreams.Adr)
+	proc MakeAdr(adr: WinNet.sockaddr_in; var s: CommStreams.Adr) 
 		var 
 			ipadr, n: integer
-			temp, buf: array 64 of char
+			temp, buf: array 64 of wchar
 	begin 
 		ipadr := adr.sin_addr.S_un.S_addr
 		temp := ""
@@ -209,7 +209,7 @@ module CommTCP
 		s^ := temp
 	end MakeAdr
 	
-	proc MakeFdSet(socket: WinNet.SOCKET; var set_: WinNet.fd_set)
+	proc MakeFdSet(socket: WinNet.SOCKET; var set_: WinNet.fd_set) 
 	begin 
 		set_.fd_count := 1
 		set_.fd_array[0] := socket
@@ -217,12 +217,12 @@ module CommTCP
 	
 	// Listener
 	
-	proc (l: Listener) LocalAdr(): CommStreams.Adr
+	proc (l: Listener) LocalAdr(): CommStreams.Adr 
 	begin 
 		return CopyOfAdrString(l.localAdr)
 	end LocalAdr
 	
-	proc (l: Listener) Accept(var s: CommStreams.Stream)
+	proc (l: Listener) Accept(var s: CommStreams.Stream) 
 		var 
 			timeout: WinNet.timeval
 			set_: WinNet.fd_set
@@ -269,7 +269,7 @@ module CommTCP
 		end 
 	end FINALIZE
 	
-	proc NewListener*(localAdr: array of char; var l: CommStreams.Listener; var res: integer)
+	proc NewListener*(localAdr: array of wchar; var l: CommStreams.Listener; var res: integer) 
 		// localAdr must contain a port number
 		const  // use default length of listener backlog queue
 			SOMAXCONN = 5
@@ -279,7 +279,7 @@ module CommTCP
 			tcplistener: Listener
 			adr: WinNet.sockaddr_in
 			sock: WinNet.SOCKET
-			peername: array 64 of char
+			peername: array 64 of wchar
 	begin 
 		l := nil
 		if winSockInstalled then
@@ -321,12 +321,12 @@ module CommTCP
 	
 	// Stream
 	
-	proc (s: Stream) RemoteAdr(): CommStreams.Adr
+	proc (s: Stream) RemoteAdr(): CommStreams.Adr 
 	begin 
 		return CopyOfAdrString(s.remoteAdr)
 	end RemoteAdr
 	
-	proc (s: Stream) IsConnected(): boolean
+	proc (s: Stream) IsConnected(): boolean 
 		// Give an educated guess on whether the peer has closed the connection.
 		// This is not a guarantee that data sent on s will arrive at the peer.
 		var 
@@ -363,7 +363,7 @@ module CommTCP
 		end 
 	end IsConnected
 	
-	proc (s: Stream) WriteBytes(in x: array of byte; beg, len_: integer; var written: integer)
+	proc (s: Stream) WriteBytes(in x: array of byte; beg, len_: integer; var written: integer) 
 		var 
 			res: integer
 	begin 
@@ -380,7 +380,7 @@ module CommTCP
 		end 
 	end WriteBytes
 	
-	proc (s: Stream) ReadBytes(var x: array of byte; beg, len_: integer; var read: integer)
+	proc (s: Stream) ReadBytes(var x: array of byte; beg, len_: integer; var read: integer) 
 		var 
 			res: integer
 	begin 
@@ -419,8 +419,8 @@ module CommTCP
 	end FINALIZE
 	
 	proc CreateStream(
-		var s: CommStreams.Stream; sock: WinNet.SOCKET; in remoteAdr: array of char
-		)
+		var s: CommStreams.Stream; sock: WinNet.SOCKET; in remoteAdr: array of wchar
+		) 
 		var 
 			stream: Stream
 	begin 
@@ -432,13 +432,13 @@ module CommTCP
 	end CreateStream
 	
 	proc NewStream*(
-		localAdr, remoteAdr: array of char; var s: CommStreams.Stream; var res: integer
-		)
+		localAdr, remoteAdr: array of wchar; var s: CommStreams.Stream; var res: integer
+		) 
 		// localAdr may contain a port number
 		// remoteAdr must contain an address in the format  ( ip-address | hostname ) [ ":" portnumber ]
 		var 
 			adr: WinNet.sockaddr_in
-			rpeername, lpeername: array 64 of char
+			rpeername, lpeername: array 64 of wchar
 			inaddr: WinNet.in_addr
 			lport, rport: integer
 			ok: boolean

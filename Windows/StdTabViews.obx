@@ -108,7 +108,7 @@ module StdTabViews
 	
 	// Auxiliary procedures
 	
-	proc LayoutMode(view: Views.View)
+	proc LayoutMode(view: Views.View) 
 		var 
 			c: Containers.Controller
 	begin 
@@ -120,7 +120,7 @@ module StdTabViews
 		end 
 	end LayoutMode
 	
-	proc MaskMode(view: Views.View)
+	proc MaskMode(view: Views.View) 
 		var 
 			c: Containers.Controller
 	begin 
@@ -132,7 +132,7 @@ module StdTabViews
 		end 
 	end MaskMode
 	
-	proc ExecNotifier(from, to_, nop: integer)
+	proc ExecNotifier(from, to_, nop: integer) 
 		var 
 			i: Meta.Item
 			p: NotifyProc
@@ -152,7 +152,7 @@ module StdTabViews
 		end 
 	end ExecNotifier
 	
-	proc CallNotifier(tv: View; from, to_: integer)
+	proc CallNotifier(tv: View; from, to_: integer) 
 	begin 
 		if tv.notifier # "" then
 			nv := tv
@@ -164,10 +164,10 @@ module StdTabViews
 	
 	// Frame
 	
-	proc (f: Frame) InDispArea*(x, y: integer): boolean end // new abstract
-	proc (f: Frame) GetDispSize*(var x, y, w, h: integer) end // new abstract
+	proc (f: Frame) InDispArea*(x, y: integer): boolean  end // new abstract
+	proc (f: Frame) GetDispSize*(var x, y, w, h: integer)  end // new abstract
 	
-	proc (f: Frame) SetIndex*(i: integer) // new
+	proc (f: Frame) SetIndex*(i: integer)  // new
 		var 
 			from: integer
 			tv: View
@@ -182,10 +182,10 @@ module StdTabViews
 	
 	// FrameDirectory
 	
-	proc (d: FrameDirectory) GetTabSize*(var w, h: integer) end // new abstract
-	proc (d: FrameDirectory) New*(): Frame end // new abstract
+	proc (d: FrameDirectory) GetTabSize*(var w, h: integer)  end // new abstract
+	proc (d: FrameDirectory) New*(): Frame  end // new abstract
 	
-	proc SetFrameDir*(d: FrameDirectory)
+	proc SetFrameDir*(d: FrameDirectory) 
 	begin 
 		assert(d # nil, 20)
 		frameDir := d
@@ -197,14 +197,14 @@ module StdTabViews
 	
 	// View
 	
-	proc (tv: View) Update() // new
+	proc (tv: View) Update()  // new
 	begin 
 		if tv.scriptLevel = 0 then
 			Views.Update(tv, Views.rebuildFrames) 
 		end 
 	end Update
 	
-	proc (tv: View) Reset() // new
+	proc (tv: View) Reset()  // new
 	begin 
 		tv.scriptLevel := 0
 		if tv.tc # nil then
@@ -218,7 +218,7 @@ module StdTabViews
 		tv.Update
 	end Reset
 	
-	proc (tv: View) SetNofTabs*(nofTabs: integer) // new
+	proc (tv: View) SetNofTabs*(nofTabs: integer)  // new
 		var 
 			i: integer
 			nt: Tabs
@@ -243,7 +243,7 @@ module StdTabViews
 		tv.Update
 	end SetNofTabs
 	
-	proc (tv: View) NofTabs*(): integer // new
+	proc (tv: View) NofTabs*(): integer  // new
 	begin 
 		if tv.tabs = nil then
 			return 0 
@@ -251,12 +251,12 @@ module StdTabViews
 		return max(0, tv.nofTabs)
 	end NofTabs
 	
-	proc (tv: View) Index*(): integer // new
+	proc (tv: View) Index*(): integer  // new
 	begin 
 		return max(0, min(tv.index, tv.NofTabs() - 1))
 	end Index
 	
-	proc (tv: View) SetItem*(i: integer; in label: Dialog.String; v: Views.View) // new
+	proc (tv: View) SetItem*(i: integer; in label: Dialog.String; v: Views.View)  // new
 		var 
 			sop: SetItemOp
 	begin 
@@ -272,27 +272,27 @@ module StdTabViews
 		Views.Do(tv, "#Std:TabSetItem", sop)
 	end SetItem
 	
-	proc (tv: View) GetItem*(i: integer; var label: Dialog.String; var v: Views.View) // new
+	proc (tv: View) GetItem*(i: integer; var label: Dialog.String; var v: Views.View)  // new
 	begin 
 		assert((i >= 0) & (i < tv.NofTabs()), 21)
 		label := tv.tabs[i].label
 		v := tv.tabs[i].view
 	end GetItem
 	
-	proc (tv: View) View(i: integer): Views.View // new
+	proc (tv: View) View(i: integer): Views.View  // new
 	begin 
 		assert((i >= 0) & (i < tv.NofTabs()), 20)
 		return tv.tabs[i].view
 	end View
 	
-	proc (tv: View) SetIndex*(i: integer) // new
+	proc (tv: View) SetIndex*(i: integer)  // new
 	begin 
 		assert((i >= 0) & (i < tv.NofTabs()), 20)
 		tv.index := i
 		tv.Update
 	end SetIndex
 	
-	proc (tv: View) SetNotifier*(in notifier: array of char) // new
+	proc (tv: View) SetNotifier*(in notifier: array of wchar)  // new
 		var 
 			o: SetNotifierOp
 	begin 
@@ -302,12 +302,12 @@ module StdTabViews
 		Views.Do(tv, "Set Notifier", o)
 	end SetNotifier
 	
-	proc (tv: View) GetNotifier*(var notifier: Dialog.String) // new
+	proc (tv: View) GetNotifier*(var notifier: Dialog.String)  // new
 	begin 
 		notifier := tv.notifier
 	end GetNotifier
 	
-	proc (tv: View) Externalize-(var wr: Stores.Writer)
+	proc (tv: View) Externalize-(var wr: Stores.Writer) 
 		var 
 			l: Dialog.String
 			i: integer
@@ -329,7 +329,7 @@ module StdTabViews
 		wr.WriteInt(tv.font.weight)
 	end Externalize
 	
-	proc (tv: View) Internalize-(var rd: Stores.Reader)
+	proc (tv: View) Internalize-(var rd: Stores.Reader) 
 		var 
 			thisVersion, i, size_, weight: integer
 			l: Dialog.String
@@ -359,7 +359,7 @@ module StdTabViews
 		end 
 	end Internalize
 	
-	proc (tv: View) CopyFromSimpleView-(source: Views.View)
+	proc (tv: View) CopyFromSimpleView-(source: Views.View) 
 		var 
 			l: Dialog.String
 			v: Views.View
@@ -378,7 +378,7 @@ module StdTabViews
 		end 
 	end CopyFromSimpleView
 	
-	proc (tv: View) GetNewFrame*(var frame: Views.Frame)
+	proc (tv: View) GetNewFrame*(var frame: Views.Frame) 
 		var 
 			f: Frame
 	begin 
@@ -387,7 +387,7 @@ module StdTabViews
 		frame := f
 	end GetNewFrame
 	
-	proc (tv: View) Restore*(f: Views.Frame; l, t, r, b: integer)
+	proc (tv: View) Restore*(f: Views.Frame; l, t, r, b: integer) 
 		var 
 			v: Views.View
 			label: Dialog.String
@@ -411,7 +411,7 @@ module StdTabViews
 	end Restore
 	
 	proc (tv: View) HandleCtrlMsg*(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 		var 
 			sp: Properties.SizeProp
 	begin 
@@ -459,7 +459,7 @@ module StdTabViews
 		end 
 	end HandleCtrlMsg
 	
-	proc BeginChanges*(tv: View)
+	proc BeginChanges*(tv: View) 
 	begin 
 		assert(tv.scriptLevel >= 0, 20)
 		if tv.tc = nil then
@@ -475,7 +475,7 @@ module StdTabViews
 		inc(tv.scriptLevel)
 	end BeginChanges
 	
-	proc EndChanges*(tv: View)
+	proc EndChanges*(tv: View) 
 	begin 
 		assert(tv.scriptLevel > 0, 20)
 		dec(tv.scriptLevel)
@@ -484,7 +484,7 @@ module StdTabViews
 		end 
 	end EndChanges
 	
-	proc ModeHook(c: Containers.Controller)
+	proc ModeHook(c: Containers.Controller) 
 		var 
 			v, w: Views.View
 			i: integer
@@ -609,7 +609,7 @@ module StdTabViews
 		o.tv.Update
 	end Do
 	
-	proc (tv: View) HandlePropMsg-(var msg: Properties.Message)
+	proc (tv: View) HandlePropMsg-(var msg: Properties.Message) 
 		var 
 			stp: Properties.StdProp
 			p: Properties.Property
@@ -740,24 +740,24 @@ module StdTabViews
 	
 	// Tab context
 	
-	proc (c: TabContext) ThisModel(): Models.Model
+	proc (c: TabContext) ThisModel(): Models.Model 
 	begin 
 		return nil
 	end ThisModel
 	
-	proc (c: TabContext) GetSize(var w, h: integer)
+	proc (c: TabContext) GetSize(var w, h: integer) 
 	begin 
 		w := c.w
 		h := c.h
 	end GetSize
 	
-	proc (c: TabContext) SetSize(w, h: integer)
+	proc (c: TabContext) SetSize(w, h: integer) 
 	begin 
 		c.w := w
 		c.h := h
 	end SetSize
 	
-	proc (c: TabContext) Normalize(): boolean
+	proc (c: TabContext) Normalize(): boolean 
 	begin 
 		return false
 	end Normalize
@@ -765,9 +765,9 @@ module StdTabViews
 	
 	// Directory
 	
-	proc (d: Directory) New*(): View end // new abstract
+	proc (d: Directory) New*(): View  end // new abstract
 	
-	proc SetDir*(d: Directory)
+	proc SetDir*(d: Directory) 
 	begin 
 		assert(d # nil, 20)
 		dir := d
@@ -776,7 +776,7 @@ module StdTabViews
 	
 	// StdDirectory
 	
-	proc (d: StdDirectory) New(): View
+	proc (d: StdDirectory) New(): View 
 		var 
 			tv: View
 	begin 
@@ -812,7 +812,7 @@ module StdTabViews
 	
 	// Procedures to find tab views
 	
-	proc This*(v: Views.View): View
+	proc This*(v: Views.View): View 
 		var 
 			c: Containers.Controller
 			v0: Views.View
@@ -840,7 +840,7 @@ module StdTabViews
 		end 
 	end This
 	
-	proc Focus*(): View
+	proc Focus*(): View 
 		var 
 			msg: FocusMsg
 	begin 
@@ -852,7 +852,7 @@ module StdTabViews
 	
 	// The property editor
 	
-	proc SingleView(): View
+	proc SingleView(): View 
 		var 
 			v: Views.View
 	begin 
@@ -944,7 +944,7 @@ module StdTabViews
 		end 
 	end Delete
 	
-	proc ModeNotifier*(op, from, to_: integer)
+	proc ModeNotifier*(op, from, to_: integer) 
 		var 
 			tv: View
 			i: integer
@@ -979,7 +979,7 @@ module StdTabViews
 		end 
 	end SetNotifier
 	
-	proc NewGuard*(var par: Dialog.Par)
+	proc NewGuard*(var par: Dialog.Par) 
 		var 
 			v: View
 	begin 
@@ -987,7 +987,7 @@ module StdTabViews
 		par.disabled := (v = nil) or (dlg.name = "")
 	end NewGuard
 	
-	proc RenameGuard*(var par: Dialog.Par)
+	proc RenameGuard*(var par: Dialog.Par) 
 		var 
 			v: View
 	begin 
@@ -995,7 +995,7 @@ module StdTabViews
 		par.disabled := (v = nil) or (dlg.name = "")
 	end RenameGuard
 	
-	proc DeleteGuard*(var par: Dialog.Par)
+	proc DeleteGuard*(var par: Dialog.Par) 
 		var 
 			v: View
 	begin 
@@ -1003,7 +1003,7 @@ module StdTabViews
 		par.disabled := (v = nil) or (v.NofTabs() < 1)
 	end DeleteGuard
 	
-	proc LabelGuard*(var par: Dialog.Par)
+	proc LabelGuard*(var par: Dialog.Par) 
 		var 
 			v: View
 			vv: Views.View
@@ -1025,7 +1025,7 @@ module StdTabViews
 		end 
 	end LabelGuard
 	
-	proc NotifierGuard*(var par: Dialog.Par)
+	proc NotifierGuard*(var par: Dialog.Par) 
 		var 
 			v: View
 	begin 
@@ -1044,7 +1044,7 @@ module StdTabViews
 		end 
 	end NotifierGuard
 	
-	proc SetGuard*(var par: Dialog.Par)
+	proc SetGuard*(var par: Dialog.Par) 
 		var 
 			v: View
 	begin 
@@ -1052,7 +1052,7 @@ module StdTabViews
 		par.disabled := v = nil
 	end SetGuard
 	
-	proc ModeGuard(var par: Dialog.Par; layout: boolean)
+	proc ModeGuard(var par: Dialog.Par; layout: boolean) 
 		const 
 			mode = {Containers.noSelection, Containers.noFocus, Containers.noCaret}
 		var 
@@ -1087,12 +1087,12 @@ module StdTabViews
 		end 
 	end ModeGuard
 	
-	proc LayoutModeGuard*(var par: Dialog.Par)
+	proc LayoutModeGuard*(var par: Dialog.Par) 
 	begin 
 		ModeGuard(par, true)
 	end LayoutModeGuard
 	
-	proc MaskModeGuard*(var par: Dialog.Par)
+	proc MaskModeGuard*(var par: Dialog.Par) 
 	begin 
 		ModeGuard(par, false)
 	end MaskModeGuard

@@ -103,7 +103,7 @@ module Properties
 			end 
 		
 		ControlPref* = record (Preference) 
-				char_*: char // IN
+				char_*: wchar // IN
 				focus*: Views.View // IN
 				getFocus*: boolean // OUT, valid if (v # focus), preset to ((char = [l]tab) & "FocusPref.setFocus")
 				accepts*: boolean  // OUT, preset to ((v = focus) & (char # [l]tab))
@@ -119,7 +119,7 @@ module Properties
 		
 		PollVerbMsg* = record (Message) 
 				verb*: integer // IN
-				label*: array 64 of char // OUT, preset to ""
+				label*: array 64 of wchar // OUT, preset to ""
 				disabled*, checked*: boolean  // OUT, preset to FALSE, FALSE
 			end 
 		
@@ -157,9 +157,9 @@ module Properties
 	
 	// properties
 	
-	proc (p: Property) IntersectWith*(q: Property; var equal: boolean) end // new abstract
+	proc (p: Property) IntersectWith*(q: Property; var equal: boolean)  end // new abstract
 	
-	proc (p: StdProp) IntersectWith*(q: Property; var equal: boolean)
+	proc (p: StdProp) IntersectWith*(q: Property; var equal: boolean) 
 		var 
 			valid: set
 			c, m: set
@@ -194,7 +194,7 @@ module Properties
 		end 
 	end IntersectWith
 	
-	proc (p: SizeProp) IntersectWith*(q: Property; var equal: boolean)
+	proc (p: SizeProp) IntersectWith*(q: Property; var equal: boolean) 
 		var 
 			valid: set
 	begin 
@@ -223,7 +223,7 @@ module Properties
 	end IncEra
 	
 	
-	proc CollectProp*(var prop: Property)
+	proc CollectProp*(var prop: Property) 
 		var 
 			msg: CollectMsg
 	begin 
@@ -232,7 +232,7 @@ module Properties
 		prop := msg.poll.prop
 	end CollectProp
 	
-	proc CollectStdProp*(var prop: StdProp)
+	proc CollectStdProp*(var prop: StdProp) 
 		// post: prop # NIL, prop.style.val = prop.style.val * prop.style.mask
 		var 
 			p: Property
@@ -252,7 +252,7 @@ module Properties
 		prop.style.val_ := prop.style.val_ * prop.style.mask
 	end CollectStdProp
 	
-	proc EmitProp*(old, prop: Property)
+	proc EmitProp*(old, prop: Property) 
 		var 
 			msg: EmitMsg
 	begin 
@@ -267,7 +267,7 @@ module Properties
 	proc PollPick*(x, y: integer
 		source: Views.Frame; sourceX, sourceY: integer
 		mark, show: boolean
-		var dest: Views.Frame; var destX, destY: integer)
+		var dest: Views.Frame; var destX, destY: integer) 
 		var 
 			msg: PollPickMsg
 	begin 
@@ -282,7 +282,7 @@ module Properties
 	end PollPick
 	
 	proc Pick*(x, y: integer; source: Views.Frame; sourceX, sourceY: integer
-		var prop: Property)
+		var prop: Property) 
 		var 
 			msg: PickMsg
 	begin 
@@ -295,7 +295,7 @@ module Properties
 	
 	// property list construction
 	
-	proc Insert*(var list: Property; x: Property)
+	proc Insert*(var list: Property; x: Property) 
 		var 
 			p, q: Property
 			ta: integer
@@ -328,7 +328,7 @@ module Properties
 		end 
 	end Insert
 	
-	proc CopyOfList*(p: Property): Property
+	proc CopyOfList*(p: Property): Property 
 		var 
 			q, r, s: Property
 			t: Kernel.Type
@@ -353,7 +353,7 @@ module Properties
 		return s
 	end CopyOfList
 	
-	proc CopyOf*(p: Property): Property
+	proc CopyOf*(p: Property): Property 
 		var 
 			r: Property
 			t: Kernel.Type
@@ -369,7 +369,7 @@ module Properties
 		return r
 	end CopyOf
 	
-	proc Merge*(var base, override: Property)
+	proc Merge*(var base, override: Property) 
 		var 
 			p, q, r, s: Property
 			tp, tr: integer
@@ -429,7 +429,7 @@ module Properties
 		end 
 	end Merge
 	
-	proc Intersect*(var list: Property; x: Property; var equal: boolean)
+	proc Intersect*(var list: Property; x: Property; var equal: boolean) 
 		var 
 			l, p, q, r, s: Property
 			plen, rlen, ta: integer
@@ -482,7 +482,7 @@ module Properties
 	
 	// support for IntersectWith methods
 	
-	proc IntersectSelections*(a, aMask, b, bMask: set; var c, cMask: set; var equal: boolean)
+	proc IntersectSelections*(a, aMask, b, bMask: set; var c, cMask: set; var equal: boolean) 
 	begin 
 		cMask := aMask * bMask - (a / b)
 		c := a * cMask
@@ -493,7 +493,7 @@ module Properties
 	// standard preferences protocols
 	
 	proc PreferredSize*(v: Views.View; minW, maxW, minH, maxH, defW, defH: integer
-		var w, h: integer)
+		var w, h: integer) 
 		var 
 			p: SizePref
 	begin 
@@ -537,11 +537,11 @@ module Properties
 	
 	// common resizing constraints
 	
-	proc ProportionalConstraint*(scaleW, scaleH: integer; fixedW, fixedH: boolean; var w, h: integer)
+	proc ProportionalConstraint*(scaleW, scaleH: integer; fixedW, fixedH: boolean; var w, h: integer) 
 		// pre: w > Views.undefined, h > Views.undefined
 		// post: (E s: s * scaleW = w, s * scaleH = h), |w * h - w' * h'| min!
 		var 
-			area: real
+			area: longreal
 	begin 
 		assert(scaleW > Views.undefined, 22)
 		assert(scaleH > Views.undefined, 23)
@@ -566,7 +566,7 @@ module Properties
 		end 
 	end ProportionalConstraint
 	
-	proc GridConstraint*(gridX, gridY: integer; var x, y: integer)
+	proc GridConstraint*(gridX, gridY: integer; var x, y: integer) 
 		var 
 			dx, dy: integer
 	begin 
@@ -586,7 +586,7 @@ module Properties
 		end 
 	end GridConstraint
 	
-	proc ThisType*(view: Views.View; type_: Stores.TypeName): Views.View
+	proc ThisType*(view: Views.View; type_: Stores.TypeName): Views.View 
 		var 
 			msg: TypePref
 	begin 

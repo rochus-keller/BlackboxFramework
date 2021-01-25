@@ -70,7 +70,7 @@ module StdDebug
 		out: TextMappers.Formatter
 	
 	
-	proc NewRuler(): TextRulers.Ruler
+	proc NewRuler(): TextRulers.Ruler 
 		const 
 			mm = Ports.mm
 		var 
@@ -84,7 +84,7 @@ module StdDebug
 		return r
 	end NewRuler
 	
-	proc OpenViewer(t: TextModels.Model; title: Views.Title; ruler: TextRulers.Ruler)
+	proc OpenViewer(t: TextModels.Model; title: Views.Title; ruler: TextRulers.Ruler) 
 		var 
 			v: TextViews.View
 			c: Containers.Controller
@@ -99,19 +99,19 @@ module StdDebug
 		Views.OpenAux(v, title)
 	end OpenViewer
 	
-	proc OpenFold(var fc: FoldContext)
+	proc OpenFold(var fc: FoldContext) 
 	begin 
 		fc.prevText := out.rider.Base()
 		fc.prevPos := out.Pos()
 		out.ConnectTo(TextModels.dir.New())
 	end OpenFold
 	
-	proc CloseFold(in fc: FoldContext; collapsed: boolean; in hidden: array of char)
+	proc CloseFold(in fc: FoldContext; collapsed: boolean; in hidden: array of wchar) 
 		var 
 			fold: StdFolds.Fold
 			t: TextModels.Model
 			w: TextMappers.Formatter
-			hiddenx: array 32 of char
+			hiddenx: array 32 of wchar
 	begin 
 		Dialog.MapString(hidden, hiddenx)
 		// avoid expensive fold.Flip operation
@@ -135,21 +135,21 @@ module StdDebug
 		out.WriteView(fold)
 	end CloseFold
 	
-	proc WriteHex(n: integer)
+	proc WriteHex(n: integer) 
 	begin 
 		out.WriteIntForm(n, TextMappers.hexadecimal, 9, "0", TextMappers.showBase)
 	end WriteHex
 	
-	proc WriteString(adr, len_, base: integer; zterm, unicode: boolean)
+	proc WriteString(adr, len_, base: integer; zterm, unicode: boolean) 
 		const 
 			beg = 0
 			char_ = 1
 			code = 2
 		var 
-			ch: char
+			ch: wchar
 			sc: char
 			val_, mode: integer
-			str: array 16 of char
+			str: array 16 of wchar
 	begin 
 		mode := beg
 		if base = 2 then
@@ -203,7 +203,7 @@ module StdDebug
 		end 
 	end WriteString
 	
-	proc OutString(in s: array of char)
+	proc OutString(in s: array of wchar) 
 		var 
 			str: Dialog.String
 	begin 
@@ -213,7 +213,7 @@ module StdDebug
 	
 	// -------------------  variable display -------------------
 	
-	proc FormOf(t: Kernel.Type): char
+	proc FormOf(t: Kernel.Type): char 
 	begin 
 		if SYSTEM.VAL(integer, t) div 256 = 0 then
 			return short(chr(SYSTEM.VAL(integer, t))) 
@@ -222,7 +222,7 @@ module StdDebug
 		end 
 	end FormOf
 	
-	proc LenOf(t: Kernel.Type; ptr: ArrayPtr): integer
+	proc LenOf(t: Kernel.Type; ptr: ArrayPtr): integer 
 	begin 
 		if t.size_ # 0 then
 			return t.size_ 
@@ -233,7 +233,7 @@ module StdDebug
 		end 
 	end LenOf
 	
-	proc SizeOf(t: Kernel.Type; ptr: ArrayPtr): integer
+	proc SizeOf(t: Kernel.Type; ptr: ArrayPtr): integer 
 	begin 
 		case FormOf(t) of 
 			| 0bx: 
@@ -253,7 +253,7 @@ module StdDebug
 		end 
 	end SizeOf
 	
-	proc WriteName(t: Kernel.Type; ptr: ArrayPtr)
+	proc WriteName(t: Kernel.Type; ptr: ArrayPtr) 
 		var 
 			modName, name: Kernel.Name
 			f: char
@@ -339,9 +339,9 @@ module StdDebug
 		end 
 	end WriteName
 	
-	proc WriteGuid(a: integer)
+	proc WriteGuid(a: integer) 
 		
-		proc Hex(a: integer)
+		proc Hex(a: integer) 
 			var 
 				x: char
 		begin 
@@ -374,7 +374,7 @@ module StdDebug
 		out.WriteChar("}")
 	end WriteGuid
 	
-	proc ShowRecord(a, ind: integer; desc: Kernel.Type; back: RefView; var sel: Kernel.Name)
+	proc ShowRecord(a, ind: integer; desc: Kernel.Type; back: RefView; var sel: Kernel.Name) 
 		var 
 			dir: Kernel.Directory
 			obj: Kernel.Object
@@ -410,7 +410,7 @@ module StdDebug
 		end 
 	end ShowRecord
 	
-	proc ShowArray(a, ind: integer; desc: Kernel.Type; ptr: ArrayPtr; back: RefView; var sel: Kernel.Name)
+	proc ShowArray(a, ind: integer; desc: Kernel.Type; ptr: ArrayPtr; back: RefView; var sel: Kernel.Name) 
 		var 
 			f: char
 			i, n, m, size_, len_: integer
@@ -497,7 +497,7 @@ module StdDebug
 		end 
 	end ShowArray
 	
-	proc ShowProcVar(a: integer)
+	proc ShowProcVar(a: integer) 
 		var 
 			vli, n, ref: integer
 			m: Kernel.Module
@@ -535,7 +535,7 @@ module StdDebug
 		end 
 	end ShowProcVar
 	
-	proc ShowPointer(a: integer; f: char; desc: Kernel.Type; back: RefView; var sel: Kernel.Name)
+	proc ShowPointer(a: integer; f: char; desc: Kernel.Type; back: RefView; var sel: Kernel.Name) 
 		var 
 			adr, x: integer
 			ptr: ArrayPtr
@@ -594,7 +594,7 @@ module StdDebug
 		end 
 	end ShowPointer
 	
-	proc ShowSelector(ref: RefView)
+	proc ShowSelector(ref: RefView) 
 		var 
 			b: RefView
 			n: shortint
@@ -631,7 +631,7 @@ module StdDebug
 	end ShowSelector
 	
 	proc ShowVar(ad, ind: integer; f, c: char; desc: Kernel.Type; ptr: ArrayPtr; back: RefView
-		var name, sel: Kernel.Name)
+		var name, sel: Kernel.Name) 
 		var 
 			i, j, vli, a: integer
 			tsel: Kernel.Name
@@ -640,7 +640,7 @@ module StdDebug
 			vsi: byte
 			vi: shortint
 			vr: real
-			vlr: real
+			vlr: longreal
 			vs: set
 	begin 
 		out.WriteLn
@@ -803,7 +803,7 @@ module StdDebug
 						Strings.Utf8ToString(nn, name, res)
 						out.WriteChar(".")
 						out.WriteString(name)
-						sel := mod_.name
+						sel := long(mod_.name)
 						i := 0
 						while sel[i] # 0x do 
 							inc(i) 
@@ -875,14 +875,14 @@ module StdDebug
 		Kernel.SetTrapGuard(false)
 	end Do
 	
-	proc GetTrapMsg(var msg: array of char)
+	proc GetTrapMsg(var msg: array of wchar) 
 		var 
 			ref, end_, a, res: integer
 			mod_: Kernel.Module
 			nn: Kernel.Utf8Name
 			name, head, tail: Kernel.Name
-			errstr: array 12 of char
-			key: array Kernel.nameLen * 3 + len(errstr) of char
+			errstr: array 12 of wchar
+			key: array Kernel.nameLen * 3 + len(errstr) of wchar
 	begin 
 		a := Kernel.pc
 		mod_ := Kernel.modList
@@ -913,7 +913,7 @@ module StdDebug
 		end 
 	end GetTrapMsg
 	
-	proc OutAdr(adr: integer)
+	proc OutAdr(adr: integer) 
 	begin 
 		out.WriteString(" (")
 		OutString("#System:adr")
@@ -926,7 +926,7 @@ module StdDebug
 		var 
 			a0: TextModels.Attributes
 			action: Action
-			msg: array 512 of char
+			msg: array 512 of wchar
 	begin 
 		out.ConnectTo(TextModels.dir.New())
 		a0 := out.rider.attr

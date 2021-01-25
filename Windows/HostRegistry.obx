@@ -27,7 +27,7 @@ module HostRegistry
 		localeId*: integer
 		iniFile: pointer to HostFiles.FullName // NIL if using the Windows registry
 	
-	proc Split(in key: array of char; var section, entry: array of char)
+	proc Split(in key: array of wchar; var section, entry: array of wchar) 
 		var 
 			i, n: integer
 	begin 
@@ -46,10 +46,10 @@ module HostRegistry
 		end 
 	end Split
 	
-	proc ReadFile(in key: array of char; var str: array of char; var res: integer)
+	proc ReadFile(in key: array of wchar; var str: array of wchar; var res: integer) 
 		var 
-			section, entry: array 256 of char
-			notfound: array 2 of char
+			section, entry: array 256 of wchar
+			notfound: array 2 of wchar
 		const 
 			ERROR_NOT_FOUND = 1168
 	begin 
@@ -66,8 +66,8 @@ module HostRegistry
 	end ReadFile
 	
 	proc ReadRegistry(
-		in key: array of char; var str: array of char; var res: integer
-		)
+		in key: array of wchar; var str: array of wchar; var res: integer
+		) 
 		var 
 			r, len_: integer
 			sw, comp, appl, vers: WinApi.HANDLE
@@ -92,7 +92,7 @@ module HostRegistry
 		end 
 	end ReadRegistry
 	
-	proc ReadString*(in key: array of char; var str: array of char; var res: integer)
+	proc ReadString*(in key: array of wchar; var str: array of wchar; var res: integer) 
 	begin 
 		if iniFile # nil then
 			ReadFile(key, str, res) 
@@ -101,9 +101,9 @@ module HostRegistry
 		end 
 	end ReadString
 	
-	proc ReadInt*(in key: array of char; var x: integer; var res: integer)
+	proc ReadInt*(in key: array of wchar; var x: integer; var res: integer) 
 		var 
-			str: array 64 of char
+			str: array 64 of wchar
 	begin 
 		ReadString(key, str, res)
 		if res = 0 then
@@ -111,9 +111,9 @@ module HostRegistry
 		end 
 	end ReadInt
 	
-	proc ReadBool*(in key: array of char; var x: boolean; var res: integer)
+	proc ReadBool*(in key: array of wchar; var x: boolean; var res: integer) 
 		var 
-			str: array 4 of char
+			str: array 4 of wchar
 	begin 
 		ReadString(key, str, res)
 		if res = 0 then
@@ -121,10 +121,10 @@ module HostRegistry
 		end 
 	end ReadBool
 	
-	proc ReadIntList*(in key: array of char; var x: array of integer; var res: integer)
+	proc ReadIntList*(in key: array of wchar; var x: array of integer; var res: integer) 
 		var 
 			i, n, val_, sig: integer
-			str: array 256 of char
+			str: array 256 of wchar
 	begin 
 		ReadString(key, str, res)
 		if res = 0 then
@@ -157,16 +157,16 @@ module HostRegistry
 		end 
 	end ReadIntList
 	
-	proc WriteFile(in key: array of char; in str: array of char)
+	proc WriteFile(in key: array of wchar; in str: array of wchar) 
 		var 
 			res: integer
-			section, entry: array 256 of char
+			section, entry: array 256 of wchar
 	begin 
 		Split(key, section, entry)
 		res := WinApi.WritePrivateProfileStringW(section, entry, str, iniFile^)
 	end WriteFile
 	
-	proc WriteRegistry(in key: array of char; in str: array of char)
+	proc WriteRegistry(in key: array of wchar; in str: array of wchar) 
 		var 
 			res: integer
 			sw, comp, appl, vers: WinApi.HANDLE
@@ -189,7 +189,7 @@ module HostRegistry
 		end 
 	end WriteRegistry
 	
-	proc WriteString*(in key: array of char; in str: array of char)
+	proc WriteString*(in key: array of wchar; in str: array of wchar) 
 	begin 
 		if iniFile # nil then
 			WriteFile(key, str) 
@@ -198,15 +198,15 @@ module HostRegistry
 		end 
 	end WriteString
 	
-	proc WriteInt*(in key: array of char; x: integer)
+	proc WriteInt*(in key: array of wchar; x: integer) 
 		var 
-			str: array 64 of char
+			str: array 64 of wchar
 	begin 
 		Strings.IntToString(x, str)
 		WriteString(key, str)
 	end WriteInt
 	
-	proc WriteBool*(in key: array of char; x: boolean)
+	proc WriteBool*(in key: array of wchar; x: boolean) 
 	begin 
 		if x then
 			WriteString(key, "1") 
@@ -215,11 +215,11 @@ module HostRegistry
 		end 
 	end WriteBool
 	
-	proc WriteIntList*(in key: array of char; in x: array of integer)
+	proc WriteIntList*(in key: array of wchar; in x: array of integer) 
 		var 
 			i, j, n: integer
-			str: array 256 of char
-			s: array 16 of char
+			str: array 256 of wchar
+			s: array 16 of wchar
 	begin 
 		n := 0
 		i := 0
@@ -250,13 +250,13 @@ module HostRegistry
 		var 
 			res, len_: integer
 			cp, int_: WinApi.HANDLE
-			str: array 4 of char
+			str: array 4 of wchar
 	begin 
 		res := WinApi.GetProfileIntW("intl", "iMeasure", 1)
 		Dialog.metricSystem := res = 0
 	end ReadMeasure
 	
-	proc GetMajorVersion(v: array of char): integer
+	proc GetMajorVersion(v: array of wchar): integer 
 		var 
 			majorVersion, pos, res: integer
 	begin 
@@ -321,12 +321,12 @@ module HostRegistry
 		until (iniFile # nil) or (p[i] < " ") 
 	end SetIniFile
 	
-	proc SetDbgRegistry(appName, dbgName: array of char)
+	proc SetDbgRegistry(appName, dbgName: array of wchar) 
 		var 
-			val_: array 256 of char
+			val_: array 256 of wchar
 			res: integer
 		
-		proc InheritRegEntry(in key: array of char)
+		proc InheritRegEntry(in key: array of wchar) 
 		begin 
 			Dialog.appName := appName
 			ReadString(key, val_, res)

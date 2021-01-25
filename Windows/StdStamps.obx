@@ -40,10 +40,10 @@ module StdStamps
 				fprint, snr: integer // fingerprint, sequence number
 				date: integer // days since 1/1/1
 				time: integer // min + 64 * hour
-				comment: pointer to array of char  // nil if no comment
+				comment: pointer to array of wchar  // nil if no comment
 			end 
 		
-		Comment* = array 64 of char
+		Comment* = array 64 of wchar
 		
 		StdView = pointer to record (Views.View) 
 				// --snr: LONGINT;   for version 1
@@ -55,7 +55,7 @@ module StdStamps
 		SetCmtOp = pointer to record (Stores.Operation) 
 				stamp: StdView
 				age: integer
-				oldcomment: pointer to array of char 
+				oldcomment: pointer to array of wchar 
 			end 
 	
 	var 
@@ -68,7 +68,7 @@ module StdStamps
 	
 	proc (op: SetCmtOp) Do
 		var 
-			temp: pointer to array of char
+			temp: pointer to array of wchar
 	begin 
 		if op.age = 0 then
 			new(temp, len(op.stamp.comment0) + 1)
@@ -81,7 +81,7 @@ module StdStamps
 		op.oldcomment := temp
 	end Do
 	
-	proc FontContext(v: StdView): Fonts.Font
+	proc FontContext(v: StdView): Fonts.Font 
 		var 
 			c: Models.Context
 	begin 
@@ -93,14 +93,14 @@ module StdStamps
 		end 
 	end FontContext
 	
-	proc CalcFP(t: TextModels.Model): integer
+	proc CalcFP(t: TextModels.Model): integer 
 		const 
 			sglQuote = "'"
 			dblQuote = '"'
 		var 
 			fp: integer
 			rd: TextModels.Reader
-			ch, quoteChar: char
+			ch, quoteChar: wchar
 	begin 
 		quoteChar := 0x
 		fp := 0
@@ -122,10 +122,10 @@ module StdStamps
 		return fp
 	end CalcFP
 	
-	proc FillComment(v: StdView; age: integer; rebuild: boolean)
+	proc FillComment(v: StdView; age: integer; rebuild: boolean) 
 		var 
 			i: integer
-			s: array 10 of char
+			s: array 10 of wchar
 	begin 
 		comment.stamp := v
 		if rebuild then
@@ -147,7 +147,7 @@ module StdStamps
 			if v.history[age].comment = nil then
 				comment.s := '' 
 			else 
-				comment.s := v.history[age].comment 
+				comment.s := v.history[age].comment^ 
 			end  
 		end 
 		Dialog.Update(comment)
@@ -155,7 +155,7 @@ module StdStamps
 	
 	// Rochus: delete invalid char
 	
-	proc Update(v: StdView; forcenew: boolean)
+	proc Update(v: StdView; forcenew: boolean) 
 		var 
 			fp, ndays, i: integer
 			d: Dates.Date
@@ -206,10 +206,10 @@ module StdStamps
 		end 
 	end Update
 	
-	proc HasWideChars(in s: array of char): boolean
+	proc HasWideChars(in s: array of wchar): boolean 
 		var 
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		ch := s[0]
@@ -220,7 +220,7 @@ module StdStamps
 		return ch # 0x
 	end HasWideChars
 	
-	proc (v: StdView) Externalize(var wr: Stores.Writer)
+	proc (v: StdView) Externalize(var wr: Stores.Writer) 
 		var 
 			i, len_: integer
 			version: integer
@@ -244,8 +244,8 @@ module StdStamps
 			wr.WriteInt(v.history[i].snr)
 			wr.WriteInt(v.history[i].date)
 			wr.WriteXInt(v.history[i].time)
-			if (v.history[i].comment # nil) & (len(v.history[i].comment) > 0) then
-				len_ := len(v.history[i].comment)
+			if (v.history[i].comment # nil) & (len(v.history[i].comment^) > 0) then
+				len_ := len(v.history[i].comment^)
 				wr.WriteXInt(len_)
 				if version >= wideCommentVersion then
 					wr.WriteString(v.history[i].comment) 
@@ -258,7 +258,7 @@ module StdStamps
 		end 
 	end Externalize
 	
-	proc (v: StdView) Internalize(var rd: Stores.Reader)
+	proc (v: StdView) Internalize(var rd: Stores.Reader) 
 		var 
 			version: integer
 			format: byte
@@ -339,7 +339,7 @@ module StdStamps
 		end 
 	end Internalize
 	
-	proc (v: StdView) CopyFromSimpleView(source: Views.View)
+	proc (v: StdView) CopyFromSimpleView(source: Views.View) 
 		var 
 			i: integer
 	begin 
@@ -359,7 +359,7 @@ module StdStamps
 		end 
 	end CopyFromSimpleView
 	
-	proc (v: StdView) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (v: StdView) Restore(f: Views.Frame; l, t, r, b: integer) 
 		var 
 			a: TextModels.Attributes
 			color: Ports.Color
@@ -367,8 +367,8 @@ module StdStamps
 			font: Fonts.Font
 			asc, dsc, fw: integer
 			d: Dates.Date
-			date: array 32 of char
-			seq: array 8 of char
+			date: array 32 of wchar
+			seq: array 8 of wchar
 	begin 
 		c := v.context
 		if (c # nil) & (c is TextModels.Context) then
@@ -387,12 +387,12 @@ module StdStamps
 		f.DrawString(0, asc, color, date + " (" + seq + ")", font)
 	end Restore
 	
-	proc SizePref(v: StdView; var p: Properties.SizePref)
+	proc SizePref(v: StdView; var p: Properties.SizePref) 
 		var 
 			font: Fonts.Font
 			asc, dsc, w: integer
 			d: Dates.Date
-			s: array 64 of char
+			s: array 64 of wchar
 	begin 
 		font := FontContext(v)
 		font.GetBounds(asc, dsc, w)
@@ -412,7 +412,7 @@ module StdStamps
 		p.h := asc + dsc
 	end SizePref
 	
-	proc (v: StdView) HandlePropMsg(var msg: Properties.Message)
+	proc (v: StdView) HandlePropMsg(var msg: Properties.Message) 
 		var 
 			font: Fonts.Font
 			asc, w: integer
@@ -433,7 +433,7 @@ module StdStamps
 		end 
 	end HandlePropMsg
 	
-	proc NewRuler(): TextRulers.Ruler
+	proc NewRuler(): TextRulers.Ruler 
 		const 
 			mm = Ports.mm
 		var 
@@ -447,13 +447,13 @@ module StdStamps
 		return r
 	end NewRuler
 	
-	proc ShowHistory(v: StdView)
+	proc ShowHistory(v: StdView) 
 		var 
 			text: TextModels.Model
 			f: TextMappers.Formatter
 			i: integer
 			d: Dates.Date
-			s: array 64 of char
+			s: array 64 of wchar
 			tv: TextViews.View
 			attr: TextModels.Attributes
 	begin 
@@ -513,7 +513,7 @@ module StdStamps
 		Views.OpenAux(tv, "History")
 	end ShowHistory
 	
-	proc Track(v: StdView; f: Views.Frame; x, y: integer; buttons: set)
+	proc Track(v: StdView; f: Views.Frame; x, y: integer; buttons: set) 
 		var 
 			c: Models.Context
 			w, h: integer
@@ -553,7 +553,7 @@ module StdStamps
 	end Track
 	
 	proc (v: StdView) HandleCtrlMsg(
-		f: Views.Frame; var msg: Controllers.Message; var focus: Views.View)
+		f: Views.Frame; var msg: Controllers.Message; var focus: Views.View) 
 	begin 
 		with msg: Controllers.TrackMsg do 
 			Track(v, f, msg.x, msg.y, msg.modifiers) 
@@ -563,7 +563,7 @@ module StdStamps
 		end 
 	end HandleCtrlMsg
 	
-	proc GetActiveStamp(): StdView
+	proc GetActiveStamp(): StdView 
 		var 
 			context: Models.Context
 	begin 
@@ -580,7 +580,7 @@ module StdStamps
 	
 	// ------------ programming interface: ----------------------
 	
-	proc GetFirstInText*(t: TextModels.Model): Views.View
+	proc GetFirstInText*(t: TextModels.Model): Views.View 
 		var 
 			r: TextModels.Reader
 			v: Views.View
@@ -596,12 +596,12 @@ module StdStamps
 		end 
 	end GetFirstInText
 	
-	proc IsStamp*(v: Views.View): boolean
+	proc IsStamp*(v: Views.View): boolean 
 	begin 
 		return v is StdView
 	end IsStamp
 	
-	proc GetInfo*(v: Views.View; var historylen: integer)
+	proc GetInfo*(v: Views.View; var historylen: integer) 
 	begin 
 		assert(v is StdView, 20)
 		with v: StdView do 
@@ -611,7 +611,7 @@ module StdStamps
 	
 	proc GetData*(v: Views.View; entryno: integer
 		var snr, fprint: integer; var date: Dates.Date; var time: Dates.Time
-		var comment: array of char)
+		var comment: array of wchar) 
 	begin 
 		assert(v is StdView, 20)
 		with v: StdView do 
@@ -631,7 +631,7 @@ module StdStamps
 	end GetData
 	
 	// * Insert new history entry with comment in v.
-	proc Stamp*(v: Views.View; in comment: array of char)
+	proc Stamp*(v: Views.View; in comment: array of wchar) 
 	begin 
 		assert(v is StdView, 20)
 		with v: StdView do 
@@ -641,7 +641,7 @@ module StdStamps
 		end 
 	end Stamp
 	
-	proc New*(): Views.View
+	proc New*(): Views.View 
 		var 
 			v: StdView
 			d: Dates.Date
@@ -680,12 +680,12 @@ module StdStamps
 		Views.Deposit(New())
 	end Deposit
 	
-	proc Guard*(var par: Dialog.Par)
+	proc Guard*(var par: Dialog.Par) 
 	begin 
 		par.disabled := GetActiveStamp() = nil
 	end Guard
 	
-	proc SnrNotifier*(op, from, to_: integer)
+	proc SnrNotifier*(op, from, to_: integer) 
 		var 
 			v: StdView
 	begin 

@@ -124,7 +124,7 @@ module TextModels
 		
 		Prop* = pointer to record (Properties.Property) 
 				offset*: integer
-				code*: char 
+				code*: wchar 
 			end 
 		
 		
@@ -132,14 +132,14 @@ module TextModels
 		
 		Pref* = record (Properties.Preference) 
 				opts*: set // preset to {}
-				mask*: char  // valid if maskChar IN opts
+				mask*: wchar  // valid if maskChar IN opts
 			end 
 		
 		
 		Reader* = pointer to (* abstract *) record 
 				eot*: boolean
 				attr*: Attributes
-				char_*: char
+				char_*: wchar
 				view*: Views.View
 				w*, h*: integer 
 			end 
@@ -301,7 +301,7 @@ module TextModels
 	
 	// Model
 	
-	proc (m: Model) Internalize-(var rd: Stores.Reader) // extensible
+	proc (m: Model) Internalize-(var rd: Stores.Reader)  // extensible
 		var 
 			thisVersion: integer
 	begin 
@@ -312,32 +312,32 @@ module TextModels
 		rd.ReadVersion(minVersion, maxModelVersion, thisVersion)
 	end Internalize
 	
-	proc (m: Model) Externalize-(var wr: Stores.Writer) // extensible
+	proc (m: Model) Externalize-(var wr: Stores.Writer)  // extensible
 	begin 
 		m.Externalize^(wr)
 		wr.WriteVersion(maxModelVersion)
 	end Externalize
 	
 	
-	proc (m: Model) Length*(): integer end // new abstract
-	proc (m: Model) NewReader*(old: Reader): Reader end // new abstract
-	proc (m: Model) NewWriter*(old: Writer): Writer end // new abstract
-	proc (m: Model) InsertCopy*(pos: integer; m0: Model; beg0, end0: integer) end // new abstract
-	proc (m: Model) Insert*(pos: integer; m0: Model; beg0, end0: integer) end // new abstract
-	proc (m: Model) Delete*(beg, end_: integer) end // new abstract
-	proc (m: Model) SetAttr*(beg, end_: integer; attr: Attributes) end // new abstract
-	proc (m: Model) Prop*(beg, end_: integer): Properties.Property end // new abstract
-	proc (m: Model) Modify*(beg, end_: integer; old, p: Properties.Property) end // new abstract
-	proc (m: Model) ReplaceView*(old, new_: Views.View) end // abstract
+	proc (m: Model) Length*(): integer  end // new abstract
+	proc (m: Model) NewReader*(old: Reader): Reader  end // new abstract
+	proc (m: Model) NewWriter*(old: Writer): Writer  end // new abstract
+	proc (m: Model) InsertCopy*(pos: integer; m0: Model; beg0, end0: integer)  end // new abstract
+	proc (m: Model) Insert*(pos: integer; m0: Model; beg0, end0: integer)  end // new abstract
+	proc (m: Model) Delete*(beg, end_: integer)  end // new abstract
+	proc (m: Model) SetAttr*(beg, end_: integer; attr: Attributes)  end // new abstract
+	proc (m: Model) Prop*(beg, end_: integer): Properties.Property  end // new abstract
+	proc (m: Model) Modify*(beg, end_: integer; old, p: Properties.Property)  end // new abstract
+	proc (m: Model) ReplaceView*(old, new_: Views.View)  end // abstract
 	
-	proc (m: Model) Append*(m0: Model) end // new abstract
+	proc (m: Model) Append*(m0: Model)  end // new abstract
 	(* BEGIN
 	   ASSERT(m # m0, 20);
 	   m.Insert(m.Length(), m0, 0, m0.Length())
 	   END Append; *)
 	
 	
-	proc (m: Model) Replace*(beg, end_: integer; m0: Model; beg0, end0: integer) end // new abstract
+	proc (m: Model) Replace*(beg, end_: integer; m0: Model; beg0, end0: integer)  end // new abstract
 	
 	(* VAR script: Stores.Operation; delta: INTEGER;
 	   BEGIN
@@ -352,7 +352,7 @@ module TextModels
 	
 	// Attributes
 	
-	proc (a: Attributes) CopyFrom-(source: Stores.Store) // extensible
+	proc (a: Attributes) CopyFrom-(source: Stores.Store)  // extensible
 	// pre: ~a.init, source.init
 	// post: a.init
 	begin 
@@ -366,7 +366,7 @@ module TextModels
 		end 
 	end CopyFrom
 	
-	proc (a: Attributes) Internalize-(var rd: Stores.Reader) // extensible
+	proc (a: Attributes) Internalize-(var rd: Stores.Reader)  // extensible
 		// pre: ~a.init
 		// post: a.init
 		var 
@@ -403,7 +403,7 @@ module TextModels
 		rd.ReadInt(a.offset)
 	end Internalize
 	
-	proc (a: Attributes) Externalize-(var wr: Stores.Writer) // extensible
+	proc (a: Attributes) Externalize-(var wr: Stores.Writer)  // extensible
 		// pre: a.init
 		var 
 			f: Fonts.Font
@@ -424,7 +424,7 @@ module TextModels
 		wr.WriteInt(a.offset)
 	end Externalize
 	
-	proc (a: Attributes) InitFromProp*(p: Properties.Property) // new extensible
+	proc (a: Attributes) InitFromProp*(p: Properties.Property)  // new extensible
 		// pre: ~a.init
 		// post: a.init, x IN p.valid => x set in a, else x defaults in a
 		var 
@@ -472,7 +472,7 @@ module TextModels
 		a.font := Fonts.dir.This(face, size_, style, weight)
 	end InitFromProp
 	
-	proc (a: Attributes) Equals*(b: Attributes): boolean // new extensible
+	proc (a: Attributes) Equals*(b: Attributes): boolean  // new extensible
 	// pre: a.init, b.init
 	begin 
 		assert(a.init, 20)
@@ -482,7 +482,7 @@ module TextModels
 			& (a.color = b.color) & (a.font = b.font) & (a.offset = b.offset)
 	end Equals
 	
-	proc (a: Attributes) Prop*(): Properties.Property // new extensible
+	proc (a: Attributes) Prop*(): Properties.Property  // new extensible
 		// pre: a.init
 		var 
 			p: Properties.Property
@@ -508,7 +508,7 @@ module TextModels
 		return p
 	end Prop
 	
-	proc (a: Attributes) ModifyFromProp-(p: Properties.Property) // new extensible
+	proc (a: Attributes) ModifyFromProp-(p: Properties.Property)  // new extensible
 		// pre: ~a.init
 		var 
 			face: Fonts.Typeface
@@ -558,7 +558,7 @@ module TextModels
 	end ModifyFromProp
 	
 	
-	proc ReadAttr*(var rd: Stores.Reader; var a: Attributes)
+	proc ReadAttr*(var rd: Stores.Reader; var a: Attributes) 
 		var 
 			st: Stores.Store
 			alien: AlienAttributes
@@ -577,7 +577,7 @@ module TextModels
 		end 
 	end ReadAttr
 	
-	proc WriteAttr*(var wr: Stores.Writer; a: Attributes)
+	proc WriteAttr*(var wr: Stores.Writer; a: Attributes) 
 	begin 
 		assert(a # nil, 20)
 		assert(a.init, 21)
@@ -588,7 +588,7 @@ module TextModels
 		end 
 	end WriteAttr
 	
-	proc ModifiedAttr*(a: Attributes; p: Properties.Property): Attributes
+	proc ModifiedAttr*(a: Attributes; p: Properties.Property): Attributes 
 		// pre: a.init
 		// post: x IN p.valid => x in new attr set to value in p, else set to value in a
 		var 
@@ -603,30 +603,30 @@ module TextModels
 	
 	// AlienAttributes
 	
-	proc (a: AlienAttributes) Externalize-(var wr: Stores.Writer)
+	proc (a: AlienAttributes) Externalize-(var wr: Stores.Writer) 
 	begin 
 		halt(100)
 	end Externalize
 	
-	proc (a: AlienAttributes) CopyFrom-(source: Stores.Store)
+	proc (a: AlienAttributes) CopyFrom-(source: Stores.Store) 
 	begin 
 		a.CopyFrom^(source)
 		a.store := Stores.CopyOf(source(AlienAttributes).store)(Stores.Alien)
 		Stores.Join(a, a.store)
 	end CopyFrom
 	
-	proc (a: AlienAttributes) Prop*(): Properties.Property
+	proc (a: AlienAttributes) Prop*(): Properties.Property 
 	begin 
 		return nil
 	end Prop
 	
-	proc (a: AlienAttributes) ModifyFromProp-(p: Properties.Property)
+	proc (a: AlienAttributes) ModifyFromProp-(p: Properties.Property) 
 	end ModifyFromProp
 	
 	
 	// Prop
 	
-	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean)
+	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean) 
 		var 
 			valid: set
 	begin 
@@ -649,46 +649,46 @@ module TextModels
 	
 	// Context
 	
-	proc (c: Context) ThisModel*(): Model end // abstract
-	proc (c: Context) Pos*(): integer end // new abstract
-	proc (c: Context) Attr*(): Attributes end // new abstract
+	proc (c: Context) ThisModel*(): Model  end // abstract
+	proc (c: Context) Pos*(): integer  end // new abstract
+	proc (c: Context) Attr*(): Attributes  end // new abstract
 	
 	
 	// Reader
 	
-	proc (rd: Reader) Base*(): Model end // new abstract
-	proc (rd: Reader) SetPos*(pos: integer) end // new abstract
-	proc (rd: Reader) Pos*(): integer end // new abstract
+	proc (rd: Reader) Base*(): Model  end // new abstract
+	proc (rd: Reader) SetPos*(pos: integer)  end // new abstract
+	proc (rd: Reader) Pos*(): integer  end // new abstract
 	proc (rd: Reader) Read* end // new abstract
 	proc (rd: Reader) ReadPrev* end // new abstract
 	
-	proc (rd: Reader) ReadChar*(var ch: char) end // new abstract
+	proc (rd: Reader) ReadChar*(var ch: wchar)  end // new abstract
 	(* BEGIN
 	   rd.Read; ch := rd.char
 	   END ReadChar; *)
 	
 	
-	proc (rd: Reader) ReadPrevChar*(var ch: char) end // new abstract
+	proc (rd: Reader) ReadPrevChar*(var ch: wchar)  end // new abstract
 	(* BEGIN
 	   rd.ReadPrev; ch := rd.char
 	   END ReadPrevChar; *)
 	
 	
-	proc (rd: Reader) ReadView*(var v: Views.View) end // new abstract
+	proc (rd: Reader) ReadView*(var v: Views.View)  end // new abstract
 	(* BEGIN
 	   REPEAT rd.Read UNTIL (rd.view # NIL) OR rd.eot;
 	   v := rd.view
 	   END ReadView; *)
 	
 	
-	proc (rd: Reader) ReadPrevView*(var v: Views.View) end // new abstract
+	proc (rd: Reader) ReadPrevView*(var v: Views.View)  end // new abstract
 	(* BEGIN
 	   REPEAT rd.ReadPrev UNTIL (rd.view # NIL) OR rd.eot;
 	   v := rd.view
 	   END ReadPrevView; *)
 	
 	
-	proc (rd: Reader) ReadRun*(var attr: Attributes) end // new abstract
+	proc (rd: Reader) ReadRun*(var attr: Attributes)  end // new abstract
 	// post: rd.eot OR a # NIL, rd.view = ViewAt(rd.Pos() - 1)
 	(* VAR a: Attributes;
 	   BEGIN
@@ -698,7 +698,7 @@ module TextModels
 	   END ReadRun; *)
 	
 	
-	proc (rd: Reader) ReadPrevRun*(var attr: Attributes) end // new abstract
+	proc (rd: Reader) ReadPrevRun*(var attr: Attributes)  end // new abstract
 	// post: rd.eot OR a # NIL, rd.view = ViewAt(rd.Pos())
 	(* VAR a: Attributes;
 	   BEGIN
@@ -711,14 +711,14 @@ module TextModels
 	
 	// Writer
 	
-	proc (wr: Writer) Base*(): Model end // new abstract
-	proc (wr: Writer) SetPos*(pos: integer) end // new abstract
-	proc (wr: Writer) Pos*(): integer end // new abstract
+	proc (wr: Writer) Base*(): Model  end // new abstract
+	proc (wr: Writer) SetPos*(pos: integer)  end // new abstract
+	proc (wr: Writer) Pos*(): integer  end // new abstract
 	// PROCEDURE (wr: Writer) WriteSChar* (ch: SHORTCHAR), NEW, ABSTRACT;
-	proc (wr: Writer) WriteChar*(ch: char) end // new abstract
-	proc (wr: Writer) WriteView*(view: Views.View; w, h: integer) end // new abstract
+	proc (wr: Writer) WriteChar*(ch: wchar)  end // new abstract
+	proc (wr: Writer) WriteView*(view: Views.View; w, h: integer)  end // new abstract
 	
-	proc (wr: Writer) SetAttr*(attr: Attributes) // new // , EXTENSIBLE
+	proc (wr: Writer) SetAttr*(attr: Attributes)  // new // , EXTENSIBLE
 	begin 
 		assert(attr # nil, 20)
 		assert(attr.init, 21)
@@ -728,9 +728,9 @@ module TextModels
 	
 	// Directory
 	
-	proc (d: Directory) New*(): Model end // new abstract
+	proc (d: Directory) New*(): Model  end // new abstract
 	
-	proc (d: Directory) NewFromString*(s: array of char): Model // new extensible
+	proc (d: Directory) NewFromString*(s: array of wchar): Model  // new extensible
 		var 
 			m: Model
 			w: Writer
@@ -746,7 +746,7 @@ module TextModels
 		return m
 	end NewFromString
 	
-	proc (d: Directory) SetAttr*(attr: Attributes) // new extensible
+	proc (d: Directory) SetAttr*(attr: Attributes)  // new extensible
 	begin 
 		assert(attr.init, 20)
 		d.attr := attr
@@ -755,14 +755,14 @@ module TextModels
 	
 	// StdModel - foundation
 	
-	proc OpenSpill(s: SpillFile)
+	proc OpenSpill(s: SpillFile) 
 	begin 
 		s.file := Files.dir.Temp()
 		s.len_ := 0
 		s.writer := s.file.NewWriter(nil)
 	end OpenSpill
 	
-	proc Find(t: StdModel; var pos: integer; var u: Run; var off: integer)
+	proc Find(t: StdModel; var pos: integer; var u: Run; var off: integer) 
 		// post: 0 <= pos <= t.len, 0 <= off < u.len, Pos(u) + off = pos
 		// Read/Write rely on Find to force pos into the legal range
 		var 
@@ -798,7 +798,7 @@ module TextModels
 		end 
 	end Find
 	
-	proc Split(off: integer; var u, un: Run)
+	proc Split(off: integer; var u, un: Run) 
 		// pre: 0 <= off <= u.len
 		// post: u.len = off, u.len + un.len = u'.len, Pos(u) + u.len = Pos(un)
 		var 
@@ -838,7 +838,7 @@ module TextModels
 		end 
 	end Split
 	
-	proc Merge(t: StdModel; u: Run; var v: Run)
+	proc Merge(t: StdModel; u: Run; var v: Run) 
 		var 
 			p, q: LPiece
 	begin 
@@ -876,7 +876,7 @@ module TextModels
 		end 
 	end Merge
 	
-	proc Splice(un, v, w: Run) // (u, un) -> (u, v ... w, un)
+	proc Splice(un, v, w: Run)  // (u, un) -> (u, v ... w, un)
 		var 
 			u: Run
 	begin 
@@ -889,7 +889,7 @@ module TextModels
 		end 
 	end Splice
 	
-	proc NewContext(r: ViewRef; text: StdModel): StdContext
+	proc NewContext(r: ViewRef; text: StdModel): StdContext 
 		var 
 			c: StdContext
 	begin 
@@ -900,7 +900,7 @@ module TextModels
 		return c
 	end NewContext
 	
-	proc CopyOfPiece(p: LPiece): LPiece
+	proc CopyOfPiece(p: LPiece): LPiece 
 		var 
 			lp: LPiece
 			sp: Piece
@@ -921,7 +921,7 @@ module TextModels
 		end 
 	end CopyOfPiece
 	
-	proc CopyOfViewRef(r: ViewRef; text: StdModel): ViewRef
+	proc CopyOfViewRef(r: ViewRef; text: StdModel): ViewRef 
 		var 
 			v: ViewRef
 	begin 
@@ -932,7 +932,7 @@ module TextModels
 		return v
 	end CopyOfViewRef
 	
-	proc InvalCache(t: StdModel; pos: integer)
+	proc InvalCache(t: StdModel; pos: integer) 
 		var 
 			n: integer
 	begin 
@@ -947,7 +947,7 @@ module TextModels
 		end 
 	end InvalCache
 	
-	proc StdInit(t: StdModel)
+	proc StdInit(t: StdModel) 
 		var 
 			u: Run
 	begin 
@@ -970,7 +970,7 @@ module TextModels
 		end 
 	end StdInit
 	
-	proc CopyOf(src: StdModel; beg, end_: integer; dst: StdModel): StdModel
+	proc CopyOf(src: StdModel; beg, end_: integer; dst: StdModel): StdModel 
 		var 
 			buf: StdModel
 			u, v, r, z, zn: Run
@@ -1020,7 +1020,7 @@ module TextModels
 		return buf
 	end CopyOf
 	
-	proc ProjectionOf(src: Model; beg, end_: integer; dst: StdModel): StdModel
+	proc ProjectionOf(src: Model; beg, end_: integer; dst: StdModel): StdModel 
 		// rider-conversion to eliminate covariance conflicts in binary operations
 		var 
 			buf: StdModel
@@ -1045,7 +1045,7 @@ module TextModels
 		return buf
 	end ProjectionOf
 	
-	proc Move(src: StdModel; beg, end_: integer; dest: StdModel; pos: integer)
+	proc Move(src: StdModel; beg, end_: integer; dest: StdModel; pos: integer) 
 		var 
 			pc: PieceCache
 			view: Views.View
@@ -1163,7 +1163,7 @@ module TextModels
 	proc DoMove(name: Stores.OpName
 		src: StdModel; beg, end_: integer
 		dest: StdModel; pos: integer
-		)
+		) 
 		var 
 			op: MoveOp
 	begin 
@@ -1367,7 +1367,7 @@ module TextModels
 		end 
 	end Do
 	
-	proc GetWriteOp(t: StdModel; pos: integer; var op: EditOp; var bunch: boolean)
+	proc GetWriteOp(t: StdModel; pos: integer; var op: EditOp; var bunch: boolean) 
 		var 
 			last: Stores.Operation
 	begin 
@@ -1391,7 +1391,7 @@ module TextModels
 	end GetWriteOp
 	
 	
-	proc SetPreferredSize(t: StdModel; v: Views.View)
+	proc SetPreferredSize(t: StdModel; v: Views.View) 
 		var 
 			minW, maxW, minH, maxH, w, h: integer
 	begin 
@@ -1509,7 +1509,7 @@ module TextModels
 	
 	// StdModel
 	
-	proc (t: StdModel) InitFrom(source: Containers.Model)
+	proc (t: StdModel) InitFrom(source: Containers.Model) 
 	begin 
 		with source: StdModel do 
 			assert(source.trailer # nil, 20)
@@ -1518,7 +1518,7 @@ module TextModels
 		end 
 	end InitFrom
 	
-	proc WriteCharacters(t: StdModel; var wr: Stores.Writer)
+	proc WriteCharacters(t: StdModel; var wr: Stores.Writer) 
 		var 
 			r: Files.Reader
 			u: Run
@@ -1568,7 +1568,7 @@ module TextModels
 	
 	proc WriteAttributes(var wr: Stores.Writer; t: StdModel
 		a: Attributes; var dict: AttrDict
-		)
+		) 
 		var 
 			k, len_: byte
 	begin 
@@ -1592,7 +1592,7 @@ module TextModels
 		end 
 	end WriteAttributes
 	
-	proc (t: StdModel) Externalize(var wr: Stores.Writer)
+	proc (t: StdModel) Externalize(var wr: Stores.Writer) 
 		var  // dom: Stores.Domain;
 			u, v, un: Run
 			attr: Attributes
@@ -1658,7 +1658,7 @@ module TextModels
 		Models.Broadcast(t, inf)
 	end Externalize
 	
-	proc (t: StdModel) Internalize(var rd: Stores.Reader)
+	proc (t: StdModel) Internalize(var rd: Stores.Reader) 
 		var 
 			u, un: Run
 			sp: Piece
@@ -1755,7 +1755,7 @@ module TextModels
 	
 	
 	
-	proc (t: StdModel) GetEmbeddingLimits(var minW, maxW, minH, maxH: integer)
+	proc (t: StdModel) GetEmbeddingLimits(var minW, maxW, minH, maxH: integer) 
 	begin 
 		minW := minWidth
 		maxW := maxWidth
@@ -1764,13 +1764,13 @@ module TextModels
 	end GetEmbeddingLimits
 	
 	
-	proc (t: StdModel) Length(): integer
+	proc (t: StdModel) Length(): integer 
 	begin 
 		StdInit(t)
 		return t.len_
 	end Length
 	
-	proc (t: StdModel) NewReader(old: Reader): Reader
+	proc (t: StdModel) NewReader(old: Reader): Reader 
 		var 
 			rd: StdReader
 	begin 
@@ -1791,7 +1791,7 @@ module TextModels
 		return rd
 	end NewReader
 	
-	proc (t: StdModel) NewWriter(old: Writer): Writer
+	proc (t: StdModel) NewWriter(old: Writer): Writer 
 		var 
 			wr: StdWriter
 	begin 
@@ -1810,7 +1810,7 @@ module TextModels
 		return wr
 	end NewWriter
 	
-	proc (t: StdModel) InsertCopy(pos: integer; t0: Model; beg0, end0: integer)
+	proc (t: StdModel) InsertCopy(pos: integer; t0: Model; beg0, end0: integer) 
 		var 
 			buf: StdModel
 	begin 
@@ -1832,7 +1832,7 @@ module TextModels
 		end 
 	end InsertCopy
 	
-	proc (t: StdModel) Insert(pos: integer; t0: Model; beg, end_: integer)
+	proc (t: StdModel) Insert(pos: integer; t0: Model; beg, end_: integer) 
 	begin 
 		StdInit(t)
 		assert(0 <= pos, 21)
@@ -1850,7 +1850,7 @@ module TextModels
 		end 
 	end Insert
 	
-	proc (t: StdModel) Append(t0: Model)
+	proc (t: StdModel) Append(t0: Model) 
 		var 
 			len0: integer
 	begin 
@@ -1867,7 +1867,7 @@ module TextModels
 		end 
 	end Append
 	
-	proc (t: StdModel) Delete(beg, end_: integer)
+	proc (t: StdModel) Delete(beg, end_: integer) 
 		var 
 			op: EditOp
 	begin 
@@ -1886,7 +1886,7 @@ module TextModels
 		end 
 	end Delete
 	
-	proc (t: StdModel) SetAttr(beg, end_: integer; attr: Attributes)
+	proc (t: StdModel) SetAttr(beg, end_: integer; attr: Attributes) 
 		var 
 			op: SetAttrOp
 			zp, z: AttrList
@@ -1934,7 +1934,7 @@ module TextModels
 		end 
 	end SetAttr
 	
-	proc (t: StdModel) Prop(beg, end_: integer): Properties.Property
+	proc (t: StdModel) Prop(beg, end_: integer): Properties.Property 
 		var 
 			p, q: Properties.Property
 			tp: Prop
@@ -1989,7 +1989,7 @@ module TextModels
 		return p
 	end Prop
 	
-	proc (t: StdModel) Modify(beg, end_: integer; old, p: Properties.Property)
+	proc (t: StdModel) Modify(beg, end_: integer; old, p: Properties.Property) 
 		var 
 			op: SetAttrOp
 			zp, z: AttrList
@@ -2045,7 +2045,7 @@ module TextModels
 		end 
 	end Modify
 	
-	proc (t: StdModel) ReplaceView(old, new_: Views.View)
+	proc (t: StdModel) ReplaceView(old, new_: Views.View) 
 		var 
 			c: StdContext
 			op: ReplaceViewOp
@@ -2071,7 +2071,7 @@ module TextModels
 		end 
 	end ReplaceView
 	
-	proc (t: StdModel) CopyFrom-(source: Stores.Store)
+	proc (t: StdModel) CopyFrom-(source: Stores.Store) 
 	begin 
 		StdInit(t)
 		with source: StdModel do 
@@ -2079,7 +2079,7 @@ module TextModels
 		end 
 	end CopyFrom
 	
-	proc (t: StdModel) Replace(beg, end_: integer; t0: Model; beg0, end0: integer)
+	proc (t: StdModel) Replace(beg, end_: integer; t0: Model; beg0, end0: integer) 
 		var 
 			script: Stores.Operation
 	begin 
@@ -2100,18 +2100,18 @@ module TextModels
 	
 	// StdContext
 	
-	proc (c: StdContext) ThisModel(): Model
+	proc (c: StdContext) ThisModel(): Model 
 	begin 
 		return c.text
 	end ThisModel
 	
-	proc (c: StdContext) GetSize(var w, h: integer)
+	proc (c: StdContext) GetSize(var w, h: integer) 
 	begin 
 		w := c.ref.w
 		h := c.ref.h
 	end GetSize
 	
-	proc (c: StdContext) SetSize(w, h: integer)
+	proc (c: StdContext) SetSize(w, h: integer) 
 		var 
 			t: StdModel
 			r: ViewRef
@@ -2137,12 +2137,12 @@ module TextModels
 		end 
 	end SetSize
 	
-	proc (c: StdContext) Normalize(): boolean
+	proc (c: StdContext) Normalize(): boolean 
 	begin 
 		return false
 	end Normalize
 	
-	proc (c: StdContext) Pos(): integer
+	proc (c: StdContext) Pos(): integer 
 		var 
 			t: StdModel
 			u, r, w: Run
@@ -2165,7 +2165,7 @@ module TextModels
 		return t.pc.org
 	end Pos
 	
-	proc (c: StdContext) Attr(): Attributes
+	proc (c: StdContext) Attr(): Attributes 
 	begin 
 		return c.ref.attr
 	end Attr
@@ -2173,7 +2173,7 @@ module TextModels
 	
 	// StdReader
 	
-	proc RemapView(rd: StdReader)
+	proc RemapView(rd: StdReader) 
 		var 
 			p: Pref
 	begin 
@@ -2186,7 +2186,7 @@ module TextModels
 		end 
 	end RemapView
 	
-	proc Reset(rd: StdReader)
+	proc Reset(rd: StdReader) 
 		var 
 			t: StdModel
 	begin 
@@ -2196,12 +2196,12 @@ module TextModels
 	end Reset
 	
 	
-	proc (rd: StdReader) Base(): Model
+	proc (rd: StdReader) Base(): Model 
 	begin 
 		return rd.base
 	end Base
 	
-	proc (rd: StdReader) SetPos(pos: integer)
+	proc (rd: StdReader) SetPos(pos: integer) 
 	begin 
 		assert(pos >= 0, 20)
 		assert(rd.base # nil, 21)
@@ -2216,7 +2216,7 @@ module TextModels
 		end 
 	end SetPos
 	
-	proc (rd: StdReader) Pos(): integer
+	proc (rd: StdReader) Pos(): integer 
 	begin 
 		return rd.pos
 	end Pos
@@ -2425,19 +2425,19 @@ module TextModels
 		end 
 	end ReadPrev
 	
-	proc (rd: StdReader) ReadChar(var ch: char)
+	proc (rd: StdReader) ReadChar(var ch: wchar) 
 	begin 
 		rd.Read
 		ch := rd.char_
 	end ReadChar
 	
-	proc (rd: StdReader) ReadPrevChar(var ch: char)
+	proc (rd: StdReader) ReadPrevChar(var ch: wchar) 
 	begin 
 		rd.ReadPrev
 		ch := rd.char_
 	end ReadPrevChar
 	
-	proc (rd: StdReader) ReadView(var v: Views.View)
+	proc (rd: StdReader) ReadView(var v: Views.View) 
 		var 
 			t: StdModel
 			u: Run
@@ -2473,7 +2473,7 @@ module TextModels
 		v := rd.view
 	end ReadView
 	
-	proc (rd: StdReader) ReadPrevView(var v: Views.View)
+	proc (rd: StdReader) ReadPrevView(var v: Views.View) 
 		var 
 			t: StdModel
 			u: Run
@@ -2507,7 +2507,7 @@ module TextModels
 		v := rd.view
 	end ReadPrevView
 	
-	proc (rd: StdReader) ReadRun(var attr: Attributes)
+	proc (rd: StdReader) ReadRun(var attr: Attributes) 
 		var 
 			t: StdModel
 			a0: Attributes
@@ -2533,7 +2533,7 @@ module TextModels
 		attr := rd.attr
 	end ReadRun
 	
-	proc (rd: StdReader) ReadPrevRun(var attr: Attributes)
+	proc (rd: StdReader) ReadPrevRun(var attr: Attributes) 
 		var 
 			t: StdModel
 			a0: Attributes
@@ -2572,7 +2572,7 @@ module TextModels
 	
 	// StdWriter
 	
-	proc WriterReset(wr: StdWriter)
+	proc WriterReset(wr: StdWriter) 
 		var 
 			t: StdModel
 			u: Run
@@ -2584,12 +2584,12 @@ module TextModels
 		wr.era := t.era
 	end WriterReset
 	
-	proc (wr: StdWriter) Base(): Model
+	proc (wr: StdWriter) Base(): Model 
 	begin 
 		return wr.base
 	end Base
 	
-	proc (wr: StdWriter) SetPos(pos: integer)
+	proc (wr: StdWriter) SetPos(pos: integer) 
 	begin 
 		assert(pos >= 0, 20)
 		assert(wr.base # nil, 21)
@@ -2600,12 +2600,12 @@ module TextModels
 		end 
 	end SetPos
 	
-	proc (wr: StdWriter) Pos(): integer
+	proc (wr: StdWriter) Pos(): integer 
 	begin 
 		return wr.pos
 	end Pos
 	
-	proc WriteSChar(wr: StdWriter; ch: char)
+	proc WriteSChar(wr: StdWriter; ch: char) 
 		var 
 			t: StdModel
 			u, un: Run
@@ -2675,7 +2675,7 @@ module TextModels
 		wr.pos := pos + 1
 	end WriteSChar
 	
-	proc (wr: StdWriter) WriteChar(ch: char)
+	proc (wr: StdWriter) WriteChar(ch: wchar) 
 		var 
 			t: StdModel
 			u, un: Run
@@ -2761,7 +2761,7 @@ module TextModels
 		end 
 	end WriteChar
 	
-	proc (wr: StdWriter) WriteView(view: Views.View; w, h: integer)
+	proc (wr: StdWriter) WriteView(view: Views.View; w, h: integer) 
 		var 
 			t: StdModel
 			u, un: Run
@@ -2827,7 +2827,7 @@ module TextModels
 	
 	// StdDirectory
 	
-	proc (d: StdDirectory) New(): Model
+	proc (d: StdDirectory) New(): Model 
 		var 
 			t: StdModel
 	begin 
@@ -2884,7 +2884,7 @@ module TextModels
 	
 	
 	
-	proc NewColor*(a: Attributes; color: Ports.Color): Attributes
+	proc NewColor*(a: Attributes; color: Ports.Color): Attributes 
 	begin 
 		assert(a # nil, 20)
 		assert(a.init, 21)
@@ -2893,7 +2893,7 @@ module TextModels
 		return ModifiedAttr(a, stdProp)
 	end NewColor
 	
-	proc NewFont*(a: Attributes; font: Fonts.Font): Attributes
+	proc NewFont*(a: Attributes; font: Fonts.Font): Attributes 
 	begin 
 		assert(a # nil, 20)
 		assert(a.init, 21)
@@ -2906,7 +2906,7 @@ module TextModels
 		return ModifiedAttr(a, stdProp)
 	end NewFont
 	
-	proc NewOffset*(a: Attributes; offset: integer): Attributes
+	proc NewOffset*(a: Attributes; offset: integer): Attributes 
 	begin 
 		assert(a # nil, 20)
 		assert(a.init, 21)
@@ -2915,7 +2915,7 @@ module TextModels
 		return ModifiedAttr(a, prop)
 	end NewOffset
 	
-	proc NewTypeface*(a: Attributes; typeface: Fonts.Typeface): Attributes
+	proc NewTypeface*(a: Attributes; typeface: Fonts.Typeface): Attributes 
 	begin 
 		assert(a # nil, 20)
 		assert(a.init, 21)
@@ -2924,7 +2924,7 @@ module TextModels
 		return ModifiedAttr(a, stdProp)
 	end NewTypeface
 	
-	proc NewSize*(a: Attributes; size_: integer): Attributes
+	proc NewSize*(a: Attributes; size_: integer): Attributes 
 	begin 
 		assert(a # nil, 20)
 		assert(a.init, 21)
@@ -2933,7 +2933,7 @@ module TextModels
 		return ModifiedAttr(a, stdProp)
 	end NewSize
 	
-	proc NewStyle*(a: Attributes; style: set): Attributes
+	proc NewStyle*(a: Attributes; style: set): Attributes 
 	begin 
 		assert(a # nil, 20)
 		assert(a.init, 21)
@@ -2943,7 +2943,7 @@ module TextModels
 		return ModifiedAttr(a, stdProp)
 	end NewStyle
 	
-	proc NewWeight*(a: Attributes; weight: integer): Attributes
+	proc NewWeight*(a: Attributes; weight: integer): Attributes 
 	begin 
 		assert(a # nil, 20)
 		assert(a.init, 21)
@@ -2953,7 +2953,7 @@ module TextModels
 	end NewWeight
 	
 	
-	proc WriteableChar*(ch: char): boolean
+	proc WriteableChar*(ch: wchar): boolean 
 	// must be identical to test in (StdWriter)WriteChar - inlined there for efficiency
 	begin 
 		return 
@@ -2965,14 +2965,14 @@ module TextModels
 	end WriteableChar
 	
 	
-	proc CloneOf*(source: Model): Model
+	proc CloneOf*(source: Model): Model 
 	begin 
 		assert(source # nil, 20)
 		return Containers.CloneOf(source)(Model)
 	end CloneOf
 	
 	
-	proc SetDir*(d: Directory)
+	proc SetDir*(d: Directory) 
 	begin 
 		assert(d # nil, 20)
 		assert(d.attr # nil, 21)

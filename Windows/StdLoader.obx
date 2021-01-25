@@ -88,7 +88,7 @@ module StdLoader
 		inp: Files.Reader
 		m: Kernel.Module
 	
-	proc Error(r: integer; impd, impg: ModSpec)
+	proc Error(r: integer; impd, impg: ModSpec) 
 	begin 
 		res := r
 		imported := impd.name
@@ -97,10 +97,10 @@ module StdLoader
 		end 
 	end Error
 	
-	proc Append(var s: array of char; t: array of char)
+	proc Append(var s: array of wchar; t: array of wchar) 
 		var 
 			len_, i, j: integer
-			ch: char
+			ch: wchar
 	begin 
 		len_ := len(s)
 		i := 0
@@ -117,7 +117,7 @@ module StdLoader
 		s[len_ - 1] := 0x
 	end Append
 	
-	proc ThisObjFile(var name: array of char): Files.File
+	proc ThisObjFile(var name: array of wchar): Files.File 
 		var 
 			f: Files.File
 			loc: Files.Locator
@@ -136,7 +136,7 @@ module StdLoader
 		return f
 	end ThisObjFile
 	
-	proc RWord(var x: integer)
+	proc RWord(var x: integer) 
 		var 
 			b: byte
 			y: integer
@@ -151,7 +151,7 @@ module StdLoader
 		x := y + 1000000h * b
 	end RWord
 	
-	proc RNum(var x: integer)
+	proc RNum(var x: integer) 
 		var 
 			b: byte
 			s, y: integer
@@ -167,7 +167,7 @@ module StdLoader
 		x := ash((b + 64) mod 128 - 64, s) + y
 	end RNum
 	
-	proc RName(var name: array of char)
+	proc RName(var name: array of wchar) 
 		var 
 			b: byte
 			i, n, res: integer
@@ -189,7 +189,7 @@ module StdLoader
 		assert(res = 0)
 	end RName
 	
-	proc Fixup(adr: integer; mod_: ModSpec)
+	proc Fixup(adr: integer; mod_: ModSpec) 
 		var 
 			link, offset, linkadr, t, n, x, low, hi: integer
 	begin 
@@ -242,7 +242,7 @@ module StdLoader
 		end 
 	end Fixup
 	
-	proc ReadHeader(mod_: ModSpec)
+	proc ReadHeader(mod_: ModSpec) 
 		var 
 			n, p: integer
 			name: Name
@@ -297,7 +297,7 @@ module StdLoader
 		end 
 	end ReadHeader
 	
-	proc ReadModule(mod_: ModSpec)
+	proc ReadModule(mod_: ModSpec) 
 		type 
 			BlockPtr = unsafe pointer to carray 1000000h of byte
 		var 
@@ -408,7 +408,7 @@ module StdLoader
 		mod_.file := nil
 	end ReadModule
 	
-	proc LoadMod(mod_: ModSpec)
+	proc LoadMod(mod_: ModSpec) 
 		var 
 			i: ModSpec
 			ok: boolean
@@ -472,7 +472,7 @@ module StdLoader
 		end 
 	end LoadMod
 	
-	proc (h: Hook) ThisMod(in name: array of char): Kernel.Module
+	proc (h: Hook) ThisMod(in name: array of wchar): Kernel.Module 
 		var 
 			m: Kernel.Module
 			ms: ModSpec

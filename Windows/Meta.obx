@@ -77,7 +77,7 @@ module Meta
 		recTypeScan = 4
 	
 	type 
-		Name* = array 256 of char
+		Name* = array 256 of wchar
 		
 		Value* = (* abstract *) record end  // to be extended once with a single field of any type
 		
@@ -107,7 +107,7 @@ module Meta
 				obj: Kernel.Object  // globScan, recVarScan, recTypeScan: actual object
 			end 
 		
-		LookupFilter* = proc (in path: array of char; var i: Item; var done: boolean)
+		LookupFilter* = proc (in path: array of wchar; var i: Item; var done: boolean)
 		
 		FilterHook = pointer to record 
 				next: FilterHook
@@ -120,7 +120,7 @@ module Meta
 			end 
 		
 		SStringPtr = unsafe pointer to carray of char
-		StringPtr = unsafe pointer to carray of char
+		StringPtr = unsafe pointer to carray of wchar
 	
 	var 
 		dummy: ArrayPtr // dummy object for item.ptr
@@ -143,12 +143,12 @@ module Meta
 	
 	
 	
-	proc DescOf(in x: ANYREC): Kernel.Type
+	proc DescOf(in x: ANYREC): Kernel.Type 
 	begin 
 		return SYSTEM.VAL(Kernel.Type, SYSTEM.TYP(x))
 	end DescOf
 	
-	proc TypOf(struct: Kernel.Type): integer
+	proc TypOf(struct: Kernel.Type): integer 
 	begin 
 		if SYSTEM.VAL(integer, struct) div 256 = 0 then
 			return SYSTEM.VAL(integer, struct) 
@@ -157,7 +157,7 @@ module Meta
 		end 
 	end TypOf
 	
-	proc LenOf(in i: Item): integer
+	proc LenOf(in i: Item): integer 
 	begin 
 		if i.desc.size_ # 0 then
 			return i.desc.size_ 
@@ -168,7 +168,7 @@ module Meta
 		end 
 	end LenOf
 	
-	proc SizeOf(in i: Item): integer
+	proc SizeOf(in i: Item): integer 
 		var 
 			el: Item
 	begin 
@@ -193,7 +193,7 @@ module Meta
 		end 
 	end SizeOf
 	
-	proc SignatureOf(in i: Item): Kernel.Signature
+	proc SignatureOf(in i: Item): Kernel.Signature 
 	begin 
 		if i.obj = procObj then
 			return SYSTEM.VAL(Kernel.Signature, i.desc) 
@@ -203,10 +203,10 @@ module Meta
 	end SignatureOf
 	
 	
-	proc GetName(in path: array of char; var name: array of char; var i: integer)
+	proc GetName(in path: array of wchar; var name: array of wchar; var i: integer) 
 		var 
 			j: integer
-			ch: char
+			ch: wchar
 	begin 
 		j := 0
 		ch := path[i]
@@ -223,10 +223,10 @@ module Meta
 		end 
 	end GetName
 	
-	proc LegalName(in name: array of char): boolean
+	proc LegalName(in name: array of wchar): boolean 
 		var 
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		ch := name[0]
@@ -240,7 +240,7 @@ module Meta
 	
 	// ---------- Item properties ----------
 	
-	proc (in i: Item) Valid*(): boolean // new
+	proc (in i: Item) Valid*(): boolean  // new
 	begin 
 		if i.ext # nil then
 			return i.ext.Valid() 
@@ -248,7 +248,7 @@ module Meta
 		return (i.ptr # nil) & ((i.mod_ = nil) or (i.mod_.refcnt >= 0)) & ((i.typ < recTyp) or (i.desc.mod_.refcnt >= 0))
 	end Valid
 	
-	proc (in i: Item) GetTypeName*(var mod_, type_: Name) // new
+	proc (in i: Item) GetTypeName*(var mod_, type_: Name)  // new
 		var 
 			modName: Kernel.Name
 			n: Kernel.Name
@@ -263,7 +263,7 @@ module Meta
 		type_ := n
 	end GetTypeName
 	
-	proc (in i: Item) BaseTyp*(): integer // new
+	proc (in i: Item) BaseTyp*(): integer  // new
 	begin 
 		if i.ext # nil then
 			return i.ext.BaseTyp() 
@@ -273,7 +273,7 @@ module Meta
 		return TypOf(i.desc.base[0])
 	end BaseTyp
 	
-	proc (in i: Item) Level*(): integer // new
+	proc (in i: Item) Level*(): integer  // new
 	begin 
 		assert(i.ext = nil, 31)
 		assert(i.ptr # nil, 20)
@@ -281,7 +281,7 @@ module Meta
 		return i.desc.id div 16 mod 16
 	end Level
 	
-	proc (in i: Item) Attribute*(): integer // new
+	proc (in i: Item) Attribute*(): integer  // new
 	begin 
 		assert(i.ext = nil, 31)
 		assert(i.ptr # nil, 20)
@@ -289,7 +289,7 @@ module Meta
 		return i.desc.id div 4 mod 4
 	end Attribute
 	
-	proc (in i: Item) Size*(): integer // new
+	proc (in i: Item) Size*(): integer  // new
 	begin 
 		if i.ext # nil then
 			return i.ext.Size() 
@@ -299,7 +299,7 @@ module Meta
 		return SizeOf(i)
 	end Size
 	
-	proc (in arr: Item) Len*(): integer // new
+	proc (in arr: Item) Len*(): integer  // new
 	begin 
 		if arr.ext # nil then
 			return arr.ext.Len() 
@@ -311,7 +311,7 @@ module Meta
 	
 	// ---------- Item generation ----------
 	
-	proc SetUndef(var i: Item)
+	proc SetUndef(var i: Item) 
 	begin 
 		i.typ := undef
 		i.obj := undef
@@ -323,7 +323,7 @@ module Meta
 		i.ext := nil
 	end SetUndef
 	
-	proc SetItem(var i: Item; obj: Kernel.Object; mod_: Kernel.Module)
+	proc SetItem(var i: Item; obj: Kernel.Object; mod_: Kernel.Module) 
 		var 
 			t: Kernel.Type
 	begin 
@@ -351,7 +351,7 @@ module Meta
 		i.ext := nil
 	end SetItem
 	
-	proc SetMod(var i: Item; mod_: Kernel.Module)
+	proc SetMod(var i: Item; mod_: Kernel.Module) 
 	begin 
 		i.obj := modObj
 		i.typ := undef
@@ -364,7 +364,7 @@ module Meta
 	end SetMod
 	
 	
-	proc GetItem*(obj: ANYPTR; var i: Item)
+	proc GetItem*(obj: ANYPTR; var i: Item) 
 	begin 
 		assert(obj # nil, 28)
 		i.obj := varObj
@@ -377,7 +377,7 @@ module Meta
 		i.ext := nil
 	end GetItem
 	
-	proc Lookup*(in name: array of char; var mod_: Item)
+	proc Lookup*(in name: array of wchar; var mod_: Item) 
 		var 
 			m: Kernel.Module
 			done: boolean
@@ -401,7 +401,7 @@ module Meta
 		end 
 	end Lookup
 	
-	proc (in in_: Item) Lookup*(in name: array of char; var i: Item) // new
+	proc (in in_: Item) Lookup*(in name: array of wchar; var i: Item)  // new
 		var 
 			obj: Kernel.Object
 			o, v, lev, j, a: integer
@@ -462,7 +462,7 @@ module Meta
 		end 
 	end Lookup
 	
-	proc (in i: Item) GetBaseType*(var base: Item) // new
+	proc (in i: Item) GetBaseType*(var base: Item)  // new
 		var 
 			n: integer
 	begin 
@@ -487,7 +487,7 @@ module Meta
 		end 
 	end GetBaseType
 	
-	proc (in rec: Item) GetThisBaseType*(level: integer; var base: Item) // new
+	proc (in rec: Item) GetThisBaseType*(level: integer; var base: Item)  // new
 	begin 
 		assert(rec.ext = nil, 31)
 		assert(rec.ptr # nil, 20)
@@ -507,7 +507,7 @@ module Meta
 		end 
 	end GetThisBaseType
 	
-	proc (in proc_: Item) NumParam*(): integer // new
+	proc (in proc_: Item) NumParam*(): integer  // new
 		var 
 			sig: Kernel.Signature
 	begin 
@@ -522,7 +522,7 @@ module Meta
 		end 
 	end NumParam
 	
-	proc (in proc_: Item) GetParam*(n: integer; var par: Item) // new
+	proc (in proc_: Item) GetParam*(n: integer; var par: Item)  // new
 		var 
 			sig: Kernel.Signature
 	begin 
@@ -544,7 +544,7 @@ module Meta
 		end 
 	end GetParam
 	
-	proc (in proc_: Item) GetParamName*(n: integer; var name: Name) // new
+	proc (in proc_: Item) GetParamName*(n: integer; var name: Name)  // new
 		var 
 			sig: Kernel.Signature
 			mod_: Kernel.Module
@@ -568,7 +568,7 @@ module Meta
 		end 
 	end GetParamName
 	
-	proc (in proc_: Item) GetReturnType*(var type_: Item) // new
+	proc (in proc_: Item) GetReturnType*(var type_: Item)  // new
 		var 
 			sig: Kernel.Signature
 	begin 
@@ -590,7 +590,7 @@ module Meta
 		end 
 	end GetReturnType
 	
-	proc (in rec: Item) Is*(in type_: Value): boolean // new
+	proc (in rec: Item) Is*(in type_: Value): boolean  // new
 		var 
 			d: Kernel.Type
 	begin 
@@ -614,7 +614,7 @@ module Meta
 		return rec.desc.base[d.id div 16 mod 16] = d // rec IS d
 	end Is
 	
-	proc (in ptr: Item) Deref*(var ref: Item) // new
+	proc (in ptr: Item) Deref*(var ref: Item)  // new
 	begin 
 		if ptr.ext # nil then
 			ptr.ext.Deref(ref)
@@ -648,7 +648,7 @@ module Meta
 		end 
 	end Deref
 	
-	proc (in arr: Item) Index*(index: integer; var elem: Item) // new
+	proc (in arr: Item) Index*(index: integer; var elem: Item)  // new
 	begin 
 		if arr.ext # nil then
 			arr.ext.Index(index, elem)
@@ -671,11 +671,11 @@ module Meta
 		end 
 	end Index
 	
-	proc LookupPath*(in path: array of char; var i: Item)
+	proc LookupPath*(in path: array of wchar; var i: Item) 
 		var 
 			j, n: integer
 			name: Name
-			ch: char
+			ch: wchar
 			done: boolean
 			filter: FilterHook
 	begin 
@@ -739,7 +739,7 @@ module Meta
 		s.eos := false
 	end ConnectToMods
 	
-	proc (var s: Scanner) ConnectTo*(in obj: Item) // new
+	proc (var s: Scanner) ConnectTo*(in obj: Item)  // new
 	begin 
 		assert(obj.ptr # nil, 20)
 		SetUndef(s.this)
@@ -820,7 +820,7 @@ module Meta
 		end 
 	end Scan
 	
-	proc (var s: Scanner) GetObjName*(var name: Name) // new
+	proc (var s: Scanner) GetObjName*(var name: Name)  // new
 		var 
 			mod_: Kernel.Module
 			n: Kernel.Name
@@ -841,7 +841,7 @@ module Meta
 		end 
 	end GetObjName
 	
-	proc (var s: Scanner) Level*(): integer // new
+	proc (var s: Scanner) Level*(): integer  // new
 	begin 
 		assert(s.this.ptr # nil, 20)
 		assert(s.mode >= recVarScan, 22)
@@ -850,7 +850,7 @@ module Meta
 	
 	// ---------- access to item values ----------
 	
-	proc ValToItem(in x: Value; var i: Item)
+	proc ValToItem(in x: Value; var i: Item) 
 		var 
 			desc: Kernel.Type
 	begin 
@@ -866,7 +866,7 @@ module Meta
 		i.adr := SYSTEM.ADR(x)
 	end ValToItem
 	
-	proc EqualType(a, b: Kernel.Type): boolean
+	proc EqualType(a, b: Kernel.Type): boolean 
 	begin 
 		loop 
 			if a = b then
@@ -894,7 +894,7 @@ module Meta
 		end 
 	end EqualType
 	
-	proc EqualSignature(a, b: Kernel.Signature): boolean
+	proc EqualSignature(a, b: Kernel.Signature): boolean 
 		var 
 			i: integer
 	begin 
@@ -912,7 +912,7 @@ module Meta
 		return true
 	end EqualSignature
 	
-	proc Copy(in a, b: Item; var ok: boolean) // b := a
+	proc Copy(in a, b: Item; var ok: boolean)  // b := a
 		var 
 			n: integer
 			at, bt: Item
@@ -967,7 +967,7 @@ module Meta
 		ok := true
 	end Copy
 	
-	proc (in proc_: Item) Call*(var ok: boolean) // new
+	proc (in proc_: Item) Call*(var ok: boolean)  // new
 		var 
 			p: Kernel.Command
 			sig: Kernel.Signature
@@ -995,7 +995,7 @@ module Meta
 	
 	proc PutParam(in par: Item; sig: Kernel.Signature; p: integer
 		var data: array of integer; var n: integer
-		var ok: boolean) // check & assign a parameter
+		var ok: boolean)  // check & assign a parameter
 		var 
 			mode, fTyp, aTyp, padr, i, top: integer
 			fDesc, aDesc: Kernel.Type
@@ -1131,7 +1131,7 @@ module Meta
 	end PutParam
 	
 	proc GetResult(ret: longint; var dest: Item; sig: Kernel.Signature
-		var ok: boolean) // assign return value
+		var ok: boolean)  // assign return value
 		var 
 			x: Item
 			i: integer
@@ -1164,7 +1164,7 @@ module Meta
 	end GetResult
 	
 	proc (in proc_: Item) ParamCall*(in par: array of Item; var dest: Item
-		var ok: boolean) // new
+		var ok: boolean)  // new
 		var 
 			n, p, adr, padr: integer
 			ret: longint
@@ -1202,7 +1202,7 @@ module Meta
 	end ParamCall
 	
 	proc (in proc_: Item) ParamCallVal*(in par: array of pointer to Value; var dest: Value
-		var ok: boolean) // new
+		var ok: boolean)  // new
 		type 
 			IP = pointer to Item
 		var 
@@ -1252,7 +1252,7 @@ module Meta
 		end 
 	end ParamCallVal
 	
-	proc (in var_: Item) GetVal*(var x: Value; var ok: boolean) // new
+	proc (in var_: Item) GetVal*(var x: Value; var ok: boolean)  // new
 		var 
 			xi: Item
 	begin 
@@ -1272,7 +1272,7 @@ module Meta
 		end 
 	end GetVal
 	
-	proc (in var_: Item) PutVal*(in x: Value; var ok: boolean) // new
+	proc (in var_: Item) PutVal*(in x: Value; var ok: boolean)  // new
 		var 
 			xi: Item
 	begin 
@@ -1292,7 +1292,7 @@ module Meta
 		end 
 	end PutVal
 	
-	proc (in var_: Item) GetStringVal*(var x: array of char; var ok: boolean) // new
+	proc (in var_: Item) GetStringVal*(var x: array of wchar; var ok: boolean)  // new
 		var 
 			i, n: integer
 			p: StringPtr
@@ -1320,7 +1320,7 @@ module Meta
 		end 
 	end GetStringVal
 	
-	proc (in var_: Item) GetSStringVal*(var x: array of char; var ok: boolean) // new
+	proc (in var_: Item) GetSStringVal*(var x: array of char; var ok: boolean)  // new
 		var 
 			i, n: integer
 			p: SStringPtr
@@ -1348,7 +1348,7 @@ module Meta
 		end 
 	end GetSStringVal
 	
-	proc (in var_: Item) PutStringVal*(in x: array of char; var ok: boolean) // new
+	proc (in var_: Item) PutStringVal*(in x: array of wchar; var ok: boolean)  // new
 		var 
 			i: integer
 			p: StringPtr
@@ -1375,7 +1375,7 @@ module Meta
 		end 
 	end PutStringVal
 	
-	proc (in var_: Item) PutSStringVal*(in x: array of char; var ok: boolean) // new
+	proc (in var_: Item) PutSStringVal*(in x: array of char; var ok: boolean)  // new
 		var 
 			i: integer
 			p: SStringPtr
@@ -1402,7 +1402,7 @@ module Meta
 		end 
 	end PutSStringVal
 	
-	proc (in var_: Item) PtrVal*(): ANYPTR // new
+	proc (in var_: Item) PtrVal*(): ANYPTR  // new
 		var 
 			p: ANYPTR
 	begin 
@@ -1417,7 +1417,7 @@ module Meta
 		return p
 	end PtrVal
 	
-	proc (in var_: Item) PutPtrVal*(x: ANYPTR) // new
+	proc (in var_: Item) PutPtrVal*(x: ANYPTR)  // new
 		var 
 			vt, xt: Kernel.Type
 	begin 
@@ -1438,10 +1438,10 @@ module Meta
 		SYSTEM.PUT(var_.adr, x)
 	end PutPtrVal
 	
-	proc (in var_: Item) IntVal*(): integer // new
+	proc (in var_: Item) IntVal*(): integer  // new
 		var 
 			sc: char
-			ch: char
+			ch: wchar
 			s: byte
 			i: shortint
 			x: integer
@@ -1472,7 +1472,7 @@ module Meta
 		return x
 	end IntVal
 	
-	proc (in var_: Item) PutIntVal*(x: integer) // new
+	proc (in var_: Item) PutIntVal*(x: integer)  // new
 	begin 
 		if var_.ext # nil then
 			var_.ext.PutIntVal(x)
@@ -1497,10 +1497,10 @@ module Meta
 		end 
 	end PutIntVal
 	
-	proc (in var_: Item) RealVal*(): real // new
+	proc (in var_: Item) RealVal*(): longreal  // new
 		var 
 			r: real
-			x: real
+			x: longreal
 	begin 
 		if var_.ext # nil then
 			return var_.ext.RealVal() 
@@ -1519,7 +1519,7 @@ module Meta
 		return x
 	end RealVal
 	
-	proc (in var_: Item) PutRealVal*(x: real) // new
+	proc (in var_: Item) PutRealVal*(x: longreal)  // new
 	begin 
 		if var_.ext # nil then
 			var_.ext.PutRealVal(x)
@@ -1530,7 +1530,7 @@ module Meta
 		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
 		assert(var_.vis = exported, 27)
 		if var_.typ = sRealTyp then
-			SYSTEM.PUT(var_.adr, (x)) 
+			SYSTEM.PUT(var_.adr, short(x)) 
 		elsif var_.typ = realTyp then 
 			SYSTEM.PUT(var_.adr, x) 
 		else 
@@ -1538,7 +1538,7 @@ module Meta
 		end 
 	end PutRealVal
 	
-	proc (in var_: Item) LongVal*(): longint // new
+	proc (in var_: Item) LongVal*(): longint  // new
 		var 
 			x: longint
 	begin 
@@ -1553,7 +1553,7 @@ module Meta
 		return x
 	end LongVal
 	
-	proc (in var_: Item) PutLongVal*(x: longint) // new
+	proc (in var_: Item) PutLongVal*(x: longint)  // new
 	begin 
 		if var_.ext # nil then
 			var_.ext.PutLongVal(x)
@@ -1567,9 +1567,9 @@ module Meta
 		SYSTEM.PUT(var_.adr, x)
 	end PutLongVal
 	
-	proc (in var_: Item) CharVal*(): char // new
+	proc (in var_: Item) CharVal*(): wchar  // new
 		var 
-			x: char
+			x: wchar
 			s: char
 	begin 
 		if var_.ext # nil then
@@ -1589,7 +1589,7 @@ module Meta
 		return x
 	end CharVal
 	
-	proc (in var_: Item) PutCharVal*(x: char) // new
+	proc (in var_: Item) PutCharVal*(x: wchar)  // new
 	begin 
 		if var_.ext # nil then
 			var_.ext.PutCharVal(x)
@@ -1608,7 +1608,7 @@ module Meta
 		end 
 	end PutCharVal
 	
-	proc (in var_: Item) BoolVal*(): boolean // new
+	proc (in var_: Item) BoolVal*(): boolean  // new
 		var 
 			x: boolean
 	begin 
@@ -1623,7 +1623,7 @@ module Meta
 		return x
 	end BoolVal
 	
-	proc (in var_: Item) PutBoolVal*(x: boolean) // new
+	proc (in var_: Item) PutBoolVal*(x: boolean)  // new
 	begin 
 		if var_.ext # nil then
 			var_.ext.PutBoolVal(x)
@@ -1637,7 +1637,7 @@ module Meta
 		SYSTEM.PUT(var_.adr, x)
 	end PutBoolVal
 	
-	proc (in var_: Item) SetVal*(): set // new
+	proc (in var_: Item) SetVal*(): set  // new
 		var 
 			x: set
 	begin 
@@ -1652,7 +1652,7 @@ module Meta
 		return x
 	end SetVal
 	
-	proc (in var_: Item) PutSetVal*(x: set) // new
+	proc (in var_: Item) PutSetVal*(x: set)  // new
 	begin 
 		if var_.ext # nil then
 			var_.ext.PutSetVal(x)
@@ -1666,7 +1666,7 @@ module Meta
 		SYSTEM.PUT(var_.adr, x)
 	end PutSetVal
 	
-	proc (in type_: Item) New*(): ANYPTR // new
+	proc (in type_: Item) New*(): ANYPTR  // new
 		var 
 			p: ANYPTR
 			i, n, id: integer
@@ -1694,7 +1694,7 @@ module Meta
 		return p
 	end New
 	
-	proc (in val_: Item) Copy*(): ANYPTR // new
+	proc (in val_: Item) Copy*(): ANYPTR  // new
 		var 
 			p: ANYPTR
 			i, n, id: integer
@@ -1719,7 +1719,7 @@ module Meta
 		return p
 	end Copy
 	
-	proc (in rec: Item) CallWith*(proc_: proc (var rec, par: ANYREC); var par: ANYREC) // new
+	proc (in rec: Item) CallWith*(proc_: proc (var rec, par: ANYREC); var par: ANYREC)  // new
 	begin 
 		assert(rec.ext = nil, 31)
 		assert(rec.ptr # nil, 20)
@@ -1730,7 +1730,7 @@ module Meta
 	end CallWith
 	
 	
-	proc InstallFilter*(filter: LookupFilter)
+	proc InstallFilter*(filter: LookupFilter) 
 		var 
 			h: FilterHook
 	begin 
@@ -1741,7 +1741,7 @@ module Meta
 		filterHook := h
 	end InstallFilter
 	
-	proc UninstallFilter*(filter: LookupFilter)
+	proc UninstallFilter*(filter: LookupFilter) 
 		var 
 			h, a: FilterHook
 	begin 
@@ -1761,7 +1761,7 @@ module Meta
 		end 
 	end UninstallFilter
 	
-	proc GetThisItem*(in attr: ANYREC; var i: Item)
+	proc GetThisItem*(in attr: ANYREC; var i: Item) 
 	begin 
 		with attr: Kernel.ItemAttr do 
 			i.obj := attr.obj
@@ -1770,7 +1770,7 @@ module Meta
 			i.adr := attr.adr
 			i.mod_ := attr.mod_
 			i.desc := attr.desc
-			i.ptr := attr.ptr // lhs: pointer to record, rhs: SYSTEM.PTR
+			i.ptr := attr.ptr
 			i.ext := attr.ext
 			if i.ptr = nil then
 				i.ptr := dummy 

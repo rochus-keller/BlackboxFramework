@@ -50,7 +50,7 @@ module StdHeaders
 	
 	type 
 		Banner* = record 
-				left*, right*: array 128 of char
+				left*, right*: array 128 of wchar
 				gap*: integer 
 			end 
 		
@@ -93,10 +93,10 @@ module StdHeaders
 				head*, foot*: Banner 
 			end 
 	
-	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean)
+	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean) 
 		var 
 			valid: set
-		proc Equal(in b1, b2: Banner): boolean
+		proc Equal(in b1, b2: Banner): boolean 
 		begin 
 			return (b1.left = b2.left) & (b1.right = b2.right) & (b1.gap = b2.gap)
 		end Equal
@@ -145,7 +145,7 @@ module StdHeaders
 		Views.Update(v, Views.keepFrames)
 	end Do
 	
-	proc DoChangeFontOp(v: View; font: Fonts.Font)
+	proc DoChangeFontOp(v: View; font: Fonts.Font) 
 		var 
 			op: ChangeFontOp
 	begin 
@@ -184,7 +184,7 @@ module StdHeaders
 	end Do
 	
 	proc DoChangeAttrOp(v: View; alternate, showFoot: boolean; number: NumberInfo
-		head, foot: Banner)
+		head, foot: Banner) 
 		var 
 			op: ChangeAttrOp
 	begin 
@@ -198,7 +198,7 @@ module StdHeaders
 		Views.Do(v, "#Std:HeaderChange", op)
 	end DoChangeAttrOp
 	
-	proc (v: View) CopyFromSimpleView(source: Views.View)
+	proc (v: View) CopyFromSimpleView(source: Views.View) 
 	begin 
 		with source: View do 
 			v.alternate := source.alternate
@@ -211,7 +211,7 @@ module StdHeaders
 		end 
 	end CopyFromSimpleView
 	
-	proc (v: View) Externalize(var wr: Stores.Writer)
+	proc (v: View) Externalize(var wr: Stores.Writer) 
 	begin 
 		v.Externalize^(wr)
 		wr.WriteVersion(maxVersion)
@@ -231,7 +231,7 @@ module StdHeaders
 		wr.WriteBool(v.showFoot)
 	end Externalize
 	
-	proc (v: View) Internalize(var rd: Stores.Reader)
+	proc (v: View) Internalize(var rd: Stores.Reader) 
 		var 
 			version: integer
 			typeface: Fonts.Typeface
@@ -282,7 +282,7 @@ module StdHeaders
 		end 
 	end Internalize
 	
-	proc SetProp(v: View; msg: Properties.SetMsg)
+	proc SetProp(v: View; msg: Properties.SetMsg) 
 		var 
 			p: Properties.Property
 			typeface: Fonts.Typeface
@@ -350,7 +350,7 @@ module StdHeaders
 		end 
 	end SetProp
 	
-	proc PollProp(v: View; var msg: Properties.PollMsg)
+	proc PollProp(v: View; var msg: Properties.PollMsg) 
 		var 
 			sp: Properties.StdProp
 			p: Prop
@@ -375,7 +375,7 @@ module StdHeaders
 		Properties.Insert(msg.prop, p)
 	end PollProp
 	
-	proc PageMsg(v: View; msg: TextViews.PageMsg)
+	proc PageMsg(v: View; msg: TextViews.PageMsg) 
 	begin 
 		if Printing.par # nil then
 			Dialog.MapString(v.head.left, Printing.par.header.left)
@@ -393,7 +393,7 @@ module StdHeaders
 		end 
 	end PageMsg
 	
-	proc (v: View) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (v: View) Restore(f: Views.Frame; l, t, r, b: integer) 
 		var  // line: Line;
 			d, w, h: integer
 			asc, dsc, x0, x1, y: integer
@@ -449,7 +449,7 @@ module StdHeaders
 		Printing.PrintBanner(f, pageInfo, banner, date, time, x0, x1, y)
 	end Restore
 	
-	proc (v: View) HandlePropMsg(var msg: Properties.Message)
+	proc (v: View) HandlePropMsg(var msg: Properties.Message) 
 		var 
 			asc, dsc, w: integer
 	begin 
@@ -474,7 +474,7 @@ module StdHeaders
 	end HandlePropMsg
 	
 	proc (v: View) HandleCtrlMsg(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 	begin 
 		with msg: Properties.EmitMsg do 
 			Views.HandlePropMsg(v, msg.set_) 
@@ -484,7 +484,7 @@ module StdHeaders
 		end 
 	end HandleCtrlMsg
 	
-	proc New*(p: Prop; f: Fonts.Font): Views.View
+	proc New*(p: Prop; f: Fonts.Font): Views.View 
 		var 
 			v: View
 	begin 
@@ -557,7 +557,7 @@ module StdHeaders
 		Properties.EmitProp(nil, p)
 	end Set
 	
-	proc HeaderGuard*(var par: Dialog.Par)
+	proc HeaderGuard*(var par: Dialog.Par) 
 		var 
 			v: Views.View
 	begin 
@@ -574,7 +574,7 @@ module StdHeaders
 		end 
 	end HeaderGuard
 	
-	proc AlternateGuard*(var par: Dialog.Par)
+	proc AlternateGuard*(var par: Dialog.Par) 
 	begin 
 		HeaderGuard(par)
 		if ~par.disabled then
@@ -582,7 +582,7 @@ module StdHeaders
 		end 
 	end AlternateGuard
 	
-	proc NewNumberGuard*(var par: Dialog.Par)
+	proc NewNumberGuard*(var par: Dialog.Par) 
 	begin 
 		HeaderGuard(par)
 		if ~par.disabled then

@@ -76,7 +76,7 @@ module HostFiles
 		retry = -9
 	
 	type 
-		FullName* = array pathLen of char
+		FullName* = array pathLen of wchar
 		
 		Locator* = pointer to record (Files.Locator) 
 				path-: FullName // without trailing "/"
@@ -134,7 +134,7 @@ module HostFiles
 	
 	
 	var 
-		MapParamString*: proc (in_, p0, p1, p2: array of char; var out: array of char)
+		MapParamString*: proc (in_, p0, p1, p2: array of wchar; var out: array of wchar)
 		appName-: FullName
 		ignoreAsk-: boolean // file/directory operations ignore the 'ask' parameter and don't ask; used for scripting
 		dir: Directory
@@ -144,7 +144,7 @@ module HostFiles
 		res: integer
 	
 	
-	proc Error(n: integer): integer
+	proc Error(n: integer): integer 
 		var 
 			res: integer
 	begin 
@@ -170,10 +170,10 @@ module HostFiles
 		return res
 	end Error
 	
-	proc Diff(in a, b: array of char; caseSens: boolean): integer
+	proc Diff(in a, b: array of wchar; caseSens: boolean): integer 
 		var 
 			i: integer
-			cha, chb: char
+			cha, chb: wchar
 	begin 
 		i := 0
 		repeat 
@@ -206,12 +206,12 @@ module HostFiles
 		return 0
 	end Diff
 	
-	proc NewLocator*(in fname: array of char): Locator
+	proc NewLocator*(in fname: array of wchar): Locator 
 		var 
 			loc: Locator
 			res, n, max_, i: integer
 			root: FullName
-			ch: char
+			ch: wchar
 			f: set
 	begin 
 		new(loc)
@@ -250,10 +250,10 @@ module HostFiles
 		return loc
 	end NewLocator
 	
-	proc GetType(in name: array of char; var type_: Files.Type)
+	proc GetType(in name: array of wchar; var type_: Files.Type) 
 		var 
 			i, j: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		j := 0
@@ -277,12 +277,12 @@ module HostFiles
 		type_[j] := 0x
 	end GetType
 	
-	proc Append(in path, name: array of char; type_: Files.Type; max_: integer
-		var res: array of char
-		)
+	proc Append(in path, name: array of wchar; type_: Files.Type; max_: integer
+		var res: array of wchar
+		) 
 		var 
 			i, j, n, m, dot: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		while path[i] # 0x do 
@@ -348,7 +348,7 @@ module HostFiles
 		res[i] := 0x
 	end Append
 	
-	proc CloseFileHandle(f: File; var res: integer)
+	proc CloseFileHandle(f: File; var res: integer) 
 	begin 
 		if (f.ref = invalid) or (WinApi.CloseHandle(f.ref) # 0) then // !!!
 			res := ok 
@@ -358,7 +358,7 @@ module HostFiles
 		f.ref := invalid
 	end CloseFileHandle
 	
-	proc CloseFile(f: File; var res: integer)
+	proc CloseFile(f: File; var res: integer) 
 		var 
 			s: integer
 	begin 
@@ -383,7 +383,7 @@ module HostFiles
 		end 
 	end FINALIZE
 	
-	proc (var id: Identifier) Identified(): boolean
+	proc (var id: Identifier) Identified(): boolean 
 		var 
 			f: File
 	begin 
@@ -391,7 +391,7 @@ module HostFiles
 		return (f.state in {shared, exclusive}) & (Diff(f.name, id.name, f.loc.caseSens) = 0)
 	end Identified
 	
-	proc ThisFile(in name: FullName): File
+	proc ThisFile(in name: FullName): File 
 		var 
 			id: Identifier
 			p: ANYPTR
@@ -406,7 +406,7 @@ module HostFiles
 		end 
 	end ThisFile
 	
-	proc (var s: Searcher) Identified(): boolean
+	proc (var s: Searcher) Identified(): boolean 
 		var 
 			f: File
 	begin 
@@ -435,7 +435,7 @@ module HostFiles
 		end 
 	end SearchFileToClose
 	
-	proc NewFileRef(state: integer; var name: FullName): WinApi.HANDLE
+	proc NewFileRef(state: integer; var name: FullName): WinApi.HANDLE 
 	begin 
 		if state = create then
 			return WinApi.CreateFileW(name, WinApi.GENERIC_READ + WinApi.GENERIC_WRITE, {}, 
@@ -449,7 +449,7 @@ module HostFiles
 		end 
 	end NewFileRef
 	
-	proc OpenFile(state: integer; var name: FullName; var ref, res: integer)
+	proc OpenFile(state: integer; var name: FullName; var ref, res: integer) 
 	begin 
 		ref := NewFileRef(state, name)
 		if ref = invalid then
@@ -477,10 +477,10 @@ module HostFiles
 		end 
 	end OpenFile
 	
-	proc GetTempFileName(in path: FullName; var name: FullName; num: integer)
+	proc GetTempFileName(in path: FullName; var name: FullName; num: integer) 
 		var 
 			i: integer
-			str: array 16 of char
+			str: array 16 of wchar
 	begin 
 		str := tempName
 		i := 7
@@ -492,7 +492,7 @@ module HostFiles
 		Append(path, str, "", 8, name)
 	end GetTempFileName
 	
-	proc CreateFile(f: File; var res: integer)
+	proc CreateFile(f: File; var res: integer) 
 		var 
 			num, n: integer
 	begin 
@@ -510,7 +510,7 @@ module HostFiles
 		end 
 	end CreateFile
 	
-	proc Delete(in fname, path: FullName; var res: integer)
+	proc Delete(in fname, path: FullName; var res: integer) 
 		var 
 			num, n, s: integer
 			f: File
@@ -557,7 +557,7 @@ module HostFiles
 		end 
 	end Delete
 	
-	proc FlushBuffer(f: File; i: integer)
+	proc FlushBuffer(f: File; i: integer) 
 		var 
 			buf: Buffer
 			res, h: integer
@@ -584,7 +584,7 @@ module HostFiles
 	
 	// File
 	
-	proc (f: File) NewReader(old: Files.Reader): Files.Reader
+	proc (f: File) NewReader(old: Files.Reader): Files.Reader 
 		var 
 			r: Reader
 	begin  // portable
@@ -603,7 +603,7 @@ module HostFiles
 		return r
 	end NewReader
 	
-	proc (f: File) NewWriter(old: Files.Writer): Files.Writer
+	proc (f: File) NewWriter(old: Files.Writer): Files.Writer 
 		var 
 			w: Writer
 	begin  // portable
@@ -622,7 +622,7 @@ module HostFiles
 		return w
 	end NewWriter
 	
-	proc (f: File) Length(): integer
+	proc (f: File) Length(): integer 
 	begin  // portable
 		return f.len_
 	end Length
@@ -638,7 +638,7 @@ module HostFiles
 		end 
 	end Flush
 	
-	proc GetPath(in fname: FullName; var path: FullName)
+	proc GetPath(in fname: FullName; var path: FullName) 
 		var 
 			i: integer
 	begin 
@@ -650,7 +650,7 @@ module HostFiles
 		path[i] := 0x
 	end GetPath
 	
-	proc CreateDir(in path: FullName; var res: integer)
+	proc CreateDir(in path: FullName; var res: integer) 
 		var 
 			sec: WinApi.SECURITY_ATTRIBUTES
 			p: FullName
@@ -681,10 +681,10 @@ module HostFiles
 		end 
 	end CreateDir
 	
-	proc CheckPath(var path: FullName; ask: boolean; var res: integer)
+	proc CheckPath(var path: FullName; ask: boolean; var res: integer) 
 		var 
-			s: array 300 of char
-			t: array 32 of char
+			s: array 300 of wchar
+			t: array 32 of wchar
 	begin 
 		if ask & ~ignoreAsk then
 			if MapParamString # nil then
@@ -705,10 +705,10 @@ module HostFiles
 		end 
 	end CheckPath
 	
-	proc CheckDelete(in fname, path: FullName; ask: boolean; var res: integer)
+	proc CheckDelete(in fname, path: FullName; ask: boolean; var res: integer) 
 		var 
-			s: array 300 of char
-			t: array 16 of char
+			s: array 300 of wchar
+			t: array 16 of wchar
 	begin 
 		repeat 
 			Delete(fname, path, res)
@@ -744,7 +744,7 @@ module HostFiles
 		until res # retry 
 	end CheckDelete
 	
-	proc (f: File) Register(name: Files.Name; type_: Files.Type; ask: boolean; var res: integer)
+	proc (f: File) Register(name: Files.Name; type_: Files.Type; ask: boolean; var res: integer) 
 		var 
 			b: integer
 			fname: FullName
@@ -796,19 +796,19 @@ module HostFiles
 		end 
 	end Close
 	
-	proc (f: File) Closed(): boolean
+	proc (f: File) Closed(): boolean 
 	begin 
 		return f.state = closed
 	end Closed
 	
-	proc (f: File) Shared(): boolean
+	proc (f: File) Shared(): boolean 
 	begin 
 		return f.state = shared
 	end Shared
 	
 	// Locator
 	
-	proc (loc: Locator) This*(in path: array of char): Locator
+	proc (loc: Locator) This*(in path: array of wchar): Locator 
 		var 
 			new_: Locator
 			i: integer
@@ -850,7 +850,7 @@ module HostFiles
 	
 	// Reader
 	
-	proc (r: Reader) Base(): Files.File
+	proc (r: Reader) Base(): Files.File 
 	begin  // portable
 		return r.base
 	end Base
@@ -862,7 +862,7 @@ module HostFiles
 	   END Available; *)
 	
 	
-	proc (r: Reader) SetPos(pos: integer)
+	proc (r: Reader) SetPos(pos: integer) 
 		var 
 			f: File
 			org, offset, i, count, res: integer
@@ -928,13 +928,13 @@ module HostFiles
 	// r.offset <= r.buf.len
 	end SetPos
 	
-	proc (r: Reader) Pos(): integer
+	proc (r: Reader) Pos(): integer 
 	begin  // portable
 		assert(r.base # nil, 20)
 		return r.org + r.offset
 	end Pos
 	
-	proc (r: Reader) ReadByte(var x: byte)
+	proc (r: Reader) ReadByte(var x: byte) 
 	begin  // portable
 		if (r.org # r.buf.org) or (r.offset >= bufsize) then
 			r.SetPos(r.org + r.offset) 
@@ -948,7 +948,7 @@ module HostFiles
 		end 
 	end ReadByte
 	
-	proc (r: Reader) ReadBytes(var x: array of byte; beg, len_: integer)
+	proc (r: Reader) ReadBytes(var x: array of byte; beg, len_: integer) 
 		var 
 			from, to_, count, restInBuf: integer
 	begin  // portable
@@ -985,12 +985,12 @@ module HostFiles
 	
 	// Writer
 	
-	proc (w: Writer) Base(): Files.File
+	proc (w: Writer) Base(): Files.File 
 	begin  // portable
 		return w.base
 	end Base
 	
-	proc (w: Writer) SetPos(pos: integer)
+	proc (w: Writer) SetPos(pos: integer) 
 		var 
 			f: File
 			org, offset, i, count, res: integer
@@ -1055,13 +1055,13 @@ module HostFiles
 	// w.offset <= w.buf.len
 	end SetPos
 	
-	proc (w: Writer) Pos(): integer
+	proc (w: Writer) Pos(): integer 
 	begin  // portable
 		assert(w.base # nil, 20)
 		return w.org + w.offset
 	end Pos
 	
-	proc (w: Writer) WriteByte(x: byte)
+	proc (w: Writer) WriteByte(x: byte) 
 	begin  // portable
 		assert(w.base.state # closed, 25)
 		if (w.org # w.buf.org) or (w.offset >= bufsize) then
@@ -1076,7 +1076,7 @@ module HostFiles
 		inc(w.offset)
 	end WriteByte
 	
-	proc (w: Writer) WriteBytes(in x: array of byte; beg, len_: integer)
+	proc (w: Writer) WriteBytes(in x: array of byte; beg, len_: integer) 
 		var 
 			from, to_, count, restInBuf: integer
 	begin  // portable
@@ -1115,12 +1115,12 @@ module HostFiles
 	
 	// Directory
 	
-	proc (d: Directory) This(in path: array of char): Files.Locator
+	proc (d: Directory) This(in path: array of wchar): Files.Locator 
 	begin 
 		return d.startup.This(path)
 	end This
 	
-	proc (d: Directory) New(loc: Files.Locator; ask: boolean): Files.File
+	proc (d: Directory) New(loc: Files.Locator; ask: boolean): Files.File 
 		var 
 			f: File
 			res: integer
@@ -1163,7 +1163,7 @@ module HostFiles
 		return f
 	end New
 	
-	proc (d: Directory) Temp(): Files.File
+	proc (d: Directory) Temp(): Files.File 
 		var 
 			f: File
 	begin 
@@ -1177,7 +1177,7 @@ module HostFiles
 		return f
 	end Temp
 	
-	proc GetShadowDir(loc: Locator; var dir: FullName)
+	proc GetShadowDir(loc: Locator; var dir: FullName) 
 		var 
 			i, j: integer
 	begin 
@@ -1192,7 +1192,7 @@ module HostFiles
 		dir[i] := 0x
 	end GetShadowDir
 	
-	proc (d: Directory) Old(loc: Files.Locator; name: Files.Name; shrd: boolean): Files.File
+	proc (d: Directory) Old(loc: Files.Locator; name: Files.Name; shrd: boolean): Files.File 
 		var 
 			res, i, j: integer
 			f: File
@@ -1260,7 +1260,7 @@ module HostFiles
 		return f
 	end Old
 	
-	proc (d: Directory) Delete*(loc: Files.Locator; name: Files.Name)
+	proc (d: Directory) Delete*(loc: Files.Locator; name: Files.Name) 
 		var 
 			res: integer
 			fname: FullName
@@ -1275,7 +1275,7 @@ module HostFiles
 		loc.res := Error(res)
 	end Delete
 	
-	proc (d: Directory) Rename*(loc: Files.Locator; old, new_: Files.Name; ask: boolean)
+	proc (d: Directory) Rename*(loc: Files.Locator; old, new_: Files.Name; ask: boolean) 
 		var 
 			res, i: integer
 			oldname, newname, tn: FullName
@@ -1331,7 +1331,7 @@ module HostFiles
 	end Rename
 	
 	proc (d: Directory) SameFile*(loc0: Files.Locator; name0: Files.Name
-		loc1: Files.Locator; name1: Files.Name): boolean
+		loc1: Files.Locator; name1: Files.Name): boolean 
 		var 
 			p0, p1: FullName
 	begin 
@@ -1346,7 +1346,7 @@ module HostFiles
 		return Diff(p0, p1, loc0(Locator).caseSens) = 0
 	end SameFile
 	
-	proc (d: Directory) FileList*(loc: Files.Locator): Files.FileInfo
+	proc (d: Directory) FileList*(loc: Files.Locator): Files.FileInfo 
 		var 
 			i, res, firstRes, diff: integer
 			info, first, last: Files.FileInfo
@@ -1498,7 +1498,7 @@ module HostFiles
 		return first
 	end FileList
 	
-	proc (d: Directory) LocList*(loc: Files.Locator): Files.LocInfo
+	proc (d: Directory) LocList*(loc: Files.Locator): Files.LocInfo 
 		var 
 			i, res, firstRes, diff: integer
 			first, last, info: Files.LocInfo
@@ -1625,14 +1625,14 @@ module HostFiles
 		return first
 	end LocList
 	
-	proc (d: Directory) GetFileName(name: Files.Name; type_: Files.Type; var filename: Files.Name)
+	proc (d: Directory) GetFileName(name: Files.Name; type_: Files.Type; var filename: Files.Name) 
 	begin 
 		Append("", name, type_, len(filename), filename)
 	end GetFileName
 	
 	// Miscellaneous
 	
-	proc (var id: Counter) Identified(): boolean
+	proc (var id: Counter) Identified(): boolean 
 		var 
 			f: File
 	begin 
@@ -1643,7 +1643,7 @@ module HostFiles
 		return false
 	end Identified
 	
-	proc NofFiles*(): integer
+	proc NofFiles*(): integer 
 		var 
 			p: ANYPTR
 			cnt: Counter
@@ -1654,7 +1654,7 @@ module HostFiles
 		return cnt.count
 	end NofFiles
 	
-	proc GetModDate*(f: Files.File; var year, month, day, hour, minute, second: integer)
+	proc GetModDate*(f: Files.File; var year, month, day, hour, minute, second: integer) 
 		var 
 			res: integer
 			ft: WinApi.FILETIME
@@ -1671,7 +1671,7 @@ module HostFiles
 		second := st.wSecond
 	end GetModDate
 	
-	proc SetRootDir*(path: array of char)
+	proc SetRootDir*(path: array of wchar) 
 		var 
 			i: integer
 	begin 
@@ -1684,9 +1684,9 @@ module HostFiles
 		startupLen := i
 	end SetRootDir
 	
-	proc GetName*(var p: WinApi.PtrWSTR; var i: integer; var name, opt: FullName)
+	proc GetName*(var p: WinApi.PtrWSTR; var i: integer; var name, opt: FullName) 
 		var 
-			ch, tch: char
+			ch, tch: wchar
 			j: integer
 	begin 
 		j := 0

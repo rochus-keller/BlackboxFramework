@@ -32,10 +32,10 @@ module StdApi
 	
 	// Auxiliary procedures
 	
-	proc CheckQualident(var str, mod_, name: array of char)
+	proc CheckQualident(var str, mod_, name: array of wchar) 
 		var 
 			i, j: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		repeat 
@@ -62,7 +62,7 @@ module StdApi
 		end 
 	end CheckQualident
 	
-	proc FileExists(loc: Files.Locator; in name: array of char): boolean
+	proc FileExists(loc: Files.Locator; in name: array of wchar): boolean 
 		var 
 			fi: Files.FileInfo
 			found: boolean
@@ -76,11 +76,11 @@ module StdApi
 		return found
 	end FileExists
 	
-	proc PathToSpec(in path: array of char; var loc: Files.Locator; var name: Files.Name
-		useLang: boolean)
+	proc PathToSpec(in path: array of wchar; var loc: Files.Locator; var name: Files.Name
+		useLang: boolean) 
 		var 
 			i, j: integer
-			ch: char
+			ch: wchar
 			nameUpper, fn: Files.Name
 			langParent: Files.Locator
 	begin 
@@ -126,7 +126,7 @@ module StdApi
 		end 
 	end PathToSpec
 	
-	proc ThisDialog(dialog: array of char; useLang: boolean): Views.View
+	proc ThisDialog(dialog: array of wchar; useLang: boolean): Views.View 
 		var 
 			fname, submod, sub, mod_: Files.Name
 			canCreate: boolean
@@ -186,7 +186,7 @@ module StdApi
 		return v
 	end ThisDialog
 	
-	proc ThisMask(param: array of char; useLang: boolean): Views.View
+	proc ThisMask(param: array of wchar; useLang: boolean): Views.View 
 		var 
 			v: Views.View
 			c: Containers.Controller
@@ -212,7 +212,7 @@ module StdApi
 	
 	// Interface procedures
 	
-	proc CloseDialog*(var closedView: Views.View)
+	proc CloseDialog*(var closedView: Views.View) 
 		const 
 			canClose = {Windows.neverDirty, Windows.isTool, Windows.isAux}
 		var 
@@ -238,7 +238,7 @@ module StdApi
 		end 
 	end CloseDialog
 	
-	proc OpenAux*(file, title: array of char; var v: Views.View)
+	proc OpenAux*(file, title: array of wchar; var v: Views.View) 
 		var 
 			loc: Files.Locator
 			name: Files.Name
@@ -260,7 +260,7 @@ module StdApi
 		end 
 	end OpenAux
 	
-	proc OpenAuxDialog*(file, title: array of char; var v: Views.View)
+	proc OpenAuxDialog*(file, title: array of wchar; var v: Views.View) 
 		var 
 			t0: Views.Title
 			done: boolean
@@ -281,7 +281,7 @@ module StdApi
 	   In order to be able to browse and edit at the same time, i.e. in two different domains, the
 	   isAux flag is used to distinguish between both. *)
 	
-	proc OpenBrowser*(file, title: array of char; var v: Views.View)
+	proc OpenBrowser*(file, title: array of wchar; var v: Views.View) 
 		var 
 			loc: Files.Locator
 			name: Files.Name
@@ -318,7 +318,7 @@ module StdApi
 		end 
 	end OpenBrowser
 	
-	proc OpenDoc*(file: array of char; var v: Views.View)
+	proc OpenDoc*(file: array of wchar; var v: Views.View) 
 		var 
 			loc: Files.Locator
 			name: Files.Name
@@ -342,7 +342,7 @@ module StdApi
 		end 
 	end OpenDoc
 	
-	proc OpenCopyOf*(file: array of char; var v: Views.View)
+	proc OpenCopyOf*(file: array of wchar; var v: Views.View) 
 		var 
 			loc: Files.Locator
 			name: Files.Name
@@ -372,7 +372,7 @@ module StdApi
 		end 
 	end OpenCopyOf
 	
-	proc OpenToolDialog*(file, title: array of char; var v: Views.View)
+	proc OpenToolDialog*(file, title: array of wchar; var v: Views.View) 
 		var 
 			t0: Views.Title
 			done: boolean

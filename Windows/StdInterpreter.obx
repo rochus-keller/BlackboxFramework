@@ -35,7 +35,7 @@ module StdInterpreter
 		CallHook = pointer to record (Dialog.CallHook) end 
 	
 	
-	proc (hook: CallHook) Call(in proc_, errorMsg: array of char; var res: integer)
+	proc (hook: CallHook) Call(in proc_, errorMsg: array of wchar; var res: integer) 
 		type 
 			Ident = Kernel.Name
 		const 
@@ -68,16 +68,16 @@ module StdInterpreter
 			int_ = 8
 		var 
 			i, type_: integer
-			ch: char
+			ch: wchar
 			id: Ident
 			x: integer
 			par: array 100 of pointer to Meta.Value
 			numPar: integer
 		
-		proc Concat(a, b: array of char; var c: array of char)
+		proc Concat(a, b: array of wchar; var c: array of wchar) 
 			var 
 				i, j: integer
-				ch: char
+				ch: wchar
 		begin 
 			if a = " " then
 				Dialog.MapString("#System:CommandError", c) 
@@ -101,9 +101,9 @@ module StdInterpreter
 			c[i] := 0x
 		end Concat
 		
-		proc Error(n: integer; msg, par0, par1: array of char)
+		proc Error(n: integer; msg, par0, par1: array of wchar) 
 			var 
-				e, f: array 256 of char
+				e, f: array 256 of wchar
 		begin 
 			if res = 0 then
 				res := n
@@ -116,7 +116,7 @@ module StdInterpreter
 			end 
 		end Error
 		
-		proc Init(var s: array of char)
+		proc Init(var s: array of wchar) 
 			var 
 				i: integer
 		begin 
@@ -127,10 +127,10 @@ module StdInterpreter
 			end 
 		end Init
 		
-		proc ShowLoaderResult(in mod_: array of char)
+		proc ShowLoaderResult(in mod_: array of wchar) 
 			var 
 				res: integer
-				importing, imported, object: array 256 of char
+				importing, imported, object: array 256 of wchar
 		begin 
 			Kernel.GetLoaderResult(res, importing, imported, object)
 			case res of 
@@ -151,7 +151,7 @@ module StdInterpreter
 			end 
 		end ShowLoaderResult
 		
-		proc CallProc(in mod_, proc_: array of char)
+		proc CallProc(in mod_, proc_: array of wchar) 
 			var 
 				i, t: Meta.Item
 				ok: boolean
@@ -191,7 +191,7 @@ module StdInterpreter
 		proc Scan
 			var 
 				j: integer
-				num: array 32 of char
+				num: array 32 of wchar
 				r: integer
 		begin 
 			if res = 0 then
@@ -245,7 +245,7 @@ module StdInterpreter
 			end 
 		end Scan
 		
-		proc String(var s: array of char)
+		proc String(var s: array of wchar) 
 			var 
 				j: integer
 		begin 
@@ -268,7 +268,7 @@ module StdInterpreter
 			end 
 		end String
 		
-		proc ParamList()
+		proc ParamList() 
 			var 
 				iv: IntValue
 				sv: StrValue

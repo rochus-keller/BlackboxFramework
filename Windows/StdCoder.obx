@@ -54,12 +54,12 @@ module StdCoder
 	
 	var 
 		par*: ParList
-		code: array 64 of char
+		code: array 64 of wchar
 		revCode: array 256 of byte
 		table: array N of byte
 		stdDocuType: Files.Type
 	
-	proc NofSelections(in list: Dialog.Selection): integer
+	proc NofSelections(in list: Dialog.Selection): integer 
 		var 
 			i, n: integer
 	begin 
@@ -74,7 +74,7 @@ module StdCoder
 		return n
 	end NofSelections
 	
-	proc ShowError(n: integer; par: array of char)
+	proc ShowError(n: integer; par: array of wchar) 
 	begin 
 		Dialog.Beep
 		case n of 
@@ -101,11 +101,11 @@ module StdCoder
 		end 
 	end ShowError
 	
-	proc ShowSizeMsg(x: integer)
+	proc ShowSizeMsg(x: integer) 
 		var 
 			i, j: integer
-			ch: char
-			s: array 20 of char
+			ch: wchar
+			s: array 20 of wchar
 	begin 
 		assert(x >= 0, 20)
 		i := 0
@@ -127,7 +127,7 @@ module StdCoder
 		Dialog.ShowParamStatus("#Std:^0 characters coded", s, "", "")
 	end ShowSizeMsg
 	
-	proc Write(dest: TextModels.Writer; x: integer; var n: integer)
+	proc Write(dest: TextModels.Writer; x: integer; var n: integer) 
 	begin 
 		dest.WriteChar(code[x])
 		inc(n)
@@ -139,12 +139,12 @@ module StdCoder
 	end Write
 	
 	proc WriteHeader(dest: TextModels.Writer; var n: integer
-		name: array of char; type_: byte
-		)
+		name: array of wchar; type_: byte
+		) 
 		var 
 			byte_, bit, i, res: integer
-			ch: char
-			tag: array 16 of char
+			ch: wchar
+			tag: array 16 of wchar
 			utf8: Kernel.Utf8Name
 	begin 
 		tag := Tag
@@ -181,10 +181,10 @@ module StdCoder
 		Write(dest, type_, n)
 	end WriteHeader
 	
-	proc WriteFileType(dest: TextModels.Writer; var n: integer; t: Files.Type)
+	proc WriteFileType(dest: TextModels.Writer; var n: integer; t: Files.Type) 
 		var 
 			byte_, bit, i: integer
-			ch: char
+			ch: wchar
 	begin 
 		if t = Kernel.docType then
 			t := stdDocuType 
@@ -209,7 +209,7 @@ module StdCoder
 		end 
 	end WriteFileType
 	
-	proc WriteFile(dest: TextModels.Writer; var n: integer; f: Files.File)
+	proc WriteFile(dest: TextModels.Writer; var n: integer; f: Files.File) 
 		var 
 			hash, byte_, bit, i, j, sum, len_: integer
 			src: Files.Reader
@@ -268,9 +268,9 @@ module StdCoder
 		end 
 	end WriteFile
 	
-	proc Read(src: TextModels.Reader; var x: integer; var res: integer)
+	proc Read(src: TextModels.Reader; var x: integer; var res: integer) 
 		var 
-			ch: char
+			ch: wchar
 	begin 
 		if res = 0 then
 			repeat 
@@ -286,7 +286,7 @@ module StdCoder
 		end 
 	end Read
 	
-	proc Utf8ToString(in in_: array of char; var out: array of char)
+	proc Utf8ToString(in in_: array of char; var out: array of wchar) 
 		var 
 			res: integer
 	begin 
@@ -295,12 +295,12 @@ module StdCoder
 	end Utf8ToString
 	
 	proc ReadHeader(src: TextModels.Reader; var res: integer
-		var name: array of char; var type_: byte
-		)
+		var name: array of wchar; var type_: byte
+		) 
 		var 
 			x, bit, i, j: integer
-			ch: char
-			tag: array 16 of char
+			ch: wchar
+			tag: array 16 of wchar
 			utf8: Kernel.Utf8Name
 	begin 
 		tag := Tag
@@ -350,10 +350,10 @@ module StdCoder
 		end 
 	end ReadHeader
 	
-	proc ReadFileType(src: TextModels.Reader; var res: integer; var ftype: Files.Type)
+	proc ReadFileType(src: TextModels.Reader; var res: integer; var ftype: Files.Type) 
 		var 
 			x, bit, i, j: integer
-			ch: char
+			ch: wchar
 	begin 
 		res := 0
 		i := 0
@@ -378,7 +378,7 @@ module StdCoder
 		end 
 	end ReadFileType
 	
-	proc ReadFile(src: TextModels.Reader; var res: integer; f: Files.File)
+	proc ReadFile(src: TextModels.Reader; var res: integer; f: Files.File) 
 		var 
 			hash, x, bit, i, j, len_, sum, s: integer
 			byte_: byte
@@ -446,7 +446,7 @@ module StdCoder
 		end 
 	end ReadFile
 	
-	proc ShowText(t: TextModels.Model)
+	proc ShowText(t: TextModels.Model) 
 		var 
 			l: integer
 			v: Views.View
@@ -467,7 +467,7 @@ module StdCoder
 		Views.SetDirty(v)
 	end ShowText
 	
-	proc EncodedView*(v: Views.View): TextModels.Model
+	proc EncodedView*(v: Views.View): TextModels.Model 
 		var 
 			n: integer
 			f: Files.File
@@ -553,10 +553,10 @@ module StdCoder
 		end 
 	end EncodeFile
 	
-	proc GetFile(var path: array of char; var loc: Files.Locator; var name: Files.Name)
+	proc GetFile(var path: array of wchar; var loc: Files.Locator; var name: Files.Name) 
 		var 
 			i, j: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		ch := path[0]
@@ -583,11 +583,11 @@ module StdCoder
 		path[i] := 0x
 	end GetFile
 	
-	proc ReadPath(rd: TextModels.Reader; var path: array of char; var len_: integer)
+	proc ReadPath(rd: TextModels.Reader; var path: array of wchar; var len_: integer) 
 		var 
 			i, l: integer
-			ch: char
-			quote: char
+			ch: wchar
+			quote: wchar
 	begin 
 		i := 0
 		l := len(path) - 1
@@ -609,7 +609,7 @@ module StdCoder
 		len_ := i
 	end ReadPath
 	
-	proc WriteString(w: Files.Writer; in str: array of char; len_: integer)
+	proc WriteString(w: Files.Writer; in str: array of wchar; len_: integer) 
 		var 
 			i, res: integer
 			utf8: Kernel.Utf8Name
@@ -646,7 +646,7 @@ module StdCoder
 			t: TextModels.Model
 			c: TextControllers.Controller
 			name: Files.Name
-			path, next: array 2048 of char
+			path, next: array 2048 of wchar
 	begin 
 		c := TextControllers.Focus()
 		if (c # nil) & c.HasSelection() then
@@ -717,7 +717,7 @@ module StdCoder
 		end 
 	end EncodeFileList
 	
-	proc DecodeView(rd: TextModels.Reader; name: Files.Name)
+	proc DecodeView(rd: TextModels.Reader; name: Files.Name) 
 		var 
 			res: integer
 			f: Files.File
@@ -742,7 +742,7 @@ module StdCoder
 		end 
 	end DecodeView
 	
-	proc DecodeFile(rd: TextModels.Reader; name: Files.Name)
+	proc DecodeFile(rd: TextModels.Reader; name: Files.Name) 
 		var 
 			res: integer
 			ftype: Files.Type
@@ -775,7 +775,7 @@ module StdCoder
 		end 
 	end DecodeFile
 	
-	proc DecodeFileList(rd: TextModels.Reader; var files: FileList; var len_, res: integer)
+	proc DecodeFileList(rd: TextModels.Reader; var files: FileList; var len_, res: integer) 
 		var 
 			i, n: integer
 			b: byte
@@ -838,7 +838,7 @@ module StdCoder
 		end 
 	end DecodeFileList
 	
-	proc OpenDialog(files: FileList; len_: integer)
+	proc OpenDialog(files: FileList; len_: integer) 
 		var 
 			i: integer
 			p: FileList
@@ -867,7 +867,7 @@ module StdCoder
 		Dialog.Update(par)
 	end CloseDialog
 	
-	proc Select*(op, from, to_: integer)
+	proc Select*(op, from, to_: integer) 
 		var 
 			p: FileList
 			i: integer
@@ -888,7 +888,7 @@ module StdCoder
 		end 
 	end Select
 	
-	proc CopyFile(from: Files.File; loc: Files.Locator; name: Files.Name; type_: Files.Type)
+	proc CopyFile(from: Files.File; loc: Files.Locator; name: Files.Name; type_: Files.Type) 
 		const 
 			BufSize = 4096
 		var 
@@ -958,7 +958,7 @@ module StdCoder
 		end 
 	end StoreSelection
 	
-	proc StoreSelectionGuard*(var p: Dialog.Par)
+	proc StoreSelectionGuard*(var p: Dialog.Par) 
 		var 
 			n: integer
 	begin 
@@ -988,12 +988,12 @@ module StdCoder
 		end 
 	end StoreSingle
 	
-	proc StoreSingleGuard*(var p: Dialog.Par)
+	proc StoreSingleGuard*(var p: Dialog.Par) 
 	begin 
 		p.disabled := NofSelections(par.list) # 1
 	end StoreSingleGuard
 	
-	proc StoreAllFiles(files: FileList)
+	proc StoreAllFiles(files: FileList) 
 		var 
 			loc: Files.Locator
 			name: Files.Name
@@ -1010,7 +1010,7 @@ module StdCoder
 		StoreAllFiles(par.files)
 	end StoreAll
 	
-	proc DecodeAllFromText*(text: TextModels.Model; beg: integer; ask: boolean)
+	proc DecodeAllFromText*(text: TextModels.Model; beg: integer; ask: boolean) 
 		var 
 			res, i: integer
 			type_: byte
@@ -1072,7 +1072,7 @@ module StdCoder
 		end 
 	end Decode
 	
-	proc ListFiles(rd: TextModels.Reader; var wr: TextMappers.Formatter)
+	proc ListFiles(rd: TextModels.Reader; var wr: TextMappers.Formatter) 
 		var 
 			i, n, res: integer
 			b: byte
@@ -1122,7 +1122,7 @@ module StdCoder
 		end 
 	end ListFiles
 	
-	proc ListSingleton(type_, name: array of char; var wr: TextMappers.Formatter)
+	proc ListSingleton(type_, name: array of wchar; var wr: TextMappers.Formatter) 
 	begin 
 		wr.WriteString(type_)
 		if name # "" then
@@ -1133,7 +1133,7 @@ module StdCoder
 		wr.WriteLn
 	end ListSingleton
 	
-	proc EncodedInText*(text: TextModels.Model; beg: integer): TextModels.Model
+	proc EncodedInText*(text: TextModels.Model; beg: integer): TextModels.Model 
 		var 
 			res, i: integer
 			type_: byte

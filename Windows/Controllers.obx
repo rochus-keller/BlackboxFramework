@@ -122,7 +122,7 @@ module Controllers
 		EditMsg* = record (RequestMessage) 
 				op*: integer // IN
 				modifiers*: set // IN, valid if op IN {pasteChar, pasteLchar}
-				char_*: char // IN, valid if op = pasteChar
+				char_*: wchar // IN, valid if op = pasteChar
 				view*: Views.View; w*, h*: integer // IN, valid if op  = paste
 				// OUT, valid if op IN {cut, copy}
 				isSingle*: boolean // dito
@@ -230,7 +230,7 @@ module Controllers
 		prevPath := nil
 	end Cleanup
 	
-	proc NewPathInfo(): PathInfo
+	proc NewPathInfo(): PathInfo 
 		var 
 			c: PathInfo
 	begin 
@@ -243,7 +243,7 @@ module Controllers
 		return c
 	end NewPathInfo
 	
-	proc DisposePathInfo(c: PathInfo)
+	proc DisposePathInfo(c: PathInfo) 
 	begin 
 		c.prev := cache
 		cache := c
@@ -252,7 +252,7 @@ module Controllers
 	
 	// Controller
 	
-	proc (c: Controller) Internalize-(var rd: Stores.Reader) // extensible
+	proc (c: Controller) Internalize-(var rd: Stores.Reader)  // extensible
 		// pre: ~c.init
 		// post: c.init
 		var 
@@ -262,7 +262,7 @@ module Controllers
 		rd.ReadVersion(minVersion, maxVersion, thisVersion)
 	end Internalize
 	
-	proc (c: Controller) Externalize-(var wr: Stores.Writer) // extensible
+	proc (c: Controller) Externalize-(var wr: Stores.Writer)  // extensible
 	// pre: c.init
 	begin 
 		c.Externalize^(wr)
@@ -272,10 +272,10 @@ module Controllers
 	
 	// Forwarder
 	
-	proc (f: Forwarder) Forward*(target: boolean; var msg: Message) end // new abstract
-	proc (f: Forwarder) Transfer*(var msg: TransferMessage) end // new abstract
+	proc (f: Forwarder) Forward*(target: boolean; var msg: Message)  end // new abstract
+	proc (f: Forwarder) Transfer*(var msg: TransferMessage)  end // new abstract
 	
-	proc Register*(f: Forwarder)
+	proc Register*(f: Forwarder) 
 		var 
 			t: Forwarder
 	begin 
@@ -290,7 +290,7 @@ module Controllers
 		end 
 	end Register
 	
-	proc Delete*(f: Forwarder)
+	proc Delete*(f: Forwarder) 
 		var 
 			t: Forwarder
 	begin 
@@ -310,7 +310,7 @@ module Controllers
 	end Delete
 	
 	
-	proc ForwardVia*(target: boolean; var msg: Message)
+	proc ForwardVia*(target: boolean; var msg: Message) 
 		var 
 			t: Forwarder
 	begin 
@@ -321,7 +321,7 @@ module Controllers
 		end 
 	end ForwardVia
 	
-	proc SetCurrentPath*(target: boolean)
+	proc SetCurrentPath*(target: boolean) 
 		var 
 			p: PathInfo
 	begin 
@@ -350,12 +350,12 @@ module Controllers
 		end 
 	end ResetCurrentPath
 	
-	proc Forward*(var msg: Message)
+	proc Forward*(var msg: Message) 
 	begin 
 		ForwardVia(path, msg)
 	end Forward
 	
-	proc PollOps*(var msg: PollOpsMsg)
+	proc PollOps*(var msg: PollOpsMsg) 
 	begin 
 		msg.type_ := ""
 		msg.pasteType := ""
@@ -365,7 +365,7 @@ module Controllers
 		Forward(msg)
 	end PollOps
 	
-	proc PollCursor*(x, y: integer; modifiers: set; var cursor: integer)
+	proc PollCursor*(x, y: integer; modifiers: set; var cursor: integer) 
 		var 
 			msg: PollCursorMsg
 	begin 
@@ -377,7 +377,7 @@ module Controllers
 		cursor := msg.cursor
 	end PollCursor
 	
-	proc Transfer*(x, y: integer; source: Views.Frame; sourceX, sourceY: integer; var msg: TransferMessage)
+	proc Transfer*(x, y: integer; source: Views.Frame; sourceX, sourceY: integer; var msg: TransferMessage) 
 		var 
 			t: Forwarder
 	begin 
@@ -400,7 +400,7 @@ module Controllers
 		type_: Stores.TypeName
 		isSingle: boolean
 		w, h, rx, ry: integer
-		var dest: Views.Frame; var destX, destY: integer)
+		var dest: Views.Frame; var destX, destY: integer) 
 		var 
 			msg: PollDropMsg
 	begin 
@@ -421,7 +421,7 @@ module Controllers
 	end PollDrop
 	
 	proc Drop*(x, y: integer; source: Views.Frame; sourceX, sourceY: integer
-		view: Views.View; isSingle: boolean; w, h, rx, ry: integer)
+		view: Views.View; isSingle: boolean; w, h, rx, ry: integer) 
 		var 
 			msg: DropMsg
 	begin 
@@ -436,7 +436,7 @@ module Controllers
 		Transfer(x, y, source, sourceX, sourceY, msg)
 	end Drop
 	
-	proc PasteView*(view: Views.View; w, h: integer; clipboard: boolean)
+	proc PasteView*(view: Views.View; w, h: integer; clipboard: boolean) 
 		var 
 			msg: EditMsg
 	begin 
@@ -451,7 +451,7 @@ module Controllers
 	end PasteView
 	
 	
-	proc FocusFrame*(): Views.Frame
+	proc FocusFrame*(): Views.Frame 
 		var 
 			msg: PollFocusMsg
 	begin 
@@ -460,7 +460,7 @@ module Controllers
 		return msg.focus
 	end FocusFrame
 	
-	proc FocusView*(): Views.View
+	proc FocusView*(): Views.View 
 		var 
 			focus: Views.Frame
 	begin 
@@ -472,7 +472,7 @@ module Controllers
 		end 
 	end FocusView
 	
-	proc FocusModel*(): Models.Model
+	proc FocusModel*(): Models.Model 
 		var 
 			focus: Views.Frame
 	begin 
@@ -485,7 +485,7 @@ module Controllers
 	end FocusModel
 	
 	
-	proc HandleCtrlMsgs(op: integer; f, g: Views.Frame; var msg: Message; var mark, front, req: boolean)
+	proc HandleCtrlMsgs(op: integer; f, g: Views.Frame; var msg: Message; var mark, front, req: boolean) 
 		// g = f.up OR g = NIL
 		const 
 			pre = 0

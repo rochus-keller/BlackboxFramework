@@ -32,25 +32,25 @@ module Printers
 		dir-, stdDir-: Directory
 	
 	
-	proc (p: Printer) OpenJob*(var copies: integer; name: array of char) end // new abstract
-	proc (p: Printer) CloseJob*() end // new abstract
-	proc (p: Printer) OpenPage*() end // new abstract
-	proc (p: Printer) ClosePage*() end // new abstract
+	proc (p: Printer) OpenJob*(var copies: integer; name: array of wchar)  end // new abstract
+	proc (p: Printer) CloseJob*()  end // new abstract
+	proc (p: Printer) OpenPage*()  end // new abstract
+	proc (p: Printer) ClosePage*()  end // new abstract
 	
-	proc (p: Printer) SetOrientation*(landscape: boolean) end // new empty
+	proc (p: Printer) SetOrientation*(landscape: boolean)  end // new empty
 	
-	proc (p: Printer) InitPort*(port: Ports.Port) // new
+	proc (p: Printer) InitPort*(port: Ports.Port)  // new
 	begin 
 		assert((p.port = nil) or (p.port = port), 20)
 		p.port := port
 	end InitPort
 	
-	proc (p: Printer) ThisPort*(): Ports.Port // new
+	proc (p: Printer) ThisPort*(): Ports.Port  // new
 	begin 
 		return p.port
 	end ThisPort
 	
-	proc (p: Printer) GetRect*(var l, t, r, b: integer) // new
+	proc (p: Printer) GetRect*(var l, t, r, b: integer)  // new
 	begin 
 		l := p.l
 		t := p.t
@@ -58,7 +58,7 @@ module Printers
 		b := p.b
 	end GetRect
 	
-	proc (p: Printer) InitPrinter*(l, t, r, b: integer) // new
+	proc (p: Printer) InitPrinter*(l, t, r, b: integer)  // new
 	begin 
 		assert(l <= r, 20)
 		assert(t <= b, 21)
@@ -70,12 +70,12 @@ module Printers
 	end InitPrinter
 	
 	
-	proc (d: Directory) Default*(): Printer end // new abstract
-	proc (d: Directory) Current*(): Printer end // new abstract
-	proc (d: Directory) Available*(): boolean end // new abstract
+	proc (d: Directory) Default*(): Printer  end // new abstract
+	proc (d: Directory) Current*(): Printer  end // new abstract
+	proc (d: Directory) Available*(): boolean  end // new abstract
 	
 	
-	proc SetDir*(d: Directory)
+	proc SetDir*(d: Directory) 
 	begin 
 		assert(d # nil, 20)
 		dir := d

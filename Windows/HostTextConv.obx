@@ -52,48 +52,48 @@ module HostTextConv
 	
 	// MemReader
 	
-	proc (r: MemReader) Base(): Files.File
+	proc (r: MemReader) Base(): Files.File 
 	begin 
 		return nil
 	end Base
 	
-	proc (r: MemReader) Pos(): integer
+	proc (r: MemReader) Pos(): integer 
 	begin 
 		return r.pos
 	end Pos
 	
-	proc (r: MemReader) SetPos(pos: integer)
+	proc (r: MemReader) SetPos(pos: integer) 
 	begin 
 		r.pos := pos
 	end SetPos
 	
-	proc (r: MemReader) ReadByte(var x: byte)
+	proc (r: MemReader) ReadByte(var x: byte) 
 	begin 
 		SYSTEM.GET(r.adr + r.pos, x)
 		inc(r.pos)
 	end ReadByte
 	
-	proc (r: MemReader) ReadBytes(var x: array of byte; beg, len_: integer)
+	proc (r: MemReader) ReadBytes(var x: array of byte; beg, len_: integer) 
 	begin 
 		halt(126)
 	end ReadBytes
 	
 	
-	proc GenGlobalMedium(hg: WinApi.HGLOBAL; unk: COM.IUnknown; var sm: WinOle.STGMEDIUM)
+	proc GenGlobalMedium(hg: WinApi.HGLOBAL; unk: COM.IUnknown; var sm: WinOle.STGMEDIUM) 
 	begin 
 		sm.tymed := WinOle.TYMED_HGLOBAL
 		sm.u.hGlobal := hg
 		sm.pUnkForRelease := unk
 	end GenGlobalMedium
 	
-	proc MediumGlobal(var sm: WinOle.STGMEDIUM): WinApi.HGLOBAL
+	proc MediumGlobal(var sm: WinOle.STGMEDIUM): WinApi.HGLOBAL 
 	begin 
 		assert(sm.tymed = WinOle.TYMED_HGLOBAL, 20)
 		return sm.u.hGlobal
 	end MediumGlobal
 	
 	
-	proc WriteWndChar(wr: TextModels.Writer; ch: char)
+	proc WriteWndChar(wr: TextModels.Writer; ch: wchar) 
 	begin 
 		case ch of 
 			| CR, TAB, " " .. 7ex, 0a0x .. 0ffx: 
@@ -158,7 +158,7 @@ module HostTextConv
 		end 
 	end WriteWndChar
 	
-	proc ThisWndChar(ch: char): char
+	proc ThisWndChar(ch: wchar): wchar 
 	begin 
 		if ch >= 100x then
 			if (ch >= 0ef00x) & (ch <= 0efffx) then
@@ -226,7 +226,7 @@ module HostTextConv
 		return ch
 	end ThisWndChar
 	
-	proc ParseRichText(rd: Files.Reader; wr: TextModels.Writer; var defRuler: TextRulers.Ruler)
+	proc ParseRichText(rd: Files.Reader; wr: TextModels.Writer; var defRuler: TextRulers.Ruler) 
 		type 
 			FontInfo = pointer to record id, codePage: integer; f: Fonts.Typeface; next: FontInfo end 
 			ColorInfo = pointer to record id: integer; c: Ports.Color; next: ColorInfo end 
@@ -247,7 +247,7 @@ module HostTextConv
 			fonts, font: FontInfo
 			colors: ColorInfo
 			hasNum, skipDest: boolean
-			comm: array 32 of char
+			comm: array 32 of wchar
 			c, con: Context
 			p0: Properties.Property
 			p: TextRulers.Prop
@@ -256,17 +256,17 @@ module HostTextConv
 			skipCnt, uniCnt: integer
 			hyperlinkCtx: Context
 			idx2: integer
-			fieldStr: array 1024 of char
+			fieldStr: array 1024 of wchar
 			v: Views.View
 			tableCtx: Context
 			trgaph, ansiCodePage: integer
 			superOrSubCtx: Context
 			// buffer for code-page to Unicode conversion; by buffering we get multi-byte decoding for free
 			cpSrc: pointer to array of char
-			cpDst: pointer to array of char
+			cpDst: pointer to array of wchar
 			cpLen, cpPos: integer
 		
-		proc Color(i: integer): ColorInfo
+		proc Color(i: integer): ColorInfo 
 			var 
 				c: ColorInfo
 		begin 
@@ -279,7 +279,7 @@ module HostTextConv
 			return c
 		end Color
 		
-		proc SetColor(i: integer; c: Ports.Color)
+		proc SetColor(i: integer; c: Ports.Color) 
 			var 
 				ci: ColorInfo
 		begin 
@@ -290,7 +290,7 @@ module HostTextConv
 			colors := ci
 		end SetColor
 		
-		proc Font(i: integer): FontInfo
+		proc Font(i: integer): FontInfo 
 			var 
 				f: FontInfo
 		begin 
@@ -306,7 +306,7 @@ module HostTextConv
 			return f
 		end Font
 		
-		proc Next(var ch: char)
+		proc Next(var ch: char) 
 			var 
 				b: byte
 		begin 
@@ -314,7 +314,7 @@ module HostTextConv
 			ch := short(chr(b))
 		end Next
 		
-		proc WriteDest(ch: char)
+		proc WriteDest(ch: wchar) 
 		begin 
 			if skipCnt > 0 then
 				dec(skipCnt) 
@@ -336,7 +336,7 @@ module HostTextConv
 			end 
 		end WriteDest
 		
-		proc WriteCP(ch: char)
+		proc WriteCP(ch: char) 
 			var 
 				s: pointer to array of char
 		begin 
@@ -351,7 +351,7 @@ module HostTextConv
 			inc(cpPos)
 		end WriteCP
 		
-		proc FlushCP()
+		proc FlushCP() 
 			var 
 				i, res, cp: integer
 		begin 
@@ -380,7 +380,7 @@ module HostTextConv
 			end 
 		end FlushCP
 		
-		proc Write(ch: char)
+		proc Write(ch: wchar) 
 		begin 
 			FlushCP
 			WriteDest(ch)
@@ -408,10 +408,10 @@ module HostTextConv
 			paraPos := wr.Pos()
 		end Paragraph
 		
-		proc Trim(var str: array of char)
+		proc Trim(var str: array of wchar) 
 			var 
 				i, j: integer
-				ch: char
+				ch: wchar
 		begin 
 			i := 0
 			ch := str[0]
@@ -1064,11 +1064,11 @@ module HostTextConv
 		end 
 	end ParseRichText
 	
-	proc ConvertToRichText(in_: TextViews.View; beg, end_: integer; var out: TextModels.Model)
+	proc ConvertToRichText(in_: TextViews.View; beg, end_: integer; var out: TextModels.Model) 
 		var 
 			r: TextModels.Reader
 			w: TextMappers.Formatter
-			ch: char
+			ch: wchar
 			f: Fonts.Font
 			attr, attr0: TextModels.Attributes
 			col: Ports.Color
@@ -1357,7 +1357,7 @@ module HostTextConv
 	
 	
 	proc ImportDText*(var med: WinOle.STGMEDIUM; var v: Views.View
-		var w, h: integer; var isSingle: boolean)
+		var w, h: integer; var isSingle: boolean) 
 		var 
 			t: TextModels.Model
 			res, adr: integer
@@ -1396,7 +1396,7 @@ module HostTextConv
 	end ImportDText
 	
 	proc ImportDRichText*(var med: WinOle.STGMEDIUM; var v: Views.View
-		var w, h: integer; var isSingle: boolean)
+		var w, h: integer; var isSingle: boolean) 
 		var 
 			t: TextModels.Model
 			res, adr: integer
@@ -1431,12 +1431,12 @@ module HostTextConv
 	end ImportDRichText
 	
 	proc ImportDUnicode*(var med: WinOle.STGMEDIUM; var v: Views.View
-		var w, h: integer; var isSingle: boolean)
+		var w, h: integer; var isSingle: boolean) 
 		var 
 			t: TextModels.Model
 			res, adr: integer
 			wr: TextModels.Writer
-			uc: char
+			uc: wchar
 			hnd: WinApi.HANDLE
 			attr: TextModels.Attributes
 			p: Properties.StdProp
@@ -1476,11 +1476,11 @@ module HostTextConv
 	
 	proc ExportDText*(
 		v: Views.View; w, h, x, y: integer; isSingle: boolean; var med: WinOle.STGMEDIUM
-		)
+		) 
 		var 
 			t: TextModels.Model
 			r: TextModels.Reader
-			ch: char
+			ch: wchar
 			res, len_, adr: integer
 			hnd: WinApi.HANDLE
 	begin 
@@ -1519,11 +1519,11 @@ module HostTextConv
 	
 	proc ExportDRichText*(
 		v: Views.View; w, h, x, y: integer; isSingle: boolean; var med: WinOle.STGMEDIUM
-		)
+		) 
 		var 
 			t: TextModels.Model
 			r: TextModels.Reader
-			ch: char
+			ch: wchar
 			res, adr: integer
 			hnd: WinApi.HANDLE
 	begin 
@@ -1550,11 +1550,11 @@ module HostTextConv
 	
 	proc ExportDUnicode*(
 		v: Views.View; w, h, x, y: integer; isSingle: boolean; var med: WinOle.STGMEDIUM
-		)
+		) 
 		var 
 			t: TextModels.Model
 			r: TextModels.Reader
-			ch: char
+			ch: wchar
 			res, len_, adr: integer
 			hnd: WinApi.HANDLE
 	begin 
@@ -1595,7 +1595,7 @@ module HostTextConv
 		end 
 	end ExportDUnicode
 	
-	proc ImportText*(f: Files.File; var s: Stores.Store)
+	proc ImportText*(f: Files.File; var s: Stores.Store) 
 		var 
 			r: Stores.Reader
 			t: TextModels.Model
@@ -1621,7 +1621,7 @@ module HostTextConv
 		s := TextViews.dir.New(t)
 	end ImportText
 	
-	proc ImportTabText*(f: Files.File; var s: Stores.Store)
+	proc ImportTabText*(f: Files.File; var s: Stores.Store) 
 		var 
 			r: Stores.Reader
 			t: TextModels.Model
@@ -1650,7 +1650,7 @@ module HostTextConv
 		s := TextViews.dir.New(t)
 	end ImportTabText
 	
-	proc ImportRichText*(f: Files.File; var s: Stores.Store)
+	proc ImportRichText*(f: Files.File; var s: Stores.Store) 
 		var 
 			t: TextModels.Model
 			wr: TextModels.Writer
@@ -1666,7 +1666,7 @@ module HostTextConv
 		s(TextViews.View).SetDefaults(ruler, TextModels.dir.attr)
 	end ImportRichText
 	
-	proc ImportUnicode*(f: Files.File; var s: Stores.Store)
+	proc ImportUnicode*(f: Files.File; var s: Stores.Store) 
 		var 
 			r: Stores.Reader
 			t: TextModels.Model
@@ -1674,7 +1674,7 @@ module HostTextConv
 			w: TextModels.Writer
 			ch0, ch1: char
 			len_: integer
-			uc: char
+			uc: wchar
 			rev: boolean
 	begin 
 		assert(f # nil, 20)
@@ -1706,14 +1706,14 @@ module HostTextConv
 		s := v
 	end ImportUnicode
 	
-	proc ImportDosText*(f: Files.File; var s: Stores.Store)
+	proc ImportDosText*(f: Files.File; var s: Stores.Store) 
 		var 
 			r: Stores.Reader
 			t: TextModels.Model
 			wr: TextModels.Writer
 			ch, nch: char
 		
-		proc ConvertChar(wr: TextModels.Writer; ch: char)
+		proc ConvertChar(wr: TextModels.Writer; ch: wchar) 
 		// PC Code Page Mappings M4 (Latin) to Unicode Encoding
 		// Reference: The Unicode Standard, Version 1.0, Vol 1, Addison Wesley, p. 536
 		begin 
@@ -1943,7 +1943,7 @@ module HostTextConv
 		s := TextViews.dir.New(t)
 	end ImportDosText
 	
-	proc TextView(s: Stores.Store): Stores.Store
+	proc TextView(s: Stores.Store): Stores.Store 
 	begin 
 		if s is Views.View then
 			return Properties.ThisType(s(Views.View), "TextViews.View") 
@@ -1952,12 +1952,12 @@ module HostTextConv
 		end 
 	end TextView
 	
-	proc ExportText*(s: Stores.Store; f: Files.File)
+	proc ExportText*(s: Stores.Store; f: Files.File) 
 		var 
 			w: Stores.Writer
 			t: TextModels.Model
 			r: TextModels.Reader
-			ch: char
+			ch: wchar
 	begin 
 		assert(s # nil, 20)
 		assert(f # nil, 21)
@@ -1983,12 +1983,12 @@ module HostTextConv
 		end 
 	end ExportText
 	
-	proc ExportTabText*(s: Stores.Store; f: Files.File)
+	proc ExportTabText*(s: Stores.Store; f: Files.File) 
 		var 
 			w: Stores.Writer
 			t: TextModels.Model
 			r: TextModels.Reader
-			ch: char
+			ch: wchar
 	begin 
 		assert(s # nil, 20)
 		assert(f # nil, 21)
@@ -2019,11 +2019,11 @@ module HostTextConv
 		end 
 	end ExportTabText
 	
-	proc ExportRichText*(s: Stores.Store; f: Files.File)
+	proc ExportRichText*(s: Stores.Store; f: Files.File) 
 		var 
 			t: TextModels.Model
 			r: TextModels.Reader
-			ch: char
+			ch: wchar
 			w: Stores.Writer
 	begin 
 		assert(s # nil, 20)
@@ -2045,12 +2045,12 @@ module HostTextConv
 		end 
 	end ExportRichText
 	
-	proc ExportUnicode*(s: Stores.Store; f: Files.File)
+	proc ExportUnicode*(s: Stores.Store; f: Files.File) 
 		var 
 			w: Stores.Writer
 			t: TextModels.Model
 			r: TextModels.Reader
-			ch: char
+			ch: wchar
 	begin 
 		assert(s # nil, 20)
 		assert(f # nil, 21)
@@ -2079,7 +2079,7 @@ module HostTextConv
 		end 
 	end ExportUnicode
 	
-	proc ImportHex*(f: Files.File; var s: Stores.Store)
+	proc ImportHex*(f: Files.File; var s: Stores.Store) 
 		var 
 			r: Stores.Reader
 			t: TextModels.Model
@@ -2087,7 +2087,7 @@ module HostTextConv
 			ch: char
 			a: integer
 			i: integer
-			str: array 17 of char
+			str: array 17 of wchar
 	begin 
 		assert(f # nil, 20)
 		r.ConnectTo(f)
@@ -2101,7 +2101,7 @@ module HostTextConv
 			if a mod 16 = 0 then
 				w.WriteChar("[")
 				w.WriteIntForm(a, TextMappers.hexadecimal, 8, "0", false)
-				w.WriteSString("]") 
+				w.WriteSString("xxxx") // TODO ]
 			end 
 			w.WriteIntForm(ord(ch), TextMappers.hexadecimal, 2, "0", false)
 			if ch > 20x then
@@ -2141,15 +2141,15 @@ module HostTextConv
 	   4. in case of finding an illegal  encoding it falls back to importing a windows text *)
 	
 	
-	proc ImportUtf8*(f: Files.File; var s: Stores.Store)
+	proc ImportUtf8*(f: Files.File; var s: Stores.Store) 
 		var 
 			r: Files.Reader
 			t: TextModels.Model
 			wr: TextModels.Writer
-			ch, nch: char
+			ch, nch: wchar
 			formatError: boolean
 		
-		proc ReadUtf8Char(var rd: Files.Reader; var ch: char)
+		proc ReadUtf8Char(var rd: Files.Reader; var ch: wchar) 
 			var 
 				c1, c2, c3: byte
 			
@@ -2218,14 +2218,14 @@ module HostTextConv
 	end ImportUtf8
 	
 	// exports a UTF-8 encoded file without inserting a byte order mark (BOM) and with LF as line separator
-	proc ExportUtf8*(s: Stores.Store; f: Files.File)
+	proc ExportUtf8*(s: Stores.Store; f: Files.File) 
 		var 
 			w: Stores.Writer
 			t: TextModels.Model
 			r: TextModels.Reader
-			ch: char
+			ch: wchar
 		
-		proc WriteUtf8Char(var wr: Stores.Writer; ch: char)
+		proc WriteUtf8Char(var wr: Stores.Writer; ch: wchar) 
 		begin 
 			if ch <= 7fx then
 				wr.WriteByte(short(short(ord(ch)))) 

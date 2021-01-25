@@ -149,7 +149,7 @@ module Documents
 	
 	// Document
 	
-	proc (d: Document) Internalize2-(var rd: Stores.Reader) // extensible
+	proc (d: Document) Internalize2-(var rd: Stores.Reader)  // extensible
 		var 
 			thisVersion: integer
 	begin 
@@ -159,12 +159,12 @@ module Documents
 		rd.ReadVersion(minVersion, maxDocVersion, thisVersion)
 	end Internalize2
 	
-	proc (d: Document) Externalize2-(var wr: Stores.Writer) // extensible
+	proc (d: Document) Externalize2-(var wr: Stores.Writer)  // extensible
 	begin 
 		wr.WriteVersion(maxDocVersion)
 	end Externalize2
 	
-	proc (d: Document) GetNewFrame*(var frame: Views.Frame)
+	proc (d: Document) GetNewFrame*(var frame: Views.Frame) 
 		var 
 			f: Views.RootFrame
 	begin 
@@ -172,31 +172,31 @@ module Documents
 		frame := f
 	end GetNewFrame
 	
-	proc (d: Document) GetBackground*(var color: Ports.Color)
+	proc (d: Document) GetBackground*(var color: Ports.Color) 
 	begin 
 		color := Ports.background
 	end GetBackground
 	
-	proc (d: Document) DocCopyOf*(v: Views.View): Document end // new abstract
-	proc (d: Document) SetView*(view: Views.View; w, h: integer) end // new abstract
-	proc (d: Document) ThisView*(): Views.View end // new abstract
-	proc (d: Document) OriginalView*(): Views.View end // new abstract
+	proc (d: Document) DocCopyOf*(v: Views.View): Document  end // new abstract
+	proc (d: Document) SetView*(view: Views.View; w, h: integer)  end // new abstract
+	proc (d: Document) ThisView*(): Views.View  end // new abstract
+	proc (d: Document) OriginalView*(): Views.View  end // new abstract
 	
-	proc (d: Document) SetRect*(l, t, r, b: integer) end // new abstract
-	proc (d: Document) PollRect*(var l, t, r, b: integer) end // new abstract
-	proc (d: Document) SetPage*(w, h, l, t, r, b: integer; decorate: boolean) end // new abstract
+	proc (d: Document) SetRect*(l, t, r, b: integer)  end // new abstract
+	proc (d: Document) PollRect*(var l, t, r, b: integer)  end // new abstract
+	proc (d: Document) SetPage*(w, h, l, t, r, b: integer; decorate: boolean)  end // new abstract
 	proc (d: Document) PollPage*(var w, h, l, t, r, b: integer
-		var decorate: boolean) end // new abstract
+		var decorate: boolean)  end // new abstract
 	
 	
 	// Context
 	
-	proc (c: Context) ThisDoc*(): Document end // new abstract
+	proc (c: Context) ThisDoc*(): Document  end // new abstract
 	
 	
 	// Directory
 	
-	proc (d: Directory) New*(view: Views.View; w, h: integer): Document end // new abstract
+	proc (d: Directory) New*(view: Views.View; w, h: integer): Document  end // new abstract
 	
 	
 	// operations
@@ -272,7 +272,7 @@ module Documents
 	
 	// printing support for StdDocument
 	
-	proc CheckOrientation(d: Document; prt: Printers.Printer)
+	proc CheckOrientation(d: Document; prt: Printers.Printer) 
 		var 
 			w, h, l, t, r, b: integer
 			decorate: boolean
@@ -281,7 +281,7 @@ module Documents
 		prt.SetOrientation(w > h)
 	end CheckOrientation
 	
-	proc NewPrinterContext(d: Document; prt: Printers.Printer; p: Printing.Par): PrinterContext
+	proc NewPrinterContext(d: Document; prt: Printers.Printer; p: Printing.Par): PrinterContext 
 		var 
 			c: PrinterContext
 			pw, ph, x0, y0, x1, y1, l, t, r, b: integer
@@ -307,7 +307,7 @@ module Documents
 		return c
 	end NewPrinterContext
 	
-	proc Decorate(c: PrinterContext; f: Views.Frame)
+	proc Decorate(c: PrinterContext; f: Views.Frame) 
 		var 
 			p: Printing.Par
 			x0, x1, y, asc, dsc, w: integer
@@ -337,7 +337,7 @@ module Documents
 	
 	// support for StdDocument paging
 	
-	proc HasFocus(v: Views.View; f: Views.Frame): boolean
+	proc HasFocus(v: Views.View; f: Views.Frame): boolean 
 		var 
 			focus: Views.View
 			dummy: Controllers.PollFocusMsg
@@ -348,7 +348,7 @@ module Documents
 		return focus # nil
 	end HasFocus
 	
-	proc ScrollDoc(v: StdDocument; x, y: integer)
+	proc ScrollDoc(v: StdDocument; x, y: integer) 
 	begin 
 		if (x # v.x) or (y # v.y) then
 			Views.Scroll(v, x - v.x, y - v.y)
@@ -357,7 +357,7 @@ module Documents
 		end 
 	end ScrollDoc
 	
-	proc PollSection(v: StdDocument; f: Views.Frame; var msg: Controllers.PollSectionMsg)
+	proc PollSection(v: StdDocument; f: Views.Frame; var msg: Controllers.PollSectionMsg) 
 		var 
 			mv: Views.View
 			g: Views.Frame
@@ -404,7 +404,7 @@ module Documents
 		msg.done := true
 	end PollSection
 	
-	proc Scroll(v: StdDocument; f: Views.Frame; var msg: Controllers.ScrollMsg)
+	proc Scroll(v: StdDocument; f: Views.Frame; var msg: Controllers.ScrollMsg) 
 		var 
 			mv: Views.View
 			g: Views.Frame
@@ -454,7 +454,7 @@ module Documents
 		msg.done := true
 	end Scroll
 	
-	proc MakeVisible*(d: Document; f: Views.Frame; l, t, r, b: integer)
+	proc MakeVisible*(d: Document; f: Views.Frame; l, t, r, b: integer) 
 		var 
 			x, y, w, h, dw, dh, ml, mt, mr, mb: integer
 	begin 
@@ -496,7 +496,7 @@ module Documents
 	end MakeVisible
 	
 	proc Page(d: StdDocument; f: Views.Frame
-		var msg: Controllers.PageMsg)
+		var msg: Controllers.PageMsg) 
 		var 
 			g: Views.Frame
 	begin 
@@ -509,7 +509,7 @@ module Documents
 	
 	// Model
 	
-	proc (m: Model) Internalize(var rd: Stores.Reader)
+	proc (m: Model) Internalize(var rd: Stores.Reader) 
 		var 
 			c: StdContext
 			thisVersion: integer
@@ -537,7 +537,7 @@ module Documents
 		m.view.InitContext(c)
 	end Internalize
 	
-	proc (m: Model) Externalize(var wr: Stores.Writer)
+	proc (m: Model) Externalize(var wr: Stores.Writer) 
 	begin 
 		assert(m.doc.original = nil, 100)
 		m.Externalize^(wr)
@@ -549,7 +549,7 @@ module Documents
 		wr.WriteInt(m.b)
 	end Externalize
 	
-	proc (m: Model) CopyFrom(source: Stores.Store)
+	proc (m: Model) CopyFrom(source: Stores.Store) 
 		var 
 			c: StdContext
 	begin 
@@ -565,7 +565,7 @@ module Documents
 		end 
 	end CopyFrom
 	
-	proc (m: Model) InitFrom(source: Containers.Model)
+	proc (m: Model) InitFrom(source: Containers.Model) 
 		var 
 			c: StdContext
 	begin 
@@ -581,7 +581,7 @@ module Documents
 		end 
 	end InitFrom
 	
-	proc (m: Model) GetEmbeddingLimits(var minW, maxW, minH, maxH: integer)
+	proc (m: Model) GetEmbeddingLimits(var minW, maxW, minH, maxH: integer) 
 	begin 
 		minW := 5 * mm
 		minH := 5 * mm
@@ -589,7 +589,7 @@ module Documents
 		maxH := max(integer) div 2
 	end GetEmbeddingLimits
 	
-	proc (m: Model) ReplaceView(old, new_: Views.View)
+	proc (m: Model) ReplaceView(old, new_: Views.View) 
 		var 
 			con: Models.Context
 			op: ReplaceViewOp
@@ -615,7 +615,7 @@ module Documents
 	
 	// StdDocument
 	
-	proc (d: StdDocument) Internalize2(var rd: Stores.Reader)
+	proc (d: StdDocument) Internalize2(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 			c: Containers.Controller
@@ -646,7 +646,7 @@ module Documents
 		Stores.InitDomain(d)
 	end Internalize2
 	
-	proc (d: StdDocument) Externalize2(var wr: Stores.Writer)
+	proc (d: StdDocument) Externalize2(var wr: Stores.Writer) 
 	begin 
 		assert(d.original = nil, 100)
 		d.Externalize2^(wr)
@@ -660,7 +660,7 @@ module Documents
 		wr.WriteBool(d.decorate)
 	end Externalize2
 	
-	proc (d: StdDocument) CopyFromModelView2(source: Views.View; model: Models.Model)
+	proc (d: StdDocument) CopyFromModelView2(source: Views.View; model: Models.Model) 
 	begin 
 		with source: StdDocument do 
 			d.pw := source.pw
@@ -673,12 +673,12 @@ module Documents
 		end 
 	end CopyFromModelView2
 	
-	proc (d: StdDocument) AcceptableModel(m: Containers.Model): boolean
+	proc (d: StdDocument) AcceptableModel(m: Containers.Model): boolean 
 	begin 
 		return m is Model
 	end AcceptableModel
 	
-	proc (d: StdDocument) InitModel2(m: Containers.Model)
+	proc (d: StdDocument) InitModel2(m: Containers.Model) 
 	begin 
 		assert((d.model = nil) or (d.model = m), 20)
 		assert(m is Model, 23)
@@ -688,7 +688,7 @@ module Documents
 		end 
 	end InitModel2
 	
-	proc (d: StdDocument) PollRect(var l, t, r, b: integer)
+	proc (d: StdDocument) PollRect(var l, t, r, b: integer) 
 		var 
 			c: Containers.Controller
 			doc: StdDocument
@@ -741,7 +741,7 @@ module Documents
 		assert(b > t, 61)
 	end PollRect
 	
-	proc (d: StdDocument) PollPage(var w, h, l, t, r, b: integer; var decorate: boolean)
+	proc (d: StdDocument) PollPage(var w, h, l, t, r, b: integer; var decorate: boolean) 
 		var 
 			doc: StdDocument
 	begin 
@@ -759,7 +759,7 @@ module Documents
 		decorate := doc.decorate
 	end PollPage
 	
-	proc (d: StdDocument) DocCopyOf(v: Views.View): Document
+	proc (d: StdDocument) DocCopyOf(v: Views.View): Document 
 		var 
 			c0, c1: Containers.Controller
 			u: Views.View
@@ -788,7 +788,7 @@ module Documents
 		return new_
 	end DocCopyOf
 	
-	proc (d: StdDocument) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (d: StdDocument) Restore(f: Views.Frame; l, t, r, b: integer) 
 		var 
 			c: Containers.Controller
 			m: Model
@@ -810,7 +810,7 @@ module Documents
 		end 
 	end Restore
 	
-	proc (d: StdDocument) GetRect(f: Views.Frame; view: Views.View; var l, t, r, b: integer)
+	proc (d: StdDocument) GetRect(f: Views.Frame; view: Views.View; var l, t, r, b: integer) 
 		var 
 			l0, t0, r0, b0: integer
 	begin 
@@ -821,7 +821,7 @@ module Documents
 		b := b0 + d.y
 	end GetRect
 	
-	proc (d: StdDocument) SetView(view: Views.View; w, h: integer)
+	proc (d: StdDocument) SetView(view: Views.View; w, h: integer) 
 		const 
 			wA4 = 210 * mm // A4 default paper size
 			hA4 = 296 * mm
@@ -941,12 +941,12 @@ module Documents
 		Views.Update(d, Views.rebuildFrames)
 	end SetView
 	
-	proc (d: StdDocument) ThisView(): Views.View
+	proc (d: StdDocument) ThisView(): Views.View 
 	begin 
 		return d.model.view
 	end ThisView
 	
-	proc (d: StdDocument) OriginalView(): Views.View
+	proc (d: StdDocument) OriginalView(): Views.View 
 	begin 
 		if d.original = nil then
 			return d.model.view 
@@ -955,7 +955,7 @@ module Documents
 		end 
 	end OriginalView
 	
-	proc (d: StdDocument) SetRect(l, t, r, b: integer)
+	proc (d: StdDocument) SetRect(l, t, r, b: integer) 
 		var 
 			m: Model
 			op: SetRectOp
@@ -993,7 +993,7 @@ module Documents
 		end 
 	end SetRect
 	
-	proc (d: StdDocument) SetPage(pw, ph, pl, pt, pr, pb: integer; decorate: boolean)
+	proc (d: StdDocument) SetPage(pw, ph, pl, pt, pr, pb: integer; decorate: boolean) 
 		var 
 			op: SetPageOp
 			doc: StdDocument
@@ -1026,7 +1026,7 @@ module Documents
 		end 
 	end SetPage
 	
-	proc (v: StdDocument) HandleViewMsg2(f: Views.Frame; var msg: Views.Message)
+	proc (v: StdDocument) HandleViewMsg2(f: Views.Frame; var msg: Views.Message) 
 	begin 
 		with msg: UpdateMsg do 
 			if (msg.doc = v) or (msg.doc = v.original) then
@@ -1037,7 +1037,7 @@ module Documents
 	end HandleViewMsg2
 	
 	proc (d: StdDocument) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 	begin 
 		with f: Views.RootFrame do 
 			with msg: Controllers.PollSectionMsg do 
@@ -1057,19 +1057,19 @@ module Documents
 	
 	// Controller
 	
-	proc (c: Controller) Internalize2(var rd: Stores.Reader)
+	proc (c: Controller) Internalize2(var rd: Stores.Reader) 
 		var 
 			v: integer
 	begin 
 		rd.ReadVersion(minVersion, maxCtrlVersion, v)
 	end Internalize2
 	
-	proc (c: Controller) Externalize2(var wr: Stores.Writer)
+	proc (c: Controller) Externalize2(var wr: Stores.Writer) 
 	begin 
 		wr.WriteVersion(maxCtrlVersion)
 	end Externalize2
 	
-	proc (c: Controller) InitView2(v: Views.View)
+	proc (c: Controller) InitView2(v: Views.View) 
 	begin 
 		if v # nil then
 			c.doc := v(StdDocument) 
@@ -1078,39 +1078,39 @@ module Documents
 		end 
 	end InitView2
 	
-	proc (c: Controller) GetContextType(var type_: Stores.TypeName)
+	proc (c: Controller) GetContextType(var type_: Stores.TypeName) 
 	end GetContextType
 	
-	proc (c: Controller) GetValidOps(var valid: set)
+	proc (c: Controller) GetValidOps(var valid: set) 
 	begin 
 		if c.Singleton() # nil then
 			valid := {Controllers.copy_} 
 		end 
 	end GetValidOps
 	
-	proc (c: Controller) NativeModel(m: Models.Model): boolean
+	proc (c: Controller) NativeModel(m: Models.Model): boolean 
 	begin 
 		return m is Model
 	end NativeModel
 	
-	proc (c: Controller) NativeView(v: Views.View): boolean
+	proc (c: Controller) NativeView(v: Views.View): boolean 
 	begin 
 		return v is StdDocument
 	end NativeView
 	
-	proc (c: Controller) NativeCursorAt(f: Views.Frame; x, y: integer): integer
+	proc (c: Controller) NativeCursorAt(f: Views.Frame; x, y: integer): integer 
 	begin 
 		return Ports.arrowCursor
 	end NativeCursorAt
 	
 	proc (c: Controller) PollNativeProp(selection: boolean; var p: Properties.Property
-		var truncated: boolean)
+		var truncated: boolean) 
 	end PollNativeProp
 	
-	proc (c: Controller) SetNativeProp(selection: boolean; p, old: Properties.Property)
+	proc (c: Controller) SetNativeProp(selection: boolean; p, old: Properties.Property) 
 	end SetNativeProp
 	
-	proc (c: Controller) GetFirstView(selection: boolean; var v: Views.View)
+	proc (c: Controller) GetFirstView(selection: boolean; var v: Views.View) 
 	begin 
 		if selection then
 			v := c.Singleton() 
@@ -1119,30 +1119,30 @@ module Documents
 		end 
 	end GetFirstView
 	
-	proc (c: Controller) GetNextView(selection: boolean; var v: Views.View)
+	proc (c: Controller) GetNextView(selection: boolean; var v: Views.View) 
 	begin 
 		v := nil
 	end GetNextView
 	
-	proc (c: Controller) GetPrevView(selection: boolean; var v: Views.View)
+	proc (c: Controller) GetPrevView(selection: boolean; var v: Views.View) 
 	begin 
 		v := nil
 	end GetPrevView
 	
 	proc (c: Controller) TrackMarks(f: Views.Frame; x, y: integer
-		units, extend, add: boolean)
+		units, extend, add: boolean) 
 	begin 
 		c.Neutralize
 	end TrackMarks
 	
-	proc (c: Controller) RestoreMarks2(f: Views.Frame; l, t, r, b: integer)
+	proc (c: Controller) RestoreMarks2(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		if c.doc.context is PrinterContext then
 			Decorate(c.doc.context(PrinterContext), f) 
 		end 
 	end RestoreMarks2
 	
-	proc (c: Controller) Resize(view: Views.View; l, t, r, b: integer)
+	proc (c: Controller) Resize(view: Views.View; l, t, r, b: integer) 
 		var 
 			d: StdDocument
 			l0, t0: integer
@@ -1158,7 +1158,7 @@ module Documents
 	end DeleteSelection
 	
 	proc (c: Controller) MoveLocalSelection(f, dest: Views.Frame; x, y: integer
-		dx, dy: integer)
+		dx, dy: integer) 
 		var 
 			m: Model
 			l, t, r, b: integer
@@ -1178,12 +1178,12 @@ module Documents
 		end 
 	end MoveLocalSelection
 	
-	proc (c: Controller) SelectionCopy(): Model
+	proc (c: Controller) SelectionCopy(): Model 
 	begin 
 		return nil
 	end SelectionCopy
 	
-	proc (c: Controller) NativePaste(m: Models.Model; f: Views.Frame)
+	proc (c: Controller) NativePaste(m: Models.Model; f: Views.Frame) 
 		var 
 			m0: Model
 	begin 
@@ -1194,7 +1194,7 @@ module Documents
 		end 
 	end NativePaste
 	
-	proc (c: Controller) PasteView(f: Views.Frame; v: Views.View; w, h: integer)
+	proc (c: Controller) PasteView(f: Views.Frame; v: Views.View; w, h: integer) 
 		var 
 			m: Model
 			minW, maxW, minH, maxH, defW, defH: integer
@@ -1209,7 +1209,7 @@ module Documents
 	end PasteView
 	
 	proc (c: Controller) Drop(src, dst: Views.Frame; sx, sy, x, y, w, h, rx, ry: integer
-		v: Views.View; isSingle: boolean)
+		v: Views.View; isSingle: boolean) 
 		var 
 			m: Model
 			minW, maxW, minH, maxH, defW, defH: integer
@@ -1225,12 +1225,12 @@ module Documents
 	
 	// selection
 	
-	proc (c: Controller) Selectable(): boolean
+	proc (c: Controller) Selectable(): boolean 
 	begin 
 		return true
 	end Selectable
 	
-	proc (c: Controller) SelectAll(select: boolean)
+	proc (c: Controller) SelectAll(select: boolean) 
 	begin 
 		if ~select & (c.Singleton() # nil) then
 			c.SetSingleton(nil) 
@@ -1239,22 +1239,22 @@ module Documents
 		end 
 	end SelectAll
 	
-	proc (c: Controller) InSelection(f: Views.Frame; x, y: integer): boolean
+	proc (c: Controller) InSelection(f: Views.Frame; x, y: integer): boolean 
 	begin 
 		return c.Singleton() # nil
 	end InSelection
 	
 	// caret
 	
-	proc (c: Controller) HasCaret(): boolean
+	proc (c: Controller) HasCaret(): boolean 
 	begin 
 		return false
 	end HasCaret
 	
-	proc (c: Controller) MarkCaret(f: Views.Frame; show: boolean)
+	proc (c: Controller) MarkCaret(f: Views.Frame; show: boolean) 
 	end MarkCaret
 	
-	proc (c: Controller) CanDrop(f: Views.Frame; x, y: integer): boolean
+	proc (c: Controller) CanDrop(f: Views.Frame; x, y: integer): boolean 
 	begin 
 		return false
 	end CanDrop
@@ -1262,7 +1262,7 @@ module Documents
 	// handlers
 	
 	proc (c: Controller) HandleCtrlMsg(f: Views.Frame
-		var msg: Controllers.Message; var focus: Views.View)
+		var msg: Controllers.Message; var focus: Views.View) 
 		var 
 			l, t, r, b: integer
 	begin 
@@ -1287,27 +1287,27 @@ module Documents
 	end HandleCtrlMsg
 	
 	
-	proc (c: Controller) PasteChar(ch: char)
+	proc (c: Controller) PasteChar(ch: wchar) 
 	end PasteChar
 	
-	proc (c: Controller) ControlChar(f: Views.Frame; ch: char)
+	proc (c: Controller) ControlChar(f: Views.Frame; ch: wchar) 
 	end ControlChar
 	
-	proc (c: Controller) ArrowChar(f: Views.Frame; ch: char; units, select: boolean)
+	proc (c: Controller) ArrowChar(f: Views.Frame; ch: wchar; units, select: boolean) 
 	end ArrowChar
 	
-	proc (c: Controller) CopyLocalSelection(src, dst: Views.Frame; sx, sy, dx, dy: integer)
+	proc (c: Controller) CopyLocalSelection(src, dst: Views.Frame; sx, sy, dx, dy: integer) 
 	end CopyLocalSelection
 	
 	
 	// StdContext
 	
-	proc (c: StdContext) ThisModel(): Models.Model
+	proc (c: StdContext) ThisModel(): Models.Model 
 	begin 
 		return c.model
 	end ThisModel
 	
-	proc (c: StdContext) GetSize(var w, h: integer)
+	proc (c: StdContext) GetSize(var w, h: integer) 
 		var 
 			m: Model
 			dc: Models.Context
@@ -1329,7 +1329,7 @@ module Documents
 		assert(h > 0, 61)
 	end GetSize
 	
-	proc (c: StdContext) SetSize(w, h: integer)
+	proc (c: StdContext) SetSize(w, h: integer) 
 		var 
 			m: Model
 			d: StdDocument
@@ -1345,17 +1345,17 @@ module Documents
 		d.SetRect(m.l, m.t, m.l + w, m.t + h)
 	end SetSize
 	
-	proc (c: StdContext) Normalize(): boolean
+	proc (c: StdContext) Normalize(): boolean 
 	begin 
 		return true
 	end Normalize
 	
-	proc (c: StdContext) ThisDoc(): Document
+	proc (c: StdContext) ThisDoc(): Document 
 	begin 
 		return c.model.doc
 	end ThisDoc
 	
-	proc (c: StdContext) MakeVisible(l, t, r, b: integer)
+	proc (c: StdContext) MakeVisible(l, t, r, b: integer) 
 	begin 
 		MakeVisible(c.model.doc, nil, l, t, r, b)
 	end MakeVisible
@@ -1363,7 +1363,7 @@ module Documents
 	
 	// PrinterContext
 	
-	proc (c: PrinterContext) GetSize(var w, h: integer)
+	proc (c: PrinterContext) GetSize(var w, h: integer) 
 		var 
 			p: Ports.Port
 	begin 
@@ -1373,15 +1373,15 @@ module Documents
 		h := h * p.unit
 	end GetSize
 	
-	proc (c: PrinterContext) Normalize(): boolean
+	proc (c: PrinterContext) Normalize(): boolean 
 	begin 
 		return true
 	end Normalize
 	
-	proc (c: PrinterContext) SetSize(w, h: integer)
+	proc (c: PrinterContext) SetSize(w, h: integer) 
 	end SetSize
 	
-	proc (c: PrinterContext) ThisModel(): Models.Model
+	proc (c: PrinterContext) ThisModel(): Models.Model 
 	begin 
 		return nil
 	end ThisModel
@@ -1389,7 +1389,7 @@ module Documents
 	
 	// StdDirectory
 	
-	proc (d: StdDirectory) New(view: Views.View; w, h: integer): Document
+	proc (d: StdDirectory) New(view: Views.View; w, h: integer): Document 
 		var 
 			doc: StdDocument
 			m: Model
@@ -1411,21 +1411,21 @@ module Documents
 	
 	// PContext
 	
-	proc (c: PContext) GetSize(var w, h: integer)
+	proc (c: PContext) GetSize(var w, h: integer) 
 	begin 
 		w := c.w
 		h := c.h
 	end GetSize
 	
-	proc (c: PContext) Normalize(): boolean
+	proc (c: PContext) Normalize(): boolean 
 	begin 
 		return true
 	end Normalize
 	
-	proc (c: PContext) SetSize(w, h: integer)
+	proc (c: PContext) SetSize(w, h: integer) 
 	end SetSize
 	
-	proc (c: PContext) ThisModel(): Models.Model
+	proc (c: PContext) ThisModel(): Models.Model 
 	begin 
 		return nil
 	end ThisModel
@@ -1434,12 +1434,12 @@ module Documents
 	// Pager
 	
 	
-	proc (p: Pager) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (p: Pager) Restore(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		Views.InstallFrame(f, p.con.view, -p.x, -p.y, 0, false)
 	end Restore
 	
-	proc (p: Pager) HandleCtrlMsg(f: Views.Frame; var msg: Views.CtrlMessage; var focus: Views.View)
+	proc (p: Pager) HandleCtrlMsg(f: Views.Frame; var msg: Views.CtrlMessage; var focus: Views.View) 
 		var 
 			v: Views.View
 			g: Views.Frame
@@ -1487,7 +1487,7 @@ module Documents
 		end 
 	end HandleCtrlMsg
 	
-	proc NewPager(v: Views.View; w, h, pw, ph: integer): Pager
+	proc NewPager(v: Views.View; w, h, pw, ph: integer): Pager 
 		var 
 			p: Pager
 			c: PContext
@@ -1507,7 +1507,7 @@ module Documents
 		return p
 	end NewPager
 	
-	proc PrinterDoc(d: Document; c: PrinterContext): Document
+	proc PrinterDoc(d: Document; c: PrinterContext): Document 
 		var 
 			v, u, p: Views.View
 			w, h, l, t, r, b, pw, ph: integer
@@ -1553,7 +1553,7 @@ module Documents
 	
 	// miscellaneous
 	
-	proc Print*(d: Document; p: Printers.Printer; par: Printing.Par)
+	proc Print*(d: Document; p: Printers.Printer; par: Printing.Par) 
 		var 
 			dom: Stores.Domain
 			d1: Document
@@ -1671,12 +1671,12 @@ module Documents
 		p.CloseJob
 	end Print
 	
-	proc (hook: PrintingHook) Current(): integer
+	proc (hook: PrintingHook) Current(): integer 
 	begin 
 		return current
 	end Current
 	
-	proc (hook: PrintingHook) Print(v: Views.View; par: Printing.Par)
+	proc (hook: PrintingHook) Print(v: Views.View; par: Printing.Par) 
 		var 
 			dom: Stores.Domain
 			d: Document
@@ -1738,7 +1738,7 @@ module Documents
 	end Print
 	
 	
-	proc ImportDocument*(f: Files.File; var s: Stores.Store)
+	proc ImportDocument*(f: Files.File; var s: Stores.Store) 
 		var 
 			r: Stores.Reader
 			tag, version: integer
@@ -1758,7 +1758,7 @@ module Documents
 		end 
 	end ImportDocument
 	
-	proc ExportDocument*(s: Stores.Store; f: Files.File)
+	proc ExportDocument*(s: Stores.Store; f: Files.File) 
 		var 
 			w: Stores.Writer
 			v: Views.View
@@ -1783,7 +1783,7 @@ module Documents
 	end ExportDocument
 	
 	
-	proc SetDir*(d: Directory)
+	proc SetDir*(d: Directory) 
 	begin 
 		assert(d # nil, 20)
 		dir := d

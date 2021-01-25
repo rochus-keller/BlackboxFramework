@@ -54,7 +54,7 @@ module Models
 	
 	// Model
 	
-	proc (m: Model) Internalize-(var rd: Stores.Reader) // extensible
+	proc (m: Model) Internalize-(var rd: Stores.Reader)  // extensible
 		var 
 			thisVersion: integer
 	begin 
@@ -65,7 +65,7 @@ module Models
 		rd.ReadVersion(minVersion, maxVersion, thisVersion)
 	end Internalize
 	
-	proc (m: Model) Externalize-(var wr: Stores.Writer) // extensible
+	proc (m: Model) Externalize-(var wr: Stores.Writer)  // extensible
 	begin 
 		m.Externalize^(wr)
 		wr.WriteVersion(maxVersion)
@@ -74,30 +74,30 @@ module Models
 	
 	// Context
 	
-	proc (c: Context) ThisModel*(): Model end // new abstract
-	proc (c: Context) Normalize*(): boolean end // new abstract
-	proc (c: Context) GetSize*(var w, h: integer) end // new abstract
-	proc (c: Context) SetSize*(w, h: integer) end // new empty
-	proc (c: Context) MakeVisible*(l, t, r, b: integer) end // new empty
-	proc (c: Context) Consider*(var p: Proposal) end // new empty
+	proc (c: Context) ThisModel*(): Model  end // new abstract
+	proc (c: Context) Normalize*(): boolean  end // new abstract
+	proc (c: Context) GetSize*(var w, h: integer)  end // new abstract
+	proc (c: Context) SetSize*(w, h: integer)  end // new empty
+	proc (c: Context) MakeVisible*(l, t, r, b: integer)  end // new empty
+	proc (c: Context) Consider*(var p: Proposal)  end // new empty
 	
 	
 	// miscellaneous
 	
-	proc Era*(m: Model): integer
+	proc Era*(m: Model): integer 
 	begin 
 		assert(m # nil, 20)
 		return m.era
 	end Era
 	
 	
-	proc CopyOf*(m: Model): Model
+	proc CopyOf*(m: Model): Model 
 	begin 
 		assert(m # nil, 20)
 		return Stores.CopyOf(m)(Model)
 	end CopyOf
 	
-	proc BeginScript*(m: Model; name: Stores.OpName; var script: Stores.Operation)
+	proc BeginScript*(m: Model; name: Stores.OpName; var script: Stores.Operation) 
 		// post: (script # NIL) iff (m.domain # NIL)
 		var 
 			seq: ANYPTR
@@ -118,7 +118,7 @@ module Models
 		end 
 	end BeginScript
 	
-	proc Do*(m: Model; name: Stores.OpName; op: Stores.Operation)
+	proc Do*(m: Model; name: Stores.OpName; op: Stores.Operation) 
 		// pre: m # NIL, op # NIL, ~op.inUse
 		var 
 			seq: ANYPTR
@@ -141,7 +141,7 @@ module Models
 		end 
 	end Do
 	
-	proc LastOp*(m: Model): Stores.Operation
+	proc LastOp*(m: Model): Stores.Operation 
 		// pre: m # NIL
 		var 
 			seq: ANYPTR
@@ -163,7 +163,7 @@ module Models
 		end 
 	end LastOp
 	
-	proc Bunch*(m: Model)
+	proc Bunch*(m: Model) 
 		// pre: m # NIL, m.Domain() # NIL
 		var 
 			seq: ANYPTR
@@ -178,7 +178,7 @@ module Models
 		end 
 	end Bunch
 	
-	proc StopBunching*(m: Model)
+	proc StopBunching*(m: Model) 
 		// pre: m # NIL
 		var 
 			seq: ANYPTR
@@ -197,7 +197,7 @@ module Models
 		end 
 	end StopBunching
 	
-	proc EndScript*(m: Model; script: Stores.Operation)
+	proc EndScript*(m: Model; script: Stores.Operation) 
 		// pre: (script # NIL) iff (m.seq # NIL)
 		var 
 			seq: ANYPTR
@@ -221,7 +221,7 @@ module Models
 	end EndScript
 	
 	
-	proc BeginModification*(type_: integer; m: Model)
+	proc BeginModification*(type_: integer; m: Model) 
 		// pre: m # NIL
 		var 
 			seq: ANYPTR
@@ -240,7 +240,7 @@ module Models
 		end 
 	end BeginModification
 	
-	proc EndModification*(type_: integer; m: Model)
+	proc EndModification*(type_: integer; m: Model) 
 		// pre: m # NIL
 		var 
 			seq: ANYPTR
@@ -259,7 +259,7 @@ module Models
 		end 
 	end EndModification
 	
-	proc SetDirty*(m: Model)
+	proc SetDirty*(m: Model) 
 		// pre: m # NIL
 		var 
 			seq: ANYPTR
@@ -278,7 +278,7 @@ module Models
 		end 
 	end SetDirty
 	
-	proc Domaincast*(d: Stores.Domain; var msg: Message)
+	proc Domaincast*(d: Stores.Domain; var msg: Message) 
 		var 
 			g: integer
 			seq: ANYPTR
@@ -299,7 +299,7 @@ module Models
 		end 
 	end Domaincast
 	
-	proc Broadcast*(m: Model; var msg: Message)
+	proc Broadcast*(m: Model; var msg: Message) 
 		// pre: model # NIL
 		(* post: model.era > model.era', msg.model = model, msg.era = model.era' + 1,
 		   model.seq # NIL => msg sent to seq *)

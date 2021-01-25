@@ -78,11 +78,11 @@ module Dialog
 		logMissingFile = logMissingSimpleKeys or logAllMissingKeys // log missing Strings file
 	
 	type 
-		String* = array stringLen of char
+		String* = array stringLen of wchar
 		
 		Buf = pointer to record 
 				next: Buf
-				s: array bufLen of char 
+				s: array bufLen of wchar 
 			end 
 		
 		StrList = record 
@@ -147,17 +147,17 @@ module Dialog
 		GuardProc* = proc (var par: Par)
 		NotifierProc* = proc (op, from, to_: integer)
 		
-		StringPtr = unsafe pointer to carray of char
+		StringPtr = unsafe pointer to carray of wchar
 		StringTab = pointer to record 
 				next: StringTab
 				name: Files.Name
 				key: pointer to array of StringPtr
 				str: pointer to array of StringPtr
-				data: pointer to array of char 
+				data: pointer to array of wchar 
 			end 
 		
 		LangNotifier* = pointer to (* abstract *) record next: LangNotifier end 
-		Language* = array 3 of char
+		Language* = array 3 of wchar
 		
 		LangTrapCleaner = pointer to record (Kernel.TrapCleaner) end 
 		
@@ -175,10 +175,10 @@ module Dialog
 		platform*: integer
 		commandLinePars*: String
 		version*: integer
-		appName*: array 32 of char
-		appVersion*: array 32 of char
+		appName*: array 32 of wchar
+		appVersion*: array 32 of wchar
 		language-: Language
-		user*: array 32 of char
+		user*: array 32 of wchar
 		caretPeriod*: integer
 		thickCaret*: boolean
 		beep*: boolean
@@ -196,68 +196,68 @@ module Dialog
 		wineHook: WineHook
 		extCallHook: ExtCallHook
 	
-	proc (h: GetHook) GetOK*(in str, p0, p1, p2: array of char; form: set
-		var res: integer) end // new abstract
+	proc (h: GetHook) GetOK*(in str, p0, p1, p2: array of wchar; form: set
+		var res: integer)  end // new abstract
 	proc (h: GetHook) GetColor*(in_: integer; var out: integer
-		var set_: boolean) end // new abstract
+		var set_: boolean)  end // new abstract
 	proc (h: GetHook) GetIntSpec*(in defType: Files.Type; var loc: Files.Locator
-		var name: Files.Name) end // new abstract
+		var name: Files.Name)  end // new abstract
 	proc (h: GetHook) GetExtSpec*(in defName: Files.Name; in defType: Files.Type
-		var loc: Files.Locator; var name: Files.Name) end // new abstract
+		var loc: Files.Locator; var name: Files.Name)  end // new abstract
 	
-	proc SetGetHook*(h: GetHook)
+	proc SetGetHook*(h: GetHook) 
 	begin 
 		gethook := h
 	end SetGetHook
 	
-	proc (h: ShowHook) ShowParamMsg*(in str, p0, p1, p2: array of char) end // new abstract
-	proc (h: ShowHook) ShowParamStatus*(in str, p0, p1, p2: array of char) end // new abstract
+	proc (h: ShowHook) ShowParamMsg*(in str, p0, p1, p2: array of wchar)  end // new abstract
+	proc (h: ShowHook) ShowParamStatus*(in str, p0, p1, p2: array of wchar)  end // new abstract
 	
-	proc SetShowHook*(h: ShowHook)
+	proc SetShowHook*(h: ShowHook) 
 	begin 
 		showHook := h
 	end SetShowHook
 	
-	proc (h: CallHook) Call*(in proc_, errorMsg: array of char; var res: integer) end // new abstract
+	proc (h: CallHook) Call*(in proc_, errorMsg: array of wchar; var res: integer)  end // new abstract
 	
-	proc (h: ExtCallHook) RunExternal*(in exeName: array of char) end // new abstract
+	proc (h: ExtCallHook) RunExternal*(in exeName: array of wchar)  end // new abstract
 	
-	proc (h: ExtCallHook) OpenExternal*(in fileName: array of char) end // new abstract
+	proc (h: ExtCallHook) OpenExternal*(in fileName: array of wchar)  end // new abstract
 	
-	proc SetCallHook*(h: CallHook)
+	proc SetCallHook*(h: CallHook) 
 	begin 
 		callHook := h
 	end SetCallHook
 	
-	proc (h: NotifyHook) Notify*(id0, id1: integer; opts: set) end // new abstract
+	proc (h: NotifyHook) Notify*(id0, id1: integer; opts: set)  end // new abstract
 	
-	proc SetNotifyHook*(h: NotifyHook)
+	proc SetNotifyHook*(h: NotifyHook) 
 	begin 
 		notifyHook := h
 	end SetNotifyHook
 	
 	proc (h: LanguageHook) SetLanguage*(lang: Language; persistent: boolean
-		var ok: boolean) end // new abstract
-	proc (h: LanguageHook) GetPersistentLanguage*(var lang: Language) end // new abstract
+		var ok: boolean)  end // new abstract
+	proc (h: LanguageHook) GetPersistentLanguage*(var lang: Language)  end // new abstract
 	
-	proc SetLanguageHook*(h: LanguageHook)
+	proc SetLanguageHook*(h: LanguageHook) 
 	begin 
 		languageHook := h
 	end SetLanguageHook
 	
-	proc (h: WineHook) IsWine*(): boolean end // new abstract
+	proc (h: WineHook) IsWine*(): boolean  end // new abstract
 	
-	proc SetWineHook*(h: WineHook)
+	proc SetWineHook*(h: WineHook) 
 	begin 
 		wineHook := h
 	end SetWineHook
 	
-	proc IsWine*(): boolean
+	proc IsWine*(): boolean 
 	begin 
 		return (wineHook # nil) & wineHook.IsWine()
 	end IsWine
 	
-	proc IsWindows*(): boolean
+	proc IsWindows*(): boolean 
 	begin 
 		case platform of 
 			windows32s .. windows7, windows8: 
@@ -267,7 +267,7 @@ module Dialog
 		end 
 	end IsWindows
 	
-	proc IsMac*(): boolean
+	proc IsMac*(): boolean 
 	begin 
 		case platform of 
 			macOS, macOSX: 
@@ -277,20 +277,20 @@ module Dialog
 		end 
 	end IsMac
 	
-	proc IsLinux*(): boolean
+	proc IsLinux*(): boolean 
 	begin 
 		return platform = linux
 	end IsLinux
 	
-	proc ReadStringFile(subsys: Files.Name; f: Files.File; var tab: StringTab)
+	proc ReadStringFile(subsys: Files.Name; f: Files.File; var tab: StringTab) 
 		var 
 			i, j, h, n, s, x, len_, next, down, end_: integer
 			in_, in1: Files.Reader
-			ch: char
+			ch: wchar
 			b: byte
 			p, q: StringPtr
 		
-		proc ReadInt(var x: integer)
+		proc ReadInt(var x: integer) 
 			var 
 				b: byte
 		begin 
@@ -304,7 +304,7 @@ module Dialog
 			x := x + b * 1000000h
 		end ReadInt
 		
-		proc ReadHead(var next, down, end_: integer)
+		proc ReadHead(var next, down, end_: integer) 
 			var 
 				b, t: byte
 				n: integer
@@ -479,7 +479,7 @@ module Dialog
 		end 
 	end ReadStringFile
 	
-	proc MergeTabs(var master, extra: StringTab): StringTab
+	proc MergeTabs(var master, extra: StringTab): StringTab 
 		var 
 			tab: StringTab
 			nofKeys, datalength, di, mi, ei, ml, el, ti, i: integer
@@ -499,15 +499,15 @@ module Dialog
 		// find out how big the resulting table will be
 		while (mi < ml) or (ei < el) do 
 			inc(nofKeys)
-			if (mi < ml) & (ei < el) & (master.key[mi] = extra.key[ei]) then
-				datalength := datalength + len(master.key[mi]) + len(master.str[mi]) + 2
+			if (mi < ml) & (ei < el) & (master.key[mi]^ = extra.key[ei]^) then
+				datalength := datalength + len(master.key[mi]^) + len(master.str[mi]^) + 2
 				inc(mi)
 				inc(ei) 
-			elsif (ei < el) & ((mi >= ml) or (master.key[mi] > extra.key[ei])) then 
-				datalength := datalength + len(extra.key[ei]) + len(extra.str[ei]) + 2
+			elsif (ei < el) & ((mi >= ml) or (master.key[mi]^ > extra.key[ei]^)) then 
+				datalength := datalength + len(extra.key[ei]^) + len(extra.str[ei]^) + 2
 				inc(ei) 
 			else 
-				datalength := datalength + len(master.key[mi]) + len(master.str[mi]) + 2
+				datalength := datalength + len(master.key[mi]^) + len(master.str[mi]^) + 2
 				inc(mi) 
 			end  
 		end 
@@ -522,7 +522,7 @@ module Dialog
 		ti := 0
 		// do the merge
 		while (mi < ml) or (ei < el) do 
-			if (mi < ml) & (ei < el) & (master.key[mi] = extra.key[ei]) then
+			if (mi < ml) & (ei < el) & (master.key[mi]^ = extra.key[ei]^) then
 				i := 0
 				tab.key[ti] := SYSTEM.VAL(StringPtr, SYSTEM.ADR(tab.data[di]))
 				while master.key[mi][i] # 0x do 
@@ -543,7 +543,7 @@ module Dialog
 				inc(di)
 				inc(mi)
 				inc(ei) 
-			elsif (ei < el) & ((mi >= ml) or (master.key[mi] > extra.key[ei])) then 
+			elsif (ei < el) & ((mi >= ml) or (master.key[mi]^ > extra.key[ei]^)) then 
 				i := 0
 				tab.key[ti] := SYSTEM.VAL(StringPtr, SYSTEM.ADR(tab.data[di]))
 				while extra.key[ei][i] # 0x do 
@@ -589,7 +589,7 @@ module Dialog
 		return tab
 	end MergeTabs
 	
-	proc LoadStringTab(subsys: Files.Name; var tab: StringTab)
+	proc LoadStringTab(subsys: Files.Name; var tab: StringTab) 
 		var 
 			loc: Files.Locator
 			f: Files.File
@@ -619,10 +619,10 @@ module Dialog
 		end 
 	end LoadStringTab
 	
-	proc SearchString(var in_: array of char; var out: array of char)
+	proc SearchString(var in_: array of wchar; var out: array of wchar) 
 		var 
 			i, j, k, len_: integer
-			ch: char
+			ch: wchar
 			subsys: Files.Name
 			tab: StringTab
 			hasDot: boolean
@@ -710,7 +710,7 @@ module Dialog
 	end SearchString
 	
 	
-	proc Init(var l: StrList)
+	proc Init(var l: StrList) 
 	begin 
 		l.len_ := 0
 		l.max_ := 0
@@ -718,11 +718,11 @@ module Dialog
 		l.scnt := 0
 	end Init
 	
-	proc Compact(var l: StrList)
+	proc Compact(var l: StrList) 
 		var 
 			i, j, k: integer
 			ibuf, jbuf: Buf
-			ch: char
+			ch: wchar
 	begin 
 		i := 1
 		ibuf := l.strings
@@ -763,7 +763,7 @@ module Dialog
 		l.scnt := l.len_
 	end Compact
 	
-	proc SetLen(var l: StrList; len_: integer)
+	proc SetLen(var l: StrList; len_: integer) 
 		const 
 			D = 32
 		var 
@@ -802,11 +802,11 @@ module Dialog
 		end 
 	end SetLen
 	
-	proc GetItem(in l: StrList; index: integer; var item: String)
+	proc GetItem(in l: StrList; index: integer; var item: String) 
 		var 
 			i, j, k: integer
 			b: Buf
-			ch: char
+			ch: wchar
 	begin 
 		if (l.items # nil) & (index >= 0) & (index < l.len_) then
 			i := l.items[index]
@@ -833,11 +833,11 @@ module Dialog
 		end 
 	end GetItem
 	
-	proc SetItem(var l: StrList; index: integer; item: array of char)
+	proc SetItem(var l: StrList; index: integer; item: array of wchar) 
 		var 
 			len_, i, j, k: integer
 			b: Buf
-			ch: char
+			ch: wchar
 	begin 
 		if l.items = nil then
 			Init(l) 
@@ -881,12 +881,12 @@ module Dialog
 		inc(l.scnt)
 	end SetItem
 	
-	proc SetResources(var l: StrList; in key: array of char)
+	proc SetResources(var l: StrList; in key: array of wchar) 
 		var 
 			i, k, j, x: integer
-			ch: char
-			s, a: array 16 of char
-			h, item: array 256 of char
+			ch: wchar
+			s, a: array 16 of wchar
+			h, item: array 256 of wchar
 	begin 
 		if l.items = nil then
 			Init(l) 
@@ -920,19 +920,19 @@ module Dialog
 	
 	// List
 	
-	proc (var l: List) SetLen*(len_: integer) // new
+	proc (var l: List) SetLen*(len_: integer)  // new
 	begin 
 		assert(len_ >= 0, 20)
 		SetLen(l.l, len_)
 		l.len_ := l.l.len_
 	end SetLen
 	
-	proc (in l: List) GetItem*(index: integer; var item: String) // new
+	proc (in l: List) GetItem*(index: integer; var item: String)  // new
 	begin 
 		GetItem(l.l, index, item)
 	end GetItem
 	
-	proc (var l: List) SetItem*(index: integer; in item: array of char) // new
+	proc (var l: List) SetItem*(index: integer; in item: array of wchar)  // new
 	begin 
 		assert(index >= 0, 20)
 		assert(item # "", 21)
@@ -940,7 +940,7 @@ module Dialog
 		l.len_ := l.l.len_
 	end SetItem
 	
-	proc (var l: List) SetResources*(in key: array of char) // new
+	proc (var l: List) SetResources*(in key: array of wchar)  // new
 	begin 
 		assert(key # "", 20)
 		SetResources(l.l, key)
@@ -950,7 +950,7 @@ module Dialog
 	
 	// Selection
 	
-	proc (var s: Selection) SetLen*(len_: integer) // new
+	proc (var s: Selection) SetLen*(len_: integer)  // new
 		var 
 			sel: pointer to array of set
 			i: integer
@@ -977,12 +977,12 @@ module Dialog
 		s.len_ := s.l.len_
 	end SetLen
 	
-	proc (in s: Selection) GetItem*(index: integer; var item: String) // new
+	proc (in s: Selection) GetItem*(index: integer; var item: String)  // new
 	begin 
 		GetItem(s.l, index, item)
 	end GetItem
 	
-	proc (var s: Selection) SetItem*(index: integer; in item: array of char) // new
+	proc (var s: Selection) SetItem*(index: integer; in item: array of wchar)  // new
 	begin 
 		assert(index >= 0, 20) // ASSERT(index < s.l.len, 21);
 		assert(item # "", 21)
@@ -992,7 +992,7 @@ module Dialog
 		end 
 	end SetItem
 	
-	proc (var s: Selection) SetResources*(in key: array of char) // new
+	proc (var s: Selection) SetResources*(in key: array of wchar)  // new
 	begin 
 		assert(key # "", 20)
 		SetResources(s.l, key)
@@ -1001,7 +1001,7 @@ module Dialog
 		end 
 	end SetResources
 	
-	proc (in s: Selection) In*(index: integer): boolean // new
+	proc (in s: Selection) In*(index: integer): boolean  // new
 	begin 
 		if (s.l.items # nil) & (s.sel # nil) then
 			return (index mod 32) in (s.sel[index div 32]) 
@@ -1010,7 +1010,7 @@ module Dialog
 		end 
 	end In
 	
-	proc (var s: Selection) Excl*(from, to_: integer) // new
+	proc (var s: Selection) Excl*(from, to_: integer)  // new
 	begin 
 		if s.l.items = nil then
 			Init(s.l)
@@ -1028,7 +1028,7 @@ module Dialog
 		end 
 	end Excl
 	
-	proc (var s: Selection) Incl*(from, to_: integer) // new
+	proc (var s: Selection) Incl*(from, to_: integer)  // new
 	begin 
 		if s.l.items = nil then
 			Init(s.l)
@@ -1049,19 +1049,19 @@ module Dialog
 	
 	// Combo
 	
-	proc (var c: Combo) SetLen*(len_: integer) // new
+	proc (var c: Combo) SetLen*(len_: integer)  // new
 	begin 
 		assert(len_ >= 0, 20)
 		SetLen(c.l, len_)
 		c.len_ := c.l.len_
 	end SetLen
 	
-	proc (in c: Combo) GetItem*(index: integer; var item: String) // new
+	proc (in c: Combo) GetItem*(index: integer; var item: String)  // new
 	begin 
 		GetItem(c.l, index, item)
 	end GetItem
 	
-	proc (var c: Combo) SetItem*(index: integer; in item: array of char) // new
+	proc (var c: Combo) SetItem*(index: integer; in item: array of wchar)  // new
 	begin 
 		assert(index >= 0, 20)
 		assert(item # "", 21)
@@ -1069,7 +1069,7 @@ module Dialog
 		c.len_ := c.l.len_
 	end SetItem
 	
-	proc (var c: Combo) SetResources*(in key: array of char) // new
+	proc (var c: Combo) SetResources*(in key: array of wchar)  // new
 	begin 
 		assert(key # "", 20)
 		SetResources(c.l, key)
@@ -1079,42 +1079,42 @@ module Dialog
 	
 	// Tree and TreeNode
 	
-	proc (tn: TreeNode) SetName*(name: String) // new
+	proc (tn: TreeNode) SetName*(name: String)  // new
 	begin 
 		tn.name := name
 	end SetName
 	
-	proc (tn: TreeNode) GetName*(var name: String) // new
+	proc (tn: TreeNode) GetName*(var name: String)  // new
 	begin 
 		name := tn.name
 	end GetName
 	
-	proc (tn: TreeNode) SetData*(data: ANYPTR) // new
+	proc (tn: TreeNode) SetData*(data: ANYPTR)  // new
 	begin 
 		tn.data := data
 	end SetData
 	
-	proc (tn: TreeNode) Data*(): ANYPTR // new
+	proc (tn: TreeNode) Data*(): ANYPTR  // new
 	begin 
 		return tn.data
 	end Data
 	
-	proc (tn: TreeNode) NofChildren*(): integer // new
+	proc (tn: TreeNode) NofChildren*(): integer  // new
 	begin 
 		return tn.nofChildren
 	end NofChildren
 	
-	proc (tn: TreeNode) SetExpansion*(expanded: boolean) // new
+	proc (tn: TreeNode) SetExpansion*(expanded: boolean)  // new
 	begin 
 		tn.expanded := expanded
 	end SetExpansion
 	
-	proc (tn: TreeNode) IsExpanded*(): boolean // new
+	proc (tn: TreeNode) IsExpanded*(): boolean  // new
 	begin 
 		return tn.expanded
 	end IsExpanded
 	
-	proc (tn: TreeNode) IsFolder*(): boolean // new
+	proc (tn: TreeNode) IsFolder*(): boolean  // new
 	begin 
 		if (~tn.viewAsFolder) & (tn.firstChild = nil) then
 			return false 
@@ -1123,12 +1123,12 @@ module Dialog
 		end 
 	end IsFolder
 	
-	proc (tn: TreeNode) ViewAsFolder*(isFolder: boolean) // new
+	proc (tn: TreeNode) ViewAsFolder*(isFolder: boolean)  // new
 	begin 
 		tn.viewAsFolder := isFolder
 	end ViewAsFolder
 	
-	proc (in t: Tree) NofNodes*(): integer // new
+	proc (in t: Tree) NofNodes*(): integer  // new
 	begin 
 		if t.firstRoot = nil then
 			return 0 
@@ -1137,7 +1137,7 @@ module Dialog
 		end 
 	end NofNodes
 	
-	proc (in t: Tree) NofRoots*(): integer // new
+	proc (in t: Tree) NofRoots*(): integer  // new
 	begin 
 		if t.firstRoot = nil then
 			return 0 
@@ -1146,28 +1146,28 @@ module Dialog
 		end 
 	end NofRoots
 	
-	proc (in t: Tree) Parent*(node: TreeNode): TreeNode // new
+	proc (in t: Tree) Parent*(node: TreeNode): TreeNode  // new
 	begin 
 		assert(node # nil, 20)
 		assert(node.tree = SYSTEM.ADR(t), 21)
 		return node.parent
 	end Parent
 	
-	proc (in t: Tree) Next*(node: TreeNode): TreeNode // new
+	proc (in t: Tree) Next*(node: TreeNode): TreeNode  // new
 	begin 
 		assert(node # nil, 20)
 		assert(node.tree = SYSTEM.ADR(t), 21)
 		return node.next
 	end Next
 	
-	proc (in t: Tree) Prev*(node: TreeNode): TreeNode // new
+	proc (in t: Tree) Prev*(node: TreeNode): TreeNode  // new
 	begin 
 		assert(node # nil, 20)
 		assert(node.tree = SYSTEM.ADR(t), 21)
 		return node.prev
 	end Prev
 	
-	proc (in t: Tree) Child*(node: TreeNode; pos: integer): TreeNode // new
+	proc (in t: Tree) Child*(node: TreeNode; pos: integer): TreeNode  // new
 		var 
 			cur: TreeNode
 	begin 
@@ -1191,12 +1191,12 @@ module Dialog
 		return cur
 	end Child
 	
-	proc (in t: Tree) Selected*(): TreeNode // new
+	proc (in t: Tree) Selected*(): TreeNode  // new
 	begin 
 		return t.selected
 	end Selected
 	
-	proc (var t: Tree) Select*(node: TreeNode) // new
+	proc (var t: Tree) Select*(node: TreeNode)  // new
 	begin 
 		assert((node = nil) or (node.tree = SYSTEM.ADR(t)), 20)
 		if (node # nil) or (t.nofRoots = 0) then
@@ -1206,7 +1206,7 @@ module Dialog
 		end 
 	end Select
 	
-	proc Include(in t: Tree; node: TreeNode)
+	proc Include(in t: Tree; node: TreeNode) 
 		var 
 			c: TreeNode
 	begin 
@@ -1220,7 +1220,7 @@ module Dialog
 		end 
 	end Include
 	
-	proc (var t: Tree) InsertAt(parent: TreeNode; pos: integer; node: TreeNode) // new
+	proc (var t: Tree) InsertAt(parent: TreeNode; pos: integer; node: TreeNode)  // new
 		var 
 			cur, prev: TreeNode
 	begin 
@@ -1292,7 +1292,7 @@ module Dialog
 		inc(t.nofNodes)
 	end InsertAt
 	
-	proc (var t: Tree) NewChild*(parent: TreeNode; pos: integer; name: String): TreeNode // new
+	proc (var t: Tree) NewChild*(parent: TreeNode; pos: integer; name: String): TreeNode  // new
 		var 
 			new_: TreeNode
 	begin 
@@ -1306,7 +1306,7 @@ module Dialog
 		return new_
 	end NewChild
 	
-	proc (in t: Tree) CountChildren(node: TreeNode): integer // new
+	proc (in t: Tree) CountChildren(node: TreeNode): integer  // new
 		var 
 			tot, nofc, i: integer
 	begin 
@@ -1321,7 +1321,7 @@ module Dialog
 		return tot
 	end CountChildren
 	
-	proc Exclude(var t: Tree; node: TreeNode)
+	proc Exclude(var t: Tree; node: TreeNode) 
 		var 
 			c: TreeNode
 	begin 
@@ -1338,7 +1338,7 @@ module Dialog
 		end 
 	end Exclude
 	
-	proc (var t: Tree) Delete*(node: TreeNode): integer // new
+	proc (var t: Tree) Delete*(node: TreeNode): integer  // new
 		var 
 			ndel: integer
 	begin 
@@ -1385,7 +1385,7 @@ module Dialog
 		return ndel
 	end Delete
 	
-	proc (var t: Tree) Move*(node, parent: TreeNode; pos: integer) // new
+	proc (var t: Tree) Move*(node, parent: TreeNode; pos: integer)  // new
 		var 
 			ndel, nofn: integer
 			s: TreeNode
@@ -1413,13 +1413,13 @@ module Dialog
 	end DeleteAll
 	
 	
-	proc Notify*(id0, id1: integer; opts: set)
+	proc Notify*(id0, id1: integer; opts: set) 
 	begin 
 		assert(notifyHook # nil, 100)
 		notifyHook.Notify(id0, id1, opts)
 	end Notify
 	
-	proc Update*(in x: ANYREC)
+	proc Update*(in x: ANYREC) 
 		var 
 			type_: Kernel.Type
 			adr, size_: integer
@@ -1433,7 +1433,7 @@ module Dialog
 		Notify(adr, adr + size_, {update, guardCheck})
 	end Update
 	
-	proc UpdateBool*(var x: boolean)
+	proc UpdateBool*(var x: boolean) 
 		var 
 			adr: integer
 	begin 
@@ -1441,7 +1441,7 @@ module Dialog
 		Notify(adr, adr + size(boolean), {update, guardCheck})
 	end UpdateBool
 	
-	proc UpdateSChar*(var x: char)
+	proc UpdateSChar*(var x: char) 
 		var 
 			adr: integer
 	begin 
@@ -1449,15 +1449,15 @@ module Dialog
 		Notify(adr, adr + size(char), {update, guardCheck})
 	end UpdateSChar
 	
-	proc UpdateChar*(var x: char)
+	proc UpdateChar*(var x: wchar) 
 		var 
 			adr: integer
 	begin 
 		adr := SYSTEM.ADR(x)
-		Notify(adr, adr + size(char), {update, guardCheck})
+		Notify(adr, adr + size(wchar), {update, guardCheck})
 	end UpdateChar
 	
-	proc UpdateByte*(var x: byte)
+	proc UpdateByte*(var x: byte) 
 		var 
 			adr: integer
 	begin 
@@ -1465,7 +1465,7 @@ module Dialog
 		Notify(adr, adr + size(byte), {update, guardCheck})
 	end UpdateByte
 	
-	proc UpdateSInt*(var x: shortint)
+	proc UpdateSInt*(var x: shortint) 
 		var 
 			adr: integer
 	begin 
@@ -1473,7 +1473,7 @@ module Dialog
 		Notify(adr, adr + size(shortint), {update, guardCheck})
 	end UpdateSInt
 	
-	proc UpdateInt*(var x: integer)
+	proc UpdateInt*(var x: integer) 
 		var 
 			adr: integer
 	begin 
@@ -1481,7 +1481,7 @@ module Dialog
 		Notify(adr, adr + size(integer), {update, guardCheck})
 	end UpdateInt
 	
-	proc UpdateLInt*(var x: longint)
+	proc UpdateLInt*(var x: longint) 
 		var 
 			adr: integer
 	begin 
@@ -1489,7 +1489,7 @@ module Dialog
 		Notify(adr, adr + size(longint), {update, guardCheck})
 	end UpdateLInt
 	
-	proc UpdateSReal*(var x: real)
+	proc UpdateSReal*(var x: real) 
 		var 
 			adr: integer
 	begin 
@@ -1497,15 +1497,15 @@ module Dialog
 		Notify(adr, adr + size(real), {update, guardCheck})
 	end UpdateSReal
 	
-	proc UpdateReal*(var x: real)
+	proc UpdateReal*(var x: longreal) 
 		var 
 			adr: integer
 	begin 
 		adr := SYSTEM.ADR(x)
-		Notify(adr, adr + size(real), {update, guardCheck})
+		Notify(adr, adr + size(longreal), {update, guardCheck})
 	end UpdateReal
 	
-	proc UpdateSet*(var x: set)
+	proc UpdateSet*(var x: set) 
 		var 
 			adr: integer
 	begin 
@@ -1513,7 +1513,7 @@ module Dialog
 		Notify(adr, adr + size(set), {update, guardCheck})
 	end UpdateSet
 	
-	proc UpdateSString*(in x: array of char)
+	proc UpdateSString*(in x: array of char) 
 		var 
 			adr: integer
 	begin 
@@ -1521,15 +1521,15 @@ module Dialog
 		Notify(adr, adr + len(x) * size(char), {update, guardCheck})
 	end UpdateSString
 	
-	proc UpdateString*(in x: array of char)
+	proc UpdateString*(in x: array of wchar) 
 		var 
 			adr: integer
 	begin 
 		adr := SYSTEM.ADR(x)
-		Notify(adr, adr + len(x) * size(char), {update, guardCheck})
+		Notify(adr, adr + len(x) * size(wchar), {update, guardCheck})
 	end UpdateString
 	
-	proc UpdateList*(in x: ANYREC)
+	proc UpdateList*(in x: ANYREC) 
 		var 
 			type_: Kernel.Type
 			adr, size_: integer
@@ -1544,37 +1544,37 @@ module Dialog
 	end UpdateList
 	
 	
-	proc GetOK*(in str, p0, p1, p2: array of char; form: set; var res: integer)
+	proc GetOK*(in str, p0, p1, p2: array of wchar; form: set; var res: integer) 
 	begin 
 		assert(((yes in form) = (no in form)) & ((yes in form) # (ok in form)), 20)
 		assert(gethook # nil, 100)
 		gethook.GetOK(str, p0, p1, p2, form, res)
 	end GetOK
 	
-	proc GetIntSpec*(defType: Files.Type; var loc: Files.Locator; var name: Files.Name)
+	proc GetIntSpec*(defType: Files.Type; var loc: Files.Locator; var name: Files.Name) 
 	begin 
 		assert(gethook # nil, 100)
 		gethook.GetIntSpec(defType, loc, name)
 	end GetIntSpec
 	
 	proc GetExtSpec*(defName: Files.Name; defType: Files.Type; var loc: Files.Locator
-		var name: Files.Name)
+		var name: Files.Name) 
 	begin 
 		assert(gethook # nil, 100)
 		gethook.GetExtSpec(defName, defType, loc, name)
 	end GetExtSpec
 	
-	proc GetColor*(in_: integer; var out: integer; var set_: boolean)
+	proc GetColor*(in_: integer; var out: integer; var set_: boolean) 
 	begin 
 		assert(gethook # nil, 100)
 		gethook.GetColor(in_, out, set_)
 	end GetColor
 	
 	
-	proc Subst(in_: array of char; in p0, p1, p2: array of char; var out: array of char)
+	proc Subst(in_: array of wchar; in p0, p1, p2: array of wchar; var out: array of wchar) 
 		var 
 			len_, i, j, k: integer
-			ch, c: char
+			ch, c: wchar
 	begin 
 		i := 0
 		ch := in_[i]
@@ -1636,7 +1636,7 @@ module Dialog
 		tabList := nil
 	end FlushMappings
 	
-	proc MapParamString*(in_, p0, p1, p2: array of char; var out: array of char)
+	proc MapParamString*(in_, p0, p1, p2: array of wchar; var out: array of wchar) 
 	(* use in as key in string table file, and return corresponding string in out.
 	   If the resource lookup fails, return in in out *)
 	begin 
@@ -1648,7 +1648,7 @@ module Dialog
 		end 
 	end MapParamString
 	
-	proc MapString*(in_: array of char; var out: array of char)
+	proc MapString*(in_: array of wchar; var out: array of wchar) 
 		var 
 			len_, k: integer
 	begin 
@@ -1664,34 +1664,34 @@ module Dialog
 		end 
 	end MapString
 	
-	proc ShowMsg*(in str: array of char)
+	proc ShowMsg*(in str: array of wchar) 
 	begin 
 		assert(str # "", 20)
 		assert(showHook # nil, 100)
 		showHook.ShowParamMsg(str, "", "", "")
 	end ShowMsg
 	
-	proc ShowParamMsg*(in str, p0, p1, p2: array of char)
+	proc ShowParamMsg*(in str, p0, p1, p2: array of wchar) 
 	begin 
 		assert(str # "", 20)
 		assert(showHook # nil, 100)
 		showHook.ShowParamMsg(str, p0, p1, p2)
 	end ShowParamMsg
 	
-	proc ShowStatus*(in str: array of char)
+	proc ShowStatus*(in str: array of wchar) 
 	begin 
 		assert(showHook # nil, 100)
 		showHook.ShowParamStatus(str, "", "", "")
 	end ShowStatus
 	
-	proc ShowParamStatus*(in str, p0, p1, p2: array of char)
+	proc ShowParamStatus*(in str, p0, p1, p2: array of wchar) 
 	begin 
 		assert(showHook # nil, 100)
 		showHook.ShowParamStatus(str, p0, p1, p2)
 	end ShowParamStatus
 	
 	
-	proc Call*(in proc_, errorMsg: array of char; var res: integer)
+	proc Call*(in proc_, errorMsg: array of wchar; var res: integer) 
 	begin 
 		assert(callHook # nil, 100)
 		callHook.Call(proc_, errorMsg, res)
@@ -1704,9 +1704,9 @@ module Dialog
 		end 
 	end Beep
 	
-	proc (n: LangNotifier) Notify-() end // new abstract
+	proc (n: LangNotifier) Notify-()  end // new abstract
 	
-	proc RegisterLangNotifier*(notifier: LangNotifier)
+	proc RegisterLangNotifier*(notifier: LangNotifier) 
 		var 
 			nl: LangNotifier
 	begin 
@@ -1721,7 +1721,7 @@ module Dialog
 		end 
 	end RegisterLangNotifier
 	
-	proc RemoveLangNotifier*(notifier: LangNotifier)
+	proc RemoveLangNotifier*(notifier: LangNotifier) 
 		var 
 			nl, prev: LangNotifier
 	begin 
@@ -1742,7 +1742,7 @@ module Dialog
 		end 
 	end RemoveLangNotifier
 	
-	proc Exec(a, b, c: integer)
+	proc Exec(a, b, c: integer) 
 		var 
 			nl: LangNotifier
 	begin 
@@ -1752,7 +1752,7 @@ module Dialog
 		currentNotifier := nl
 	end Exec
 	
-	proc SetLanguage*(lang: Language; persistent: boolean)
+	proc SetLanguage*(lang: Language; persistent: boolean) 
 		var 
 			nl, t: LangNotifier
 			ok: boolean
@@ -1790,18 +1790,18 @@ module Dialog
 		SetLanguage(lang, nonPersistent)
 	end ResetLanguage
 	
-	proc SetExtCallHook*(h: ExtCallHook)
+	proc SetExtCallHook*(h: ExtCallHook) 
 	begin 
 		extCallHook := h
 	end SetExtCallHook
 	
-	proc RunExternal*(in exeName: array of char)
+	proc RunExternal*(in exeName: array of wchar) 
 	begin 
 		assert(extCallHook # nil, 100)
 		extCallHook.RunExternal(exeName)
 	end RunExternal
 	
-	proc OpenExternal*(in fileName: array of char)
+	proc OpenExternal*(in fileName: array of wchar) 
 	begin 
 		assert(extCallHook # nil, 100)
 		extCallHook.OpenExternal(fileName)

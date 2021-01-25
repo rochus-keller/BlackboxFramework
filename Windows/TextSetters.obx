@@ -79,11 +79,11 @@ module TextSetters
 		Reader* = pointer to (* abstract *) record 
 				r-: TextModels.Reader // look-ahead state
 				// unit
-				string*: array 64 of char // single chars in string[0]
+				string*: array 64 of wchar // single chars in string[0]
 				view*: Views.View
 				// unit props
 				textOpts*: set
-				mask*: char
+				mask*: wchar
 				setterOpts*: set
 				w*, endW*, h*, dsc*: integer
 				attr*: TextModels.Attributes
@@ -134,7 +134,7 @@ module TextSetters
 			end 
 		
 		StdReader = pointer to record (Reader) 
-				radixChar: char  // the current decimal tab's radix character or 0X if not processing a decimal tab
+				radixChar: wchar  // the current decimal tab's radix character or 0X if not processing a decimal tab
 			end 
 		
 		StdSetter = pointer to record (Setter) 
@@ -170,7 +170,7 @@ module TextSetters
 		old: TextModels.Reader
 		text: TextModels.Model; x, pos: integer
 		ruler: TextRulers.Ruler; rpos: integer; vw: integer; hideMarks: boolean
-		) // new extensible
+		)  // new extensible
 	begin 
 		assert(text # nil, 20)
 		assert(ruler # nil, 22)
@@ -220,14 +220,14 @@ module TextSetters
 	
 	proc (rd: Reader) AdjustWidth*(start, pos: integer; in box: LineBox
 		var w: integer
-		) end // new abstract
+		)  end // new abstract
 	
-	proc (rd: Reader) SplitWidth*(w: integer): integer end // new abstract
+	proc (rd: Reader) SplitWidth*(w: integer): integer  end // new abstract
 	
 	
 	// Setter
 	
-	proc (s: Setter) CopyFrom-(source: Stores.Store) // extensible
+	proc (s: Setter) CopyFrom-(source: Stores.Store)  // extensible
 	begin 
 		with source: Setter do 
 			s.text := source.text
@@ -237,7 +237,7 @@ module TextSetters
 		end 
 	end CopyFrom
 	
-	proc (s: Setter) Internalize-(var rd: Stores.Reader) // extensible
+	proc (s: Setter) Internalize-(var rd: Stores.Reader)  // extensible
 		var 
 			thisVersion: integer
 	begin 
@@ -248,7 +248,7 @@ module TextSetters
 		rd.ReadVersion(minVersion, maxVersion, thisVersion)
 	end Internalize
 	
-	proc (s: Setter) Externalize-(var wr: Stores.Writer) // extensible
+	proc (s: Setter) Externalize-(var wr: Stores.Writer)  // extensible
 	begin 
 		s.Externalize^(wr)
 		wr.WriteVersion(maxVersion)
@@ -256,7 +256,7 @@ module TextSetters
 	
 	proc (s: Setter) ConnectTo*(text: TextModels.Model
 		defRuler: TextRulers.Ruler; vw: integer; hideMarks: boolean
-		) // new extensible
+		)  // new extensible
 	begin 
 		if text # nil then
 			s.text := text
@@ -270,71 +270,71 @@ module TextSetters
 	end ConnectTo
 	
 	
-	proc (s: Setter) ThisPage*(pageH: integer; pageNo: integer): integer end // new abstract
+	proc (s: Setter) ThisPage*(pageH: integer; pageNo: integer): integer  end // new abstract
 	// pre: connected, 0 <= pageNo
 	// post: (result = -1) & (pageNo >= maxPageNo) OR (result = pageStart(pageNo))
 	
-	proc (s: Setter) NextPage*(pageH: integer; start: integer): integer end // new abstract
+	proc (s: Setter) NextPage*(pageH: integer; start: integer): integer  end // new abstract
 	// pre: connected, ThisPage(pageH, pageNo) = start [with pageNo = NumberOfPageAt(start)]
 	// post: (result = start) & last-page(start) OR result = next-pageStart(start)
 	
 	
-	proc (s: Setter) ThisSequence*(pos: integer): integer end // new abstract
+	proc (s: Setter) ThisSequence*(pos: integer): integer  end // new abstract
 	// pre: connected, 0 <= pos <= s.text.Length()
 	// post: (result = 0) OR (char(result - 1) IN {line, para})
 	
-	proc (s: Setter) NextSequence*(start: integer): integer end // new abstract
+	proc (s: Setter) NextSequence*(start: integer): integer  end // new abstract
 	// pre: connected, ThisSequence(start) = start
 	// post: (result = start) & last-line(start) OR (ThisSequence(t, result - 1) = start)
 	
-	proc (s: Setter) PreviousSequence*(start: integer): integer end // new abstract
+	proc (s: Setter) PreviousSequence*(start: integer): integer  end // new abstract
 	// pre: connected, ThisSequence(t, start) = start
 	// post: (result = 0) & (start = 0) OR (result = ThisSequence(t, start - 1))
 	
 	
-	proc (s: Setter) ThisLine*(pos: integer): integer end // new abstract
+	proc (s: Setter) ThisLine*(pos: integer): integer  end // new abstract
 	// pre: connected, 0 <= pos <= s.text.Length()
 	// post: result <= pos, (pos < NextLine(result)) OR last-line(result)
 	
-	proc (s: Setter) NextLine*(start: integer): integer end // new abstract
+	proc (s: Setter) NextLine*(start: integer): integer  end // new abstract
 	// pre: connected, ThisLine(start) = start
 	(* post: (result = 0) & (start = 0) OR
 	   (result = start) & last-line(start) OR
 	   (ThisLine(result - 1) = start) *)
 	
-	proc (s: Setter) PreviousLine*(start: integer): integer end // new abstract
+	proc (s: Setter) PreviousLine*(start: integer): integer  end // new abstract
 	// pre: connected, ThisLine(start) = start
 	// post: (result = 0) & (start = 0) OR (result = ThisLine(start - 1))
 	
 	
-	proc (s: Setter) GetWord*(pos: integer; var beg, end_: integer) end // new abstract
+	proc (s: Setter) GetWord*(pos: integer; var beg, end_: integer)  end // new abstract
 	// pre: connected, 0 <= pos <= s.text.Length()
 	// post: c set, beg <= pos <= end
 	
-	proc (s: Setter) GetLine*(start: integer; var box: LineBox) end // new abstract
+	proc (s: Setter) GetLine*(start: integer; var box: LineBox)  end // new abstract
 	// pre: connected, ThisLine(start) = start, 0 <= start <= s.text.Length()
 	(* post: (c, box) set (=> box.ruler # NIL), (box.len > 0) OR box.eot,
 	   0 <= box.left <= box.right <= ruler.right *)
 	
 	proc (s: Setter) GetBox*(start, end_, maxW, maxH: integer
 		var w, h: integer
-		) end // new abstract
+		)  end // new abstract
 	// pre: connected, ThisLine(start) = start, 0 <= start <= end <= s.text.Length()
 	// post: c set, maxW > undefined => w <= maxW, maxH > undefined => h <= maxH
 	
 	
-	proc (s: Setter) NewReader*(old: Reader): Reader end // new abstract
+	proc (s: Setter) NewReader*(old: Reader): Reader  end // new abstract
 	// pre: connected
 	
 	
-	proc (s: Setter) GridOffset*(dsc: integer; in box: LineBox): integer end // new abstract
+	proc (s: Setter) GridOffset*(dsc: integer; in box: LineBox): integer  end // new abstract
 	// pre: connected, dsc >= 0: dsc is descender of previous line; dsc = -1 for first line
 	// post: dsc + GridOffset(dsc, box) + box.asc = k*ruler.grid (k >= 0) >= ruler.asc + ruler.grid
 	
 	
 	// Directory
 	
-	proc (d: Directory) New*(): Setter end // new abstract
+	proc (d: Directory) New*(): Setter  end // new abstract
 	
 	
 	// line box cache
@@ -358,7 +358,7 @@ module TextSetters
 		end 
 	end InitCache
 	
-	proc ClearCache(key: integer)
+	proc ClearCache(key: integer) 
 		var 
 			i, j: integer
 	begin 
@@ -385,7 +385,7 @@ module TextSetters
 	end ClearCache
 	
 	
-	proc CacheIndex(key, start: integer): integer
+	proc CacheIndex(key, start: integer): integer 
 		var 
 			i: integer
 	begin 
@@ -400,7 +400,7 @@ module TextSetters
 		return i
 	end CacheIndex
 	
-	proc GetFromCache(s: StdSetter; i: integer; var l: LineBox)
+	proc GetFromCache(s: StdSetter; i: integer; var l: LineBox) 
 	begin 
 		l := boxCache[i].line
 		if ~cachedRulers then
@@ -415,7 +415,7 @@ module TextSetters
 		end 
 	end GetFromCache
 	
-	proc AddToCache(key, start: integer; var l: LineBox)
+	proc AddToCache(key, start: integer; var l: LineBox) 
 		var 
 			i: integer
 	begin 
@@ -430,7 +430,7 @@ module TextSetters
 	end AddToCache
 	
 	
-	proc CachedSeqStart(key, pos: integer): integer
+	proc CachedSeqStart(key, pos: integer): integer 
 		var 
 			start: integer
 			i: integer
@@ -448,7 +448,7 @@ module TextSetters
 		return start
 	end CachedSeqStart
 	
-	proc AddSeqStartToCache(key, pos, start: integer)
+	proc AddSeqStartToCache(key, pos, start: integer) 
 		var 
 			i: integer
 	begin 
@@ -503,7 +503,7 @@ module TextSetters
 	
 	
 	
-	proc WordPart(ch, ch1: char): boolean
+	proc WordPart(ch, ch1: wchar): boolean 
 		(* Same as .net function System.Char.IsLetterOrDigit(ch)
 		   + digit space, nonbreaking space, nonbreaking hyphen, & underscore
 		   ch1 unused *)
@@ -771,7 +771,7 @@ module TextSetters
 	
 	
 	
-	proc Right(ra: TextRulers.Attributes; vw: integer): integer
+	proc Right(ra: TextRulers.Attributes; vw: integer): integer 
 	begin 
 		if TextRulers.rightFixed in ra.opts then
 			return ra.right 
@@ -780,7 +780,7 @@ module TextSetters
 		end 
 	end Right
 	
-	proc GetViewPref(rd: StdReader)
+	proc GetViewPref(rd: StdReader) 
 		const 
 			maxH = 1600 * Ports.point
 		var 
@@ -825,10 +825,10 @@ module TextSetters
 		end 
 	end GetViewPref
 	
-	proc GatherString(rd: StdReader)
+	proc GatherString(rd: StdReader) 
 		var 
 			i, len_: integer
-			ch, radixChar: char
+			ch, radixChar: wchar
 	begin 
 		i := 1
 		len_ := len(rd.string) - 1
@@ -864,7 +864,7 @@ module TextSetters
 		rd.endW := rd.w
 	end GatherString
 	
-	proc SpecialChar(rd: StdReader)
+	proc SpecialChar(rd: StdReader) 
 		var 
 			ra: TextRulers.Attributes
 			i, tabs, spaceW, dW: integer
@@ -996,7 +996,7 @@ module TextSetters
 		var 
 			ra: TextRulers.Attributes
 			asc, dsc, w: integer
-			ch: char
+			ch: wchar
 	begin 
 		rd.Read^
 		if ~rd.eot then
@@ -1029,7 +1029,7 @@ module TextSetters
 		end 
 	end Read
 	
-	proc (rd: StdReader) AdjustWidth(start, pos: integer; in box: LineBox; var w: integer)
+	proc (rd: StdReader) AdjustWidth(start, pos: integer; in box: LineBox; var w: integer) 
 		var 
 			i: integer
 			form: set
@@ -1048,7 +1048,7 @@ module TextSetters
 		end 
 	end AdjustWidth
 	
-	proc (rd: StdReader) SplitWidth(w: integer): integer
+	proc (rd: StdReader) SplitWidth(w: integer): integer 
 	begin 
 		if (rd.string[1] = 0x) & (rd.view = nil) then
 			return (w + 1) div 2 
@@ -1060,7 +1060,7 @@ module TextSetters
 	
 	// Worder
 	
-	proc SetWorder(var w: Worder; s: StdSetter; pos: integer; var start: integer)
+	proc SetWorder(var w: Worder; s: StdSetter; pos: integer; var start: integer) 
 		const 
 			wordCutoff = len(s.rd.string)
 	begin 
@@ -1078,7 +1078,7 @@ module TextSetters
 		s.rd.string[0] := 0x
 	end SetWorder
 	
-	proc StepWorder(var w: Worder; s: StdSetter; var part: boolean)
+	proc StepWorder(var w: Worder; s: StdSetter; var part: boolean) 
 		var 
 			rd: Reader
 	begin 
@@ -1113,7 +1113,7 @@ module TextSetters
 	
 	// StdSetter
 	
-	proc (s: StdSetter) CopyFrom(source: Stores.Store)
+	proc (s: StdSetter) CopyFrom(source: Stores.Store) 
 	begin 
 		s.CopyFrom^(source)
 		with source: StdSetter do 
@@ -1125,13 +1125,13 @@ module TextSetters
 		end 
 	end CopyFrom
 	
-	proc (s: StdSetter) Externalize(var wr: Stores.Writer)
+	proc (s: StdSetter) Externalize(var wr: Stores.Writer) 
 	begin 
 		s.Externalize^(wr)
 		wr.WriteVersion(maxStdVersion)
 	end Externalize
 	
-	proc (s: StdSetter) Internalize(var rd: Stores.Reader)
+	proc (s: StdSetter) Internalize(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
@@ -1153,7 +1153,7 @@ module TextSetters
 	
 	proc (s: StdSetter) ConnectTo(text: TextModels.Model
 		defRuler: TextRulers.Ruler; vw: integer; hideMarks: boolean
-		)
+		) 
 	begin 
 		s.ConnectTo^(text, defRuler, vw, hideMarks)
 		ClearCache(s.key)
@@ -1168,7 +1168,7 @@ module TextSetters
 	end ConnectTo
 	
 	
-	proc (s: StdSetter) ThisPage(pageH: integer; pageNo: integer): integer
+	proc (s: StdSetter) ThisPage(pageH: integer; pageNo: integer): integer 
 		// pre: connected, 0 <= pageNo
 		// post: (result = -1) & (pageNo >= maxPageNo) OR (result = pageStart(pageNo))
 		var 
@@ -1189,7 +1189,7 @@ module TextSetters
 		return start
 	end ThisPage
 	
-	proc (s: StdSetter) NextPage(pageH: integer; start: integer): integer
+	proc (s: StdSetter) NextPage(pageH: integer; start: integer): integer 
 		// pre: connected, ThisPage(pageH, x) = start
 		// post: (result = s.text.Length()) OR result = next-pageStart(start)
 		const 
@@ -1288,7 +1288,7 @@ module TextSetters
 			end 
 		end HandleRuler
 		
-		proc IsEmptyLine(): boolean
+		proc IsEmptyLine(): boolean 
 		begin 
 			return (box.right = box.left) or s.hideMarks & isRuler & ~(pageBreak in ra.opts)
 		end IsEmptyLine
@@ -1327,12 +1327,12 @@ module TextSetters
 	end NextPage
 	
 	
-	proc (s: StdSetter) NextSequence(start: integer): integer
+	proc (s: StdSetter) NextSequence(start: integer): integer 
 		// pre: connected, ThisSequence(start) = start
 		// post: (result = start) & last-line(start) OR (ThisSequence(t, result - 1) = start)
 		var 
 			rd: TextModels.Reader
-			ch: char
+			ch: wchar
 	begin 
 		assert(s.text # nil, 20)
 		s.r := s.text.NewReader(s.r)
@@ -1348,13 +1348,13 @@ module TextSetters
 		end 
 	end NextSequence
 	
-	proc (s: StdSetter) ThisSequence(pos: integer): integer
+	proc (s: StdSetter) ThisSequence(pos: integer): integer 
 		// pre: connected, 0 <= pos <= t.Length()
 		// post: (result = 0) OR (char(result - 1) IN {line, para})
 		var 
 			rd: TextModels.Reader
 			start, limit: integer
-			ch: char
+			ch: wchar
 	begin 
 		assert(s.text # nil, 20)
 		assert(0 <= pos, 21)
@@ -1383,7 +1383,7 @@ module TextSetters
 		end 
 	end ThisSequence
 	
-	proc (s: StdSetter) PreviousSequence(start: integer): integer
+	proc (s: StdSetter) PreviousSequence(start: integer): integer 
 	// pre: connected, ThisSequence(t, start) = start
 	// post: (result = 0) & (start = 0) OR (result = ThisSequence(t, start - 1))
 	begin 
@@ -1395,7 +1395,7 @@ module TextSetters
 	end PreviousSequence
 	
 	
-	proc (s: StdSetter) ThisLine(pos: integer): integer
+	proc (s: StdSetter) ThisLine(pos: integer): integer 
 		// pre: connected
 		var 
 			start, next: integer
@@ -1408,7 +1408,7 @@ module TextSetters
 		return start
 	end ThisLine
 	
-	proc (s: StdSetter) NextLine(start: integer): integer
+	proc (s: StdSetter) NextLine(start: integer): integer 
 		// pre: connected, ThisLine(start) = start
 		(* post: (result = 0) & (start = 0) OR
 		   (result = start) & last-line(start) OR
@@ -1435,7 +1435,7 @@ module TextSetters
 		end 
 	end NextLine
 	
-	proc (s: StdSetter) PreviousLine(start: integer): integer
+	proc (s: StdSetter) PreviousLine(start: integer): integer 
 	// pre: connected, ThisLine(start) = start
 	// post: (result = 0) & (start = 0) OR (result = ThisLine(start - 1))
 	begin 
@@ -1448,7 +1448,7 @@ module TextSetters
 	end PreviousLine
 	
 	
-	proc (s: StdSetter) GetWord(pos: integer; var beg, end_: integer)
+	proc (s: StdSetter) GetWord(pos: integer; var beg, end_: integer) 
 		// pre: connected, 0 <= pos <= s.text.Length()
 		// post: beg <= pos <= end
 		const 
@@ -1476,7 +1476,7 @@ module TextSetters
 		until ~part or (s.rd.string[0] = 0x) or (end_ - beg > wordCutoff) 
 	end GetWord
 	
-	proc (s: StdSetter) GetLine(start: integer; var box: LineBox)
+	proc (s: StdSetter) GetLine(start: integer; var box: LineBox) 
 		type 
 			RadixData = record found: boolean; right: integer end 
 		var 
@@ -1487,10 +1487,10 @@ module TextSetters
 			i, tabsN: integer
 			form: set
 			adj: boolean
-			ch: char
+			ch: wchar
 			boxRadix, brkRadix: RadixData
 		
-		proc TrueW(var b: LineBox; w: integer): integer
+		proc TrueW(var b: LineBox; w: integer): integer 
 			var 
 				i: integer
 				type_: set
@@ -1515,7 +1515,7 @@ module TextSetters
 			return w
 		end TrueW
 		
-		proc Enclose(var b: LineBox; w: integer; var radix: RadixData)
+		proc Enclose(var b: LineBox; w: integer; var radix: RadixData) 
 			var 
 				off, i, d: integer
 				type_: set
@@ -1752,7 +1752,7 @@ module TextSetters
 	end GetLine
 	
 	
-	proc (s: StdSetter) GetBox(start, end_, maxW, maxH: integer; var w, h: integer)
+	proc (s: StdSetter) GetBox(start, end_, maxW, maxH: integer; var w, h: integer) 
 		var 
 			box: LineBox
 			asc, dsc: integer
@@ -1787,7 +1787,7 @@ module TextSetters
 	end GetBox
 	
 	
-	proc (s: StdSetter) NewReader(old: Reader): Reader
+	proc (s: StdSetter) NewReader(old: Reader): Reader 
 		// pre: connected
 		var 
 			rd: StdReader
@@ -1802,7 +1802,7 @@ module TextSetters
 	end NewReader
 	
 	
-	proc (s: StdSetter) GridOffset(dsc: integer; in box: LineBox): integer
+	proc (s: StdSetter) GridOffset(dsc: integer; in box: LineBox): integer 
 		var 
 			ra: TextRulers.Attributes
 			h, h0: integer
@@ -1835,7 +1835,7 @@ module TextSetters
 	
 	// StdDirectory
 	
-	proc (d: StdDirectory) New(): Setter
+	proc (d: StdDirectory) New(): Setter 
 		var 
 			s: StdSetter
 	begin 
@@ -1857,7 +1857,7 @@ module TextSetters
 		stdDir := d
 	end Init
 	
-	proc SetDir*(d: Directory)
+	proc SetDir*(d: Directory) 
 	begin 
 		assert(d # nil, 20)
 		dir := d

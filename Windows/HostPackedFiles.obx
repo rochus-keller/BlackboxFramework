@@ -62,14 +62,14 @@ module HostPackedFiles
 	
 	// Auxiliary procedures
 	
-	proc DebugPrint(in str: array of char)
+	proc DebugPrint(in str: array of wchar) 
 	begin 
 	// Dialog.ShowMsg(str)
 	
 	
 	end DebugPrint
 	
-	proc ReadInt(r: Files.Reader; var x: integer)
+	proc ReadInt(r: Files.Reader; var x: integer) 
 		var 
 			b: array 4 of byte
 	begin 
@@ -77,18 +77,18 @@ module HostPackedFiles
 		x := b[0] mod 256 + 256 * (b[1] mod 256 + 256 * (b[2] mod 256 + 256 * (b[3] mod 256)))
 	end ReadInt
 	
-	proc ReadChar(r: Files.Reader; var x: char)
+	proc ReadChar(r: Files.Reader; var x: wchar) 
 		var 
 			b: array 2 of byte
 	begin 
 		r.ReadBytes(b, 0, 2)
-		x := SYSTEM.VAL(char, b)
+		x := SYSTEM.VAL(wchar, b)
 	end ReadChar
 	
-	proc ReadString(r: Files.Reader; var x: array of char)
+	proc ReadString(r: Files.Reader; var x: array of wchar) 
 		var 
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		repeat 
@@ -98,10 +98,10 @@ module HostPackedFiles
 		until ch = 0x 
 	end ReadString
 	
-	proc Diff(var a, b: array of char; caseSens: boolean): integer
+	proc Diff(var a, b: array of wchar; caseSens: boolean): integer 
 		var 
 			i: integer
-			cha, chb: char
+			cha, chb: wchar
 	begin 
 		i := 0
 		repeat 
@@ -127,7 +127,7 @@ module HostPackedFiles
 		return 0
 	end Diff
 	
-	proc GetType(name: Files.Name; var type_: Files.Type)
+	proc GetType(name: Files.Name; var type_: Files.Type) 
 		var 
 			l, i: integer
 	begin 
@@ -141,7 +141,7 @@ module HostPackedFiles
 		end 
 	end GetType
 	
-	proc GetNextSubLoc(path: Files.Name; beg: integer; var res: Files.Name; var end_: integer)
+	proc GetNextSubLoc(path: Files.Name; beg: integer; var res: Files.Name; var end_: integer) 
 		var 
 			i: integer
 	begin 
@@ -156,7 +156,7 @@ module HostPackedFiles
 		end_ := beg
 	end GetNextSubLoc
 	
-	proc GetLoc(path: Files.Name; create: boolean): Locator
+	proc GetLoc(path: Files.Name; create: boolean): Locator 
 		var 
 			end_, diff: integer
 			sp: Files.Name
@@ -293,7 +293,7 @@ module HostPackedFiles
 		end 
 	end ReadResourceTable
 	
-	proc Get(path: HostFiles.FullName; name: Files.Name): Files.File
+	proc Get(path: HostFiles.FullName; name: Files.Name): Files.File 
 		var 
 			l: FileList
 			f: File
@@ -329,12 +329,12 @@ module HostPackedFiles
 	
 	// Files.Directory
 	
-	proc (d: Directory) Delete(loc: Files.Locator; name: Files.Name)
+	proc (d: Directory) Delete(loc: Files.Locator; name: Files.Name) 
 	begin 
 		orgdir.Delete(loc, name)
 	end Delete
 	
-	proc (d: Directory) FileList(floc: Files.Locator): Files.FileInfo
+	proc (d: Directory) FileList(floc: Files.Locator): Files.FileInfo 
 		var 
 			pi, fi, tfi, nfi, last: Files.FileInfo
 			firstRes, diff: integer
@@ -387,12 +387,12 @@ module HostPackedFiles
 		return nfi
 	end FileList
 	
-	proc (d: Directory) GetFileName(name: Files.Name; type_: Files.Type; var filename: Files.Name)
+	proc (d: Directory) GetFileName(name: Files.Name; type_: Files.Type; var filename: Files.Name) 
 	begin 
 		orgdir.GetFileName(name, type_, filename)
 	end GetFileName
 	
-	proc (d: Directory) LocList(floc: Files.Locator): Files.LocInfo
+	proc (d: Directory) LocList(floc: Files.Locator): Files.LocInfo 
 		var 
 			pi, li, nli, last: Files.LocInfo
 			firstRes, diff: integer
@@ -446,12 +446,12 @@ module HostPackedFiles
 		return nli
 	end LocList
 	
-	proc (d: Directory) New(loc: Files.Locator; ask: boolean): Files.File
+	proc (d: Directory) New(loc: Files.Locator; ask: boolean): Files.File 
 	begin 
 		return orgdir.New(loc, ask)
 	end New
 	
-	proc (d: Directory) Old(loc: Files.Locator; name: Files.Name; shared: boolean): Files.File
+	proc (d: Directory) Old(loc: Files.Locator; name: Files.Name; shared: boolean): Files.File 
 		var 
 			f: Files.File
 	begin 
@@ -462,36 +462,36 @@ module HostPackedFiles
 		return f
 	end Old
 	
-	proc (d: Directory) Rename(loc: Files.Locator; old, new_: Files.Name; ask: boolean)
+	proc (d: Directory) Rename(loc: Files.Locator; old, new_: Files.Name; ask: boolean) 
 	begin 
 		orgdir.Rename(loc, old, new_, ask)
 	end Rename
 	
 	proc (d: Directory) SameFile(
 		loc0: Files.Locator; name0: Files.Name; loc1: Files.Locator; name1: Files.Name
-		): boolean
+		): boolean 
 	begin 
 		return orgdir.SameFile(loc0, name0, loc1, name1)
 	end SameFile
 	
-	proc (d: Directory) Temp(): Files.File
+	proc (d: Directory) Temp(): Files.File 
 	begin 
 		return orgdir.Temp()
 	end Temp
 	
-	proc (d: Directory) This(in path: array of char): Files.Locator
+	proc (d: Directory) This(in path: array of wchar): Files.Locator 
 	begin 
 		return orgdir.This(path)
 	end This
 	
 	// PackedDirectory
 	
-	proc (d: PackedDirectory) Delete(loc: Files.Locator; name: Files.Name)
+	proc (d: PackedDirectory) Delete(loc: Files.Locator; name: Files.Name) 
 	begin 
 		loc.res := 4 // write-protection
 	end Delete
 	
-	proc (d: PackedDirectory) FileList(floc: Files.Locator): Files.FileInfo
+	proc (d: PackedDirectory) FileList(floc: Files.Locator): Files.FileInfo 
 		var 
 			nfi, tfi, last: Files.FileInfo
 			loc: Locator
@@ -535,12 +535,12 @@ module HostPackedFiles
 		return nfi
 	end FileList
 	
-	proc (d: PackedDirectory) GetFileName(name: Files.Name; type_: Files.Type; var filename: Files.Name)
+	proc (d: PackedDirectory) GetFileName(name: Files.Name; type_: Files.Type; var filename: Files.Name) 
 	begin 
 		orgdir.GetFileName(name, type_, filename)
 	end GetFileName
 	
-	proc (d: PackedDirectory) LocList(floc: Files.Locator): Files.LocInfo
+	proc (d: PackedDirectory) LocList(floc: Files.Locator): Files.LocInfo 
 		var 
 			nli, tli, last: Files.LocInfo
 			loc: Locator
@@ -571,13 +571,13 @@ module HostPackedFiles
 		return nli
 	end LocList
 	
-	proc (d: PackedDirectory) New(loc: Files.Locator; ask: boolean): Files.File
+	proc (d: PackedDirectory) New(loc: Files.Locator; ask: boolean): Files.File 
 	begin 
 		loc.res := 4 // write-protection
 		return nil
 	end New
 	
-	proc (d: PackedDirectory) Old(loc: Files.Locator; name: Files.Name; shared: boolean): Files.File
+	proc (d: PackedDirectory) Old(loc: Files.Locator; name: Files.Name; shared: boolean): Files.File 
 		var 
 			f: Files.File
 	begin 
@@ -600,46 +600,46 @@ module HostPackedFiles
 		return f
 	end Old
 	
-	proc (d: PackedDirectory) Rename(loc: Files.Locator; old, new_: Files.Name; ask: boolean)
+	proc (d: PackedDirectory) Rename(loc: Files.Locator; old, new_: Files.Name; ask: boolean) 
 	begin 
 		loc.res := 4 // write-protection
 	end Rename
 	
-	proc (d: PackedDirectory) SameFile(loc0: Files.Locator; name0: Files.Name; loc1: Files.Locator; name1: Files.Name): boolean
+	proc (d: PackedDirectory) SameFile(loc0: Files.Locator; name0: Files.Name; loc1: Files.Locator; name1: Files.Name): boolean 
 	begin 
 		return orgdir.SameFile(loc0, name0, loc1, name1)
 	end SameFile
 	
-	proc (d: PackedDirectory) Temp(): Files.File
+	proc (d: PackedDirectory) Temp(): Files.File 
 	begin 
 		return orgdir.Temp()
 	end Temp
 	
-	proc (d: PackedDirectory) This(in path: array of char): Files.Locator
+	proc (d: PackedDirectory) This(in path: array of wchar): Files.Locator 
 	begin 
 		return orgdir.This(path)
 	end This
 	
 	// Files.Reader
 	
-	proc (r: Reader) Base(): File
+	proc (r: Reader) Base(): File 
 	begin 
 		return r.base
 	end Base
 	
-	proc (r: Reader) Pos(): integer
+	proc (r: Reader) Pos(): integer 
 	begin 
 		return r.r.Pos() - r.base.l.adr
 	end Pos
 	
-	proc (r: Reader) SetPos(pos: integer)
+	proc (r: Reader) SetPos(pos: integer) 
 	begin 
 		assert(pos <= r.base.l.len_, 20)
 		r.r.SetPos(pos + r.base.l.adr)
 		r.eof := false
 	end SetPos
 	
-	proc (r: Reader) ReadByte(var x: byte)
+	proc (r: Reader) ReadByte(var x: byte) 
 	begin 
 		if (r.r.Pos() - r.base.l.adr) >= r.base.l.len_ then
 			r.eof := true
@@ -649,7 +649,7 @@ module HostPackedFiles
 		end 
 	end ReadByte
 	
-	proc (r: Reader) ReadBytes(var x: array of byte; beg, len_: integer)
+	proc (r: Reader) ReadBytes(var x: array of byte; beg, len_: integer) 
 	begin 
 		assert(beg >= 0, 20)
 		assert(len_ >= 0, 21)
@@ -668,12 +668,12 @@ module HostPackedFiles
 	// Do nothing since all packed files are opened on the exe file which should stay open.
 	end Close
 	
-	proc (f: File) Closed(): boolean
+	proc (f: File) Closed(): boolean 
 	begin  // Always FALSE since all packed files are opened
 		return false
 	end Closed
 	
-	proc (f: File) Shared(): boolean
+	proc (f: File) Shared(): boolean 
 	begin  // Always TRUE since all packed files are read only
 		return true
 	end Shared
@@ -683,12 +683,12 @@ module HostPackedFiles
 	// Do nothing since all packed files are read only.
 	end Flush
 	
-	proc (f: File) Length(): integer
+	proc (f: File) Length(): integer 
 	begin 
 		return f.l.len_
 	end Length
 	
-	proc (f: File) NewReader(old: Files.Reader): Files.Reader
+	proc (f: File) NewReader(old: Files.Reader): Files.Reader 
 		var 
 			r: Reader
 			hr: Files.Reader
@@ -707,14 +707,14 @@ module HostPackedFiles
 		return r
 	end NewReader
 	
-	proc (f: File) NewWriter(old: Files.Writer): Files.Writer
+	proc (f: File) NewWriter(old: Files.Writer): Files.Writer 
 	begin 
 		halt(21)
 		// Always TRAP 21 since all packed files are read only
 		return nil
 	end NewWriter
 	
-	proc (f: File) Register(name: Files.Name; type_: Files.Type; ask: boolean; var res: integer)
+	proc (f: File) Register(name: Files.Name; type_: Files.Type; ask: boolean; var res: integer) 
 	begin 
 		halt(20)
 	// Do nothing since all packed files are opened using Old and only files opened using New can be registered.
@@ -750,7 +750,7 @@ module HostPackedFiles
 		end 
 	end IsInstalled
 	
-	proc GetModDate*(f: Files.File; var year, month, day, hour, minute, second: integer)
+	proc GetModDate*(f: Files.File; var year, month, day, hour, minute, second: integer) 
 	begin 
 		assert(f is File)
 		with f: File do 

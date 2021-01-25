@@ -45,7 +45,7 @@ module HostTabFrames
 	
 	// auxiliary procedures
 	
-	proc GetSize(f: StdTabViews.Frame; var x, y, w, h: integer)
+	proc GetSize(f: StdTabViews.Frame; var x, y, w, h: integer) 
 		var 
 			u, x0, y0: integer
 	begin 
@@ -59,7 +59,7 @@ module HostTabFrames
 		h := (y0 + h) div u - y
 	end GetSize
 	
-	proc Adapt(f: StdTabViews.Frame; var i: Info)
+	proc Adapt(f: StdTabViews.Frame; var i: Info) 
 		var 
 			res, x, y, w, h, cx, cy, cw, ch: integer
 			r: HostPorts.Rider
@@ -92,7 +92,7 @@ module HostTabFrames
 		end 
 	end Adapt
 	
-	proc Open(f: StdTabViews.Frame; class, name: WinApi.PtrWSTR; style, ex: set; var i: Info)
+	proc Open(f: StdTabViews.Frame; class, name: WinApi.PtrWSTR; style, ex: set; var i: Info) 
 		var 
 			res, x, y, w, h, cx, cy, cw, ch: integer
 			p: HostPorts.Port
@@ -137,7 +137,7 @@ module HostTabFrames
 		end 
 	end Open
 	
-	proc (f: Tab) Print(l, r, t, b: integer) // new
+	proc (f: Tab) Print(l, r, t, b: integer)  // new
 		var 
 			w, h, sw, asc, dsc, fw, len_, sel, i, dm, x, y, top: integer
 			font: Fonts.Font
@@ -213,7 +213,7 @@ module HostTabFrames
 	
 	end Print
 	
-	proc SendKey(ch: char; wnd: WinApi.HANDLE)
+	proc SendKey(ch: wchar; wnd: WinApi.HANDLE) 
 		var 
 			res, code: integer
 	begin 
@@ -255,7 +255,7 @@ module HostTabFrames
 		end 
 	end SendKey
 	
-	proc HandleMouse(wnd: WinApi.HANDLE; x, y: integer; buttons: set)
+	proc HandleMouse(wnd: WinApi.HANDLE; x, y: integer; buttons: set) 
 		var 
 			res, b, hc, m: integer
 			pt: WinApi.POINT
@@ -321,7 +321,7 @@ module HostTabFrames
 		until b mod 4 = 0 
 	end HandleMouse
 	
-	proc Mark(on, focus: boolean; var i: Info)
+	proc Mark(on, focus: boolean; var i: Info) 
 		var 
 			res: integer
 	begin 
@@ -342,7 +342,7 @@ module HostTabFrames
 	
 	// Tab
 	
-	proc (f: Tab) SetOffset(x, y: integer)
+	proc (f: Tab) SetOffset(x, y: integer) 
 	begin 
 		f.SetOffset^(x, y)
 		Adapt(f, f.i)
@@ -446,7 +446,7 @@ module HostTabFrames
 		f.Update
 	end UpdateList
 	
-	proc (f: Tab) Paint(il, it, ir, ib: integer) // new
+	proc (f: Tab) Paint(il, it, ir, ib: integer)  // new
 		var 
 			res, l, t, r, b, w, h: integer
 			ri: HostPorts.Rider
@@ -531,7 +531,7 @@ module HostTabFrames
 		end 
 	end Paint
 	
-	proc (f: Tab) Restore(l, t, r, b: integer)
+	proc (f: Tab) Restore(l, t, r, b: integer) 
 		var 
 			icex: WinCtl.INITCOMMONCONTROLSEX
 			ok: WinApi.BOOL
@@ -553,7 +553,7 @@ module HostTabFrames
 		end 
 	end Restore
 	
-	proc (f: Tab) KeyDown(ch: char)
+	proc (f: Tab) KeyDown(ch: wchar) 
 		var 
 			res: integer
 	begin 
@@ -566,7 +566,7 @@ module HostTabFrames
 		end 
 	end KeyDown
 	
-	proc (f: Tab) MouseDown(x, y: integer; buttons: set)
+	proc (f: Tab) MouseDown(x, y: integer; buttons: set) 
 	begin 
 		assert(~f.disabled, 100)
 		if f.rider # nil then
@@ -574,12 +574,12 @@ module HostTabFrames
 		end 
 	end MouseDown
 	
-	proc (f: Tab) Mark(on, focus: boolean)
+	proc (f: Tab) Mark(on, focus: boolean) 
 	begin 
 		Mark(on, f.front, f.i)
 	end Mark
 	
-	proc (f: Tab) InDispArea(x, y: integer): boolean
+	proc (f: Tab) InDispArea(x, y: integer): boolean 
 	begin 
 		if ((x >= f.dispLeft) & (x <= f.dispLeft + f.dispWidth) & 
 			(y >= f.dispTop) & (y <= f.dispTop + f.dispHeight)) then
@@ -589,7 +589,7 @@ module HostTabFrames
 		end 
 	end InDispArea
 	
-	proc (f: Tab) GetDispSize(var x, y, w, h: integer)
+	proc (f: Tab) GetDispSize(var x, y, w, h: integer) 
 		var 
 			res: integer
 			rect: WinApi.RECT
@@ -614,7 +614,7 @@ module HostTabFrames
 	
 	// Directory
 	
-	proc (d: Directory) GetTabSize(var w, h: integer)
+	proc (d: Directory) GetTabSize(var w, h: integer) 
 	begin 
 		if w = Views.undefined then
 			w := 150 * Ports.point 
@@ -624,7 +624,7 @@ module HostTabFrames
 		end 
 	end GetTabSize
 	
-	proc (d: Directory) New(): StdTabViews.Frame
+	proc (d: Directory) New(): StdTabViews.Frame 
 		var 
 			f: Tab
 	begin 
@@ -635,7 +635,7 @@ module HostTabFrames
 	// control window class
 	
 	// Used for common controls, not standard controls
-	proc HandleNotifyMsg(wnd: WinApi.HANDLE; wParam, lParam: integer)
+	proc HandleNotifyMsg(wnd: WinApi.HANDLE; wParam, lParam: integer) 
 		var 
 			c: StdTabViews.Frame
 			pnmhdr: WinApi.PtrNMHDR
@@ -651,7 +651,7 @@ module HostTabFrames
 		end 
 	end HandleNotifyMsg
 	
-	proc CtrlHandler(wnd: WinApi.HANDLE; message, wParam, lParam: integer): integer
+	proc CtrlHandler(wnd: WinApi.HANDLE; message, wParam, lParam: integer): integer 
 	begin 
 		if message = WinApi.WM_NOTIFY then
 			Kernel.Try(HandleNotifyMsg, wnd, wParam, lParam)

@@ -43,7 +43,7 @@ module StdFolds
 	
 	
 	type 
-		Label* = array 32 of char
+		Label* = array 32 of wchar
 		
 		Fold* = pointer to record (Views.View) 
 				leftSide-: boolean
@@ -84,10 +84,10 @@ module StdFolds
 		fingerprint: integer // for the property inspector
 	
 	proc (d: Directory) New*(collapsed: boolean; label: Label
-		hiddenText: TextModels.Model): Fold end // new abstract
+		hiddenText: TextModels.Model): Fold  end // new abstract
 	
 	
-	proc GetPair(fold: Fold; var l, r: Fold)
+	proc GetPair(fold: Fold; var l, r: Fold) 
 		var 
 			c: Models.Context
 			text: TextModels.Model
@@ -146,7 +146,7 @@ module StdFolds
 		assert((r = nil) or ~r.leftSide & (r.hidden = nil), 101)
 	end GetPair
 	
-	proc (fold: Fold) HiddenText*(): TextModels.Model // new
+	proc (fold: Fold) HiddenText*(): TextModels.Model  // new
 		var 
 			l, r: Fold
 	begin 
@@ -162,7 +162,7 @@ module StdFolds
 		end 
 	end HiddenText
 	
-	proc (fold: Fold) MatchingFold*(): Fold // new
+	proc (fold: Fold) MatchingFold*(): Fold  // new
 		var 
 			l, r: Fold
 	begin 
@@ -178,7 +178,7 @@ module StdFolds
 		end 
 	end MatchingFold
 	
-	proc CalcSize(f: Fold; var w, h: integer)
+	proc CalcSize(f: Fold; var w, h: integer) 
 		var 
 			c: Models.Context
 			font: Fonts.Font
@@ -195,7 +195,7 @@ module StdFolds
 		h := asc + dsc
 	end CalcSize
 	
-	proc Update(f: Fold)
+	proc Update(f: Fold) 
 		var 
 			w, h: integer
 	begin 
@@ -204,7 +204,7 @@ module StdFolds
 		Views.Update(f, Views.keepFrames)
 	end Update
 	
-	proc FlipPair(l, r: Fold)
+	proc FlipPair(l, r: Fold) 
 		var 
 			text, hidden: TextModels.Model
 			cl, cr: Models.Context
@@ -270,7 +270,7 @@ module StdFolds
 		end 
 	end Do
 	
-	proc SetProp(fold: Fold; p: Properties.Property)
+	proc SetProp(fold: Fold; p: Properties.Property) 
 		var 
 			op: SetLabelOp
 			left, right: Fold
@@ -315,7 +315,7 @@ module StdFolds
 		end 
 	end Flip
 	
-	proc ReadNext(rd: TextModels.Reader; var fold: Fold)
+	proc ReadNext(rd: TextModels.Reader; var fold: Fold) 
 		var 
 			v: Views.View
 	begin 
@@ -380,7 +380,7 @@ module StdFolds
 		end 
 	end FlipNested
 	
-	proc (fold: Fold) HandlePropMsg-(var msg: Properties.Message)
+	proc (fold: Fold) HandlePropMsg-(var msg: Properties.Message) 
 		var 
 			prop: Controls.Prop
 			c: Models.Context
@@ -412,7 +412,7 @@ module StdFolds
 		end 
 	end HandlePropMsg
 	
-	proc Track(fold: Fold; f: Views.Frame; x, y: integer; buttons: set; var hit: boolean)
+	proc Track(fold: Fold; f: Views.Frame; x, y: integer; buttons: set; var hit: boolean) 
 		var 
 			a: TextModels.Attributes
 			font: Fonts.Font
@@ -447,7 +447,7 @@ module StdFolds
 	end Track
 	
 	proc (fold: Fold) HandleCtrlMsg*(f: Views.Frame; var msg: Views.CtrlMessage
-		var focus: Views.View)
+		var focus: Views.View) 
 		var 
 			hit: boolean
 			pos: integer
@@ -485,7 +485,7 @@ module StdFolds
 	end HandleCtrlMsg
 	
 	proc GetIconPath(fold: Fold; f: Views.Frame; w, h_dummy, asc: integer
-		var path: array of Ports.Point)
+		var path: array of Ports.Point) 
 		var 
 			i, xoff, w2, w4: integer
 	begin 
@@ -528,7 +528,7 @@ module StdFolds
 		end 
 	end GetIconPath
 	
-	proc DrawMarkers(fold: Fold; f: Views.Frame; in path: array of Ports.Point)
+	proc DrawMarkers(fold: Fold; f: Views.Frame; in path: array of Ports.Point) 
 		var 
 			w2, height, thickness, margin, len_, left, top: integer
 	begin 
@@ -569,7 +569,7 @@ module StdFolds
 		end 
 	end DrawMarkers
 	
-	proc (fold: Fold) Restore*(f: Views.Frame; l, t, r, b: integer)
+	proc (fold: Fold) Restore*(f: Views.Frame; l, t, r, b: integer) 
 		var 
 			a: TextModels.Attributes
 			color: Ports.Color
@@ -595,7 +595,7 @@ module StdFolds
 		DrawMarkers(fold, f, path)
 	end Restore
 	
-	proc (fold: Fold) CopyFromSimpleView-(source: Views.View)
+	proc (fold: Fold) CopyFromSimpleView-(source: Views.View) 
 	begin 
 		// fold.CopyFrom^(source);
 		with source: Fold do 
@@ -611,7 +611,7 @@ module StdFolds
 		end 
 	end CopyFromSimpleView
 	
-	proc (fold: Fold) Internalize-(var rd: Stores.Reader)
+	proc (fold: Fold) Internalize-(var rd: Stores.Reader) 
 		var 
 			version: integer
 			store: Stores.Store
@@ -644,10 +644,10 @@ module StdFolds
 		fold.leftSide := store # nil
 	end Internalize
 	
-	proc HasWideChars(in s: array of char): boolean
+	proc HasWideChars(in s: array of wchar): boolean 
 		var 
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		ch := s[0]
@@ -658,7 +658,7 @@ module StdFolds
 		return ch # 0x
 	end HasWideChars
 	
-	proc (fold: Fold) Externalize-(var wr: Stores.Writer)
+	proc (fold: Fold) Externalize-(var wr: Stores.Writer) 
 		var 
 			xint, version: integer
 	begin 
@@ -691,7 +691,7 @@ module StdFolds
 	
 	// --------------------- expanding and collapsing in focus text ------------------------
 	
-	proc ExpandFolds*(text: TextModels.Model; nested: boolean; in label: array of char)
+	proc ExpandFolds*(text: TextModels.Model; nested: boolean; in label: array of wchar) 
 		var 
 			op: Stores.Operation
 			fold, l, r: Fold
@@ -723,7 +723,7 @@ module StdFolds
 		Models.EndModification(Models.clean, text)
 	end ExpandFolds
 	
-	proc CollapseFolds*(text: TextModels.Model; nested: boolean; in label: array of char)
+	proc CollapseFolds*(text: TextModels.Model; nested: boolean; in label: array of wchar) 
 		var 
 			op: Stores.Operation
 			fold, r, l: Fold
@@ -806,12 +806,12 @@ module StdFolds
 	
 	// ---------------------- foldData dialogbox ---------------------------
 	
-	proc FilterGuard*(var par: Dialog.Par)
+	proc FilterGuard*(var par: Dialog.Par) 
 	begin 
 		par.disabled := (TextViews.Focus() = nil) or ~foldData.useFilter
 	end FilterGuard
 	
-	proc SetLabelGuard*(var p: Dialog.Par)
+	proc SetLabelGuard*(var p: Dialog.Par) 
 		var 
 			v: Views.View
 	begin 
@@ -857,7 +857,7 @@ module StdFolds
 		end 
 	end CollapseLabel
 	
-	proc FindFold(first: boolean)
+	proc FindFold(first: boolean) 
 		var 
 			c: TextControllers.Controller
 			r: TextModels.Reader
@@ -950,7 +950,7 @@ module StdFolds
 	
 	// ------------------------ inserting folds ------------------------
 	
-	proc Overlaps*(text: TextModels.Model; beg, end_: integer): boolean
+	proc Overlaps*(text: TextModels.Model; beg, end_: integer): boolean 
 		var 
 			n, level: integer
 			rd: TextModels.Reader
@@ -979,10 +979,10 @@ module StdFolds
 		return (level # 0) or odd(n)
 	end Overlaps
 	
-	proc InsertionAttr(text: TextModels.Model; pos: integer): TextModels.Attributes
+	proc InsertionAttr(text: TextModels.Model; pos: integer): TextModels.Attributes 
 		var 
 			rd: TextModels.Reader
-			ch: char
+			ch: wchar
 	begin 
 		rd := text.NewReader(nil)
 		rd.SetPos(pos)
@@ -990,7 +990,7 @@ module StdFolds
 		return rd.attr
 	end InsertionAttr
 	
-	proc Insert*(text: TextModels.Model; label: Label; beg, end_: integer; collapsed: boolean)
+	proc Insert*(text: TextModels.Model; label: Label; beg, end_: integer; collapsed: boolean) 
 		var 
 			w: TextModels.Writer
 			fold: Fold
@@ -1027,7 +1027,7 @@ module StdFolds
 		Models.EndScript(text, insop)
 	end Insert
 	
-	proc CreateGuard*(var par: Dialog.Par)
+	proc CreateGuard*(var par: Dialog.Par) 
 		var 
 			c: TextControllers.Controller
 			beg, end_: integer
@@ -1045,7 +1045,7 @@ module StdFolds
 		end 
 	end CreateGuard
 	
-	proc Create*(state: integer) // menu cmd parameters don't accept Booleans
+	proc Create*(state: integer)  // menu cmd parameters don't accept Booleans
 		var 
 			c: TextControllers.Controller
 			beg, end_: integer
@@ -1067,7 +1067,7 @@ module StdFolds
 	end Create
 	
 	proc (d: StdDirectory) New(collapsed: boolean; label: Label
-		hiddenText: TextModels.Model): Fold
+		hiddenText: TextModels.Model): Fold 
 		var 
 			fold: Fold
 	begin 
@@ -1082,7 +1082,7 @@ module StdFolds
 		return fold
 	end New
 	
-	proc SetDir*(d: Directory)
+	proc SetDir*(d: Directory) 
 	begin 
 		assert(d # nil, 20)
 		dir := d

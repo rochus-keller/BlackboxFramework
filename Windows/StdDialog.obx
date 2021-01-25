@@ -27,8 +27,8 @@ module StdDialog
 	type 
 		Item* = pointer to (* extensible *) record 
 				next*: Item
-				item-, string-, filter-: pointer to array of char
-				shortcut-: array 8 of char
+				item-, string-, filter-: pointer to array of wchar
+				shortcut-: array 8 of wchar
 				privateFilter-, failed, trapped: boolean // filter call failed, caused a trap
 				res: integer  // result code of failed filter
 			end 
@@ -43,8 +43,8 @@ module StdDialog
 		curItem-: Item
 	
 	
-	proc GetSubLoc*(mod_: array of char; cat: Files.Name
-		var loc: Files.Locator; var name: Files.Name)
+	proc GetSubLoc*(mod_: array of wchar; cat: Files.Name
+		var loc: Files.Locator; var name: Files.Name) 
 		var 
 			sub: Files.Name
 			file: Files.File
@@ -81,7 +81,7 @@ module StdDialog
 	end GetSubLoc
 	
 	
-	proc Len(var str: array of char): integer
+	proc Len(var str: array of wchar): integer 
 		var 
 			i: integer
 	begin 
@@ -92,10 +92,10 @@ module StdDialog
 		return i
 	end Len
 	
-	proc AddItem*(i: Item; item, string, filter, shortcut: array of char)
+	proc AddItem*(i: Item; item, string, filter, shortcut: array of wchar) 
 		var 
 			j: integer
-			ch: char
+			ch: wchar
 	begin 
 		assert(i # nil, 20)
 		new(i.item, Len(item) + 1)
@@ -117,17 +117,17 @@ module StdDialog
 		i.trapped := false
 	end AddItem
 	
-	proc ClearGuards*(i: Item)
+	proc ClearGuards*(i: Item) 
 	begin 
 		i.failed := false
 		i.trapped := false
 	end ClearGuards
 	
-	proc GetGuardProc(name: array of char; var i: Meta.Item
-		var par: boolean; var n: integer)
+	proc GetGuardProc(name: array of wchar; var i: Meta.Item
+		var par: boolean; var n: integer) 
 		var 
 			j, k: integer
-			num: array 32 of char
+			num: array 32 of wchar
 	begin 
 		j := 0
 		while (name[j] # 0x) & (name[j] # "(") do 
@@ -160,7 +160,7 @@ module StdDialog
 		end 
 	end GetGuardProc
 	
-	proc CheckFilter*(i: Item; var failed, ok: boolean; var par: Dialog.Par)
+	proc CheckFilter*(i: Item; var failed, ok: boolean; var par: Dialog.Par) 
 		var 
 			x: Meta.Item
 			v: FilterProcVal
@@ -172,7 +172,7 @@ module StdDialog
 			curItem := i
 			par.disabled := false
 			par.checked := false
-			par.label := i.item
+			par.label := i.item^
 			par.undef := false
 			par.readOnly := false
 			i.failed := true
@@ -204,7 +204,7 @@ module StdDialog
 		failed := i.failed
 	end CheckFilter
 	
-	proc HandleItem*(i: Item)
+	proc HandleItem*(i: Item) 
 		var 
 			res: integer
 	begin 
@@ -221,7 +221,7 @@ module StdDialog
 		end 
 	end HandleItem
 	
-	proc RecalcView*(v: Views.View)
+	proc RecalcView*(v: Views.View) 
 		// recalc size of all subviews of v, then v itself
 		var 
 			m: Models.Model
@@ -256,9 +256,9 @@ module StdDialog
 	end RecalcView
 	
 	
-	proc Open*(v: Views.View; title: array of char
+	proc Open*(v: Views.View; title: array of wchar
 		loc: Files.Locator; name: Files.Name; conv: Converters.Converter
-		asTool, asAux, noResize, allowDuplicates, neverDirty: boolean)
+		asTool, asAux, noResize, allowDuplicates, neverDirty: boolean) 
 		var 
 			t: Views.Title
 			flags, opts: set
@@ -356,15 +356,15 @@ module StdDialog
 		end 
 	end Open
 	
-	proc (h: ViewHook) Open(v: Views.View; title: array of char
+	proc (h: ViewHook) Open(v: Views.View; title: array of wchar
 		loc: Files.Locator; name: Files.Name; conv: Converters.Converter
-		asTool, asAux, noResize, allowDuplicates, neverDirty: boolean)
+		asTool, asAux, noResize, allowDuplicates, neverDirty: boolean) 
 	begin 
 		Open(v, title, loc, name, conv, asTool, asAux, noResize, allowDuplicates, neverDirty)
 	end Open
 	
 	proc (h: ViewHook) OldView(loc: Files.Locator; name: Files.Name
-		var conv: Converters.Converter): Views.View
+		var conv: Converters.Converter): Views.View 
 		var 
 			w: Windows.Window
 			s: Stores.Store
@@ -396,7 +396,7 @@ module StdDialog
 	end OldView
 	
 	proc (h: ViewHook) RegisterView(v: Views.View
-		loc: Files.Locator; name: Files.Name; conv: Converters.Converter)
+		loc: Files.Locator; name: Files.Name; conv: Converters.Converter) 
 	begin 
 		assert(v # nil, 20)
 		assert(loc # nil, 21)

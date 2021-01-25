@@ -938,7 +938,7 @@ definition WinNet
 				bFirst: WinApi.BOOL
 				dwMessageSize: integer
 				dwProviderReserved: integer
-				szProtocol: carray 256 of char 
+				szProtocol: carray 256 of wchar 
 			end 
 		PtrWSAPROTOCOL_INFOW = unsafe pointer to WSAPROTOCOL_INFOW
 		WSAPROTOCOL_INFO = WSAPROTOCOL_INFOA

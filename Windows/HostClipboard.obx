@@ -38,7 +38,7 @@ module HostClipboard
 		cbdata: WinOle.IDataObject // data object registred via OLE
 	
 	
-	proc Register*(v: Views.View; w, h: integer; isSingle: boolean)
+	proc Register*(v: Views.View; w, h: integer; isSingle: boolean) 
 		var 
 			res: COM.RESULT
 	begin 
@@ -52,7 +52,7 @@ module HostClipboard
 	
 	proc GetClipView*(
 		type_: Stores.TypeName; var v: Views.View; var w, h: integer; var isSingle: boolean
-		)
+		) 
 		var 
 			dobj: WinOle.IDataObject
 			res: COM.RESULT
@@ -84,7 +84,7 @@ module HostClipboard
 		end 
 	end GetClipView
 	
-	proc ConvertibleTo*(type_: Stores.TypeName): boolean
+	proc ConvertibleTo*(type_: Stores.TypeName): boolean 
 		var 
 			dobj: WinOle.IDataObject
 			res: COM.RESULT
@@ -119,7 +119,7 @@ module HostClipboard
 	end Dump
 	
 	
-	proc (v: EmptyView) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (v: EmptyView) Restore(f: Views.Frame; l, t, r, b: integer) 
 	end Restore
 	
 	

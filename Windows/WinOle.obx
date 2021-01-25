@@ -296,7 +296,7 @@ definition WinOle
 	
 	
 	type 
-		BSTR = unsafe pointer to carray of char
+		BSTR = unsafe pointer to carray of wchar
 		PtrWSTR = WinApi.PtrWSTR
 		REGCLS = integer
 		RemHGLOBAL = cstruct 
@@ -584,7 +584,7 @@ definition WinOle
 		RemSNB = cstruct 
 				ulCntStr: integer
 				ulCntChar: integer
-				rgString: carray 1 of char 
+				rgString: carray 1 of wchar 
 			end 
 		PtrRemSNB = unsafe pointer to RemSNB
 		SNB = unsafe pointer to (* ? *)carray of WinApi.PtrWSTR
@@ -756,7 +756,7 @@ definition WinOle
 			end 
 		CADBL = cstruct 
 				cElems: integer
-				pElems: unsafe pointer to (* ? *)carray of real 
+				pElems: unsafe pointer to (* ? *)carray of longreal 
 			end 
 		CACY = cstruct 
 				cElems: integer
@@ -827,7 +827,7 @@ definition WinOle
 						scode: COM.RESULT
 						hVal: longint
 						uhVal: longint
-						dblVal: real
+						dblVal: longreal
 						cyVal: WinApi.CY
 						date: WinApi.DATE
 						filetime: WinApi.FILETIME

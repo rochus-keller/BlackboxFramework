@@ -65,7 +65,7 @@ module XYplane
 		current := v
 	end Open
 	
-	proc Dot*(x, y, mode: integer)
+	proc Dot*(x, y, mode: integer) 
 		var 
 			res, u: integer
 			p: HostPorts.Port
@@ -90,12 +90,12 @@ module XYplane
 		end 
 	end Dot
 	
-	proc IsDot*(x, y: integer): boolean
+	proc IsDot*(x, y: integer): boolean 
 	begin 
 		return WinApi.GetPixel(current.dc, x, maxH - 1 - y) # Ports.white
 	end IsDot
 	
-	proc ReadKey*(): char
+	proc ReadKey*(): wchar 
 		var 
 			res: integer
 			msg: WinApi.MSG
@@ -120,7 +120,7 @@ module XYplane
 	end Clear
 	
 	
-	proc (v: View) Internalize(var rd: Stores.Reader)
+	proc (v: View) Internalize(var rd: Stores.Reader) 
 		var 
 			version: integer
 			res, x, y, i: integer
@@ -159,7 +159,7 @@ module XYplane
 		end 
 	end Internalize
 	
-	proc (v: View) Externalize(var wr: Stores.Writer)
+	proc (v: View) Externalize(var wr: Stores.Writer) 
 		var 
 			x, y, i: integer
 			s: set
@@ -185,7 +185,7 @@ module XYplane
 		end 
 	end Externalize
 	
-	proc (v: View) CopyFromSimpleView(source: Views.View)
+	proc (v: View) CopyFromSimpleView(source: Views.View) 
 		var 
 			res: integer
 	begin 
@@ -198,7 +198,7 @@ module XYplane
 		end 
 	end CopyFromSimpleView
 	
-	proc (v: View) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (v: View) Restore(f: Views.Frame; l, t, r, b: integer) 
 		var 
 			rd: HostPorts.Rider
 			x, y, u, rl, rt, rr, rb: integer
@@ -224,7 +224,7 @@ module XYplane
 		end 
 	end Restore
 	
-	proc (v: View) HandlePropMsg(var msg: Properties.Message)
+	proc (v: View) HandlePropMsg(var msg: Properties.Message) 
 	begin 
 		with msg: Properties.SizePref do 
 			msg.w := W * HostWindows.unit

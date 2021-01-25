@@ -39,9 +39,9 @@ module StdMenuTool
 		includes: Files.LocInfo
 		langNotifier: LangNotifier
 	
-	proc Scan(var s: TextMappers.Scanner)
+	proc Scan(var s: TextMappers.Scanner) 
 		var 
-			ch: char
+			ch: wchar
 			p: integer
 	begin 
 		s.Scan
@@ -59,10 +59,10 @@ module StdMenuTool
 		end 
 	end Scan
 	
-	proc Comp(in s1, s2: array of char): integer
+	proc Comp(in s1, s2: array of wchar): integer 
 		var 
 			i: integer
-			a, b: char
+			a, b: wchar
 	begin 
 		i := 0
 		a := Kernel.Upper(s1[0])
@@ -75,7 +75,7 @@ module StdMenuTool
 		return ord(a) - ord(b)
 	end Comp
 	
-	proc Sort(var list: Files.LocInfo)
+	proc Sort(var list: Files.LocInfo) 
 		var 
 			inc_, last, i1, i2: Files.LocInfo
 	begin 
@@ -101,12 +101,12 @@ module StdMenuTool
 	end Sort
 	
 	
-	proc ParseMenus(var s: TextMappers.Scanner; view: Views.View; loc: Files.Locator; name: Files.Name)
+	proc ParseMenus(var s: TextMappers.Scanner; view: Views.View; loc: Files.Locator; name: Files.Name) 
 		var 
 			menu, category: Dialog.String
 			n: integer
 		
-		proc Error(var s: TextMappers.Scanner; err: array of char)
+		proc Error(var s: TextMappers.Scanner; err: array of wchar) 
 			var 
 				end_: integer
 		begin 
@@ -123,7 +123,7 @@ module StdMenuTool
 			noerr := false
 		end Error
 		
-		proc Category(var s: TextMappers.Scanner; var c: array of char)
+		proc Category(var s: TextMappers.Scanner; var c: array of wchar) 
 		begin 
 			if (s.type_ = char_) & (s.char_ = "(") then
 				Scan(s)
@@ -141,7 +141,7 @@ module StdMenuTool
 			end 
 		end Category
 		
-		proc Item(var s: TextMappers.Scanner)
+		proc Item(var s: TextMappers.Scanner) 
 			var 
 				item, str, shortcut, filter: Dialog.String
 		begin 
@@ -201,7 +201,7 @@ module StdMenuTool
 			end 
 		end Item
 		
-		proc IncludeSub(sub: array of char)
+		proc IncludeSub(sub: array of wchar) 
 			var 
 				loc: Files.Locator
 				view: Views.View
@@ -227,7 +227,7 @@ module StdMenuTool
 			end 
 		end IncludeSub
 		
-		proc Include(sub: array of char)
+		proc Include(sub: array of wchar) 
 			var 
 				inc_, last: Files.LocInfo
 		begin 
@@ -317,7 +317,7 @@ module StdMenuTool
 		end 
 	end InitNotifier
 	
-	proc UpdateFromText*(text: TextModels.Model)
+	proc UpdateFromText*(text: TextModels.Model) 
 		var 
 			s: TextMappers.Scanner
 	begin 
@@ -412,10 +412,10 @@ module StdMenuTool
 	end UpdateAllMenus
 	
 	
-	proc InsertLink(var w: TextMappers.Formatter; path: array of char)
+	proc InsertLink(var w: TextMappers.Formatter; path: array of wchar) 
 		var 
 			a0: TextModels.Attributes
-			cmd: array 256 of char
+			cmd: array 256 of wchar
 	begin 
 		a0 := w.rider.attr
 		w.rider.SetAttr(TextModels.NewStyle(w.rider.attr, {Fonts.underline}))
@@ -482,7 +482,7 @@ module StdMenuTool
 			s: TextMappers.Scanner
 			c: Models.Context
 			v: Views.View
-			name: array 256 of char
+			name: array 256 of wchar
 	begin 
 		if StdLinks.par # nil then
 			c := StdLinks.par.context

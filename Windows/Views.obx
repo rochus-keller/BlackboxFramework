@@ -81,7 +81,7 @@ module Views
 				store-: Stores.Alien 
 			end 
 		
-		Title* = array 64 of char
+		Title* = array 64 of wchar
 		
 		TrapAlien = pointer to record (Stores.Store) end 
 		
@@ -189,7 +189,7 @@ module Views
 		msgHook: MsgHook
 	
 	
-	proc Overwritten(v: View; mno: integer): boolean
+	proc Overwritten(v: View; mno: integer): boolean 
 		var 
 			base, actual: proc 
 	begin 
@@ -201,32 +201,32 @@ module Views
 	// Hooks
 	
 	proc (h: GetSpecHook) GetExtSpec*(s: Stores.Store; var loc: Files.Locator
-		var name: Files.Name; var conv: Converters.Converter) end // new abstract
+		var name: Files.Name; var conv: Converters.Converter)  end // new abstract
 	proc (h: GetSpecHook) GetIntSpec*(var loc: Files.Locator; var name: Files.Name
-		var conv: Converters.Converter) end // new abstract
+		var conv: Converters.Converter)  end // new abstract
 	
-	proc SetGetSpecHook*(h: GetSpecHook)
+	proc SetGetSpecHook*(h: GetSpecHook) 
 	begin 
 		getSpecHook := h
 	end SetGetSpecHook
 	
 	proc (h: ViewHook) OldView*(loc: Files.Locator; name: Files.Name
-		var conv: Converters.Converter): View end // new abstract
-	proc (h: ViewHook) Open*(s: View; title: array of char
+		var conv: Converters.Converter): View  end // new abstract
+	proc (h: ViewHook) Open*(s: View; title: array of wchar
 		loc: Files.Locator; name: Files.Name; conv: Converters.Converter
-		asTool, asAux, noResize, allowDuplicates, neverDirty: boolean) end // new abstract
+		asTool, asAux, noResize, allowDuplicates, neverDirty: boolean)  end // new abstract
 	proc (h: ViewHook) RegisterView*(s: View; loc: Files.Locator
-		name: Files.Name; conv: Converters.Converter) end // new abstract
+		name: Files.Name; conv: Converters.Converter)  end // new abstract
 	
-	proc SetViewHook*(h: ViewHook)
+	proc SetViewHook*(h: ViewHook) 
 	begin 
 		viewHook := h
 	end SetViewHook
 	
-	proc (h: MsgHook) Omnicast*(var msg: ANYREC) end // new abstract
-	proc (h: MsgHook) RestoreDomain*(domain: Stores.Domain) end // new abstract
+	proc (h: MsgHook) Omnicast*(var msg: ANYREC)  end // new abstract
+	proc (h: MsgHook) RestoreDomain*(domain: Stores.Domain)  end // new abstract
 	
-	proc SetMsgHook*(h: MsgHook)
+	proc SetMsgHook*(h: MsgHook) 
 	begin 
 		msgHook := h
 	end SetMsgHook
@@ -234,10 +234,10 @@ module Views
 	
 	// Model protocol
 	
-	proc (v: View) CopyFromSimpleView-(source: View) end // new empty
-	proc (v: View) CopyFromModelView-(source: View; model: Models.Model) end // new empty
+	proc (v: View) CopyFromSimpleView-(source: View)  end // new empty
+	proc (v: View) CopyFromModelView-(source: View; model: Models.Model)  end // new empty
 	
-	proc (v: View) ThisModel*(): Models.Model // new extensible
+	proc (v: View) ThisModel*(): Models.Model  // new extensible
 	begin 
 		return nil
 	end ThisModel
@@ -245,7 +245,7 @@ module Views
 	
 	// Store protocol
 	
-	proc (v: View) CopyFrom-(source: Stores.Store)
+	proc (v: View) CopyFrom-(source: Stores.Store) 
 		var 
 			tm, fm: Models.Model
 			c: Models.Context
@@ -276,7 +276,7 @@ module Views
 		end 
 	end CopyFrom
 	
-	proc (v: View) Internalize-(var rd: Stores.Reader) // extensible
+	proc (v: View) Internalize-(var rd: Stores.Reader)  // extensible
 		var 
 			thisVersion: integer
 	begin 
@@ -287,7 +287,7 @@ module Views
 		rd.ReadVersion(minVersion, maxVersion, thisVersion)
 	end Internalize
 	
-	proc (v: View) Externalize-(var wr: Stores.Writer) // extensible
+	proc (v: View) Externalize-(var wr: Stores.Writer)  // extensible
 	begin 
 		v.Externalize^(wr)
 		wr.WriteVersion(maxVersion)
@@ -296,52 +296,52 @@ module Views
 	
 	// embedding protocol
 	
-	proc (v: View) InitContext*(context: Models.Context) // new extensible
+	proc (v: View) InitContext*(context: Models.Context)  // new extensible
 	begin 
 		assert(context # nil, 21)
 		assert((v.context = nil) or (v.context = context), 22)
 		v.context := context
 	end InitContext
 	
-	proc (v: View) GetBackground*(var color: Ports.Color) end // new empty
-	proc (v: View) ConsiderFocusRequestBy-(view: View) end // new empty
+	proc (v: View) GetBackground*(var color: Ports.Color)  end // new empty
+	proc (v: View) ConsiderFocusRequestBy-(view: View)  end // new empty
 	proc (v: View) Neutralize* end // new empty
 	
 	
 	// Frame protocol
 	
-	proc (v: View) GetNewFrame*(var frame: Frame) end // new empty
-	proc (v: View) Restore*(f: Frame; l, t, r, b: integer) end // new abstract
-	proc (v: View) RestoreMarks*(f: Frame; l, t, r, b: integer) end // new empty
+	proc (v: View) GetNewFrame*(var frame: Frame)  end // new empty
+	proc (v: View) Restore*(f: Frame; l, t, r, b: integer)  end // new abstract
+	proc (v: View) RestoreMarks*(f: Frame; l, t, r, b: integer)  end // new empty
 	
 	
 	// handlers
 	
-	proc (v: View) HandleModelMsg-(var msg: Models.Message) end // new empty
-	proc (v: View) HandleViewMsg-(f: Frame; var msg: Message) end // new empty
-	proc (v: View) HandleCtrlMsg*(f: Frame; var msg: CtrlMessage; var focus: View) end // new empty
-	proc (v: View) HandlePropMsg-(var msg: PropMessage) end // new empty
+	proc (v: View) HandleModelMsg-(var msg: Models.Message)  end // new empty
+	proc (v: View) HandleViewMsg-(f: Frame; var msg: Message)  end // new empty
+	proc (v: View) HandleCtrlMsg*(f: Frame; var msg: CtrlMessage; var focus: View)  end // new empty
+	proc (v: View) HandlePropMsg-(var msg: PropMessage)  end // new empty
 	
 	
 	// Alien
 	
-	proc (a: Alien) Externalize-(var wr: Stores.Writer)
+	proc (a: Alien) Externalize-(var wr: Stores.Writer) 
 	begin 
 		halt(100)
 	end Externalize
 	
-	proc (a: Alien) Internalize-(var rd: Stores.Reader)
+	proc (a: Alien) Internalize-(var rd: Stores.Reader) 
 	begin 
 		halt(100)
 	end Internalize
 	
-	proc (a: Alien) CopyFromSimpleView-(source: View)
+	proc (a: Alien) CopyFromSimpleView-(source: View) 
 	begin 
 		a.store := Stores.CopyOf(source(Alien).store)(Stores.Alien)
 		Stores.Join(a, a.store)
 	end CopyFromSimpleView
 	
-	proc (a: Alien) Restore*(f: Frame; l, t, r, b: integer)
+	proc (a: Alien) Restore*(f: Frame; l, t, r, b: integer) 
 		var 
 			u, w, h: integer
 	begin 
@@ -356,26 +356,26 @@ module Views
 	
 	// TrapAlien
 	
-	proc (v: TrapAlien) Internalize(var rd: Stores.Reader)
+	proc (v: TrapAlien) Internalize(var rd: Stores.Reader) 
 	begin 
 		v.Internalize^(rd)
 		rd.TurnIntoAlien(3)
 	end Internalize
 	
-	proc (v: TrapAlien) Externalize(var rd: Stores.Writer)
+	proc (v: TrapAlien) Externalize(var rd: Stores.Writer) 
 	end Externalize
 	
-	proc (v: TrapAlien) CopyFrom(source: Stores.Store) end // empty
+	proc (v: TrapAlien) CopyFrom(source: Stores.Store)  end // empty
 	
 	
 	// Frame
 	
-	proc (f: Frame) Close*() end // new empty
+	proc (f: Frame) Close*()  end // new empty
 	
 	
 	// Rect, Region
 	
-	proc Union(var u: Rect; r: Rect)
+	proc Union(var u: Rect; r: Rect) 
 	begin 
 		if r.v # u.v then
 			u.v := nil 
@@ -397,7 +397,7 @@ module Views
 		end 
 	end Union
 	
-	proc Add(rgn: Region; v: View; rebuild: boolean; gl, gt, gr, gb: integer)
+	proc Add(rgn: Region; v: View; rebuild: boolean; gl, gt, gr, gb: integer) 
 		// does not perfectly maintain invariant of non-overlapping approx rects ...
 		var 
 			q: Rect
@@ -450,7 +450,7 @@ module Views
 		end 
 	end Add
 	
-	proc AddRect(root: RootFrame; f: Frame; l, t, r, b: integer; rebuild: boolean)
+	proc AddRect(root: RootFrame; f: Frame; l, t, r, b: integer; rebuild: boolean) 
 		var 
 			rl, rt, rr, rb: integer
 			i: integer
@@ -491,13 +491,13 @@ module Views
 	
 	// miscellaneous
 	
-	proc RestoreDomain*(domain: Stores.Domain)
+	proc RestoreDomain*(domain: Stores.Domain) 
 	begin 
 		assert(msgHook # nil, 100)
 		msgHook.RestoreDomain(domain)
 	end RestoreDomain
 	
-	proc MarkBorder*(host: Ports.Frame; view: View; l, t, r, b: integer)
+	proc MarkBorder*(host: Ports.Frame; view: View; l, t, r, b: integer) 
 		var 
 			s: integer
 	begin 
@@ -511,7 +511,7 @@ module Views
 	
 	// views
 	
-	proc SeqOf(v: View): Sequencers.Sequencer
+	proc SeqOf(v: View): Sequencers.Sequencer 
 		var  // c: Models.Context;
 			d: Stores.Domain
 			seq: Sequencers.Sequencer
@@ -529,7 +529,7 @@ module Views
 	end SeqOf
 	
 	
-	proc Era*(v: View): integer
+	proc Era*(v: View): integer 
 	// * pre: v # NIL
 	(* post:
 	   v.ThisModel() # NIL
@@ -540,7 +540,7 @@ module Views
 		return v.era
 	end Era
 	
-	proc BeginScript*(v: View; name: Stores.OpName; var script: Stores.Operation)
+	proc BeginScript*(v: View; name: Stores.OpName; var script: Stores.Operation) 
 		// * pre: v # NIL
 		// post: (script # NIL) iff (v.seq # NIL)
 		var 
@@ -555,7 +555,7 @@ module Views
 		end 
 	end BeginScript
 	
-	proc Do*(v: View; name: Stores.OpName; op: Stores.Operation)
+	proc Do*(v: View; name: Stores.OpName; op: Stores.Operation) 
 		// pre: v # NIL, op # NIL, ~op.inUse
 		var 
 			seq: Sequencers.Sequencer
@@ -570,7 +570,7 @@ module Views
 		end 
 	end Do
 	
-	proc LastOp*(v: View): Stores.Operation
+	proc LastOp*(v: View): Stores.Operation 
 		// pre: v # NIL
 		var 
 			seq: Sequencers.Sequencer
@@ -584,7 +584,7 @@ module Views
 		end 
 	end LastOp
 	
-	proc Bunch*(v: View)
+	proc Bunch*(v: View) 
 		// pre: v # NIL
 		var 
 			seq: Sequencers.Sequencer
@@ -595,7 +595,7 @@ module Views
 		seq.Bunch(v)
 	end Bunch
 	
-	proc StopBunching*(v: View)
+	proc StopBunching*(v: View) 
 		// pre: v # NIL
 		var 
 			seq: Sequencers.Sequencer
@@ -607,7 +607,7 @@ module Views
 		end 
 	end StopBunching
 	
-	proc EndScript*(v: View; script: Stores.Operation)
+	proc EndScript*(v: View; script: Stores.Operation) 
 		// pre: (script # NIL) iff (v.seq # NIL)
 		var 
 			seq: Sequencers.Sequencer
@@ -623,7 +623,7 @@ module Views
 	end EndScript
 	
 	
-	proc BeginModification*(type_: integer; v: View)
+	proc BeginModification*(type_: integer; v: View) 
 		var 
 			seq: Sequencers.Sequencer
 	begin 
@@ -634,7 +634,7 @@ module Views
 		end 
 	end BeginModification
 	
-	proc EndModification*(type_: integer; v: View)
+	proc EndModification*(type_: integer; v: View) 
 		var 
 			seq: Sequencers.Sequencer
 	begin 
@@ -645,7 +645,7 @@ module Views
 		end 
 	end EndModification
 	
-	proc SetDirty*(v: View)
+	proc SetDirty*(v: View) 
 		var 
 			seq: Sequencers.Sequencer
 	begin 
@@ -657,7 +657,7 @@ module Views
 	end SetDirty
 	
 	
-	proc Domaincast*(domain: Stores.Domain; var msg: Message)
+	proc Domaincast*(domain: Stores.Domain; var msg: Message) 
 		var 
 			g: integer
 			seq: ANYPTR
@@ -677,7 +677,7 @@ module Views
 		end 
 	end Domaincast
 	
-	proc Broadcast*(v: View; var msg: Message)
+	proc Broadcast*(v: View; var msg: Message) 
 		var 
 			seq: Sequencers.Sequencer
 			g: integer
@@ -697,7 +697,7 @@ module Views
 	end Broadcast
 	
 	
-	proc Update*(v: View; rebuild: boolean)
+	proc Update*(v: View; rebuild: boolean) 
 		var 
 			upd: UpdateMsg
 	begin 
@@ -708,7 +708,7 @@ module Views
 		Broadcast(v, upd)
 	end Update
 	
-	proc UpdateIn*(v: View; l, t, r, b: integer; rebuild: boolean)
+	proc UpdateIn*(v: View; l, t, r, b: integer; rebuild: boolean) 
 		var 
 			upd: UpdateMsg
 	begin 
@@ -723,7 +723,7 @@ module Views
 		Broadcast(v, upd)
 	end UpdateIn
 	
-	proc Scroll*(v: View; dx, dy: integer)
+	proc Scroll*(v: View; dx, dy: integer) 
 		var 
 			scroll: UpdateMsg
 	begin 
@@ -736,7 +736,7 @@ module Views
 		Broadcast(v, scroll)
 	end Scroll
 	
-	proc CopyOf*(v: View; shallow: boolean): View
+	proc CopyOf*(v: View; shallow: boolean): View 
 		var 
 			w, a: View
 			op: integer
@@ -766,7 +766,7 @@ module Views
 		return w
 	end CopyOf
 	
-	proc CopyWithNewModel*(v: View; m: Models.Model): View
+	proc CopyWithNewModel*(v: View; m: Models.Model): View 
 		var 
 			w, a: View
 			op: integer
@@ -795,7 +795,7 @@ module Views
 		return w
 	end CopyWithNewModel
 	
-	proc ReadView*(var rd: Stores.Reader; var v: View)
+	proc ReadView*(var rd: Stores.Reader; var v: View) 
 		var 
 			st: Stores.Store
 			a: Alien
@@ -813,7 +813,7 @@ module Views
 		end 
 	end ReadView
 	
-	proc WriteView*(var wr: Stores.Writer; v: View)
+	proc WriteView*(var wr: Stores.Writer; v: View) 
 		var 
 			a: TrapAlien
 			av: View
@@ -840,7 +840,7 @@ module Views
 	
 	// frames
 	
-	proc SetClip(f: Frame; l, t, r, b: integer)
+	proc SetClip(f: Frame; l, t, r, b: integer) 
 		var 
 			u: integer
 	begin 
@@ -855,7 +855,7 @@ module Views
 		f.b := b
 	end SetClip
 	
-	proc Close(f: Frame)
+	proc Close(f: Frame) 
 	begin 
 		f.Close
 		f.state := closed
@@ -866,7 +866,7 @@ module Views
 		f.ConnectTo(nil)
 	end Close
 	
-	proc AdaptFrameTo(f: Frame; orgX, orgY: integer)
+	proc AdaptFrameTo(f: Frame; orgX, orgY: integer) 
 		var 
 			g, p, q: Frame
 			port: Ports.Port
@@ -946,7 +946,7 @@ module Views
 	// post: frame is set; child frames are set, nonempty, and clipped to frame
 	end AdaptFrameTo
 	
-	proc SetRoot*(root: RootFrame; view: View; front: boolean; flags: set)
+	proc SetRoot*(root: RootFrame; view: View; front: boolean; flags: set) 
 	begin 
 		assert(root # nil, 20)
 		assert(root.rider # nil, 21)
@@ -965,21 +965,21 @@ module Views
 		end 
 	end SetRoot
 	
-	proc AdaptRoot*(root: RootFrame)
+	proc AdaptRoot*(root: RootFrame) 
 	begin 
 		assert(root # nil, 20)
 		assert(root.state = open, 21)
 		AdaptFrameTo(root, root.x, root.y)
 	end AdaptRoot
 	
-	proc UpdateRoot*(root: RootFrame; l, t, r, b: integer; rebuild: boolean)
+	proc UpdateRoot*(root: RootFrame; l, t, r, b: integer; rebuild: boolean) 
 	begin 
 		assert(root # nil, 20)
 		assert(root.state = open, 21)
 		AddRect(root, root, l, t, r, b, rebuild)
 	end UpdateRoot
 	
-	proc RootOf*(f: Frame): RootFrame
+	proc RootOf*(f: Frame): RootFrame 
 	begin 
 		assert(f # nil, 20)
 		assert(f.state = open, 21)
@@ -989,13 +989,13 @@ module Views
 		return f(RootFrame)
 	end RootOf
 	
-	proc HostOf*(f: Frame): Frame
+	proc HostOf*(f: Frame): Frame 
 	begin 
 		assert(f # nil, 20)
 		return f.up
 	end HostOf
 	
-	proc IsPrinterFrame*(f: Frame): boolean
+	proc IsPrinterFrame*(f: Frame): boolean 
 		var 
 			p: Ports.Port
 	begin 
@@ -1005,7 +1005,7 @@ module Views
 		return Ports.IsPrinterPort(p)
 	end IsPrinterFrame
 	
-	proc InstallFrame*(host: Frame; view: View; x, y, level: integer; focus: boolean)
+	proc InstallFrame*(host: Frame; view: View; x, y, level: integer; focus: boolean) 
 		var 
 			e, f, g: Frame
 			w, h, l, t, r, b: integer
@@ -1117,7 +1117,7 @@ module Views
 		end 
 	end InstallFrame
 	
-	proc RemoveAll(f: Frame)
+	proc RemoveAll(f: Frame) 
 		var 
 			g, p: Frame
 	begin 
@@ -1131,7 +1131,7 @@ module Views
 		f.down := nil
 	end RemoveAll
 	
-	proc RemoveFrame*(host, f: Frame)
+	proc RemoveFrame*(host, f: Frame) 
 		var 
 			g, h: Frame
 	begin 
@@ -1155,7 +1155,7 @@ module Views
 		Close(f)
 	end RemoveFrame
 	
-	proc RemoveFrames*(host: Frame; l, t, r, b: integer)
+	proc RemoveFrames*(host: Frame; l, t, r, b: integer) 
 		var 
 			f, g: Frame
 			gl, gt, gr, gb: integer
@@ -1190,7 +1190,7 @@ module Views
 		end 
 	end RemoveFrames
 	
-	proc ThisFrame*(host: Frame; view: View): Frame
+	proc ThisFrame*(host: Frame; view: View): Frame 
 		var 
 			g: Frame
 	begin 
@@ -1203,7 +1203,7 @@ module Views
 		return g
 	end ThisFrame
 	
-	proc FrameAt*(host: Frame; x, y: integer): Frame
+	proc FrameAt*(host: Frame; x, y: integer): Frame 
 		// return frontmost sub-frame of host that contains (x, y)
 		var 
 			g, h: Frame
@@ -1223,7 +1223,7 @@ module Views
 		return h
 	end FrameAt
 	
-	proc ShiftFrames(f: Frame; dx, dy: integer)
+	proc ShiftFrames(f: Frame; dx, dy: integer) 
 		var 
 			g, h: Frame
 	begin 
@@ -1238,7 +1238,7 @@ module Views
 		end 
 	end ShiftFrames
 	
-	proc UpdateExposedArea(f: Frame; dx, dy: integer)
+	proc UpdateExposedArea(f: Frame; dx, dy: integer) 
 		var 
 			root: RootFrame
 	begin 
@@ -1260,7 +1260,7 @@ module Views
 		end 
 	end UpdateExposedArea
 	
-	proc ScrollFrame(f: Frame; dx, dy: integer)
+	proc ScrollFrame(f: Frame; dx, dy: integer) 
 		var 
 			g: Frame
 			u, dx0, dy0: integer
@@ -1304,7 +1304,7 @@ module Views
 		end 
 	end ScrollFrame
 	
-	proc BroadcastModelMsg*(f: Frame; var msg: Models.Message)
+	proc BroadcastModelMsg*(f: Frame; var msg: Models.Message) 
 		var 
 			v, a: View
 			send: boolean
@@ -1349,7 +1349,7 @@ module Views
 		end 
 	end BroadcastModelMsg
 	
-	proc HandleUpdateMsg(f: Frame; var msg: UpdateMsg)
+	proc HandleUpdateMsg(f: Frame; var msg: UpdateMsg) 
 		var 
 			root: RootFrame
 			g: Frame
@@ -1394,7 +1394,7 @@ module Views
 		end 
 	end HandleUpdateMsg
 	
-	proc BroadcastViewMsg*(f: Frame; var msg: Message)
+	proc BroadcastViewMsg*(f: Frame; var msg: Message) 
 		var 
 			v, a: View
 			op: integer
@@ -1426,7 +1426,7 @@ module Views
 		end 
 	end BroadcastViewMsg
 	
-	proc ForwardCtrlMsg*(f: Frame; var msg: CtrlMessage)
+	proc ForwardCtrlMsg*(f: Frame; var msg: CtrlMessage) 
 		const 
 			pre = 0
 			translate = 1
@@ -1478,7 +1478,7 @@ module Views
 	end ForwardCtrlMsg
 	
 	
-	proc RestoreFrame(f: Frame; l, t, r, b: integer)
+	proc RestoreFrame(f: Frame; l, t, r, b: integer) 
 		var 
 			rd: Ports.Rider
 			g: Frame
@@ -1540,7 +1540,7 @@ module Views
 		end 
 	end RestoreFrame
 	
-	proc RestoreRoot*(root: RootFrame; l, t, r, b: integer)
+	proc RestoreRoot*(root: RootFrame; l, t, r, b: integer) 
 		var 
 			port: Ports.Port
 			rd: Ports.Rider
@@ -1585,7 +1585,7 @@ module Views
 		end 
 	end RestoreRoot
 	
-	proc ThisCand(f: Frame; v: View): Frame
+	proc ThisCand(f: Frame; v: View): Frame 
 		// find frame g with g.view = v
 		var 
 			g: Frame
@@ -1601,7 +1601,7 @@ module Views
 		return f
 	end ThisCand
 	
-	proc ValidateRoot*(root: RootFrame)
+	proc ValidateRoot*(root: RootFrame) 
 		var 
 			rgn: Region
 			f: Frame
@@ -1636,7 +1636,7 @@ module Views
 		end 
 	end ValidateRoot
 	
-	proc MarkBordersIn(f: Frame)
+	proc MarkBordersIn(f: Frame) 
 		var 
 			g: Frame
 			w, h: integer
@@ -1650,12 +1650,12 @@ module Views
 		end 
 	end MarkBordersIn
 	
-	proc MarkBorders*(root: RootFrame)
+	proc MarkBorders*(root: RootFrame) 
 	begin 
 		MarkBordersIn(root)
 	end MarkBorders
 	
-	proc ReadFont*(var rd: Stores.Reader; var f: Fonts.Font)
+	proc ReadFont*(var rd: Stores.Reader; var f: Fonts.Font) 
 		var 
 			version: integer
 			fingerprint, size_: integer
@@ -1676,7 +1676,7 @@ module Views
 		end 
 	end ReadFont
 	
-	proc WriteFont*(var wr: Stores.Writer; f: Fonts.Font)
+	proc WriteFont*(var wr: Stores.Writer; f: Fonts.Font) 
 	begin 
 		assert(f # nil, 20)
 		wr.WriteVersion(0)
@@ -1691,7 +1691,7 @@ module Views
 	// view/file interaction
 	
 	proc Old*(ask: boolean
-		var loc: Files.Locator; var name: Files.Name; var conv: Converters.Converter): View
+		var loc: Files.Locator; var name: Files.Name; var conv: Converters.Converter): View 
 		var 
 			v: View
 	begin 
@@ -1710,7 +1710,7 @@ module Views
 		return v
 	end Old
 	
-	proc OldView*(loc: Files.Locator; name: Files.Name): View
+	proc OldView*(loc: Files.Locator; name: Files.Name): View 
 		var 
 			conv: Converters.Converter
 	begin 
@@ -1719,7 +1719,7 @@ module Views
 	end OldView
 	
 	proc Register*(view: View; ask: boolean
-		var loc: Files.Locator; var name: Files.Name; var conv: Converters.Converter; var res: integer)
+		var loc: Files.Locator; var name: Files.Name; var conv: Converters.Converter; var res: integer) 
 	begin 
 		assert(viewHook # nil, 100)
 		assert(getSpecHook # nil, 101)
@@ -1737,7 +1737,7 @@ module Views
 		end 
 	end Register
 	
-	proc RegisterView*(view: View; loc: Files.Locator; name: Files.Name)
+	proc RegisterView*(view: View; loc: Files.Locator; name: Files.Name) 
 		var 
 			res: integer
 			conv: Converters.Converter
@@ -1748,7 +1748,7 @@ module Views
 	
 	// direct view opening
 	
-	proc Open*(view: View; loc: Files.Locator; name: Files.Name; conv: Converters.Converter)
+	proc Open*(view: View; loc: Files.Locator; name: Files.Name; conv: Converters.Converter) 
 	begin 
 		assert(view # nil, 20)
 		assert((loc = nil) = (name = ""), 21)
@@ -1756,13 +1756,13 @@ module Views
 		viewHook.Open(view, name, loc, name, conv, false, false, false, false, false)
 	end Open
 	
-	proc OpenView*(view: View)
+	proc OpenView*(view: View) 
 	begin 
 		assert(view # nil, 20)
 		Open(view, nil, "", nil)
 	end OpenView
 	
-	proc OpenAux*(view: View; title: Title)
+	proc OpenAux*(view: View; title: Title) 
 	begin 
 		assert(view # nil, 20)
 		assert(viewHook # nil, 100)
@@ -1775,7 +1775,7 @@ module Views
 	
 	// view producer/consumer decoupling
 	
-	proc Deposit*(view: View)
+	proc Deposit*(view: View) 
 		var 
 			q: QueueElem
 	begin 
@@ -1791,7 +1791,7 @@ module Views
 		inc(queue.len_)
 	end Deposit
 	
-	proc Fetch*(var view: View)
+	proc Fetch*(var view: View) 
 		var 
 			q: QueueElem
 	begin 
@@ -1805,7 +1805,7 @@ module Views
 		view := q.view
 	end Fetch
 	
-	proc Available*(): integer
+	proc Available*(): integer 
 	begin 
 		return queue.len_
 	end Available
@@ -1821,13 +1821,13 @@ module Views
 	
 	// attach controller framework
 	
-	proc InitCtrl*(p: CtrlMsgHandler)
+	proc InitCtrl*(p: CtrlMsgHandler) 
 	begin 
 		assert(HandleCtrlMsg = nil, 20)
 		HandleCtrlMsg := p
 	end InitCtrl
 	
-	proc (h: NotifyHook) Notify(id0, id1: integer; opts: set)
+	proc (h: NotifyHook) Notify(id0, id1: integer; opts: set) 
 		var 
 			msg: NotifyMsg
 	begin 
@@ -1838,12 +1838,12 @@ module Views
 		msgHook.Omnicast(msg)
 	end Notify
 	
-	proc Omnicast*(var msg: ANYREC)
+	proc Omnicast*(var msg: ANYREC) 
 	begin 
 		msgHook.Omnicast(msg)
 	end Omnicast
 	
-	proc HandlePropMsg*(v: View; var msg: PropMessage)
+	proc HandlePropMsg*(v: View; var msg: PropMessage) 
 		var 
 			a: View
 			op: integer
@@ -1862,12 +1862,12 @@ module Views
 	
 	// view invalidation
 	
-	proc IsInvalid*(v: View): boolean
+	proc IsInvalid*(v: View): boolean 
 	begin 
 		return v.bad # {}
 	end IsInvalid
 	
-	proc RevalidateView*(v: View)
+	proc RevalidateView*(v: View) 
 	begin 
 		v.bad := {}
 		Update(v, keepFrames)

@@ -170,7 +170,7 @@ module TextControllers
 		dir-, stdDir-: Directory
 	
 	
-	proc CachedReader(c: StdCtrl): TextModels.Reader
+	proc CachedReader(c: StdCtrl): TextModels.Reader 
 		var 
 			rd: TextModels.Reader
 	begin 
@@ -179,13 +179,13 @@ module TextControllers
 		return rd
 	end CachedReader
 	
-	proc CacheReader(c: StdCtrl; rd: TextModels.Reader)
+	proc CacheReader(c: StdCtrl; rd: TextModels.Reader) 
 	begin 
 		c.cachedRd := rd
 	end CacheReader
 	
 	
-	proc CachedWriter(c: StdCtrl; attr: TextModels.Attributes): TextModels.Writer
+	proc CachedWriter(c: StdCtrl; attr: TextModels.Attributes): TextModels.Writer 
 		var 
 			wr: TextModels.Writer
 	begin 
@@ -195,7 +195,7 @@ module TextControllers
 		return wr
 	end CachedWriter
 	
-	proc CacheWriter(c: StdCtrl; wr: TextModels.Writer)
+	proc CacheWriter(c: StdCtrl; wr: TextModels.Writer) 
 	begin 
 		c.cachedWr := wr
 	end CacheWriter
@@ -203,7 +203,7 @@ module TextControllers
 	
 	// Controller
 	
-	proc (c: Controller) Internalize2-(var rd: Stores.Reader) // extensible
+	proc (c: Controller) Internalize2-(var rd: Stores.Reader)  // extensible
 		var 
 			v: integer
 	begin 
@@ -211,13 +211,13 @@ module TextControllers
 		rd.ReadVersion(minVersion, maxVersion, v)
 	end Internalize2
 	
-	proc (c: Controller) Externalize2-(var wr: Stores.Writer) // extensible
+	proc (c: Controller) Externalize2-(var wr: Stores.Writer)  // extensible
 	begin 
 		// c.Externalize^(wr);
 		wr.WriteVersion(maxVersion)
 	end Externalize2
 	
-	proc (c: Controller) InitView2*(v: Views.View) // extensible
+	proc (c: Controller) InitView2*(v: Views.View)  // extensible
 	begin 
 		assert((v = nil) # (c.view = nil), 21)
 		if c.view = nil then
@@ -233,7 +233,7 @@ module TextControllers
 		end 
 	end InitView2
 	
-	proc (c: Controller) ThisView*(): TextViews.View // extensible
+	proc (c: Controller) ThisView*(): TextViews.View  // extensible
 	begin 
 		return c.view
 	end ThisView
@@ -241,27 +241,27 @@ module TextControllers
 	
 	// caret
 	
-	proc (c: Controller) CaretPos*(): integer end // new abstract
-	proc (c: Controller) SetCaret*(pos: integer) end // new abstract
+	proc (c: Controller) CaretPos*(): integer  end // new abstract
+	proc (c: Controller) SetCaret*(pos: integer)  end // new abstract
 	// pre: pos = none  OR  0 <= pos <= c.text.Length()
 	// post: c.carPos = pos
 	
 	
 	// selection
 	
-	proc (c: Controller) GetSelection*(var beg, end_: integer) end // new abstract
+	proc (c: Controller) GetSelection*(var beg, end_: integer)  end // new abstract
 	// post: beg = end  OR  0 <= beg <= end <= c.text.Length()
 	
-	proc (c: Controller) SetSelection*(beg, end_: integer) end // new abstract
+	proc (c: Controller) SetSelection*(beg, end_: integer)  end // new abstract
 	// pre: beg = end  OR  0 <= beg < end <= c.text.Length()
 	// post: c.selBeg = beg, c.selEnd = end
 	
 	
 	// Directory
 	
-	proc (d: Directory) NewController*(opts: set): Controller end // abstract
+	proc (d: Directory) NewController*(opts: set): Controller  end // abstract
 	
-	proc (d: Directory) New*(): Controller // extensible
+	proc (d: Directory) New*(): Controller  // extensible
 	begin 
 		return d.NewController({})
 	end New
@@ -269,7 +269,7 @@ module TextControllers
 	
 	// miscellaneous
 	
-	proc SetDir*(d: Directory)
+	proc SetDir*(d: Directory) 
 	begin 
 		assert(d # nil, 20)
 		dir := d
@@ -281,7 +281,7 @@ module TextControllers
 	end Install
 	
 	
-	proc Focus*(): Controller
+	proc Focus*(): Controller 
 		var 
 			v: Views.View
 			c: Containers.Controller
@@ -300,7 +300,7 @@ module TextControllers
 	end Focus
 	
 	
-	proc SetCaret*(text: TextModels.Model; pos: integer)
+	proc SetCaret*(text: TextModels.Model; pos: integer) 
 		// pre: text # NIL,  pos = none  OR  0 <= pos <= text.Length()
 		var 
 			cm: SetCaretMsg
@@ -312,7 +312,7 @@ module TextControllers
 		Models.Broadcast(text, cm)
 	end SetCaret
 	
-	proc SetSelection*(text: TextModels.Model; beg, end_: integer)
+	proc SetSelection*(text: TextModels.Model; beg, end_: integer) 
 		// pre: text # NIL,  beg = end  OR  0 <= beg < end <= text.Length()
 		var 
 			sm: SetSelectionMsg
@@ -331,7 +331,7 @@ module TextControllers
 	
 	// support for cursor/selection/focus marking
 	
-	proc BlinkCaret(c: StdCtrl; f: Views.Frame; tick: longint)
+	proc BlinkCaret(c: StdCtrl; f: Views.Frame; tick: longint) 
 		var 
 			vis: boolean
 	begin 
@@ -347,7 +347,7 @@ module TextControllers
 		end 
 	end BlinkCaret
 	
-	proc FlipCaret(c: StdCtrl; show: boolean)
+	proc FlipCaret(c: StdCtrl; show: boolean) 
 		var 
 			msg: CaretMsg
 	begin 
@@ -355,7 +355,7 @@ module TextControllers
 		Views.Broadcast(c.view, msg)
 	end FlipCaret
 	
-	proc CheckCaret(c: StdCtrl)
+	proc CheckCaret(c: StdCtrl) 
 		var 
 			text: TextModels.Model
 			len_, pos: integer
@@ -380,7 +380,7 @@ module TextControllers
 	
 	
 	
-	proc HiliteRect(f: Views.Frame; l, t, r, b, s: integer; show: boolean)
+	proc HiliteRect(f: Views.Frame; l, t, r, b, s: integer; show: boolean) 
 	begin 
 		if s = Ports.fill then
 			f.MarkRect(l, t, r, b, Ports.fill, Ports.hilite, show) 
@@ -394,7 +394,7 @@ module TextControllers
 	
 	proc MarkSelRange(c: StdCtrl; f: Views.Frame; b, e: TextViews.Location
 		front, show: boolean
-		)
+		) 
 		var 
 			fw, ff, r, t: integer
 	begin 
@@ -418,7 +418,7 @@ module TextControllers
 		HiliteRect(f, b.x, b.y, e.x + fw, e.y + e.asc + e.dsc + fw, ff, show)
 	end MarkSelRange
 	
-	proc MarkSelection(c: StdCtrl; f: Views.Frame; beg, end_: integer; show: boolean)
+	proc MarkSelection(c: StdCtrl; f: Views.Frame; beg, end_: integer; show: boolean) 
 		var 
 			b, e: TextViews.Location
 			s: Views.View
@@ -440,7 +440,7 @@ module TextControllers
 		end 
 	end MarkSelection
 	
-	proc FlipSelection(c: StdCtrl; beg, end_: integer; show: boolean)
+	proc FlipSelection(c: StdCtrl; beg, end_: integer; show: boolean) 
 		var 
 			msg: SelectionMsg
 	begin 
@@ -451,7 +451,7 @@ module TextControllers
 	end FlipSelection
 	
 	
-	proc InitMarks(c: StdCtrl)
+	proc InitMarks(c: StdCtrl) 
 	begin 
 		c.autoBeg := max(integer)
 		c.autoEnd := 0
@@ -465,7 +465,7 @@ module TextControllers
 		c.lastStep := 0
 	end InitMarks
 	
-	proc AutoShowRange(c: StdCtrl; beg, end_: integer)
+	proc AutoShowRange(c: StdCtrl; beg, end_: integer) 
 	begin 
 		if (beg <= c.autoBeg) & (c.autoEnd <= end_) then
 			c.autoBeg := beg // new range includes old range: expand
@@ -475,7 +475,7 @@ module TextControllers
 		end 
 	end AutoShowRange
 	
-	proc UpdateMarks(c: StdCtrl; op: integer; beg, end_, delta: integer)
+	proc UpdateMarks(c: StdCtrl; op: integer; beg, end_, delta: integer) 
 	// ensure that marks are valid after updates
 	begin 
 		case op of 
@@ -499,7 +499,7 @@ module TextControllers
 	
 	// support for smart cut/copy/paste and attributing
 	
-	proc LegalChar(ch: char): boolean
+	proc LegalChar(ch: wchar): boolean 
 	begin 
 		if ch < 100x then
 			case ord(ch) of 
@@ -515,7 +515,7 @@ module TextControllers
 		end 
 	end LegalChar
 	
-	proc LeftTerminator(ch: char): boolean
+	proc LeftTerminator(ch: wchar): boolean 
 	begin 
 		if ch < 100x then
 			case ch of 
@@ -529,7 +529,7 @@ module TextControllers
 		end 
 	end LeftTerminator
 	
-	proc RightTerminator(ch, ch1: char): boolean
+	proc RightTerminator(ch, ch1: wchar): boolean 
 	begin 
 		if ch < 100x then
 			case ch of 
@@ -551,7 +551,7 @@ module TextControllers
 		end 
 	end RightTerminator
 	
-	proc ReadLeft(rd: TextModels.Reader; pos: integer; var ch: char)
+	proc ReadLeft(rd: TextModels.Reader; pos: integer; var ch: wchar) 
 	begin 
 		if pos > 0 then
 			rd.SetPos(pos - 1)
@@ -562,13 +562,13 @@ module TextControllers
 		end 
 	end ReadLeft
 	
-	proc SmartRange(c: StdCtrl; var beg, end_: integer)
+	proc SmartRange(c: StdCtrl; var beg, end_: integer) 
 		(* if possible and whole words are covered,
 		   extend [beg, end) to encompass either a leading or a trailing blank *)
 		var 
 			rd: TextModels.Reader
 			we, be: integer
-			ch, ch0, ch1: char
+			ch, ch0, ch1: wchar
 			rightTerm: boolean
 	begin 
 	(* disable intelligent delete/cut/move for now
@@ -595,11 +595,11 @@ module TextControllers
 	
 	end SmartRange
 	
-	proc OnlyWords(c: StdCtrl; beg, end_: integer): boolean
+	proc OnlyWords(c: StdCtrl; beg, end_: integer): boolean 
 		var 
 			rd: TextModels.Reader
 			we, be: integer
-			ch, ch0, ch1: char
+			ch, ch0, ch1: wchar
 			rightTerm, words: boolean
 	begin 
 		words := false
@@ -628,10 +628,10 @@ module TextControllers
 	
 	proc GetTargetField(t: TextModels.Model; pos: integer
 		var touchL, touchM, touchR: boolean
-		)
+		) 
 		var 
 			rd: TextModels.Reader
-			ch0, ch1: char
+			ch0, ch1: wchar
 			leftTerm, rightTerm: boolean
 	begin 
 		rd := t.NewReader(nil)
@@ -644,7 +644,7 @@ module TextControllers
 		touchR := leftTerm & ~rightTerm
 	end GetTargetField
 	
-	proc LeftExtend(t: TextModels.Model; attr: TextModels.Attributes)
+	proc LeftExtend(t: TextModels.Model; attr: TextModels.Attributes) 
 		var 
 			wr: TextModels.Writer
 	begin 
@@ -654,7 +654,7 @@ module TextControllers
 		wr.WriteChar(" ")
 	end LeftExtend
 	
-	proc RightExtend(t: TextModels.Model; attr: TextModels.Attributes)
+	proc RightExtend(t: TextModels.Model; attr: TextModels.Attributes) 
 		var 
 			wr: TextModels.Writer
 	begin 
@@ -664,11 +664,11 @@ module TextControllers
 		wr.WriteChar(" ")
 	end RightExtend
 	
-	proc MergeAdjust(target, inset: TextModels.Model; pos: integer; var start: integer)
+	proc MergeAdjust(target, inset: TextModels.Model; pos: integer; var start: integer) 
 		var 
 			rd: TextModels.Reader
 			a: TextModels.Attributes
-			ch, ch1: char
+			ch, ch1: wchar
 			touchL, touchM, touchR: boolean
 	begin 
 		start := pos
@@ -688,12 +688,12 @@ module TextControllers
 	end MergeAdjust
 	
 	
-	proc InsertionAttr(c: StdCtrl): TextModels.Attributes
+	proc InsertionAttr(c: StdCtrl): TextModels.Attributes 
 		var 
 			rd: TextModels.Reader
 			r: TextRulers.Ruler
 			a: TextModels.Attributes
-			ch: char
+			ch: wchar
 	begin 
 		a := c.insAttr
 		if a = nil then
@@ -723,7 +723,7 @@ module TextControllers
 	end InsertionAttr
 	
 	
-	proc GetTargetRange(c: StdCtrl; var beg, end_: integer)
+	proc GetTargetRange(c: StdCtrl; var beg, end_: integer) 
 	begin 
 		if boundCaret & (c.selBeg # c.selEnd) then
 			beg := c.selBeg
@@ -737,10 +737,10 @@ module TextControllers
 	
 	proc DoEdit(name: Stores.OpName
 		c: StdCtrl; beg, end_: integer
-		attr: TextModels.Attributes; ch: char; view: Views.View; w, h: integer
+		attr: TextModels.Attributes; ch: wchar; view: Views.View; w, h: integer
 		buf: TextModels.Model; bufbeg, bufend: integer // buf # NIL & bufend < 0: bufend = buf.Length()
 		pos: integer
-		)
+		) 
 		var 
 			script: Stores.Operation
 			wr: TextModels.Writer
@@ -788,7 +788,7 @@ module TextControllers
 	
 	// editing
 	
-	proc ThisPos(v: TextViews.View; f: Views.Frame; x, y: integer): integer
+	proc ThisPos(v: TextViews.View; f: Views.Frame; x, y: integer): integer 
 		var 
 			loc: TextViews.Location
 			pos: integer
@@ -801,7 +801,7 @@ module TextControllers
 		return pos
 	end ThisPos
 	
-	proc ShowPos(c: StdCtrl; beg, end_: integer)
+	proc ShowPos(c: StdCtrl; beg, end_: integer) 
 	begin 
 		if ~(noAutoScroll in c.opts) then
 			c.view.ShowRange(beg, end_, TextViews.focusOnly) 
@@ -809,14 +809,14 @@ module TextControllers
 	end ShowPos
 	
 	
-	proc Indentation(c: StdCtrl; pos: integer): TextModels.Model
+	proc Indentation(c: StdCtrl; pos: integer): TextModels.Model 
 		// pre: c.carPos # none
 		var 
 			st: TextSetters.Setter
 			buf: TextModels.Model
 			rd: TextModels.Reader
 			wr: TextModels.Writer
-			ch: char
+			ch: wchar
 			spos: integer
 	begin 
 		buf := nil
@@ -840,7 +840,7 @@ module TextControllers
 		return buf
 	end Indentation
 	
-	proc InsertChar(c: StdCtrl; ch: char)
+	proc InsertChar(c: StdCtrl; ch: wchar) 
 		var 
 			buf: TextModels.Model
 			attr: TextModels.Attributes
@@ -899,7 +899,7 @@ module TextControllers
 		DoEdit(name, c, beg, end_, attr, ch, nil, 0, 0, buf, 0, -1, beg)
 	end InsertChar
 	
-	proc InsertText(c: StdCtrl; beg, end_: integer; text: TextModels.Model; var start: integer)
+	proc InsertText(c: StdCtrl; beg, end_: integer; text: TextModels.Model; var start: integer) 
 		var 
 			buf: TextModels.Model
 	begin 
@@ -913,20 +913,20 @@ module TextControllers
 		DoEdit(insertingKey, c, beg, end_, nil, 0x, nil, 0, 0, buf, 0, -1, beg)
 	end InsertText
 	
-	proc InsertView(c: StdCtrl; beg, end_: integer; v: Views.View; w, h: integer)
+	proc InsertView(c: StdCtrl; beg, end_: integer; v: Views.View; w, h: integer) 
 	begin 
 		DoEdit(insertingKey, c, beg, end_, InsertionAttr(c), 0x, v, w, h, nil, 0, 0, beg)
 	end InsertView
 	
 	
-	proc InSubFrame(f, f1: Views.Frame; x, y: integer): boolean
+	proc InSubFrame(f, f1: Views.Frame; x, y: integer): boolean 
 	begin 
 		inc(x, f.gx - f1.gx)
 		inc(y, f.gy - f1.gy)
 		return (f1.l <= x) & (x < f1.r) & (f1.t <= y) & (y < f1.b)
 	end InSubFrame
 	
-	proc InFrame(f: Views.Frame; x, y: integer): boolean
+	proc InFrame(f: Views.Frame; x, y: integer): boolean 
 	begin 
 		return (f.l <= x) & (x < f.r) & (f.t <= y) & (y < f.b)
 	end InFrame
@@ -934,7 +934,7 @@ module TextControllers
 	
 	// filtered tracking
 	
-	proc IsFilter(v: Views.View; c: StdCtrl; f: Views.Frame; x, y: integer): boolean
+	proc IsFilter(v: Views.View; c: StdCtrl; f: Views.Frame; x, y: integer): boolean 
 		var 
 			pref: FilterPref
 	begin 
@@ -947,7 +947,7 @@ module TextControllers
 		return pref.filter
 	end IsFilter
 	
-	proc FindFilter(c: StdCtrl; f: Views.Frame; x, y: integer; var filter: Views.View)
+	proc FindFilter(c: StdCtrl; f: Views.Frame; x, y: integer; var filter: Views.View) 
 		const 
 			catchRange = 1000
 		var 
@@ -975,7 +975,7 @@ module TextControllers
 	
 	proc FilteredPollCursor(c: StdCtrl; f: Views.Frame
 		var msg: Controllers.PollCursorMsg; var done: boolean
-		)
+		) 
 		var 
 			filter, focus: Views.View
 			x, y: integer
@@ -1003,7 +1003,7 @@ module TextControllers
 	
 	proc FilteredTrack(c: StdCtrl; f: Views.Frame
 		var msg: Controllers.TrackMsg; var done: boolean
-		)
+		) 
 		var 
 			filter, focus: Views.View
 			fmsg: FilterTrackMsg
@@ -1025,7 +1025,7 @@ module TextControllers
 	
 	// StdCtrl
 	
-	proc (c: StdCtrl) Internalize2(var rd: Stores.Reader)
+	proc (c: StdCtrl) Internalize2(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
@@ -1040,13 +1040,13 @@ module TextControllers
 		InitMarks(c)
 	end Internalize2
 	
-	proc (c: StdCtrl) Externalize2(var wr: Stores.Writer)
+	proc (c: StdCtrl) Externalize2(var wr: Stores.Writer) 
 	begin 
 		c.Externalize2^(wr)
 		wr.WriteVersion(maxStdVersion)
 	end Externalize2
 	
-	proc (c: StdCtrl) CopyFrom(source: Stores.Store)
+	proc (c: StdCtrl) CopyFrom(source: Stores.Store) 
 	begin 
 		c.CopyFrom^(source)
 		InitMarks(c)
@@ -1058,12 +1058,12 @@ module TextControllers
 		c.SetCaret(none)
 	end Neutralize2
 	
-	proc (c: StdCtrl) GetContextType(var type_: Stores.TypeName)
+	proc (c: StdCtrl) GetContextType(var type_: Stores.TypeName) 
 	begin 
 		type_ := "TextViews.View"
 	end GetContextType
 	
-	proc (c: StdCtrl) GetValidOps(var valid: set)
+	proc (c: StdCtrl) GetValidOps(var valid: set) 
 	begin 
 		valid := {}
 		if (c.carPos # none) or (boundCaret & (c.selBeg # c.selEnd)) then
@@ -1074,26 +1074,26 @@ module TextControllers
 		end 
 	end GetValidOps
 	
-	proc (c: StdCtrl) NativeModel(m: Models.Model): boolean
+	proc (c: StdCtrl) NativeModel(m: Models.Model): boolean 
 	begin 
 		assert(m # nil, 20)
 		return m is TextModels.Model
 	end NativeModel
 	
-	proc (c: StdCtrl) NativeView(v: Views.View): boolean
+	proc (c: StdCtrl) NativeView(v: Views.View): boolean 
 	begin 
 		assert(v # nil, 20)
 		return v is TextViews.View
 	end NativeView
 	
-	proc (c: StdCtrl) NativeCursorAt(f: Views.Frame; x, y: integer): integer
+	proc (c: StdCtrl) NativeCursorAt(f: Views.Frame; x, y: integer): integer 
 	begin 
 		return Ports.textCursor
 	end NativeCursorAt
 	
 	proc (c: StdCtrl) PollNativeProp(selection: boolean
 		var p: Properties.Property; var truncated: boolean
-		)
+		) 
 		var 
 			beg, end_: integer
 	begin 
@@ -1116,7 +1116,7 @@ module TextControllers
 		end 
 	end PollNativeProp
 	
-	proc (c: StdCtrl) SetNativeProp(selection: boolean; old, p: Properties.Property)
+	proc (c: StdCtrl) SetNativeProp(selection: boolean; old, p: Properties.Property) 
 		var 
 			t: TextModels.Model
 			beg, end_: integer
@@ -1139,7 +1139,7 @@ module TextControllers
 		end 
 	end SetNativeProp
 	
-	proc (c: StdCtrl) MakeViewVisible(v: Views.View)
+	proc (c: StdCtrl) MakeViewVisible(v: Views.View) 
 		var 
 			pos: integer
 	begin 
@@ -1150,7 +1150,7 @@ module TextControllers
 		ShowPos(c, pos, pos + 1)
 	end MakeViewVisible
 	
-	proc (c: StdCtrl) GetFirstView(selection: boolean; var v: Views.View)
+	proc (c: StdCtrl) GetFirstView(selection: boolean; var v: Views.View) 
 		var 
 			rd: TextModels.Reader
 			beg, end_: integer
@@ -1175,7 +1175,7 @@ module TextControllers
 		end 
 	end GetFirstView
 	
-	proc (c: StdCtrl) GetNextView(selection: boolean; var v: Views.View)
+	proc (c: StdCtrl) GetNextView(selection: boolean; var v: Views.View) 
 		var 
 			con: Models.Context
 			rd: TextModels.Reader
@@ -1206,7 +1206,7 @@ module TextControllers
 		end 
 	end GetNextView
 	
-	proc (c: StdCtrl) GetPrevView(selection: boolean; var v: Views.View)
+	proc (c: StdCtrl) GetPrevView(selection: boolean; var v: Views.View) 
 		var 
 			con: Models.Context
 			rd: TextModels.Reader
@@ -1237,7 +1237,7 @@ module TextControllers
 		end 
 	end GetPrevView
 	
-	proc (c: StdCtrl) GetSelectionBounds(f: Views.Frame; var x, y, w, h: integer)
+	proc (c: StdCtrl) GetSelectionBounds(f: Views.Frame; var x, y, w, h: integer) 
 		var 
 			b, e: TextViews.Location
 	begin 
@@ -1259,7 +1259,7 @@ module TextControllers
 	
 	proc (c: StdCtrl) MarkPickTarget(source, f: Views.Frame
 		sx, sy, x, y: integer; show: boolean
-		)
+		) 
 		var 
 			b, e: TextViews.Location
 			pos: integer
@@ -1276,7 +1276,7 @@ module TextControllers
 	
 	proc (c: StdCtrl) MarkDropTarget(source, f: Views.Frame
 		sx, sy, dx, dy, w, h, rx, ry: integer; type_: Stores.TypeName; isSingle, show: boolean
-		)
+		) 
 		var 
 			loc: TextViews.Location
 			pos: integer
@@ -1296,7 +1296,7 @@ module TextControllers
 	end MarkDropTarget
 	
 	
-	proc GetThisLine(c: StdCtrl; pos: integer; var beg, end_: integer)
+	proc GetThisLine(c: StdCtrl; pos: integer; var beg, end_: integer) 
 		var 
 			st: TextSetters.Setter
 	begin 
@@ -1310,7 +1310,7 @@ module TextControllers
 	
 	proc GetThisChunk(c: StdCtrl; f: Views.Frame
 		var s: TrackState; var beg, end_: integer; var mode: integer
-		)
+		) 
 		var 
 			v: TextViews.View
 			b, e: TextViews.Location
@@ -1353,7 +1353,7 @@ module TextControllers
 		end 
 	end GetThisChunk
 	
-	proc SetSel(c: StdCtrl; beg, end_: integer)
+	proc SetSel(c: StdCtrl; beg, end_: integer) 
 	// pre: ~(Containers.noSelection IN c.opts)
 	begin 
 		if beg >= end_ then
@@ -1366,7 +1366,7 @@ module TextControllers
 	proc PrepareToTrack(c: StdCtrl; f: Views.Frame
 		var s: TrackState; mode: integer
 		var pin0, pin1, pos: integer
-		)
+		) 
 		var 
 			loc: TextViews.Location
 			beg, end_: integer
@@ -1408,7 +1408,7 @@ module TextControllers
 		c.lastStep := Services.Ticks()
 	end PrepareToTrack
 	
-	proc ScrollDelay(d: integer): integer
+	proc ScrollDelay(d: integer): integer 
 		var 
 			second, delay: integer
 	begin 
@@ -1427,7 +1427,7 @@ module TextControllers
 		return delay
 	end ScrollDelay
 	
-	proc ScrollWhileTracking(c: StdCtrl; f: Views.Frame; var x0, y0, x, y: integer)
+	proc ScrollWhileTracking(c: StdCtrl; f: Views.Frame; var x0, y0, x, y: integer) 
 		// currently, there are no provisions to scroll while tracking inside an embedded view
 		var  // normalize: BOOLEAN;
 			now: longint
@@ -1465,7 +1465,7 @@ module TextControllers
 		end 
 	end ScrollWhileTracking
 	
-	proc (c: StdCtrl) TrackMarks(f: Views.Frame; x, y: integer; units, extend, add: boolean)
+	proc (c: StdCtrl) TrackMarks(f: Views.Frame; x, y: integer; units, extend, add: boolean) 
 		var 
 			s: TrackState
 			pos, beg, end_, pin0, pin1, p, p1: integer
@@ -1550,7 +1550,7 @@ module TextControllers
 		end 
 	end TrackMarks
 	
-	proc (c: StdCtrl) Resize(v: Views.View; l, t, r, b: integer)
+	proc (c: StdCtrl) Resize(v: Views.View; l, t, r, b: integer) 
 		var 
 			con: Models.Context
 	begin 
@@ -1573,7 +1573,7 @@ module TextControllers
 		end 
 	end DeleteSelection
 	
-	proc (c: StdCtrl) MoveLocalSelection(f, dest: Views.Frame; x, y, dx, dy: integer)
+	proc (c: StdCtrl) MoveLocalSelection(f, dest: Views.Frame; x, y, dx, dy: integer) 
 		var 
 			buf: TextModels.Model
 			pos, beg0, end0, beg, end_, start, len_: integer
@@ -1607,7 +1607,7 @@ module TextControllers
 		end 
 	end MoveLocalSelection
 	
-	proc (c: StdCtrl) CopyLocalSelection(f, dest: Views.Frame; x, y, dx, dy: integer)
+	proc (c: StdCtrl) CopyLocalSelection(f, dest: Views.Frame; x, y, dx, dy: integer) 
 		var 
 			buf: TextModels.Model
 			pos, beg, end_, start, len_: integer
@@ -1631,7 +1631,7 @@ module TextControllers
 		AutoShowRange(c, start, start + len_)
 	end CopyLocalSelection
 	
-	proc (c: StdCtrl) SelectionCopy(): Containers.Model
+	proc (c: StdCtrl) SelectionCopy(): Containers.Model 
 		var 
 			t: TextModels.Model
 	begin 
@@ -1644,7 +1644,7 @@ module TextControllers
 		return t
 	end SelectionCopy
 	
-	proc (c: StdCtrl) NativePaste(m: Models.Model; f: Views.Frame)
+	proc (c: StdCtrl) NativePaste(m: Models.Model; f: Views.Frame) 
 		var 
 			beg, end_, start: integer
 	begin 
@@ -1656,7 +1656,7 @@ module TextControllers
 		end 
 	end NativePaste
 	
-	proc (c: StdCtrl) ArrowChar(f: Views.Frame; ch: char; units, select: boolean)
+	proc (c: StdCtrl) ArrowChar(f: Views.Frame; ch: wchar; units, select: boolean) 
 		var 
 			st: TextSetters.Setter
 			v: TextViews.View
@@ -1836,17 +1836,17 @@ module TextControllers
 		SetSel(c, beg, end_)
 	end ArrowChar
 	
-	proc (c: StdCtrl) ControlChar(f: Views.Frame; ch: char)
+	proc (c: StdCtrl) ControlChar(f: Views.Frame; ch: wchar) 
 	begin 
 		InsertChar(c, ch)
 	end ControlChar
 	
-	proc (c: StdCtrl) PasteChar(ch: char)
+	proc (c: StdCtrl) PasteChar(ch: wchar) 
 	begin 
 		InsertChar(c, ch)
 	end PasteChar
 	
-	proc (c: StdCtrl) PasteView(f: Views.Frame; v: Views.View; w, h: integer)
+	proc (c: StdCtrl) PasteView(f: Views.Frame; v: Views.View; w, h: integer) 
 		var 
 			t: TextModels.Model
 			pos, start, beg, end_, len_: integer
@@ -1859,7 +1859,7 @@ module TextControllers
 	
 	proc (c: StdCtrl) Drop(src, f: Views.Frame; sx, sy, x, y, w, h, rx, ry: integer
 		v: Views.View; isSingle: boolean
-		)
+		) 
 		var 
 			t: TextModels.Model
 			pos, start, beg, end_, len_: integer
@@ -1882,7 +1882,7 @@ module TextControllers
 		AutoShowRange(c, start, start + len_)
 	end Drop
 	
-	proc (c: StdCtrl) PickNativeProp(f: Views.Frame; x, y: integer; var p: Properties.Property)
+	proc (c: StdCtrl) PickNativeProp(f: Views.Frame; x, y: integer; var p: Properties.Property) 
 		var 
 			rd: TextModels.Reader
 	begin 
@@ -1897,7 +1897,7 @@ module TextControllers
 		CacheReader(c, rd)
 	end PickNativeProp
 	
-	proc (c: StdCtrl) HandleModelMsg(var msg: Models.Message)
+	proc (c: StdCtrl) HandleModelMsg(var msg: Models.Message) 
 		var 
 			done: boolean
 	begin 
@@ -1930,7 +1930,7 @@ module TextControllers
 		end 
 	end HandleModelMsg
 	
-	proc (c: StdCtrl) HandleViewMsg(f: Views.Frame; var msg: Views.Message)
+	proc (c: StdCtrl) HandleViewMsg(f: Views.Frame; var msg: Views.Message) 
 	begin 
 		c.HandleViewMsg^(f, msg)
 		if msg.view = c.view then
@@ -1947,7 +1947,7 @@ module TextControllers
 	
 	proc (c: StdCtrl) HandleCtrlMsg(f: Views.Frame
 		var msg: Controllers.Message; var focus: Views.View
-		)
+		) 
 		var 
 			g: Views.Frame
 			beg, end_: integer
@@ -2023,12 +2023,12 @@ module TextControllers
 	
 	// caret
 	
-	proc (c: StdCtrl) HasCaret(): boolean
+	proc (c: StdCtrl) HasCaret(): boolean 
 	begin 
 		return c.carPos # none
 	end HasCaret
 	
-	proc (c: StdCtrl) MarkCaret(f: Views.Frame; show: boolean)
+	proc (c: StdCtrl) MarkCaret(f: Views.Frame; show: boolean) 
 		const  // in frame dots
 			carW = 1
 			carMinH = 7
@@ -2067,12 +2067,12 @@ module TextControllers
 		end 
 	end MarkCaret
 	
-	proc (c: StdCtrl) CaretPos(): integer
+	proc (c: StdCtrl) CaretPos(): integer 
 	begin 
 		return c.carPos
 	end CaretPos
 	
-	proc (c: StdCtrl) SetCaret(pos: integer)
+	proc (c: StdCtrl) SetCaret(pos: integer) 
 	begin 
 		assert(none <= pos, 20)
 		assert(pos <= c.text.Length(), 21)
@@ -2104,17 +2104,17 @@ module TextControllers
 	
 	// selection
 	
-	proc (c: StdCtrl) HasSelection(): boolean
+	proc (c: StdCtrl) HasSelection(): boolean 
 	begin 
 		return c.selBeg # c.selEnd
 	end HasSelection
 	
-	proc (c: StdCtrl) Selectable(): boolean
+	proc (c: StdCtrl) Selectable(): boolean 
 	begin 
 		return c.text.Length() > 0
 	end Selectable
 	
-	proc (c: StdCtrl) SetSingleton(s: Views.View)
+	proc (c: StdCtrl) SetSingleton(s: Views.View) 
 		var 
 			s0: Views.View
 	begin 
@@ -2135,7 +2135,7 @@ module TextControllers
 		end 
 	end SetSingleton
 	
-	proc (c: StdCtrl) SelectAll(select: boolean)
+	proc (c: StdCtrl) SelectAll(select: boolean) 
 	// extended by subclass to include intrinsic selections
 	begin 
 		if select then
@@ -2145,7 +2145,7 @@ module TextControllers
 		end 
 	end SelectAll
 	
-	proc (c: StdCtrl) InSelection(f: Views.Frame; x, y: integer): boolean
+	proc (c: StdCtrl) InSelection(f: Views.Frame; x, y: integer): boolean 
 		// pre: c.selBeg # c.selEnd
 		// post: (x, y) in c.selection
 		var 
@@ -2161,18 +2161,18 @@ module TextControllers
 		return ((y >= y0) & (x >= b.x) or (y >= y1)) & ((y < y2) or (y < y3) & (x < e.x))
 	end InSelection
 	
-	proc (c: StdCtrl) MarkSelection(f: Views.Frame; show: boolean)
+	proc (c: StdCtrl) MarkSelection(f: Views.Frame; show: boolean) 
 	begin 
 		MarkSelection(c, f, c.selBeg, c.selEnd, show)
 	end MarkSelection
 	
-	proc (c: StdCtrl) GetSelection(var beg, end_: integer)
+	proc (c: StdCtrl) GetSelection(var beg, end_: integer) 
 	begin 
 		beg := c.selBeg
 		end_ := c.selEnd
 	end GetSelection
 	
-	proc (c: StdCtrl) SetSelection(beg, end_: integer)
+	proc (c: StdCtrl) SetSelection(beg, end_: integer) 
 		var 
 			t: TextModels.Model
 			rd: TextModels.Reader
@@ -2261,7 +2261,7 @@ module TextControllers
 	
 	// StdDirectory
 	
-	proc (d: StdDirectory) NewController(opts: set): Controller
+	proc (d: StdDirectory) NewController(opts: set): Controller 
 		var 
 			c: StdCtrl
 	begin 

@@ -68,7 +68,7 @@ module HostFonts
 		Par = cstruct 
 				first, last: Fonts.TypefaceInfo 
 			end 
-		ParPtr = pointer to Par
+		ParPtr = unsafe pointer to Par
 	
 	var 
 		sysFont-, defFont-, dlgFont-, dlgBoldFont-: Font
@@ -83,8 +83,8 @@ module HostFonts
 	// width tab setup
 	
 	proc NewDevFont(
-		typeface: array of char; size_, unit: integer; style: set; weight: integer
-		): DevFont
+		typeface: array of wchar; size_, unit: integer; style: set; weight: integer
+		): DevFont 
 		var 
 			df: DevFont
 			it, ul, so: integer
@@ -111,10 +111,10 @@ module HostFonts
 		return df
 	end NewDevFont
 	
-	proc GetRasterWidth(dc: WinApi.HANDLE; var wtab: WTab)
+	proc GetRasterWidth(dc: WinApi.HANDLE; var wtab: WTab) 
 		var 
 			res, i, x: integer
-			str: array 4 of char
+			str: array 4 of wchar
 			s: WinApi.SIZE
 	begin 
 		res := WinApi.GetTextExtentPoint32W(dc, "x", 1, s)
@@ -129,7 +129,7 @@ module HostFonts
 		end 
 	end GetRasterWidth
 	
-	proc SetupWTabs(f: Font)
+	proc SetupWTabs(f: Font) 
 		var 
 			res, a, b, max_, x, i: integer
 			tm: WinApi.TEXTMETRICW
@@ -203,7 +203,7 @@ module HostFonts
 		res := WinApi.ReleaseDC(0, dc)
 	end SetupWTabs
 	
-	proc Cleanup(f: Font)
+	proc Cleanup(f: Font) 
 		var 
 			res: integer
 			df: DevFont
@@ -223,7 +223,7 @@ module HostFonts
 	
 	// width methods for unicode
 	
-	proc (f: Font) wTab*(dc: WinApi.HANDLE; ch: char): integer // new
+	proc (f: Font) wTab*(dc: WinApi.HANDLE; ch: wchar): integer  // new
 		var 
 			res, w: integer
 			abc: array 1 of WinApi.ABC
@@ -252,7 +252,7 @@ module HostFonts
 		return w
 	end wTab
 	
-	proc (f: Font) fTab*(dc: WinApi.HANDLE; ch: char): integer // new
+	proc (f: Font) fTab*(dc: WinApi.HANDLE; ch: wchar): integer  // new
 		var 
 			res, w: integer
 			abc: array 1 of WinApi.ABC
@@ -270,7 +270,7 @@ module HostFonts
 		return w
 	end fTab
 	
-	proc (f: Font) tTab*(dc: WinApi.HANDLE; ch: char): integer // new
+	proc (f: Font) tTab*(dc: WinApi.HANDLE; ch: wchar): integer  // new
 		var 
 			res, w: integer
 			abc: array 1 of WinApi.ABC
@@ -288,7 +288,7 @@ module HostFonts
 		return w
 	end tTab
 	
-	proc (df: DevFont) wTab*(dc: WinApi.HANDLE; ch: char): integer // new
+	proc (df: DevFont) wTab*(dc: WinApi.HANDLE; ch: wchar): integer  // new
 		var 
 			res, w: integer
 			wt: array 1 of integer
@@ -311,17 +311,17 @@ module HostFonts
 	
 	// Font
 	
-	proc (f: Font) GetBounds*(var asc, dsc, w: integer)
+	proc (f: Font) GetBounds*(var asc, dsc, w: integer) 
 	begin 
 		asc := f.asc
 		dsc := f.dsc
 		w := f.w
 	end GetBounds
 	
-	proc (f: Font) SStringWidth*(in s: array of char): integer
+	proc (f: Font) SStringWidth*(in s: array of char): integer 
 		var 
 			i, w: integer
-			ch: char
+			ch: wchar
 	begin 
 		w := 0
 		if s # "" then
@@ -337,10 +337,10 @@ module HostFonts
 		return w
 	end SStringWidth
 	
-	proc (f: Font) StringWidth*(in s: array of char): integer
+	proc (f: Font) StringWidth*(in s: array of wchar): integer 
 		var 
 			res, i, w: integer
-			lc: char
+			lc: wchar
 			dc, old: WinApi.HANDLE
 	begin 
 		dc := WinApi.GetDC(0)
@@ -361,7 +361,7 @@ module HostFonts
 		return w
 	end StringWidth
 	
-	proc (f: Font) IsAlien*(): boolean
+	proc (f: Font) IsAlien*(): boolean 
 	begin 
 		return (f.typeface # Fonts.default) & (f.alias # f.typeface)
 	end IsAlien
@@ -376,7 +376,7 @@ module HostFonts
 	// Directory
 	
 	
-	proc SetupDevFont(dc: WinApi.HANDLE; df: DevFont)
+	proc SetupDevFont(dc: WinApi.HANDLE; df: DevFont) 
 		var 
 			res: integer
 			abc: array 1 of WinApi.ABC
@@ -392,7 +392,7 @@ module HostFonts
 		df.wtab[ord(figureSpace)] := df.wtab[ord("0")]
 	end SetupDevFont
 	
-	proc InsertDevFont*(dc: WinApi.HANDLE; font: Font; var df: DevFont; unit: integer)
+	proc InsertDevFont*(dc: WinApi.HANDLE; font: Font; var df: DevFont; unit: integer) 
 		var 
 			res: integer
 	begin 
@@ -403,7 +403,7 @@ module HostFonts
 		font.dev.next := df
 	end InsertDevFont
 	
-	proc Setup(f: Font; typeface: array of char; size_: integer; style: set; weight: integer)
+	proc Setup(f: Font; typeface: array of wchar; size_: integer; style: set; weight: integer) 
 		var 
 			res: integer
 			tm: WinApi.TEXTMETRICW
@@ -451,7 +451,7 @@ module HostFonts
 		assert(f.size_ > 0)
 	end Setup
 	
-	proc (var id: Identifier) Identified(): boolean
+	proc (var id: Identifier) Identified(): boolean 
 		var 
 			f: Font
 	begin 
@@ -459,7 +459,7 @@ module HostFonts
 		return (f.typeface = id.tface) & (f.size_ = id.size_) & (f.style = id.style) & (f.weight = id.weight)
 	end Identified
 	
-	proc (d: Directory) This(typeface: Fonts.Typeface; size_: integer; style: set; weight: integer): Font
+	proc (d: Directory) This(typeface: Fonts.Typeface; size_: integer; style: set; weight: integer): Font 
 		var 
 			f: Font
 			i: Identifier
@@ -501,14 +501,14 @@ module HostFonts
 		return f
 	end This
 	
-	proc (d: Directory) Default(): Fonts.Font
+	proc (d: Directory) Default(): Fonts.Font 
 	begin 
 		return defFont
 	end Default
 	
 	proc CallBack(
 		var elf: WinApi.ENUMLOGFONTW; var ntm: WinApi.NEWTEXTMETRICW; type_, par: integer
-		): integer
+		): integer 
 		var 
 			p: ParPtr
 			info: Fonts.TypefaceInfo
@@ -525,7 +525,7 @@ module HostFonts
 		return 1
 	end CallBack
 	
-	proc (d: Directory) TypefaceList*(): Fonts.TypefaceInfo
+	proc (d: Directory) TypefaceList*(): Fonts.TypefaceInfo 
 		var 
 			res: integer
 			dc: WinApi.HANDLE
@@ -545,13 +545,13 @@ module HostFonts
 	
 	// miscellaneous
 	
-	proc (var id: Counter) Identified(): boolean
+	proc (var id: Counter) Identified(): boolean 
 	begin 
 		inc(id.count)
 		return false
 	end Identified
 	
-	proc NofFonts*(): integer
+	proc NofFonts*(): integer 
 		var 
 			p: ANYPTR
 			cnt: Counter
@@ -568,7 +568,7 @@ module HostFonts
 	end InstallDir
 	
 	
-	proc (var id: Traverser) Identified(): boolean
+	proc (var id: Traverser) Identified(): boolean 
 		var 
 			f: Font
 	begin 
@@ -583,7 +583,7 @@ module HostFonts
 		return false
 	end Identified
 	
-	proc SetTTMetric*(on: boolean)
+	proc SetTTMetric*(on: boolean) 
 		var 
 			t: Traverser
 			p: ANYPTR
@@ -596,7 +596,7 @@ module HostFonts
 		end 
 	end SetTTMetric
 	
-	proc SetDefaultFont*(tf: Fonts.Typeface; size_: integer)
+	proc SetDefaultFont*(tf: Fonts.Typeface; size_: integer) 
 		var 
 			t: Traverser
 			p: ANYPTR
@@ -617,7 +617,7 @@ module HostFonts
 		end 
 	end SetDefaultFont
 	
-	proc SetDialogFont*(tf: Fonts.Typeface; size_: integer; style: set; weight: integer)
+	proc SetDialogFont*(tf: Fonts.Typeface; size_: integer; style: set; weight: integer) 
 		var 
 			i: integer
 	begin 

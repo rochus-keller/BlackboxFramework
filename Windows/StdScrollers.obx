@@ -94,7 +94,7 @@ module StdScrollers
 				horizontal*, vertical*: record 
 						mode*: integer
 						adapt*: boolean
-						size_*: real 
+						size_*: longreal 
 					end 
 				showBorder*: boolean
 				savePos*: boolean
@@ -104,7 +104,7 @@ module StdScrollers
 	
 	// tools
 	
-	proc CheckPos(v: View; var x, y: integer)
+	proc CheckPos(v: View; var x, y: integer) 
 		var 
 			w, h: integer
 	begin 
@@ -125,7 +125,7 @@ module StdScrollers
 		end 
 	end CheckPos
 	
-	proc InnerFrame(v: View; f: Views.Frame): Views.Frame
+	proc InnerFrame(v: View; f: Views.Frame): Views.Frame 
 		var 
 			g, h: Views.Frame
 	begin 
@@ -144,7 +144,7 @@ module StdScrollers
 		return h
 	end InnerFrame
 	
-	proc Scroll(v: View; dir: integer; ver: boolean; p: integer; var pos: integer)
+	proc Scroll(v: View; dir: integer; ver: boolean; p: integer; var pos: integer) 
 		var 
 			x, y: integer
 			last: Stores.Operation
@@ -191,7 +191,7 @@ module StdScrollers
 		end 
 	end Scroll
 	
-	proc PollSection(v: View; ver: boolean; var size_, sect, pos: integer)
+	proc PollSection(v: View; ver: boolean; var size_, sect, pos: integer) 
 		var 
 			w, h: integer
 	begin 
@@ -226,7 +226,7 @@ module StdScrollers
 	
 	// properties
 	
-	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean)
+	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean) 
 		var 
 			valid: set
 	begin 
@@ -264,7 +264,7 @@ module StdScrollers
 		end 
 	end IntersectWith
 	
-	proc SetProp(v: View; p: Properties.Property)
+	proc SetProp(v: View; p: Properties.Property) 
 		var 
 			op: Op
 	begin 
@@ -276,7 +276,7 @@ module StdScrollers
 		end 
 	end SetProp
 	
-	proc PollProp(v: View; var prop: Prop)
+	proc PollProp(v: View; var prop: Prop) 
 		var 
 			p: Prop
 	begin 
@@ -382,7 +382,7 @@ module StdScrollers
 	
 	// ScrollBars
 	
-	proc TrackSB(f: StdCFrames.ScrollBar; dir: integer; var pos: integer)
+	proc TrackSB(f: StdCFrames.ScrollBar; dir: integer; var pos: integer) 
 		var 
 			s: ScrollBar
 			msg: Controllers.ScrollMsg
@@ -417,7 +417,7 @@ module StdScrollers
 		end 
 	end TrackSB
 	
-	proc SetSB(f: StdCFrames.ScrollBar; pos: integer)
+	proc SetSB(f: StdCFrames.ScrollBar; pos: integer) 
 		var 
 			s: ScrollBar
 			msg: Controllers.ScrollMsg
@@ -441,7 +441,7 @@ module StdScrollers
 		end 
 	end SetSB
 	
-	proc GetSB(f: StdCFrames.ScrollBar; var size_, sect, pos: integer)
+	proc GetSB(f: StdCFrames.ScrollBar; var size_, sect, pos: integer) 
 		var 
 			s: ScrollBar
 			msg: Controllers.PollSectionMsg
@@ -475,7 +475,7 @@ module StdScrollers
 		end 
 	end GetSB
 	
-	proc (s: ScrollBar) GetNewFrame(var frame: Views.Frame)
+	proc (s: ScrollBar) GetNewFrame(var frame: Views.Frame) 
 		var 
 			f: StdCFrames.ScrollBar
 	begin 
@@ -489,7 +489,7 @@ module StdScrollers
 		frame := f
 	end GetNewFrame
 	
-	proc (s: ScrollBar) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (s: ScrollBar) Restore(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		with f: StdCFrames.Frame do 
 			f.Restore(l, t, r, b) 
@@ -497,7 +497,7 @@ module StdScrollers
 	end Restore
 	
 	proc (s: ScrollBar) HandleCtrlMsg(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 	begin 
 		with f: StdCFrames.Frame do 
 			with msg: Controllers.PollCursorMsg do 
@@ -509,7 +509,7 @@ module StdScrollers
 		end 
 	end HandleCtrlMsg
 	
-	proc (s: ScrollBar) HandleViewMsg(f: Views.Frame; var msg: Views.Message)
+	proc (s: ScrollBar) HandleViewMsg(f: Views.Frame; var msg: Views.Message) 
 	begin 
 		with msg: UpdateMsg do 
 			with f: StdCFrames.Frame do 
@@ -522,7 +522,7 @@ module StdScrollers
 	
 	// View
 	
-	proc Update(v: View; f: Views.Frame)
+	proc Update(v: View; f: Views.Frame) 
 		var 
 			msg: Controllers.PollSectionMsg
 			w, h: integer
@@ -595,7 +595,7 @@ module StdScrollers
 		CheckPos(v, v.orgX, v.orgY)
 	end Update
 	
-	proc Init(v: View; newView: boolean)
+	proc Init(v: View; newView: boolean) 
 		const 
 			min_ = 2 * Ports.mm
 			max_ = max(integer)
@@ -669,7 +669,7 @@ module StdScrollers
 		Services.DoLater(v.update, Services.now)
 	end Init
 	
-	proc (v: View) Internalize(var rd: Stores.Reader)
+	proc (v: View) Internalize(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
@@ -689,7 +689,7 @@ module StdScrollers
 		end 
 	end Internalize
 	
-	proc (v: View) Externalize(var wr: Stores.Writer)
+	proc (v: View) Externalize(var wr: Stores.Writer) 
 	begin 
 		v.Externalize^(wr)
 		wr.WriteVersion(0)
@@ -707,12 +707,12 @@ module StdScrollers
 		wr.WriteSet(v.opts)
 	end Externalize
 	
-	proc (v: View) ThisModel(): Models.Model
+	proc (v: View) ThisModel(): Models.Model 
 	begin 
 		return v.view.ThisModel()
 	end ThisModel
 	
-	proc (v: View) CopyFromModelView(source: Views.View; model: Models.Model)
+	proc (v: View) CopyFromModelView(source: Views.View; model: Models.Model) 
 	begin 
 		with source: View do 
 			if model = nil then
@@ -730,7 +730,7 @@ module StdScrollers
 		Init(v, false)
 	end CopyFromModelView
 	
-	proc (v: View) InitContext(context: Models.Context)
+	proc (v: View) InitContext(context: Models.Context) 
 		var 
 			c: Context
 	begin 
@@ -748,7 +748,7 @@ module StdScrollers
 		v.view.Neutralize
 	end Neutralize
 	
-	proc (v: View) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (v: View) Restore(f: Views.Frame; l, t, r, b: integer) 
 		var 
 			w, h: integer
 	begin 
@@ -773,7 +773,7 @@ module StdScrollers
 		end 
 	end Restore
 	
-	proc (v: View) HandleCtrlMsg(f: Views.Frame; var msg: Controllers.Message; var focus: Views.View)
+	proc (v: View) HandleCtrlMsg(f: Views.Frame; var msg: Controllers.Message; var focus: Views.View) 
 		var 
 			w, h, p, n: integer
 			smsg: Controllers.ScrollMsg
@@ -844,7 +844,7 @@ module StdScrollers
 		end 
 	end HandleCtrlMsg
 	
-	proc (v: View) HandleViewMsg(f: Views.Frame; var msg: Views.Message)
+	proc (v: View) HandleViewMsg(f: Views.Frame; var msg: Views.Message) 
 		var 
 			b, r: integer
 	begin 
@@ -859,7 +859,7 @@ module StdScrollers
 		end 
 	end HandleViewMsg
 	
-	proc (v: View) HandlePropMsg(var msg: Properties.Message)
+	proc (v: View) HandlePropMsg(var msg: Properties.Message) 
 		var 
 			w, h: integer
 			p: Properties.Property
@@ -953,7 +953,7 @@ module StdScrollers
 		end 
 	end HandlePropMsg
 	
-	proc WrappedView*(v: Views.View): Views.View
+	proc WrappedView*(v: Views.View): Views.View 
 	begin 
 		with v: View do 
 			return v.view 
@@ -965,18 +965,18 @@ module StdScrollers
 	
 	// InnerView
 	
-	proc (v: InnerView) GetBackground(var color: Ports.Color)
+	proc (v: InnerView) GetBackground(var color: Ports.Color) 
 	begin 
 		color := Ports.background
 	end GetBackground
 	
-	proc (v: InnerView) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (v: InnerView) Restore(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		Views.InstallFrame(f, v.v.view, -v.v.orgX, -v.v.orgY, 0, true)
 	end Restore
 	
 	proc (v: InnerView) HandleCtrlMsg(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 	begin 
 		focus := v.v.view
 	end HandleCtrlMsg
@@ -984,7 +984,7 @@ module StdScrollers
 	
 	// Context
 	
-	proc (c: Context) MakeVisible(l, t, r, b: integer)
+	proc (c: Context) MakeVisible(l, t, r, b: integer) 
 		var 
 			w, h, x, y: integer
 	begin 
@@ -1020,17 +1020,17 @@ module StdScrollers
 		end 
 	end MakeVisible
 	
-	proc (c: Context) Consider(var p: Models.Proposal)
+	proc (c: Context) Consider(var p: Models.Proposal) 
 	begin 
 		c.v.context.Consider(p)
 	end Consider
 	
-	proc (c: Context) Normalize(): boolean
+	proc (c: Context) Normalize(): boolean 
 	begin 
 		return ~(savePos in c.v.opts)
 	end Normalize
 	
-	proc (c: Context) GetSize(var w, h: integer)
+	proc (c: Context) GetSize(var w, h: integer) 
 	begin 
 		c.v.context.GetSize(w, h)
 		dec(w, c.v.rgap + 2 * c.v.border)
@@ -1049,7 +1049,7 @@ module StdScrollers
 		end 
 	end GetSize
 	
-	proc (c: Context) SetSize(w, h: integer)
+	proc (c: Context) SetSize(w, h: integer) 
 		var 
 			w0, h0, w1, h1: integer
 	begin 
@@ -1072,7 +1072,7 @@ module StdScrollers
 		end 
 	end SetSize
 	
-	proc (c: Context) ThisModel(): Models.Model
+	proc (c: Context) ThisModel(): Models.Model 
 	begin 
 		return nil
 	end ThisModel
@@ -1149,7 +1149,7 @@ module StdScrollers
 		Properties.EmitProp(nil, p)
 	end Set
 	
-	proc DialogGuard*(var par: Dialog.Par)
+	proc DialogGuard*(var par: Dialog.Par) 
 		var 
 			p: Properties.Property
 	begin 
@@ -1162,21 +1162,21 @@ module StdScrollers
 		end 
 	end DialogGuard
 	
-	proc HorAdaptGuard*(var par: Dialog.Par)
+	proc HorAdaptGuard*(var par: Dialog.Par) 
 	begin 
 		if width in dialog.readOnly then
 			par.readOnly := true 
 		end 
 	end HorAdaptGuard
 	
-	proc VerAdaptGuard*(var par: Dialog.Par)
+	proc VerAdaptGuard*(var par: Dialog.Par) 
 	begin 
 		if height in dialog.readOnly then
 			par.readOnly := true 
 		end 
 	end VerAdaptGuard
 	
-	proc WidthGuard*(var par: Dialog.Par)
+	proc WidthGuard*(var par: Dialog.Par) 
 	begin 
 		if dialog.horizontal.adapt then
 			par.disabled := true 
@@ -1185,7 +1185,7 @@ module StdScrollers
 		end 
 	end WidthGuard
 	
-	proc HeightGuard*(var par: Dialog.Par)
+	proc HeightGuard*(var par: Dialog.Par) 
 	begin 
 		if dialog.vertical.adapt then
 			par.disabled := true 

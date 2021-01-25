@@ -101,7 +101,7 @@ module FormModels
 	// Model
 	
 	proc (f: Model) GetEmbeddingLimits*(var minW, maxW, 
-		minH, maxH: integer) // extensible
+		minH, maxH: integer)  // extensible
 	begin 
 		minH := minViewSize
 		minW := minViewSize
@@ -109,7 +109,7 @@ module FormModels
 		maxW := maxViewSize
 	end GetEmbeddingLimits
 	
-	proc (f: Model) Insert*(v: Views.View; l, t, r, b: integer) end // new abstract
+	proc (f: Model) Insert*(v: Views.View; l, t, r, b: integer)  end // new abstract
 	(* v # NIL	20
 	   v.init	21
 	   v.context = NIL	22
@@ -118,65 +118,65 @@ module FormModels
 	
 	
 	
-	proc (f: Model) Delete*(v: Views.View) end // new abstract
+	proc (f: Model) Delete*(v: Views.View)  end // new abstract
 	// v in f	20
 	
-	proc (f: Model) Resize*(v: Views.View; l, t, r, b: integer) end // new abstract
+	proc (f: Model) Resize*(v: Views.View; l, t, r, b: integer)  end // new abstract
 	(* v in f	20
 	   l <= r	21
 	   t <= b	22 *)
 	
 	
 	
-	proc (f: Model) Top*(): Views.View end // new abstract
+	proc (f: Model) Top*(): Views.View  end // new abstract
 	
-	proc (f: Model) PutAbove*(v, pos: Views.View) end // new abstract
+	proc (f: Model) PutAbove*(v, pos: Views.View)  end // new abstract
 	(* v in f	20
 	   (pos = NIL) OR (pos in f)	21 *)
 	
 	
 	
-	proc (f: Model) Move*(v: Views.View; dx, dy: integer) end // new abstract
+	proc (f: Model) Move*(v: Views.View; dx, dy: integer)  end // new abstract
 	// v in f	20
 	
-	proc (f: Model) Copy*(var v: Views.View; dx, dy: integer) end // new abstract
+	proc (f: Model) Copy*(var v: Views.View; dx, dy: integer)  end // new abstract
 	// v in f	20
 	
-	proc (f: Model) NewReader*(old: Reader): Reader end // new abstract
+	proc (f: Model) NewReader*(old: Reader): Reader  end // new abstract
 	
-	proc (f: Model) NewWriter*(old: Writer): Writer end // new abstract
+	proc (f: Model) NewWriter*(old: Writer): Writer  end // new abstract
 	
-	proc (f: Model) ViewAt*(x, y: integer): Views.View end // new abstract
+	proc (f: Model) ViewAt*(x, y: integer): Views.View  end // new abstract
 	
-	proc (f: Model) NofViews*(): integer end // new abstract
+	proc (f: Model) NofViews*(): integer  end // new abstract
 	
 	
 	// Directory
 	
-	proc (d: Directory) New*(): Model end // new abstract
+	proc (d: Directory) New*(): Model  end // new abstract
 	
 	
 	// Context
 	
-	proc (c: Context) ThisModel*(): Model end // abstract
+	proc (c: Context) ThisModel*(): Model  end // abstract
 	
-	proc (c: Context) GetRect*(var l, t, r, b: integer) end // new abstract
+	proc (c: Context) GetRect*(var l, t, r, b: integer)  end // new abstract
 	
 	
 	// Reader
 	
-	proc (rd: Reader) Set*(pos: Views.View) end // new abstract
+	proc (rd: Reader) Set*(pos: Views.View)  end // new abstract
 	// (pos = NIL) OR (pos in r's form)	20
 	
-	proc (rd: Reader) ReadView*(var v: Views.View) end // new abstract
+	proc (rd: Reader) ReadView*(var v: Views.View)  end // new abstract
 	
 	
 	// Writer
 	
-	proc (wr: Writer) Set*(pos: Views.View) end // new abstract
+	proc (wr: Writer) Set*(pos: Views.View)  end // new abstract
 	// (pos = NIL) OR (pos in w's form)	20
 	
-	proc (wr: Writer) WriteView*(v: Views.View; l, t, r, b: integer) end // new abstract
+	proc (wr: Writer) WriteView*(v: Views.View; l, t, r, b: integer)  end // new abstract
 	(* v # NIL	20
 	   v.init	21
 	   v.context = NIL	22
@@ -188,7 +188,7 @@ module FormModels
 	
 	// StdModel
 	
-	proc ThisContext(f: StdModel; view: Views.View): StdContext
+	proc ThisContext(f: StdModel; view: Views.View): StdContext 
 		var 
 			c: StdContext
 	begin 
@@ -199,7 +199,7 @@ module FormModels
 		return c
 	end ThisContext
 	
-	proc NewContext(form: StdModel; view: Views.View; l, t, r, b: integer): StdContext
+	proc NewContext(form: StdModel; view: Views.View; l, t, r, b: integer): StdContext 
 		var 
 			c: StdContext
 	begin 
@@ -223,7 +223,7 @@ module FormModels
 		return c
 	end NewContext
 	
-	proc InsertAbove(c, pos: StdContext)
+	proc InsertAbove(c, pos: StdContext) 
 	begin 
 		if pos = nil then
 			c.next := nil
@@ -234,7 +234,7 @@ module FormModels
 		end 
 	end InsertAbove
 	
-	proc (f: StdModel) Internalize(var rd: Stores.Reader)
+	proc (f: StdModel) Internalize(var rd: Stores.Reader) 
 		var 
 			thisVersion, l, t, r, b, x: integer
 			top, h: StdContext
@@ -259,7 +259,7 @@ module FormModels
 		end 
 	end Internalize
 	
-	proc (f: StdModel) Externalize(var wr: Stores.Writer)
+	proc (f: StdModel) Externalize(var wr: Stores.Writer) 
 		var 
 			c: StdContext
 	begin 
@@ -280,7 +280,7 @@ module FormModels
 		wr.WriteStore(nil)
 	end Externalize
 	
-	proc (f: StdModel) CopyFrom(source: Stores.Store)
+	proc (f: StdModel) CopyFrom(source: Stores.Store) 
 		var 
 			c, top, h: StdContext
 	begin 
@@ -296,12 +296,12 @@ module FormModels
 		end 
 	end CopyFrom
 	
-	proc (f: StdModel) InitFrom(source: Containers.Model)
+	proc (f: StdModel) InitFrom(source: Containers.Model) 
 	begin 
 		f.contexts := nil
 	end InitFrom
 	
-	proc (f: StdModel) ReplaceView(old, new_: Views.View)
+	proc (f: StdModel) ReplaceView(old, new_: Views.View) 
 		var 
 			op: ReplaceViewOp
 			c: StdContext
@@ -320,7 +320,7 @@ module FormModels
 		end 
 	end ReplaceView
 	
-	proc (f: StdModel) Insert(v: Views.View; l, t, r, b: integer)
+	proc (f: StdModel) Insert(v: Views.View; l, t, r, b: integer) 
 		var 
 			op: FormOp
 			c, h, top: StdContext
@@ -343,7 +343,7 @@ module FormModels
 		Models.Do(f, "#System:Insertion", op)
 	end Insert
 	
-	proc (f: StdModel) Delete(v: Views.View)
+	proc (f: StdModel) Delete(v: Views.View) 
 		var 
 			op: FormOp
 			c: StdContext
@@ -357,7 +357,7 @@ module FormModels
 		Models.Do(f, "#System:Deletion", op)
 	end Delete
 	
-	proc (f: StdModel) Resize(v: Views.View; l, t, r, b: integer)
+	proc (f: StdModel) Resize(v: Views.View; l, t, r, b: integer) 
 		var 
 			op: ResizeOp
 			c: StdContext
@@ -381,7 +381,7 @@ module FormModels
 		Models.Do(f, "#System:Resizing", op)
 	end Resize
 	
-	proc (f: StdModel) Top(): Views.View
+	proc (f: StdModel) Top(): Views.View 
 		var 
 			h, top: StdContext
 	begin 
@@ -398,7 +398,7 @@ module FormModels
 		end 
 	end Top
 	
-	proc (f: StdModel) PutAbove(v, pos: Views.View)
+	proc (f: StdModel) PutAbove(v, pos: Views.View) 
 		var 
 			op: FormOp
 			c, d: StdContext
@@ -416,7 +416,7 @@ module FormModels
 		end 
 	end PutAbove
 	
-	proc (f: StdModel) Move(v: Views.View; dx, dy: integer)
+	proc (f: StdModel) Move(v: Views.View; dx, dy: integer) 
 		var 
 			op: ResizeOp
 			c: StdContext
@@ -434,7 +434,7 @@ module FormModels
 		end 
 	end Move
 	
-	proc (f: StdModel) Copy(var v: Views.View; dx, dy: integer)
+	proc (f: StdModel) Copy(var v: Views.View; dx, dy: integer) 
 		var 
 			op: FormOp
 			c, h, top: StdContext
@@ -456,7 +456,7 @@ module FormModels
 		v := h.view
 	end Copy
 	
-	proc (f: StdModel) NewReader(old: Reader): Reader
+	proc (f: StdModel) NewReader(old: Reader): Reader 
 		var 
 			r: StdReader
 	begin 
@@ -475,7 +475,7 @@ module FormModels
 		return r
 	end NewReader
 	
-	proc (f: StdModel) NewWriter(old: Writer): Writer
+	proc (f: StdModel) NewWriter(old: Writer): Writer 
 		var 
 			w: StdWriter
 	begin 
@@ -489,7 +489,7 @@ module FormModels
 		return w
 	end NewWriter
 	
-	proc (f: StdModel) ViewAt(x, y: integer): Views.View
+	proc (f: StdModel) ViewAt(x, y: integer): Views.View 
 		var 
 			c, top: StdContext
 	begin 
@@ -508,7 +508,7 @@ module FormModels
 		end 
 	end ViewAt
 	
-	proc (f: StdModel) NofViews(): integer
+	proc (f: StdModel) NofViews(): integer 
 		var 
 			c: StdContext
 			n: integer
@@ -525,18 +525,18 @@ module FormModels
 	
 	// StdContext
 	
-	proc (c: StdContext) ThisModel(): Model
+	proc (c: StdContext) ThisModel(): Model 
 	begin 
 		return c.form
 	end ThisModel
 	
-	proc (c: StdContext) GetSize(var w, h: integer)
+	proc (c: StdContext) GetSize(var w, h: integer) 
 	begin 
 		w := c.r - c.l
 		h := c.b - c.t
 	end GetSize
 	
-	proc (c: StdContext) SetSize(w, h: integer)
+	proc (c: StdContext) SetSize(w, h: integer) 
 		var 
 			w0, h0: integer
 	begin 
@@ -551,12 +551,12 @@ module FormModels
 		end 
 	end SetSize
 	
-	proc (c: StdContext) Normalize(): boolean
+	proc (c: StdContext) Normalize(): boolean 
 	begin 
 		return false
 	end Normalize
 	
-	proc (c: StdContext) GetRect(var l, t, r, b: integer)
+	proc (c: StdContext) GetRect(var l, t, r, b: integer) 
 	begin 
 		l := c.l
 		t := c.t
@@ -567,7 +567,7 @@ module FormModels
 	
 	// StdDirectory
 	
-	proc (d: StdDirectory) New(): Model
+	proc (d: StdDirectory) New(): Model 
 		var 
 			f: StdModel
 	begin 
@@ -578,7 +578,7 @@ module FormModels
 	
 	// StdReader
 	
-	proc (rd: StdReader) Set(pos: Views.View)
+	proc (rd: StdReader) Set(pos: Views.View) 
 		var 
 			c: StdContext
 	begin 
@@ -596,7 +596,7 @@ module FormModels
 		rd.pos := c
 	end Set
 	
-	proc (rd: StdReader) ReadView(var v: Views.View)
+	proc (rd: StdReader) ReadView(var v: Views.View) 
 		var 
 			c: StdContext
 	begin 
@@ -626,7 +626,7 @@ module FormModels
 	
 	// StdWriter
 	
-	proc (wr: StdWriter) Set(pos: Views.View)
+	proc (wr: StdWriter) Set(pos: Views.View) 
 		var 
 			c: StdContext
 	begin 
@@ -639,7 +639,7 @@ module FormModels
 		wr.pos := c
 	end Set
 	
-	proc (wr: StdWriter) WriteView(v: Views.View; l, t, r, b: integer)
+	proc (wr: StdWriter) WriteView(v: Views.View; l, t, r, b: integer) 
 		var 
 			op: FormOp
 			c: StdContext
@@ -660,7 +660,7 @@ module FormModels
 	
 	// operations
 	
-	proc Update(c: StdContext)
+	proc Update(c: StdContext) 
 		var 
 			msg: UpdateMsg
 	begin 
@@ -762,24 +762,24 @@ module FormModels
 	
 	// miscellaneous
 	
-	proc New*(): Model
+	proc New*(): Model 
 	begin 
 		return dir.New()
 	end New
 	
-	proc CloneOf*(source: Model): Model
+	proc CloneOf*(source: Model): Model 
 	begin 
 		assert(source # nil, 20)
 		return Containers.CloneOf(source)(Model)
 	end CloneOf
 	
-	proc Copy*(source: Model): Model
+	proc Copy*(source: Model): Model 
 	begin 
 		assert(source # nil, 20)
 		return Stores.CopyOf(source)(Model)
 	end Copy
 	
-	proc SetDir*(d: Directory)
+	proc SetDir*(d: Directory) 
 	// d # NIL	20
 	begin 
 		assert(d # nil, 20)

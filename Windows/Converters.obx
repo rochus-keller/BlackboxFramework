@@ -43,7 +43,7 @@ module Converters
 		list-: Converter
 		doc: Converter
 	
-	proc GetCommand(name: Dialog.String; var val_: Meta.Value; var ok: boolean)
+	proc GetCommand(name: Dialog.String; var val_: Meta.Value; var ok: boolean) 
 		var 
 			i: Meta.Item
 	begin 
@@ -56,7 +56,7 @@ module Converters
 	end GetCommand
 	
 	
-	proc Register*(imp, exp: Dialog.String; storeType: Stores.TypeName; fileType: Files.Type; opts: set)
+	proc Register*(imp, exp: Dialog.String; storeType: Stores.TypeName; fileType: Files.Type; opts: set) 
 		var 
 			e, f: Converter
 	begin 
@@ -84,7 +84,7 @@ module Converters
 	end Register
 	
 	
-	proc Import*(loc: Files.Locator; name: Files.Name; var conv: Converter; var s: Stores.Store)
+	proc Import*(loc: Files.Locator; name: Files.Name; var conv: Converter; var s: Stores.Store) 
 		var 
 			file: Files.File
 			val_: ImpVal
@@ -122,7 +122,7 @@ module Converters
 		end 
 	end Import
 	
-	proc Export*(loc: Files.Locator; name: Files.Name; conv: Converter; s: Stores.Store)
+	proc Export*(loc: Files.Locator; name: Files.Name; conv: Converter; s: Stores.Store) 
 		var 
 			res: integer
 			file: Files.File

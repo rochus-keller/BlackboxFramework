@@ -155,7 +155,7 @@ module TextViews
 	
 	// View
 	
-	proc (v: View) Internalize2-(var rd: Stores.Reader) // extensible
+	proc (v: View) Internalize2-(var rd: Stores.Reader)  // extensible
 		// pre: ~v.init
 		// post: v.init
 		var 
@@ -168,14 +168,14 @@ module TextViews
 		rd.ReadVersion(minVersion, maxVersion, thisVersion)
 	end Internalize2
 	
-	proc (v: View) Externalize2-(var wr: Stores.Writer) // extensible
+	proc (v: View) Externalize2-(var wr: Stores.Writer)  // extensible
 	// pre: v.init
 	begin 
 		// v.Externalize^(wr);
 		wr.WriteVersion(maxVersion)
 	end Externalize2
 	
-	proc (v: View) ThisModel*(): TextModels.Model // extensible
+	proc (v: View) ThisModel*(): TextModels.Model  // extensible
 		var 
 			m: Containers.Model
 	begin 
@@ -187,24 +187,24 @@ module TextViews
 		end 
 	end ThisModel
 	
-	proc (v: View) DisplayMarks*(hide: boolean) end // new abstract
-	proc (v: View) HidesMarks*(): boolean end // new abstract
-	proc (v: View) SetSetter*(setter: TextSetters.Setter) end // new abstract
-	proc (v: View) ThisSetter*(): TextSetters.Setter end // new abstract
-	proc (v: View) SetOrigin*(org, dy: integer) end // new abstract
+	proc (v: View) DisplayMarks*(hide: boolean)  end // new abstract
+	proc (v: View) HidesMarks*(): boolean  end // new abstract
+	proc (v: View) SetSetter*(setter: TextSetters.Setter)  end // new abstract
+	proc (v: View) ThisSetter*(): TextSetters.Setter  end // new abstract
+	proc (v: View) SetOrigin*(org, dy: integer)  end // new abstract
 	// post: org = ThisLine(org) => v.org = org, v.dy = dy; else v.org = ThisLine(org), v.dy = 0
 	
-	proc (v: View) PollOrigin*(var org, dy: integer) end // new abstract
-	proc (v: View) SetDefaults*(r: TextRulers.Ruler; a: TextModels.Attributes) end // new abstract
+	proc (v: View) PollOrigin*(var org, dy: integer)  end // new abstract
+	proc (v: View) SetDefaults*(r: TextRulers.Ruler; a: TextModels.Attributes)  end // new abstract
 	
 	// pre: r.init, a.init
 	
-	proc (v: View) PollDefaults*(var r: TextRulers.Ruler; var a: TextModels.Attributes) end // new abstract
+	proc (v: View) PollDefaults*(var r: TextRulers.Ruler; var a: TextModels.Attributes)  end // new abstract
 	
-	proc (v: View) GetThisLocation*(f: Views.Frame; pos: integer; var loc: Location) end // new abstract
+	proc (v: View) GetThisLocation*(f: Views.Frame; pos: integer; var loc: Location)  end // new abstract
 	
 	
-	proc (v: View) GetRect*(f: Views.Frame; view: Views.View; var l, t, r, b: integer)
+	proc (v: View) GetRect*(f: Views.Frame; view: Views.View; var l, t, r, b: integer) 
 		var 
 			con: Models.Context
 			loc: Location
@@ -228,12 +228,12 @@ module TextViews
 		end 
 	end GetRect
 	
-	proc (v: View) GetRange*(f: Views.Frame; var beg, end_: integer) end // new abstract
+	proc (v: View) GetRange*(f: Views.Frame; var beg, end_: integer)  end // new abstract
 	// post: beg = beg of first visible line, end = end of last visible line
 	
-	proc (v: View) ThisPos*(f: Views.Frame; x, y: integer): integer end // new abstract
-	proc (v: View) ShowRangeIn*(f: Views.Frame; beg, end_: integer) end // new abstract
-	proc (v: View) ShowRange*(beg, end_: integer; focusOnly: boolean) end // new abstract
+	proc (v: View) ThisPos*(f: Views.Frame; x, y: integer): integer  end // new abstract
+	proc (v: View) ShowRangeIn*(f: Views.Frame; beg, end_: integer)  end // new abstract
+	proc (v: View) ShowRange*(beg, end_: integer; focusOnly: boolean)  end // new abstract
 	(* post: in all frames (resp. in front or otherwise target frame if focusOnly):
 	   if possible, first visible pos <= k <= last visible pos,
 	   with k = beg if beg = end and beg <= k < end otherwise *)
@@ -241,32 +241,32 @@ module TextViews
 	
 	// Directory
 	
-	proc (d: Directory) Set*(defAttr: TextModels.Attributes) // new extensible
+	proc (d: Directory) Set*(defAttr: TextModels.Attributes)  // new extensible
 	begin 
 		assert(defAttr # nil, 20)
 		assert(defAttr.init, 21)
 		d.defAttr := defAttr
 	end Set
 	
-	proc (d: Directory) New*(text: TextModels.Model): View end // new abstract
+	proc (d: Directory) New*(text: TextModels.Model): View  end // new abstract
 	
 	
 	// miscellaneous
 	
-	proc SetCtrlDir*(d: Containers.Directory)
+	proc SetCtrlDir*(d: Containers.Directory) 
 	begin 
 		assert(d # nil, 20)
 		ctrlDir := d
 	end SetCtrlDir
 	
-	proc SetDir*(d: Directory)
+	proc SetDir*(d: Directory) 
 	begin 
 		assert(d # nil, 20)
 		dir := d
 	end SetDir
 	
 	
-	proc Focus*(): View
+	proc Focus*(): View 
 		var 
 			v: Views.View
 	begin 
@@ -278,7 +278,7 @@ module TextViews
 		end 
 	end Focus
 	
-	proc FocusText*(): TextModels.Model
+	proc FocusText*(): TextModels.Model 
 		var 
 			v: View
 	begin 
@@ -296,7 +296,7 @@ module TextViews
 	end Deposit
 	
 	
-	proc ShowRange*(text: TextModels.Model; beg, end_: integer; focusOnly: boolean)
+	proc ShowRange*(text: TextModels.Model; beg, end_: integer; focusOnly: boolean) 
 		(* post: in all front or target frames displaying a view displaying t:
 		   if possible, first visible pos <= k <= last visible pos,
 		   with k = beg if beg = end and beg <= k < end otherwise *)
@@ -311,7 +311,7 @@ module TextViews
 	end ShowRange
 	
 	
-	proc ThisRuler*(v: View; pos: integer): TextRulers.Ruler
+	proc ThisRuler*(v: View; pos: integer): TextRulers.Ruler 
 		var 
 			r: TextRulers.Ruler
 			a: TextModels.Attributes
@@ -327,7 +327,7 @@ module TextViews
 	// auxiliary procedures
 	
 	proc GetReader(v: StdView; start: integer; in box: TextSetters.LineBox
-		): TextSetters.Reader
+		): TextSetters.Reader 
 		var 
 			st: TextSetters.Setter
 			rd: TextSetters.Reader
@@ -341,7 +341,7 @@ module TextViews
 		return rd
 	end GetReader
 	
-	proc CacheReader(v: StdView; rd: TextSetters.Reader)
+	proc CacheReader(v: StdView; rd: TextSetters.Reader) 
 	begin 
 		assert(v.cachedRd = nil, 20)
 		v.cachedRd := rd
@@ -350,14 +350,14 @@ module TextViews
 	
 	// line descriptors
 	
-	proc SetLineAsc(st: TextSetters.Setter; t: Line; dsc: integer)
+	proc SetLineAsc(st: TextSetters.Setter; t: Line; dsc: integer) 
 	// pre: dsc: descender of previous line (-1 if first line)
 	begin 
 		t.asc := t.box.asc + st.GridOffset(dsc, t.box)
 		t.h := t.asc + t.box.dsc
 	end SetLineAsc
 	
-	proc NewLine(st: TextSetters.Setter; start, dsc: integer): Line
+	proc NewLine(st: TextSetters.Setter; start, dsc: integer): Line 
 		// pre: start: start of line to measure; dsc: descender of previous line (-1 if first line)
 		var 
 			t: Line
@@ -370,7 +370,7 @@ module TextViews
 		return t
 	end NewLine
 	
-	proc AddLine(st: TextSetters.Setter; var t: Line; var start, y: integer)
+	proc AddLine(st: TextSetters.Setter; var t: Line; var start, y: integer) 
 	begin 
 		t.next := NewLine(st, start, t.box.dsc)
 		t := t.next
@@ -378,7 +378,7 @@ module TextViews
 		inc(y, t.h)
 	end AddLine
 	
-	proc InitLines(v: StdView)
+	proc InitLines(v: StdView) 
 		var 
 			asc, dsc, w: integer
 			t0, t: Line
@@ -404,7 +404,7 @@ module TextViews
 		v.bot := 0
 	end InitLines
 	
-	proc ExtendLines(v: StdView; bot: integer)
+	proc ExtendLines(v: StdView; bot: integer) 
 		var 
 			st: TextSetters.Setter
 			t0, t: Line
@@ -431,7 +431,7 @@ module TextViews
 		end 
 	end ExtendLines
 	
-	proc ReduceLines(v: StdView; bot: integer)
+	proc ReduceLines(v: StdView; bot: integer) 
 		var 
 			t0, t: Line
 			y: integer
@@ -450,7 +450,7 @@ module TextViews
 		end 
 	end ReduceLines
 	
-	proc ValidateLines(v: StdView; bot: integer)
+	proc ValidateLines(v: StdView; bot: integer) 
 		var 
 			st: TextSetters.Setter
 			w, h, len_: integer
@@ -477,7 +477,7 @@ module TextViews
 		ExtendLines(v, bot)
 	end ValidateLines
 	
-	proc PrependLines(v: StdView)
+	proc PrependLines(v: StdView) 
 		var 
 			st: TextSetters.Setter
 			t0, t1, t: Line
@@ -508,7 +508,7 @@ module TextViews
 	
 	// update frame after insert/delete/replace
 	
-	proc ThisViewLine(v: StdView; y: integer): Line
+	proc ThisViewLine(v: StdView; y: integer): Line 
 		// pre: 0 <= y < v.bot
 		var 
 			t: Line
@@ -523,7 +523,7 @@ module TextViews
 		return t
 	end ThisViewLine
 	
-	proc LocateThisLine(v: StdView; start: integer; var t: Line; var y: integer)
+	proc LocateThisLine(v: StdView; start: integer; var t: Line; var y: integer) 
 		var 
 			t1: Line
 	begin 
@@ -537,7 +537,7 @@ module TextViews
 		end 
 	end LocateThisLine
 	
-	proc GetStart(st: TextSetters.Setter; v: StdView; beg: integer; var start: integer)
+	proc GetStart(st: TextSetters.Setter; v: StdView; beg: integer; var start: integer) 
 		// find start of line containing beg after text change; tuned using valid line descs
 		var 
 			s, t: Line
@@ -569,7 +569,7 @@ module TextViews
 		end 
 	end GetStart
 	
-	proc GetStringStart(v: StdView; t: Line; pos: integer; var p1, x: integer)
+	proc GetStringStart(v: StdView; t: Line; pos: integer; var p1, x: integer) 
 		var 
 			rd: TextSetters.Reader
 	begin 
@@ -591,14 +591,14 @@ module TextViews
 		end 
 	end GetStringStart
 	
-	proc InSynch(t0, t1: Line): boolean
+	proc InSynch(t0, t1: Line): boolean 
 	begin 
 		return (t0.start = t1.start) & (t0.asc = t1.asc) & (t0.attr = t1.attr) 
 			& (t0.box.left = t1.box.left) & (t0.box.asc = t1.box.asc) & (t0.box.dsc = t1.box.dsc) 
 			& (t0.box.rbox = t1.box.rbox) & (t0.box.bop = t1.box.bop)
 	end InSynch
 	
-	proc RebuildView(v: StdView)
+	proc RebuildView(v: StdView) 
 	begin 
 		v.setter0 := nil
 		if v.trailer # nil then
@@ -608,12 +608,12 @@ module TextViews
 		end 
 	end RebuildView
 	
-	proc UpdateIn(v: StdView; l, t, b: integer)
+	proc UpdateIn(v: StdView; l, t, b: integer) 
 	begin 
 		Views.UpdateIn(v, l, t, max(integer), b, Views.rebuildFrames)
 	end UpdateIn
 	
-	proc UpdateFrames(v: StdView; t0, t1, u: Line; beg, y0, yu: integer)
+	proc UpdateFrames(v: StdView; t0, t1, u: Line; beg, y0, yu: integer) 
 		var 
 			t, te: Line
 			b, x, b0, b1, top, bot: integer
@@ -671,7 +671,7 @@ module TextViews
 		end 
 	end UpdateFrames
 	
-	proc UpdateView(v: StdView; beg, end_, delta: integer)
+	proc UpdateView(v: StdView; beg, end_, delta: integer) 
 		var 
 			st: TextSetters.Setter
 			r: TextRulers.Ruler
@@ -770,7 +770,7 @@ module TextViews
 		end 
 	end UpdateView
 	
-	proc StyleUpdate(v: StdView; oldAttr: TextRulers.Attributes)
+	proc StyleUpdate(v: StdView; oldAttr: TextRulers.Attributes) 
 		var 
 			t: Line
 			beg: integer
@@ -805,7 +805,7 @@ module TextViews
 	proc DrawLine(v: StdView
 		start: integer; in box: TextSetters.LineBox
 		f: Views.Frame; l, r, y, t: integer; pageF: boolean
-		)
+		) 
 		// pre: area cleared
 		// [l,r) for high-level clipping to tune update after small change
 		const 
@@ -819,7 +819,7 @@ module TextViews
 			cache: record  // initially: long = TRUE, len = 0
 					x, y: integer; color: Ports.Color; font: Fonts.Font
 					len_: integer
-					buf: array cacheLen of char 
+					buf: array cacheLen of wchar 
 				end 
 		
 		proc FlushCaches
@@ -831,9 +831,9 @@ module TextViews
 			cache.len_ := 0
 		end FlushCaches
 		
-		proc CacheString(x, y: integer; c: integer; in s: array of char
+		proc CacheString(x, y: integer; c: integer; in s: array of wchar
 			f: Fonts.Font
-			)
+			) 
 			var 
 				i, j, len_: integer
 		begin 
@@ -951,7 +951,7 @@ module TextViews
 		end 
 	end DrawLine
 	
-	proc DrawDecorations(v: StdView; u: Line; f: Views.Frame; l, t, r, b: integer)
+	proc DrawDecorations(v: StdView; u: Line; f: Views.Frame; l, t, r, b: integer) 
 		var 
 			a: TextRulers.Attributes
 			i, x: integer
@@ -995,7 +995,7 @@ module TextViews
 	
 	// focus-message handling
 	
-	proc PollSection(v: StdView; f: Views.Frame; var msg: Controllers.PollSectionMsg)
+	proc PollSection(v: StdView; f: Views.Frame; var msg: Controllers.PollSectionMsg) 
 		const 
 			ms = maxScrollSteps
 			mh = maxScrollHeight
@@ -1021,7 +1021,7 @@ module TextViews
 		end 
 	end PollSection
 	
-	proc Scroll(v: StdView; f: Views.Frame; var msg: Controllers.ScrollMsg)
+	proc Scroll(v: StdView; f: Views.Frame; var msg: Controllers.ScrollMsg) 
 		var 
 			st: TextSetters.Setter
 			box, box0: TextSetters.LineBox
@@ -1165,7 +1165,7 @@ module TextViews
 		end 
 	end Scroll
 	
-	proc NotifyViewsOnPage(v: StdView; beg, end_, pageNo: integer)
+	proc NotifyViewsOnPage(v: StdView; beg, end_, pageNo: integer) 
 		var 
 			st: TextSetters.Setter
 			rd: TextSetters.Reader
@@ -1199,7 +1199,7 @@ module TextViews
 		end 
 	end NotifyViewsOnPage
 	
-	proc Page(v: StdView; pageH: integer; op, pageY: integer; var done, eoy: boolean)
+	proc Page(v: StdView; pageH: integer; op, pageY: integer; var done, eoy: boolean) 
 		var 
 			st: TextSetters.Setter
 			org, prev, page: integer
@@ -1245,7 +1245,7 @@ module TextViews
 	end Page
 	
 	
-	proc ShowAdjusted(v: StdView; shift: integer; rebuild: boolean)
+	proc ShowAdjusted(v: StdView; shift: integer; rebuild: boolean) 
 	begin 
 		if shift # 0 then
 			Views.Scroll(v, 0, shift) 
@@ -1257,7 +1257,7 @@ module TextViews
 	
 	proc AdjustLines(v: StdView; org, dy: integer
 		var shift: integer; var rebuild: boolean
-		)
+		) 
 		// post: shift = 0  OR  ~rebuild
 		var 
 			d: Stores.Domain
@@ -1315,7 +1315,7 @@ module TextViews
 		end 
 	end AdjustLines
 	
-	proc Limit(v: StdView; bot: integer; allLines: boolean): integer
+	proc Limit(v: StdView; bot: integer; allLines: boolean): integer 
 		const 
 			minH = 12 * point
 		var 
@@ -1373,7 +1373,7 @@ module TextViews
 		end 
 	end Do
 	
-	proc DoSetOrigin(v: StdView; org, dy: integer; silent: boolean)
+	proc DoSetOrigin(v: StdView; org, dy: integer; silent: boolean) 
 		// pre: org = v.ThisSetter().ThisLine(org)
 		var 
 			con: Models.Context
@@ -1472,7 +1472,7 @@ module TextViews
 		RebuildView(v)
 	end Do
 	
-	proc DoSet(op: SetOp; mode: integer; v: StdView)
+	proc DoSet(op: SetOp; mode: integer; v: StdView) 
 	begin 
 		op.mode := mode
 		op.view := v
@@ -1482,7 +1482,7 @@ module TextViews
 	
 	// StdView
 	
-	proc (v: StdView) Internalize2(var rd: Stores.Reader)
+	proc (v: StdView) Internalize2(var rd: Stores.Reader) 
 		var 
 			st: Stores.Store
 			r: TextRulers.Ruler
@@ -1520,7 +1520,7 @@ module TextViews
 		v.bot := 0
 	end Internalize2
 	
-	proc (v: StdView) Externalize2(var wr: Stores.Writer)
+	proc (v: StdView) Externalize2(var wr: Stores.Writer) 
 		var 
 			org, dy: integer
 			hideMarks: boolean
@@ -1547,7 +1547,7 @@ module TextViews
 		wr.WriteInt(dy)
 	end Externalize2
 	
-	proc (v: StdView) CopyFromModelView2(source: Views.View; model: Models.Model)
+	proc (v: StdView) CopyFromModelView2(source: Views.View; model: Models.Model) 
 		var 
 			s: TextSetters.Setter
 			r: TextRulers.Ruler
@@ -1569,7 +1569,7 @@ module TextViews
 		end 
 	end CopyFromModelView2
 	
-	proc (v: StdView) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (v: StdView) Restore(f: Views.Frame; l, t, r, b: integer) 
 		var 
 			st: TextSetters.Setter
 			u0, u: Line
@@ -1620,7 +1620,7 @@ module TextViews
 		end 
 	end Restore
 	
-	proc (v: StdView) DisplayMarks(hide: boolean)
+	proc (v: StdView) DisplayMarks(hide: boolean) 
 		var 
 			op: SetOp
 			c: Containers.Controller
@@ -1641,12 +1641,12 @@ module TextViews
 		end 
 	end DisplayMarks
 	
-	proc (v: StdView) HidesMarks(): boolean
+	proc (v: StdView) HidesMarks(): boolean 
 	begin 
 		return v.hideMarks
 	end HidesMarks
 	
-	proc (v: StdView) SetSetter(setter: TextSetters.Setter)
+	proc (v: StdView) SetSetter(setter: TextSetters.Setter) 
 		var 
 			op: SetOp
 	begin 
@@ -1662,7 +1662,7 @@ module TextViews
 		end 
 	end SetSetter
 	
-	proc (v: StdView) ThisSetter(): TextSetters.Setter
+	proc (v: StdView) ThisSetter(): TextSetters.Setter 
 		var 
 			st: TextSetters.Setter
 			w, h: integer
@@ -1685,18 +1685,18 @@ module TextViews
 		return st
 	end ThisSetter
 	
-	proc (d: StdView) AcceptableModel(m: Containers.Model): boolean
+	proc (d: StdView) AcceptableModel(m: Containers.Model): boolean 
 	begin 
 		return m is TextModels.Model
 	end AcceptableModel
 	
-	proc (v: StdView) InitModel2(m: Containers.Model)
+	proc (v: StdView) InitModel2(m: Containers.Model) 
 	begin 
 		assert(m is TextModels.Model, 23)
 		v.text := m(TextModels.Model)
 	end InitModel2
 	
-	proc (v: StdView) SetOrigin(org, dy: integer)
+	proc (v: StdView) SetOrigin(org, dy: integer) 
 		var 
 			st: TextSetters.Setter
 			start: integer
@@ -1711,13 +1711,13 @@ module TextViews
 		DoSetOrigin(v, org, dy, false)
 	end SetOrigin
 	
-	proc (v: StdView) PollOrigin(var org, dy: integer)
+	proc (v: StdView) PollOrigin(var org, dy: integer) 
 	begin 
 		org := v.org
 		dy := v.dy
 	end PollOrigin
 	
-	proc (v: StdView) SetDefaults(r: TextRulers.Ruler; a: TextModels.Attributes)
+	proc (v: StdView) SetDefaults(r: TextRulers.Ruler; a: TextModels.Attributes) 
 		var 
 			op: SetOp
 	begin 
@@ -1742,7 +1742,7 @@ module TextViews
 		end 
 	end SetDefaults
 	
-	proc (v: StdView) PollDefaults(var r: TextRulers.Ruler; var a: TextModels.Attributes)
+	proc (v: StdView) PollDefaults(var r: TextRulers.Ruler; var a: TextModels.Attributes) 
 	begin 
 		r := v.defRuler
 		a := v.defAttr
@@ -1766,7 +1766,7 @@ module TextViews
 	   END Flush; *)
 	
 	
-	proc (v: StdView) HandleModelMsg2(var msg: Models.Message)
+	proc (v: StdView) HandleModelMsg2(var msg: Models.Message) 
 	begin 
 		if msg.model = v.text then
 			with msg: Models.UpdateMsg do 
@@ -1793,7 +1793,7 @@ module TextViews
 		end 
 	end HandleModelMsg2
 	
-	proc (v: StdView) HandleViewMsg2(f: Views.Frame; var msg: Views.Message)
+	proc (v: StdView) HandleViewMsg2(f: Views.Frame; var msg: Views.Message) 
 	begin 
 		if msg.view = v then
 			with msg: FindAnyFrameMsg do 
@@ -1817,7 +1817,7 @@ module TextViews
 	
 	proc (v: StdView) HandleCtrlMsg2(f: Views.Frame
 		var msg: Controllers.Message; var focus: Views.View
-		)
+		) 
 	begin 
 		with msg: Controllers.PollSectionMsg do 
 			if (focus = nil) or ~msg.focus then
@@ -1840,7 +1840,7 @@ module TextViews
 		end 
 	end HandleCtrlMsg2
 	
-	proc (v: StdView) HandlePropMsg2(var p: Properties.Message)
+	proc (v: StdView) HandlePropMsg2(var p: Properties.Message) 
 		const 
 			minW = 5 * point
 			maxW = maxHeight
@@ -1880,7 +1880,7 @@ module TextViews
 	end HandlePropMsg2
 	
 	
-	proc (v: StdView) GetThisLocation(f: Views.Frame; pos: integer; var loc: Location)
+	proc (v: StdView) GetThisLocation(f: Views.Frame; pos: integer; var loc: Location) 
 		// pre: f must be displayed
 		// if position lies outside view, the next best location inside will be taken
 		var 
@@ -1964,7 +1964,7 @@ module TextViews
 		CacheReader(v, rd)
 	end GetThisLocation
 	
-	proc (v: StdView) GetRange(f: Views.Frame; var beg, end_: integer)
+	proc (v: StdView) GetRange(f: Views.Frame; var beg, end_: integer) 
 		var 
 			t: Line
 	begin 
@@ -1974,7 +1974,7 @@ module TextViews
 		end_ := Limit(v, f.b, true)
 	end GetRange
 	
-	proc (v: StdView) ThisPos(f: Views.Frame; x, y: integer): integer
+	proc (v: StdView) ThisPos(f: Views.Frame; x, y: integer): integer 
 		// pre: f must be displayed
 		// post: f.org <= result <= v.text.Length()
 		var 
@@ -2016,7 +2016,7 @@ module TextViews
 		return p1
 	end ThisPos
 	
-	proc (v: StdView) ShowRangeIn(f: Views.Frame; beg, end_: integer)
+	proc (v: StdView) ShowRangeIn(f: Views.Frame; beg, end_: integer) 
 		const 
 			minH = 12 * point
 		var 
@@ -2127,7 +2127,7 @@ module TextViews
 	
 	end ShowRangeIn
 	
-	proc (v: StdView) ShowRange(beg, end_: integer; focusOnly: boolean)
+	proc (v: StdView) ShowRange(beg, end_: integer; focusOnly: boolean) 
 		var 
 			fmsg: FindFocusFrameMsg
 			amsg: FindAnyFrameMsg
@@ -2151,7 +2151,7 @@ module TextViews
 	
 	// StdDirectory
 	
-	proc (d: StdDirectory) New(text: TextModels.Model): View
+	proc (d: StdDirectory) New(text: TextModels.Model): View 
 		var 
 			v: StdView
 			c: Controllers.Controller

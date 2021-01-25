@@ -49,15 +49,15 @@ module FormGen
 		tree: record (Meta.Value) p*: pointer to Dialog.Tree end 
 	
 	
-	proc GetSize(v: Views.View; var w, h: integer)
+	proc GetSize(v: Views.View; var w, h: integer) 
 	begin 
 		w := Views.undefined
 		h := Views.undefined
 		Properties.PreferredSize(v, minW, maxW, minH, maxH, minW, minH, w, h)
 	end GetSize
 	
-	proc Gen(f: FormModels.Model; fv: FormViews.View; var path, name: array of char
-		wr: FormModels.Writer; var_: Meta.Item; var x, y, max_: integer; var first: boolean)
+	proc Gen(f: FormModels.Model; fv: FormViews.View; var path, name: array of wchar
+		wr: FormModels.Writer; var_: Meta.Item; var x, y, max_: integer; var first: boolean) 
 		var 
 			v, str: Views.View
 			dummy, delta, x0, y0, m, w, h, i: integer
@@ -236,7 +236,7 @@ module FormGen
 		x := x0
 	end Gen
 	
-	proc NewDialog(name: array of char): Views.View
+	proc NewDialog(name: array of wchar): Views.View 
 		var 
 			var_: Meta.Item
 			x, y, max_: integer
@@ -245,7 +245,7 @@ module FormGen
 			f: FormModels.Model
 			v: FormViews.View
 			first: boolean
-			n: array 4 of char
+			n: array 4 of wchar
 			c: Containers.Controller
 	begin 
 		f := nil
@@ -339,7 +339,7 @@ module FormGen
 		Create
 	end Empty
 	
-	proc CreateGuard*(var par: Dialog.Par)
+	proc CreateGuard*(var par: Dialog.Par) 
 	begin 
 		if new_.link = "" then
 			par.disabled := true 

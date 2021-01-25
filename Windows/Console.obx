@@ -25,23 +25,23 @@ module Console
 		HostConsole.Open
 	end Open
 	
-	proc WriteStr*(in str: array of char)
+	proc WriteStr*(in str: array of wchar) 
 	begin 
 		HostConsole.WriteStr(str)
 	end WriteStr
 	
-	proc WriteChar*(ch: char)
+	proc WriteChar*(ch: wchar) 
 		var 
-			str: array 2 of char
+			str: array 2 of wchar
 	begin 
 		str[0] := ch
 		str[1] := 0x
 		HostConsole.WriteStr(str)
 	end WriteChar
 	
-	proc WriteInt*(i: longint)
+	proc WriteInt*(i: longint) 
 		var 
-			str: array 24 of char
+			str: array 24 of wchar
 	begin 
 		Strings.IntToString(i, str)
 		HostConsole.WriteStr(str)
@@ -52,7 +52,7 @@ module Console
 		HostConsole.WriteLn
 	end WriteLn
 	
-	proc ReadLn*(var line: array of char)
+	proc ReadLn*(var line: array of wchar) 
 	begin 
 		HostConsole.ReadLn(line)
 	end ReadLn

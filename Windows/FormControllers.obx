@@ -75,19 +75,19 @@ module FormControllers
 	
 	// Controller
 	
-	proc (c: Controller) Internalize2-(var rd: Stores.Reader) // extensible
+	proc (c: Controller) Internalize2-(var rd: Stores.Reader)  // extensible
 		var 
 			thisVersion: integer
 	begin 
 		rd.ReadVersion(minVersion, maxBaseVersion, thisVersion)
 	end Internalize2
 	
-	proc (c: Controller) Externalize2-(var wr: Stores.Writer) // extensible
+	proc (c: Controller) Externalize2-(var wr: Stores.Writer)  // extensible
 	begin 
 		wr.WriteVersion(maxBaseVersion)
 	end Externalize2
 	
-	proc (c: Controller) InitView2*(view: Views.View) // extensible
+	proc (c: Controller) InitView2*(view: Views.View)  // extensible
 	begin 
 		if view # nil then
 			assert(view is FormViews.View, 25)
@@ -99,27 +99,27 @@ module FormControllers
 		end 
 	end InitView2
 	
-	proc (c: Controller) ThisView*(): FormViews.View // extensible
+	proc (c: Controller) ThisView*(): FormViews.View  // extensible
 	begin 
 		return c.view
 	end ThisView
 	
-	proc (c: Controller) Select*(view: Views.View) end // new abstract
+	proc (c: Controller) Select*(view: Views.View)  end // new abstract
 	
-	proc (c: Controller) Deselect*(view: Views.View) end // new abstract
+	proc (c: Controller) Deselect*(view: Views.View)  end // new abstract
 	
-	proc (c: Controller) IsSelected*(view: Views.View): boolean end // new abstract
+	proc (c: Controller) IsSelected*(view: Views.View): boolean  end // new abstract
 	
-	proc (c: Controller) GetSelection*(): List end // new abstract
+	proc (c: Controller) GetSelection*(): List  end // new abstract
 	
-	proc (c: Controller) SetSelection*(l: List) end // new abstract
+	proc (c: Controller) SetSelection*(l: List)  end // new abstract
 	
 	
 	// Directory
 	
-	proc (d: Directory) NewController*(opts: set): Controller end // abstract
+	proc (d: Directory) NewController*(opts: set): Controller  end // abstract
 	
-	proc (d: Directory) New*(): Controller // extensible
+	proc (d: Directory) New*(): Controller  // extensible
 	begin 
 		return d.NewController({})
 	end New
@@ -127,7 +127,7 @@ module FormControllers
 	
 	// auxiliary procedures
 	
-	proc MarkList(c: StdController; f: Views.Frame; h: List; show: boolean)
+	proc MarkList(c: StdController; f: Views.Frame; h: List; show: boolean) 
 		var 
 			l, t, r, b, s: integer
 	begin 
@@ -141,7 +141,7 @@ module FormControllers
 		end 
 	end MarkList
 	
-	proc Toggle(c: StdController; view: Views.View)
+	proc Toggle(c: StdController; view: Views.View) 
 	begin 
 		if c.IsSelected(view) then
 			c.Deselect(view) 
@@ -153,7 +153,7 @@ module FormControllers
 	
 	// StdController
 	
-	proc (c: StdController) Internalize2(var rd: Stores.Reader)
+	proc (c: StdController) Internalize2(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
@@ -165,20 +165,20 @@ module FormControllers
 		end 
 	end Internalize2
 	
-	proc (c: StdController) Externalize2(var wr: Stores.Writer)
+	proc (c: StdController) Externalize2(var wr: Stores.Writer) 
 	begin 
 		c.Externalize2^(wr)
 		wr.WriteVersion(maxStdVersion)
 	end Externalize2
 	
-	proc (c: StdController) CopyFrom(source: Stores.Store)
+	proc (c: StdController) CopyFrom(source: Stores.Store) 
 	begin 
 		c.CopyFrom^(source)
 		c.sel := nil
 		c.lastX := -1
 	end CopyFrom
 	
-	proc (c: StdController) RestoreMarks2(f: Views.Frame; l, t, r, b: integer)
+	proc (c: StdController) RestoreMarks2(f: Views.Frame; l, t, r, b: integer) 
 	begin 
 		if (c.lastX <= f.l) or (c.lastX >= f.r) or (c.lastY <= f.t) or (c.lastY >= f.b) then
 			c.lastX := (f.l + f.r) div 2
@@ -186,7 +186,7 @@ module FormControllers
 		end 
 	end RestoreMarks2
 	
-	proc (c: StdController) HandleViewMsg(f: Views.Frame; var msg: Views.Message)
+	proc (c: StdController) HandleViewMsg(f: Views.Frame; var msg: Views.Message) 
 	begin 
 		with msg: MarkMsg do 
 			MarkList(c, f, msg.list, msg.show) 
@@ -196,7 +196,7 @@ module FormControllers
 	end HandleViewMsg
 	
 	proc (c: StdController) HandleCtrlMsg(f: Views.Frame; var msg: Views.CtrlMessage
-		var focus: Views.View)
+		var focus: Views.View) 
 	begin 
 		with msg: PollFocusMsg do 
 			c.HandleCtrlMsg^(f, msg, focus)
@@ -209,12 +209,12 @@ module FormControllers
 	
 	// subclass hooks
 	
-	proc (c: StdController) GetContextType(var type_: Stores.TypeName)
+	proc (c: StdController) GetContextType(var type_: Stores.TypeName) 
 	begin 
 		type_ := "FormViews.View"
 	end GetContextType
 	
-	proc (c: StdController) GetValidOps(var valid: set)
+	proc (c: StdController) GetValidOps(var valid: set) 
 	begin 
 		valid := {Controllers.pasteChar, Controllers.paste}
 		if c.sel # nil then
@@ -222,25 +222,25 @@ module FormControllers
 		end 
 	end GetValidOps
 	
-	proc (c: StdController) NativeModel(model: Models.Model): boolean
+	proc (c: StdController) NativeModel(model: Models.Model): boolean 
 	begin 
 		assert(model # nil, 20)
 		return model is FormModels.Model
 	end NativeModel
 	
-	proc (c: StdController) NativeView(view: Views.View): boolean
+	proc (c: StdController) NativeView(view: Views.View): boolean 
 	begin 
 		assert(view # nil, 20)
 		return view is FormViews.View
 	end NativeView
 	
-	proc (c: StdController) NativeCursorAt(f: Views.Frame; x, y: integer): integer
+	proc (c: StdController) NativeCursorAt(f: Views.Frame; x, y: integer): integer 
 	begin 
 		assert(f # nil, 20)
 		return Ports.graphicsCursor
 	end NativeCursorAt
 	
-	proc (c: StdController) MakeViewVisible(v: Views.View)
+	proc (c: StdController) MakeViewVisible(v: Views.View) 
 		var 
 			l, t, r, b: integer
 	begin 
@@ -251,7 +251,7 @@ module FormControllers
 		c.view.context.MakeVisible(l, t, r, b)
 	end MakeViewVisible
 	
-	proc (c: StdController) GetFirstView(selection: boolean; var v: Views.View)
+	proc (c: StdController) GetFirstView(selection: boolean; var v: Views.View) 
 		var 
 			rd: FormModels.Reader
 	begin 
@@ -268,7 +268,7 @@ module FormControllers
 		end 
 	end GetFirstView
 	
-	proc (c: StdController) GetNextView(selection: boolean; var v: Views.View)
+	proc (c: StdController) GetNextView(selection: boolean; var v: Views.View) 
 		var 
 			h: List
 			rd: FormModels.Reader
@@ -293,7 +293,7 @@ module FormControllers
 		end 
 	end GetNextView
 	
-	proc (c: StdController) GetSelectionBounds(f: Views.Frame; var x, y, w, h: integer)
+	proc (c: StdController) GetSelectionBounds(f: Views.Frame; var x, y, w, h: integer) 
 		var 
 			g: Views.Frame
 			sel: List
@@ -344,7 +344,7 @@ module FormControllers
 	proc (c: StdController) MarkDropTarget(src, dst: Views.Frame
 		sx, sy, dx, dy, w, h, rx, ry: integer
 		type_: Stores.TypeName
-		isSingle, show: boolean)
+		isSingle, show: boolean) 
 		const 
 			dm = 4 * Ports.point
 			dp = 18 * Ports.point
@@ -394,14 +394,14 @@ module FormControllers
 	end MarkDropTarget
 	
 	proc (c: StdController) TrackMarks(f: Views.Frame; x, y: integer
-		units, extend, add: boolean)
+		units, extend, add: boolean) 
 		var 
 			dx, dy, x0, y0, dx0, dy0: integer
 			isDown: boolean
 			h: Views.View
 			m: set
 		
-		proc InvertRect(f: Views.Frame; x, y, dx, dy: integer)
+		proc InvertRect(f: Views.Frame; x, y, dx, dy: integer) 
 			var 
 				l, t, r, b: integer
 		begin 
@@ -422,7 +422,7 @@ module FormControllers
 			f.MarkRect(l, t, r, b, 0, Ports.dim50, true)
 		end InvertRect
 		
-		proc SelectArea(c: StdController; l, t, r, b: integer; toggle: boolean)
+		proc SelectArea(c: StdController; l, t, r, b: integer; toggle: boolean) 
 			var 
 				h: integer
 				rd: FormModels.Reader
@@ -498,7 +498,7 @@ module FormControllers
 		end 
 	end TrackMarks
 	
-	proc (c: StdController) Resize(view: Views.View; l, t, r, b: integer)
+	proc (c: StdController) Resize(view: Views.View; l, t, r, b: integer) 
 	begin 
 		c.form.Resize(view, l, t, r, b)
 	end Resize
@@ -518,7 +518,7 @@ module FormControllers
 	end DeleteSelection
 	
 	proc MoveRelativeLocalSel(c: StdController; src, dst: Views.Frame
-		dx, dy: integer; grid: boolean)
+		dx, dy: integer; grid: boolean) 
 		var 
 			script: Stores.Operation
 			sel, h: List
@@ -544,13 +544,13 @@ module FormControllers
 	end MoveRelativeLocalSel
 	
 	proc (c: StdController) MoveLocalSelection(src, dst: Views.Frame; sx, sy, 
-		dx, dy: integer)
+		dx, dy: integer) 
 	begin 
 		MoveRelativeLocalSel(c, src, dst, dx - sx, dy - sy, true)
 	end MoveLocalSelection
 	
 	proc (c: StdController) CopyLocalSelection(src, dst: Views.Frame; sx, sy, 
-		dx, dy: integer)
+		dx, dy: integer) 
 		var 
 			script: Stores.Operation
 			q: Views.View
@@ -577,7 +577,7 @@ module FormControllers
 		end 
 	end CopyLocalSelection
 	
-	proc (c: StdController) SelectionCopy(): Containers.Model
+	proc (c: StdController) SelectionCopy(): Containers.Model 
 		var 
 			f: FormModels.Model
 			rd: FormModels.Reader
@@ -585,7 +585,7 @@ module FormControllers
 			v: Views.View
 			dx, dy: integer
 		
-		proc GetOffset(p: List; border: integer; var dx, dy: integer)
+		proc GetOffset(p: List; border: integer; var dx, dy: integer) 
 			var 
 				l, t, vl, vt, vr, vb: integer
 		begin 
@@ -625,7 +625,7 @@ module FormControllers
 		return f
 	end SelectionCopy
 	
-	proc (c: StdController) NativePaste(m: Models.Model; f: Views.Frame)
+	proc (c: StdController) NativePaste(m: Models.Model; f: Views.Frame) 
 		var 
 			x, y, cw, ch: integer
 			v: Views.View
@@ -674,7 +674,7 @@ module FormControllers
 		end 
 	end NativePaste
 	
-	proc (c: StdController) ArrowChar(f: Views.Frame; ch: char; units, select: boolean)
+	proc (c: StdController) ArrowChar(f: Views.Frame; ch: wchar; units, select: boolean) 
 		var 
 			d: integer
 	begin 
@@ -694,17 +694,17 @@ module FormControllers
 		end 
 	end ArrowChar
 	
-	proc (c: StdController) ControlChar(f: Views.Frame; ch: char)
+	proc (c: StdController) ControlChar(f: Views.Frame; ch: wchar) 
 	begin 
 		if (ch = ldel) or (ch = rdel) then
 			c.DeleteSelection 
 		end 
 	end ControlChar
 	
-	proc (c: StdController) PasteChar(ch: char)
+	proc (c: StdController) PasteChar(ch: wchar) 
 	end PasteChar
 	
-	proc (c: StdController) PasteView(f: Views.Frame; v: Views.View; w, h: integer)
+	proc (c: StdController) PasteView(f: Views.Frame; v: Views.View; w, h: integer) 
 		var 
 			minW, maxW, minH, maxH, x, y: integer
 	begin 
@@ -724,7 +724,7 @@ module FormControllers
 	end PasteView
 	
 	proc (c: StdController) Drop(src, dst: Views.Frame; sx, sy, dx, dy, 
-		w, h, rx, ry: integer; v: Views.View; isSingle: boolean)
+		w, h, rx, ry: integer; v: Views.View; isSingle: boolean) 
 		var 
 			minW, maxW, minH, maxH, l, t, sw, sh: integer
 			s: Views.View
@@ -771,17 +771,17 @@ module FormControllers
 	
 	// selection
 	
-	proc (c: StdController) HasSelection(): boolean
+	proc (c: StdController) HasSelection(): boolean 
 	begin 
 		return c.sel # nil
 	end HasSelection
 	
-	proc (c: StdController) Selectable(): boolean
+	proc (c: StdController) Selectable(): boolean 
 	begin 
 		return c.form.NofViews() # 0
 	end Selectable
 	
-	proc (c: StdController) SetSingleton(s: Views.View)
+	proc (c: StdController) SetSingleton(s: Views.View) 
 		var 
 			l: List
 	begin 
@@ -795,7 +795,7 @@ module FormControllers
 		end 
 	end SetSingleton
 	
-	proc (c: StdController) SelectAll(select: boolean)
+	proc (c: StdController) SelectAll(select: boolean) 
 		var 
 			s: FormModels.Reader
 			v: Views.View
@@ -853,7 +853,7 @@ module FormControllers
 		end 
 	end SelectAll
 	
-	proc (c: StdController) InSelection(f: Views.Frame; x, y: integer): boolean
+	proc (c: StdController) InSelection(f: Views.Frame; x, y: integer): boolean 
 		var 
 			g: Views.Frame
 	begin 
@@ -865,7 +865,7 @@ module FormControllers
 		end 
 	end InSelection
 	
-	proc (c: StdController) MarkSelection(f: Views.Frame; show: boolean)
+	proc (c: StdController) MarkSelection(f: Views.Frame; show: boolean) 
 	begin 
 		if c.sel = nil then  // skip
 		elsif c.sel.next = nil then 
@@ -878,18 +878,18 @@ module FormControllers
 	
 	// caret
 	
-	proc (c: StdController) HasCaret(): boolean
+	proc (c: StdController) HasCaret(): boolean 
 	begin 
 		return true
 	end HasCaret
 	
-	proc (c: StdController) MarkCaret(f: Views.Frame; show: boolean)
+	proc (c: StdController) MarkCaret(f: Views.Frame; show: boolean) 
 	end MarkCaret
 	
 	
 	// FormController protocol
 	
-	proc (c: StdController) Select(view: Views.View)
+	proc (c: StdController) Select(view: Views.View) 
 		var 
 			l, h, sel: List
 			msg: MarkMsg
@@ -927,7 +927,7 @@ module FormControllers
 		end 
 	end Select
 	
-	proc (c: StdController) Deselect(view: Views.View)
+	proc (c: StdController) Deselect(view: Views.View) 
 		var 
 			l, h: List
 			msg: MarkMsg
@@ -965,7 +965,7 @@ module FormControllers
 		end 
 	end Deselect
 	
-	proc (c: StdController) IsSelected(view: Views.View): boolean
+	proc (c: StdController) IsSelected(view: Views.View): boolean 
 		var 
 			l: List
 	begin 
@@ -981,7 +981,7 @@ module FormControllers
 		end 
 	end IsSelected
 	
-	proc (c: StdController) GetSelection(): List
+	proc (c: StdController) GetSelection(): List 
 		var 
 			l, h, s: List
 	begin 
@@ -997,7 +997,7 @@ module FormControllers
 		return l
 	end GetSelection
 	
-	proc (c: StdController) SetSelection(l: List)
+	proc (c: StdController) SetSelection(l: List) 
 		var 
 			msg: MarkMsg
 	begin 
@@ -1017,7 +1017,7 @@ module FormControllers
 	
 	// StdDirectory
 	
-	proc (d: StdDirectory) NewController(opts: set): Controller
+	proc (d: StdDirectory) NewController(opts: set): Controller 
 		var 
 			c: StdController
 	begin 
@@ -1029,7 +1029,7 @@ module FormControllers
 	
 	// miscellaneous
 	
-	proc Focus*(): Controller
+	proc Focus*(): Controller 
 		var 
 			msg: PollFocusMsg
 	begin 
@@ -1038,7 +1038,7 @@ module FormControllers
 		return msg.c
 	end Focus
 	
-	proc Insert*(c: Controller; view: Views.View; l, t, r, b: integer)
+	proc Insert*(c: Controller; view: Views.View; l, t, r, b: integer) 
 		var 
 			w, h: integer
 	begin 
@@ -1048,7 +1048,7 @@ module FormControllers
 		c.form.Insert(view, l, t, l + w, t + h)
 	end Insert
 	
-	proc SetDir*(d: Directory)
+	proc SetDir*(d: Directory) 
 	begin 
 		assert(d # nil, 20)
 		dir := d

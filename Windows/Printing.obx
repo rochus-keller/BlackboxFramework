@@ -35,7 +35,7 @@ module Printing
 		Banner* = record 
 				font*: Fonts.Font
 				gap*: integer // OUT, prest to (0,0)
-				left*, right*: array 128 of char  // OUT, preset to "", ""
+				left*, right*: array 128 of wchar  // OUT, preset to "", ""
 			(* anywhere in header or footer:
 			   &p - replaced by current page number as arabic numeral
 			   &r - replaced by current page number as roman numeral
@@ -57,40 +57,40 @@ module Printing
 			end 
 		
 		Line = record 
-				buf: array bufLen of char
+				buf: array bufLen of wchar
 				beg: array maxNrOfSegments of byte
 				len_: integer 
 			end 
 		
 		Hook* = pointer to (* abstract *) record (Kernel.Hook) end 
 		
-		ExpandHook* = proc (in s: array of char; printView: Views.View; in date: Dates.Date
+		ExpandHook* = proc (in s: array of wchar; printView: Views.View; in date: Dates.Date
 			in time: Dates.Time; in title: Views.Title; pno: integer; printing: boolean
-			var sx: array of char)
+			var sx: array of wchar)
 	
 	var 
 		par*: Par
 		
-		month: array 12 * 3 + 1 of char
+		month: array 12 * 3 + 1 of wchar
 		printingHook: Hook
 		
 		printView: Views.View // param for expandHook; set per printed document in PrintView
 		expandHook-: ExpandHook // for expanding custom tags
 	
-	proc (h: Hook) Print*(v: Views.View; par: Par) end // new abstract
-	proc (h: Hook) Current*(): integer end // new abstract
+	proc (h: Hook) Print*(v: Views.View; par: Par)  end // new abstract
+	proc (h: Hook) Current*(): integer  end // new abstract
 	
-	proc SetHook*(p: Hook)
+	proc SetHook*(p: Hook) 
 	begin 
 		printingHook := p
 	end SetHook
 	
-	proc SetExpandHook*(p: ExpandHook)
+	proc SetExpandHook*(p: ExpandHook) 
 	begin 
 		expandHook := p
 	end SetExpandHook
 	
-	proc NewPar*(in page: PageInfo; in header, footer: Banner; copies: integer): Par
+	proc NewPar*(in page: PageInfo; in header, footer: Banner; copies: integer): Par 
 		var 
 			par: Par
 	begin 
@@ -108,7 +108,7 @@ module Printing
 		return par
 	end NewPar
 	
-	proc NewDefaultPar*(title: Views.Title): Par
+	proc NewDefaultPar*(title: Views.Title): Par 
 		var 
 			par: Par
 	begin 
@@ -130,7 +130,7 @@ module Printing
 		return par
 	end NewDefaultPar
 	
-	proc PrintView*(view: Views.View; p: Par)
+	proc PrintView*(view: Views.View; p: Par) 
 	begin 
 		assert(view # nil, 20)
 		assert(p # nil, 21)
@@ -149,10 +149,10 @@ module Printing
 	end PrintView
 	
 	proc GetDateAndTime(in date: Dates.Date; in time: Dates.Time
-		var d, t: array of char)
+		var d, t: array of wchar) 
 		var 
 			i, j, k: integer
-			s: array 8 of char
+			s: array 8 of wchar
 	begin 
 		Strings.IntToStringForm(date.day, Strings.decimal, 0, "0", false, d)
 		
@@ -175,14 +175,14 @@ module Printing
 		t := t + ":" + s
 	end GetDateAndTime
 	
-	proc Expand(s: array of char; in date: Dates.Date; in time: Dates.Time
-		in title: Views.Title; pno: integer; printing: boolean; var line: Line)
+	proc Expand(s: array of wchar; in date: Dates.Date; in time: Dates.Time
+		in title: Views.Title; pno: integer; printing: boolean; var line: Line) 
 		var 
 			i, l: integer
-			ch: char
+			ch: wchar
 			j: byte
-			p, d, t, r, rl: array 32 of char
-			sx: array bufLen * 2 of char
+			p, d, t, r, rl: array 32 of wchar
+			sx: array bufLen * 2 of wchar
 	begin 
 		if expandHook # nil then
 			expandHook(s, printView, date, time, title, pno, printing, sx) 
@@ -295,11 +295,11 @@ module Printing
 	end Expand
 	
 	proc PrintLine(f: Views.Frame; font: Fonts.Font
-		x0, x1, y: integer; var line: Line)
+		x0, x1, y: integer; var line: Line) 
 		var 
 			sp, dx, x: integer
 			i, j, k: integer
-			buf: array 128 of char
+			buf: array 128 of wchar
 	begin 
 		sp := (x1 - x0 - font.StringWidth(line.buf))
 		if line.len_ = 1 then // center
@@ -329,7 +329,7 @@ module Printing
 	end PrintLine
 	
 	proc PrintBanner*(f: Views.Frame; in p: PageInfo; in b: Banner
-		in date: Dates.Date; in time: Dates.Time; x0, x1, y: integer)
+		in date: Dates.Date; in time: Dates.Time; x0, x1, y: integer) 
 		var 
 			line: Line
 			printing: boolean
@@ -348,7 +348,7 @@ module Printing
 		PrintLine(f, b.font, x0, x1, y, line)
 	end PrintBanner
 	
-	proc Current*(): integer
+	proc Current*(): integer 
 	begin 
 		assert(par # nil, 21)
 		assert(printingHook # nil, 100)

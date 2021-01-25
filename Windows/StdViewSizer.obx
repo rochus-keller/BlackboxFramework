@@ -26,15 +26,15 @@ module StdViewSizer
 	var 
 		size_*: record 
 				typeName-: Dialog.String
-				w*, h*: real
+				w*, h*: longreal
 				proportional*, fixedW, fixedH: boolean
 				unit, scaleW, scaleH, lastChanged: integer
-				unitText: array 12 of char
+				unitText: array 12 of wchar
 				view: Views.View
 				container: Containers.Controller 
 			end 
 	
-	proc ConnectDialog(v: Views.View; c: Containers.Controller)
+	proc ConnectDialog(v: Views.View; c: Containers.Controller) 
 		var 
 			pref: Properties.ResizePref
 	begin 
@@ -114,26 +114,26 @@ module StdViewSizer
 		end 
 	end ResetDialog
 	
-	proc WidthGuard*(var par: Dialog.Par)
+	proc WidthGuard*(var par: Dialog.Par) 
 	begin 
 		InitDialog
 		par.disabled := size_.view = nil
 		par.readOnly := size_.fixedW
 	end WidthGuard
 	
-	proc HeightGuard*(var par: Dialog.Par)
+	proc HeightGuard*(var par: Dialog.Par) 
 	begin 
 		InitDialog
 		par.disabled := size_.view = nil
 		par.readOnly := size_.fixedH
 	end HeightGuard
 	
-	proc ProportionGuard*(var par: Dialog.Par)
+	proc ProportionGuard*(var par: Dialog.Par) 
 	begin 
 		par.disabled := (size_.view = nil) or size_.fixedW or size_.fixedH or (size_.scaleW = 0) or (size_.scaleH = 0)
 	end ProportionGuard
 	
-	proc UnitGuard*(var par: Dialog.Par)
+	proc UnitGuard*(var par: Dialog.Par) 
 	begin 
 		if size_.view # nil then
 			par.label := size_.unitText 
@@ -142,10 +142,10 @@ module StdViewSizer
 		end 
 	end UnitGuard
 	
-	proc AdjustDialogToPref(fixedW, fixedH: boolean)
+	proc AdjustDialogToPref(fixedW, fixedH: boolean) 
 		var 
 			w, h: integer
-			w0, h0: real
+			w0, h0: longreal
 			pref: Properties.SizePref
 	begin 
 		w := short(entier(size_.w * size_.unit + 0.5))
@@ -175,7 +175,7 @@ module StdViewSizer
 		end 
 	end AdjustDialogToPref
 	
-	proc WNotifier*(op, from, to_: integer)
+	proc WNotifier*(op, from, to_: integer) 
 	begin 
 		if size_.w > 0 then
 			AdjustDialogToPref(true, false)
@@ -185,7 +185,7 @@ module StdViewSizer
 		end 
 	end WNotifier
 	
-	proc HNotifier*(op, from, to_: integer)
+	proc HNotifier*(op, from, to_: integer) 
 	begin 
 		if size_.h > 0 then
 			AdjustDialogToPref(false, true)
@@ -195,7 +195,7 @@ module StdViewSizer
 		end 
 	end HNotifier
 	
-	proc ProportionNotifier*(op, from, to_: integer)
+	proc ProportionNotifier*(op, from, to_: integer) 
 	begin 
 		if (op = Dialog.changed) & size_.proportional then
 			if size_.lastChanged = width then

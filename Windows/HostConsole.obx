@@ -46,7 +46,7 @@ module HostConsole
 		end 
 	end Open
 	
-	proc ReadLn*(var line: array of char)
+	proc ReadLn*(var line: array of wchar) 
 		var 
 			buf: array 256 of char
 			res, read: integer
@@ -67,7 +67,7 @@ module HostConsole
 		end 
 	end ReadLn
 	
-	proc WriteStr*(in str: array of char)
+	proc WriteStr*(in str: array of wchar) 
 		var 
 			res, remaining, i, n: integer
 			si: WinApi.PtrWSTR
@@ -91,7 +91,7 @@ module HostConsole
 		end 
 	end WriteStr
 	
-	proc WriteSStr*(in str: array of char)
+	proc WriteSStr*(in str: array of char) 
 		var 
 			res: integer
 	begin 
@@ -126,7 +126,7 @@ module HostConsole
 		on := true
 	end On
 	
-	proc OnFor*(nofLines: integer)
+	proc OnFor*(nofLines: integer) 
 	begin 
 		offAtLineNr := lineNr + nofLines
 		on := true
@@ -147,7 +147,7 @@ module HostConsole
 		dec(indent)
 	end Undent
 	
-	proc String*(in str: array of char)
+	proc String*(in str: array of wchar) 
 	begin 
 		if on & (str # "") then
 			LinePrefix
@@ -155,16 +155,16 @@ module HostConsole
 		end 
 	end String
 	
-	proc Char*(ch: char)
+	proc Char*(ch: wchar) 
 		var 
-			s: array 2 of char
+			s: array 2 of wchar
 	begin 
 		s[0] := ch
 		s[1] := 0x
 		String(s)
 	end Char
 	
-	proc Bool*(x: boolean)
+	proc Bool*(x: boolean) 
 	begin 
 		if x then
 			String(" $TRUE") 
@@ -173,13 +173,13 @@ module HostConsole
 		end 
 	end Bool
 	
-	proc IntToString(x: longint; var s: array of char) // copied from Strings
+	proc IntToString(x: longint; var s: array of wchar)  // copied from Strings
 		const 
 			minLongIntRev = "8085774586302733229"
 		var 
 			j, k: integer
-			ch: char
-			a: array 32 of char
+			ch: wchar
+			a: array 32 of wchar
 	begin 
 		if x # min(longint) then
 			if x < 0 then
@@ -211,9 +211,9 @@ module HostConsole
 		s[k] := 0x
 	end IntToString
 	
-	proc Int*(x: longint)
+	proc Int*(x: longint) 
 		var 
-			str: array 24 of char
+			str: array 24 of wchar
 	begin 
 		IntToString(x, str)
 		String(" " + str)
@@ -223,7 +223,7 @@ module HostConsole
 	proc LinePrefix
 		var 
 			i: integer
-			lStr, iStr: array 12 of char
+			lStr, iStr: array 12 of wchar
 	begin 
 		if ~lineStarted then
 			lineStarted := true
@@ -253,7 +253,7 @@ module HostConsole
 	
 	proc Pause*
 		var 
-			line: array 256 of char
+			line: array 256 of wchar
 	begin 
 		WriteSStr("Press RETURN to continue . . .")
 		WriteLn

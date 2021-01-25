@@ -87,7 +87,7 @@ module HostCmds
 		end 
 	end OpenCopyOf
 	
-	proc SaveWindow(w: Windows.Window; rename: boolean)
+	proc SaveWindow(w: Windows.Window; rename: boolean) 
 		var 
 			title: Views.Title
 			loc: Files.Locator
@@ -193,7 +193,7 @@ module HostCmds
 		end 
 	end SaveCopyAs
 	
-	proc CloseWindow(w: Windows.Window)
+	proc CloseWindow(w: Windows.Window) 
 		var 
 			res: integer
 			msg: Sequencers.CloseMsg
@@ -258,7 +258,7 @@ module HostCmds
 	   END PageSetup; *)
 	
 	
-	proc HasSel(w: Windows.Window): boolean
+	proc HasSel(w: Windows.Window): boolean 
 		var 
 			ops: Controllers.PollOpsMsg
 	begin 
@@ -270,7 +270,7 @@ module HostCmds
 		return ops.singleton # nil
 	end HasSel
 	
-	proc PrintSel(w: Windows.Window; from, to_, copies: integer)
+	proc PrintSel(w: Windows.Window; from, to_, copies: integer) 
 		var 
 			wt, title: Views.Title
 			i: integer
@@ -296,7 +296,7 @@ module HostCmds
 		Printing.PrintView(edit.view, (* edit.w, edit.h, *)Printing.NewDefaultPar(title))
 	end PrintSel
 	
-	proc PrintDoc(w: Windows.Window; from, to_, copies: integer)
+	proc PrintDoc(w: Windows.Window; from, to_, copies: integer) 
 		var 
 			pw, ph, l, t, r, b: integer
 			decorate: boolean
@@ -328,7 +328,7 @@ module HostCmds
 	
 	end PrintDoc
 	
-	proc PrintThis(w: Windows.Window; from, to_, copies: integer; selection: boolean)
+	proc PrintThis(w: Windows.Window; from, to_, copies: integer; selection: boolean) 
 	begin 
 		if copies > 0 then
 			if selection then
@@ -506,7 +506,7 @@ module HostCmds
 	
 	
 	
-	proc OpenDoc*(file: array of char)
+	proc OpenDoc*(file: array of wchar) 
 		var 
 			w: Windows.Window
 	begin 
@@ -521,7 +521,7 @@ module HostCmds
 	
 	// Guards
 	
-	proc SaveGuard*(var par: Dialog.Par)
+	proc SaveGuard*(var par: Dialog.Par) 
 		var 
 			w: Windows.Window
 	begin 
@@ -531,7 +531,7 @@ module HostCmds
 		end 
 	end SaveGuard
 	
-	proc PrintGuard*(var par: Dialog.Par)
+	proc PrintGuard*(var par: Dialog.Par) 
 		var 
 			w: Windows.Window
 	begin 
@@ -541,14 +541,14 @@ module HostCmds
 		end 
 	end PrintGuard
 	
-	proc PrinterGuard*(var par: Dialog.Par)
+	proc PrinterGuard*(var par: Dialog.Par) 
 	begin 
 		if ~Printers.dir.Available() then
 			par.disabled := true 
 		end 
 	end PrinterGuard
 	
-	proc CutGuard*(var par: Dialog.Par)
+	proc CutGuard*(var par: Dialog.Par) 
 		var 
 			ops: Controllers.PollOpsMsg
 	begin 
@@ -558,7 +558,7 @@ module HostCmds
 		end 
 	end CutGuard
 	
-	proc CopyGuard*(var par: Dialog.Par)
+	proc CopyGuard*(var par: Dialog.Par) 
 		var 
 			ops: Controllers.PollOpsMsg
 	begin 
@@ -568,7 +568,7 @@ module HostCmds
 		end 
 	end CopyGuard
 	
-	proc PasteGuard*(var par: Dialog.Par)
+	proc PasteGuard*(var par: Dialog.Par) 
 		var 
 			ops: Controllers.PollOpsMsg
 	begin 
@@ -579,7 +579,7 @@ module HostCmds
 		end 
 	end PasteGuard
 	
-	proc PasteObjectGuard*(var par: Dialog.Par)
+	proc PasteObjectGuard*(var par: Dialog.Par) 
 		var 
 			ops: Controllers.PollOpsMsg
 	begin 
@@ -590,7 +590,7 @@ module HostCmds
 		end 
 	end PasteObjectGuard
 	
-	proc PasteToWindowGuard*(var par: Dialog.Par)
+	proc PasteToWindowGuard*(var par: Dialog.Par) 
 	begin 
 		if ~HostClipboard.ConvertibleTo("") then
 			par.disabled := true 

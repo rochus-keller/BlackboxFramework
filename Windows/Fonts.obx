@@ -32,7 +32,7 @@ module Fonts
 		default* = "*"
 	
 	type 
-		Typeface* = array 64 of char
+		Typeface* = array 64 of wchar
 		
 		Font* = pointer to (* abstract *) record 
 				typeface-: Typeface
@@ -52,7 +52,7 @@ module Fonts
 	var 
 		dir-: Directory
 	
-	proc (f: Font) Init*(typeface: Typeface; size_: integer; style: set; weight: integer) // new
+	proc (f: Font) Init*(typeface: Typeface; size_: integer; style: set; weight: integer)  // new
 	begin 
 		assert(f.size_ = 0, 20)
 		assert(size_ # 0, 21)
@@ -62,16 +62,16 @@ module Fonts
 		f.weight := weight
 	end Init
 	
-	proc (f: Font) GetBounds*(var asc, dsc, w: integer) end // new abstract
-	proc (f: Font) StringWidth*(in s: array of char): integer end // new abstract
-	proc (f: Font) SStringWidth*(in s: array of char): integer end // new abstract
-	proc (f: Font) IsAlien*(): boolean end // new abstract
+	proc (f: Font) GetBounds*(var asc, dsc, w: integer)  end // new abstract
+	proc (f: Font) StringWidth*(in s: array of wchar): integer  end // new abstract
+	proc (f: Font) SStringWidth*(in s: array of char): integer  end // new abstract
+	proc (f: Font) IsAlien*(): boolean  end // new abstract
 	
-	proc (d: Directory) This*(typeface: Typeface; size_: integer; style: set; weight: integer): Font end // new abstract
-	proc (d: Directory) Default*(): Font end // new abstract
-	proc (d: Directory) TypefaceList*(): TypefaceInfo end // new abstract
+	proc (d: Directory) This*(typeface: Typeface; size_: integer; style: set; weight: integer): Font  end // new abstract
+	proc (d: Directory) Default*(): Font  end // new abstract
+	proc (d: Directory) TypefaceList*(): TypefaceInfo  end // new abstract
 	
-	proc SetDir*(d: Directory)
+	proc SetDir*(d: Directory) 
 	begin 
 		assert(d # nil, 20)
 		dir := d

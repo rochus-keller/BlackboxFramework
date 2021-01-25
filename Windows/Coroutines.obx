@@ -53,14 +53,14 @@ module Coroutines
 		stackMin-, stackMax-: integer
 		nofTasks, sleep0: integer
 	
-	proc (this: Coroutine) Run-() end // new abstract
+	proc (this: Coroutine) Run-()  end // new abstract
 	
-	proc (this: MainCoroutine) Run()
+	proc (this: MainCoroutine) Run() 
 	begin  // must never be called
 		halt(20)
 	end Run
 	
-	proc TryHandler(a, b, c: integer)
+	proc TryHandler(a, b, c: integer) 
 		var 
 			this: Coroutine
 	begin 
@@ -88,7 +88,7 @@ module Coroutines
 		Kernel.TransferCoroutine(current.impl)
 	end TryHandler
 	
-	proc Start(par: integer)
+	proc Start(par: integer) 
 		var 
 			this: Coroutine
 	begin 
@@ -107,7 +107,7 @@ module Coroutines
 		Kernel.TransferCoroutine(main.impl)
 	end Start
 	
-	proc SetStackSize*(min_, max_: integer)
+	proc SetStackSize*(min_, max_: integer) 
 	begin 
 		stackMin := min_
 		stackMax := max_
@@ -131,7 +131,7 @@ module Coroutines
 		current := m
 	end InitMain
 	
-	proc Init*(this: Coroutine)
+	proc Init*(this: Coroutine) 
 		var 
 			done: boolean
 	begin 
@@ -159,7 +159,7 @@ module Coroutines
 		end 
 	end Init
 	
-	proc Transfer*(target: Coroutine)
+	proc Transfer*(target: Coroutine) 
 	begin 
 		assert(target.state = suspended, 20) // => target # current
 		current.state := suspended
@@ -201,7 +201,7 @@ module Coroutines
 		assert(this.source = main, 80)
 	end Start
 	
-	proc (this: Task) Sleep*(msecs: longint) // new
+	proc (this: Task) Sleep*(msecs: longint)  // new
 	begin 
 		assert(this.state = running, 20)
 		if this.action = nil then

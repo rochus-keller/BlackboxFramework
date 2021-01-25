@@ -49,18 +49,18 @@ module Dates
 		M, N: array 8 of integer
 		hook: Hook
 	
-	proc (h: Hook) GetTime*(var d: Date; var t: Time) end // new abstract
-	proc (h: Hook) GetUTCTime*(var d: Date; var t: Time) end // new abstract
-	proc (h: Hook) GetUTCBias*(var bias: integer) end // new abstract
-	proc (h: Hook) DateToString*(d: Date; format: integer; var str: array of char) end // new abstract
-	proc (h: Hook) TimeToString*(t: Time; var str: array of char) end // new abstract
+	proc (h: Hook) GetTime*(var d: Date; var t: Time)  end // new abstract
+	proc (h: Hook) GetUTCTime*(var d: Date; var t: Time)  end // new abstract
+	proc (h: Hook) GetUTCBias*(var bias: integer)  end // new abstract
+	proc (h: Hook) DateToString*(d: Date; format: integer; var str: array of wchar)  end // new abstract
+	proc (h: Hook) TimeToString*(t: Time; var str: array of wchar)  end // new abstract
 	
-	proc SetHook*(h: Hook)
+	proc SetHook*(h: Hook) 
 	begin 
 		hook := h
 	end SetHook
 	
-	proc ValidTime*(in t: Time): boolean
+	proc ValidTime*(in t: Time): boolean 
 	begin 
 		return 
 			(t.hour >= 0) & (t.hour <= 23) 
@@ -68,7 +68,7 @@ module Dates
 			& (t.second >= 0) & (t.second <= 59)
 	end ValidTime
 	
-	proc ValidDate*(in d: Date): boolean
+	proc ValidDate*(in d: Date): boolean 
 		var 
 			y, m, d1: integer
 	begin 
@@ -96,7 +96,7 @@ module Dates
 		end 
 	end ValidDate
 	
-	proc Day*(in d: Date): integer
+	proc Day*(in d: Date): integer 
 		var 
 			y, m, n: integer
 	begin 
@@ -113,7 +113,7 @@ module Dates
 		return n
 	end Day
 	
-	proc DayToDate*(n: integer; var d: Date)
+	proc DayToDate*(n: integer; var d: Date) 
 		var 
 			c, y, m: integer
 	begin 
@@ -140,7 +140,7 @@ module Dates
 		d.day := short(n + 1)
 	end DayToDate
 	
-	proc GetDate*(var d: Date)
+	proc GetDate*(var d: Date) 
 		var 
 			t: Time
 	begin 
@@ -148,7 +148,7 @@ module Dates
 		hook.GetTime(d, t)
 	end GetDate
 	
-	proc GetTime*(var t: Time)
+	proc GetTime*(var t: Time) 
 		var 
 			d: Date
 	begin 
@@ -156,13 +156,13 @@ module Dates
 		hook.GetTime(d, t)
 	end GetTime
 	
-	proc GetDateTime*(var d: Date; var t: Time)
+	proc GetDateTime*(var d: Date; var t: Time) 
 	begin 
 		assert(hook # nil, 100)
 		hook.GetTime(d, t)
 	end GetDateTime
 	
-	proc GetUTCDate*(var d: Date)
+	proc GetUTCDate*(var d: Date) 
 		var 
 			t: Time
 	begin 
@@ -170,7 +170,7 @@ module Dates
 		hook.GetUTCTime(d, t)
 	end GetUTCDate
 	
-	proc GetUTCTime*(var t: Time)
+	proc GetUTCTime*(var t: Time) 
 		var 
 			d: Date
 	begin 
@@ -178,19 +178,19 @@ module Dates
 		hook.GetUTCTime(d, t)
 	end GetUTCTime
 	
-	proc GetUTCDateTime*(var d: Date; var t: Time)
+	proc GetUTCDateTime*(var d: Date; var t: Time) 
 	begin 
 		assert(hook # nil, 100)
 		hook.GetUTCTime(d, t)
 	end GetUTCDateTime
 	
-	proc GetUTCBias*(var bias: integer)
+	proc GetUTCBias*(var bias: integer) 
 	begin 
 		assert(hook # nil, 100)
 		hook.GetUTCBias(bias)
 	end GetUTCBias
 	
-	proc GetEasterDate*(year: integer; var d: Date)
+	proc GetEasterDate*(year: integer; var d: Date) 
 		var 
 			k, m, n, a, b, c, d0, e, o: integer
 			month, day: integer
@@ -219,19 +219,19 @@ module Dates
 		d.day := day
 	end GetEasterDate
 	
-	proc DayOfWeek*(in d: Date): integer
+	proc DayOfWeek*(in d: Date): integer 
 	// post: res = 0: Monday .. res = 6: Sunday
 	begin 
 		return short((4 + Day(d)) mod 7)
 	end DayOfWeek
 	
-	proc DateToString*(in d: Date; format: integer; var str: array of char)
+	proc DateToString*(in d: Date; format: integer; var str: array of wchar) 
 	begin 
 		assert(hook # nil, 100)
 		hook.DateToString(d, format, str)
 	end DateToString
 	
-	proc TimeToString*(in t: Time; var str: array of char)
+	proc TimeToString*(in t: Time; var str: array of wchar) 
 	begin 
 		assert(hook # nil, 100)
 		hook.TimeToString(t, str)

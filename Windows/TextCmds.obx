@@ -80,7 +80,7 @@ module TextCmds
 		FindSpec = record 
 				valid, ignoreCase, wordBeginsWith, wordEndsWith, reverse: boolean
 				start: integer
-				find: array maxPat of char 
+				find: array maxPat of wchar 
 			end 
 		
 		ReplList = pointer to record 
@@ -100,8 +100,8 @@ module TextCmds
 	
 	var 
 		find*: record 
-				find*: array maxPat of char
-				replace*: array maxPat of char
+				find*: array maxPat of wchar
+				replace*: array maxPat of wchar
 				ignoreCase*, wordBeginsWith*, wordEndsWith*: boolean
 				reverseOrientation*: boolean 
 			end 
@@ -116,13 +116,13 @@ module TextCmds
 				ruler: TextRulers.Ruler
 				tabIndex: integer
 				style*: integer
-				radixChar*: array 2 of char
-				pos*: array 7 of char
+				radixChar*: array 2 of wchar
+				pos*: array 7 of wchar
 				verticalBar*: boolean 
 			end 
 	
 	
-	proc Show(t: TextModels.Model; beg, end_: integer)
+	proc Show(t: TextModels.Model; beg, end_: integer) 
 	begin 
 		TextViews.ShowRange(t, beg, end_, TextViews.focusOnly)
 		if beg = end_ then
@@ -132,13 +132,13 @@ module TextCmds
 		end 
 	end Show
 	
-	proc NoShow(t: TextModels.Model; pos: integer)
+	proc NoShow(t: TextModels.Model; pos: integer) 
 	begin 
 		TextControllers.SetSelection(t, pos, pos)
 		TextControllers.SetCaret(t, pos)
 	end NoShow
 	
-	proc Ruler(): TextRulers.Ruler
+	proc Ruler(): TextRulers.Ruler 
 		var 
 			r: TextRulers.Ruler
 	begin 
@@ -151,22 +151,22 @@ module TextCmds
 	
 	// search & replace
 	
-	proc LeftTerminator(ch: char): boolean
+	proc LeftTerminator(ch: wchar): boolean 
 	begin 
 		return ~Strings.IsIdent(ch)
 	end LeftTerminator
 	
-	proc RightTerminator(ch: char): boolean
+	proc RightTerminator(ch: wchar): boolean 
 	begin 
 		return ~Strings.IsIdent(ch)
 	end RightTerminator
 	
 	proc PreparePat(spec: FindSpec
-		var pat: array of char; var n: integer
-		var wordBeg, wordEnd: boolean)
+		var pat: array of wchar; var n: integer
+		var wordBeg, wordEnd: boolean) 
 		var 
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		ch := spec.find[0]
@@ -196,15 +196,15 @@ module TextCmds
 		end 
 	end PreparePat
 	
-	proc FindPat(t: TextModels.Model; spec: FindSpec; var beg, end_: integer)
+	proc FindPat(t: TextModels.Model; spec: FindSpec; var beg, end_: integer) 
 		// post: beg < end => t[beg, end) = spec.find, start <= beg; else beg = end
 		var 
 			r: TextModels.Reader
 			start: integer
 			i, j, b, e, n: integer
-			ch0, ch, ch1: char
+			ch0, ch, ch1: wchar
 			wordBeg, wordEnd, icase: boolean
-			pat, ref: array maxPat of char // ref [b..e) is readback buffer
+			pat, ref: array maxPat of wchar // ref [b..e) is readback buffer
 			pos0, pos1, absStart: integer
 			orientation: integer
 	begin 
@@ -309,11 +309,11 @@ module TextCmds
 		end 
 	end FindPat
 	
-	proc OverrideSpecWithOption(var spec: FindSpec; option: array of char)
+	proc OverrideSpecWithOption(var spec: FindSpec; option: array of wchar) 
 		var 
 			i: integer
 			choice: boolean
-			ch: char
+			ch: wchar
 	begin 
 		choice := true
 		i := 0
@@ -342,7 +342,7 @@ module TextCmds
 		end 
 	end OverrideSpecWithOption
 	
-	proc SetSpec(var spec: FindSpec; pos0, pos1: integer; option: array of char)
+	proc SetSpec(var spec: FindSpec; pos0, pos1: integer; option: array of wchar) 
 	begin 
 		assert(find.find # "", 20)
 		spec.valid := true
@@ -359,9 +359,9 @@ module TextCmds
 		spec.find := find.find
 	end SetSpec
 	
-	proc SetFindSpec(c: TextControllers.Controller; first: boolean; option: array of char
+	proc SetFindSpec(c: TextControllers.Controller; first: boolean; option: array of wchar
 		var spec: FindSpec
-		)
+		) 
 		var  // start,
 			pos0, pos1, beg, end_: integer
 	begin 
@@ -392,7 +392,7 @@ module TextCmds
 	end SetFindSpec
 	
 	
-	proc ReplBuf(target: TextModels.Model; pos: integer): TextModels.Model
+	proc ReplBuf(target: TextModels.Model; pos: integer): TextModels.Model 
 		var 
 			buf: TextModels.Model
 			attr: TextModels.Attributes
@@ -472,7 +472,7 @@ module TextCmds
 		end 
 	end Do
 	
-	proc AddRepl(op: ReplOp; beg, end_: integer; reverse: boolean)
+	proc AddRepl(op: ReplOp; beg, end_: integer; reverse: boolean) 
 		var 
 			u: ReplList
 	begin 
@@ -497,8 +497,8 @@ module TextCmds
 		t: TextModels.Model; mode: integer
 		firstBeg, firstEnd: integer
 		rngBeg, rngEnd: integer
-		option: array of char
-		)
+		option: array of wchar
+		) 
 		var 
 			op: ReplOp
 			spec: FindSpec
@@ -533,7 +533,7 @@ module TextCmds
 		Models.Do(t, replacingKey, op)
 	end DoReplaceThis
 	
-	proc DoReplace(c: TextControllers.Controller; mode: integer; option: array of char)
+	proc DoReplace(c: TextControllers.Controller; mode: integer; option: array of wchar) 
 		var 
 			t: TextModels.Model
 			spec: FindSpec
@@ -581,7 +581,7 @@ module TextCmds
 		end 
 	end DoReplace
 	
-	proc DoShift(c: TextControllers.Controller; left: boolean)
+	proc DoShift(c: TextControllers.Controller; left: boolean) 
 		var 
 			script: Stores.Operation
 			t: TextModels.Model
@@ -590,7 +590,7 @@ module TextCmds
 			wr: TextModels.Writer
 			box: TextSetters.LineBox
 			beg, pos, end_: integer
-			ch: char
+			ch: wchar
 	begin 
 		if (c # nil) & (c.HasSelection() or c.HasCaret()) then
 			t := c.text
@@ -694,7 +694,7 @@ module TextCmds
 	end ListAlienViews
 	
 	
-	proc ToggleMarksGuard*(var par: Dialog.Par)
+	proc ToggleMarksGuard*(var par: Dialog.Par) 
 		var 
 			v: TextViews.View
 	begin 
@@ -736,7 +736,7 @@ module TextCmds
 		end 
 	end HideMarks
 	
-	proc MakeDefaultRulerGuard*(var par: Dialog.Par)
+	proc MakeDefaultRulerGuard*(var par: Dialog.Par) 
 		var 
 			c: TextControllers.Controller
 			v: Views.View
@@ -858,7 +858,7 @@ module TextCmds
 	end Superscript
 	
 	
-	proc ForceToNewLine(c: TextControllers.Controller)
+	proc ForceToNewLine(c: TextControllers.Controller) 
 		var 
 			st: TextSetters.Setter
 			pos, start: integer
@@ -973,15 +973,15 @@ module TextCmds
 		Dialog.Update(find)
 	end ResetFindDialog
 	
-	proc GetFindPattern(c: TextControllers.Controller)
+	proc GetFindPattern(c: TextControllers.Controller) 
 		var 
 			r: TextModels.Reader
 			beg, end_: integer
 			i: integer
-			ch: char
-			new_: array maxPat of char
+			ch: wchar
+			new_: array maxPat of wchar
 		
-		proc Equals(x, y: array of char; ignoreCase: boolean): boolean
+		proc Equals(x, y: array of wchar; ignoreCase: boolean): boolean 
 		begin 
 			if ignoreCase then
 				Strings.ToUpper(x, x)
@@ -1011,7 +1011,7 @@ module TextCmds
 		end 
 	end GetFindPattern
 	
-	proc FindIn(c: TextControllers.Controller; first: boolean; option: array of char)
+	proc FindIn(c: TextControllers.Controller; first: boolean; option: array of wchar) 
 		var 
 			spec: FindSpec
 			beg, end_: integer
@@ -1035,7 +1035,7 @@ module TextCmds
 	end FindIn
 	
 	
-	proc FindGuard*(var par: Dialog.Par)
+	proc FindGuard*(var par: Dialog.Par) 
 		var 
 			c: TextControllers.Controller
 	begin 
@@ -1045,12 +1045,12 @@ module TextCmds
 		end 
 	end FindGuard
 	
-	proc FindFirst*(option: array of char)
+	proc FindFirst*(option: array of wchar) 
 	begin 
 		FindIn(TextControllers.Focus(), first, option)
 	end FindFirst
 	
-	proc FindAgainGuard*(var par: Dialog.Par)
+	proc FindAgainGuard*(var par: Dialog.Par) 
 		var 
 			c: TextControllers.Controller
 	begin 
@@ -1060,13 +1060,13 @@ module TextCmds
 		end 
 	end FindAgainGuard
 	
-	proc FindAgain*(option: array of char)
+	proc FindAgain*(option: array of wchar) 
 	begin 
 		FindIn(TextControllers.Focus(), again, option)
 	end FindAgain
 	
 	
-	proc ReplaceGuard*(var par: Dialog.Par)
+	proc ReplaceGuard*(var par: Dialog.Par) 
 		var 
 			c: TextControllers.Controller
 	begin 
@@ -1076,18 +1076,18 @@ module TextCmds
 		end 
 	end ReplaceGuard
 	
-	proc Replace*(option: array of char)
+	proc Replace*(option: array of wchar) 
 	begin 
 		DoReplace(TextControllers.Focus(), replace, option)
 	end Replace
 	
-	proc ReplaceAndFindNext*(option: array of char)
+	proc ReplaceAndFindNext*(option: array of wchar) 
 	begin 
 		DoReplace(TextControllers.Focus(), replaceAndFind, option)
 	end ReplaceAndFindNext
 	
 	
-	proc ReplaceAllGuard*(var par: Dialog.Par)
+	proc ReplaceAllGuard*(var par: Dialog.Par) 
 		var 
 			c: TextControllers.Controller
 	begin 
@@ -1103,7 +1103,7 @@ module TextCmds
 		end 
 	end ReplaceAllGuard
 	
-	proc ReplaceAll*(option: array of char)
+	proc ReplaceAll*(option: array of wchar) 
 	begin 
 		DoReplace(TextControllers.Focus(), replaceAll, option)
 	end ReplaceAll
@@ -1217,10 +1217,10 @@ module TextCmds
 		var 
 			p: TextRulers.Prop
 			ra, a: TextRulers.Attributes
-			pos: array 7 of char
-			val_: real
+			pos: array 7 of wchar
+			val_: longreal
 			unit, res, i, j, stop: integer
-			ch: char
+			ch: wchar
 			hasDot: boolean
 	begin 
 		if (tabulator.ruler # nil) & (tabulator.tabIndex < tabulator.ruler.style.attr.tabs.len_) then
@@ -1286,13 +1286,13 @@ module TextCmds
 		end 
 	end SetTab
 	
-	proc TabGuard*(var par: Dialog.Par)
+	proc TabGuard*(var par: Dialog.Par) 
 	begin 
 		par.disabled := (tabulator.ruler = nil) 
 			or (tabulator.tabIndex < 0) or (tabulator.tabIndex >= tabulator.ruler.style.attr.tabs.len_)
 	end TabGuard
 	
-	proc NextTabGuard*(var par: Dialog.Par)
+	proc NextTabGuard*(var par: Dialog.Par) 
 	begin 
 		TabGuard(par)
 		par.disabled := par.disabled or (tabulator.tabIndex + 1 >= tabulator.ruler.style.attr.tabs.len_)
@@ -1306,7 +1306,7 @@ module TextCmds
 		end 
 	end NextTab
 	
-	proc PrevTabGuard*(var par: Dialog.Par)
+	proc PrevTabGuard*(var par: Dialog.Par) 
 	begin 
 		TabGuard(par)
 		par.disabled := par.disabled or (tabulator.tabIndex = 0)
@@ -1320,13 +1320,13 @@ module TextCmds
 		end 
 	end PrevTab
 	
-	proc DecTabGuard*(var par: Dialog.Par)
+	proc DecTabGuard*(var par: Dialog.Par) 
 	begin 
 		TabGuard(par)
 		par.disabled := par.disabled or (tabulator.style # 3)
 	end DecTabGuard
 	
-	proc TabUnitGuard*(var par: Dialog.Par)
+	proc TabUnitGuard*(var par: Dialog.Par) 
 	begin 
 		TabGuard(par)
 		if Dialog.metricSystem then
@@ -1336,9 +1336,9 @@ module TextCmds
 		end 
 	end TabUnitGuard
 	
-	proc TabNumGuard*(var par: Dialog.Par)
+	proc TabNumGuard*(var par: Dialog.Par) 
 		var 
-			numStr: array 3 of char
+			numStr: array 3 of wchar
 	begin 
 		TabGuard(par)
 		if par.disabled then
@@ -1349,7 +1349,7 @@ module TextCmds
 		Dialog.MapParamString("#Text:TabNum", numStr, "", "", par.label)
 	end TabNumGuard
 	
-	proc (this: TabDialogHook) Open(ruler: TextRulers.Ruler; tabIndex: integer)
+	proc (this: TabDialogHook) Open(ruler: TextRulers.Ruler; tabIndex: integer) 
 		var 
 			v: Views.View
 	begin 
@@ -1359,7 +1359,7 @@ module TextCmds
 		StdApi.OpenToolDialog('Text/Rsrc/Tab', '#Text:TabTitle', v)
 	end Open
 	
-	proc (this: TabDialogHook) Init(ruler: TextRulers.Ruler; tabIndex: integer)
+	proc (this: TabDialogHook) Init(ruler: TextRulers.Ruler; tabIndex: integer) 
 	begin 
 		if tabulator.ruler # nil then // dialog open
 			tabulator.ruler := ruler
@@ -1368,7 +1368,7 @@ module TextCmds
 		end 
 	end Init
 	
-	proc (this: TabDialogHook) Refresh(style: TextRulers.Style)
+	proc (this: TabDialogHook) Refresh(style: TextRulers.Style) 
 	begin 
 		if (tabulator.ruler # nil) & (tabulator.ruler.style = style) then // dialog open and displaying changed ruler
 			InitTabDialog 
@@ -1378,7 +1378,7 @@ module TextCmds
 	
 	// standard text-related guards
 	
-	proc FocusGuard*(var par: Dialog.Par)
+	proc FocusGuard*(var par: Dialog.Par) 
 	// in non-TextView menus; otherwise implied by menu type
 	begin 
 		if TextViews.Focus() = nil then
@@ -1386,7 +1386,7 @@ module TextCmds
 		end 
 	end FocusGuard
 	
-	proc EditGuard*(var par: Dialog.Par)
+	proc EditGuard*(var par: Dialog.Par) 
 		// in non-TextView menus; otherwise use "StdCmds.EditGuard"
 		var 
 			c: TextControllers.Controller
@@ -1397,7 +1397,7 @@ module TextCmds
 		end 
 	end EditGuard
 	
-	proc SelectionGuard*(var par: Dialog.Par)
+	proc SelectionGuard*(var par: Dialog.Par) 
 		// in non-TextView menus; otherwise use "StdCmds.SelectionGuard"
 		var 
 			c: TextControllers.Controller
@@ -1408,7 +1408,7 @@ module TextCmds
 		end 
 	end SelectionGuard
 	
-	proc EditSelectionGuard*(var par: Dialog.Par)
+	proc EditSelectionGuard*(var par: Dialog.Par) 
 		// in non-TextView menus; otherwise use "StdCmds.SelectionGuard"
 		var 
 			c: TextControllers.Controller
@@ -1419,7 +1419,7 @@ module TextCmds
 		end 
 	end EditSelectionGuard
 	
-	proc SingletonGuard*(var par: Dialog.Par)
+	proc SingletonGuard*(var par: Dialog.Par) 
 		// in non-TextView menus; otherwise use "StdCmds.SingletonGuard"
 		var 
 			c: TextControllers.Controller
@@ -1430,7 +1430,7 @@ module TextCmds
 		end 
 	end SingletonGuard
 	
-	proc NewTabDialogHook(): TabDialogHook
+	proc NewTabDialogHook(): TabDialogHook 
 		var 
 			h: TabDialogHook
 	begin 

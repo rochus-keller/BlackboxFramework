@@ -129,7 +129,7 @@ module StdTables
 			end 
 		action: Action
 	
-	proc CountLines(in s: Dialog.String): integer
+	proc CountLines(in s: Dialog.String): integer 
 		var 
 			i, r, l: integer
 	begin 
@@ -146,7 +146,7 @@ module StdTables
 	
 	// Prop
 	
-	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean)
+	proc (p: Prop) IntersectWith*(q: Properties.Property; var equal: boolean) 
 		var 
 			valid: set
 			p0: Prop
@@ -171,7 +171,7 @@ module StdTables
 	
 	// Table
 	
-	proc (var tab: Table) SetSize*(rows, cols: integer) // new
+	proc (var tab: Table) SetSize*(rows, cols: integer)  // new
 		var 
 			i, j, fr, fc: integer
 			labels: pointer to array of Dialog.String
@@ -239,36 +239,36 @@ module StdTables
 		end 
 	end SetSize
 	
-	proc (var tab: Table) SetItem*(row, col: integer; (* IN *)item: Dialog.String) // new
+	proc (var tab: Table) SetItem*(row, col: integer; (* IN *)item: Dialog.String)  // new
 	begin 
 		assert(tab.data # nil, 20)
 		tab.data[row, col] := item
 	end SetItem
 	
-	proc (var tab: Table) GetItem*(row, col: integer; var item: Dialog.String) // new
+	proc (var tab: Table) GetItem*(row, col: integer; var item: Dialog.String)  // new
 	begin 
 		assert(tab.data # nil, 20)
 		item := tab.data[row, col]
 	end GetItem
 	
-	proc (var tab: Table) SetLabel*(col: integer; (* IN *)label: Dialog.String) // new
+	proc (var tab: Table) SetLabel*(col: integer; (* IN *)label: Dialog.String)  // new
 	begin 
 		assert(tab.labels # nil, 20)
 		tab.labels[col] := label
 	end SetLabel
 	
-	proc (var tab: Table) GetLabel*(col: integer; var label: Dialog.String) // new
+	proc (var tab: Table) GetLabel*(col: integer; var label: Dialog.String)  // new
 	begin 
 		assert(tab.labels # nil, 20)
 		label := tab.labels[col]
 	end GetLabel
 	
-	proc (var tab: Table) HasSelection*(): boolean // new
+	proc (var tab: Table) HasSelection*(): boolean  // new
 	begin 
 		return (tab.selection # nil) & (tab.selection.on)
 	end HasSelection
 	
-	proc (var tab: Table) GetSelection*(var row, col: integer) // new
+	proc (var tab: Table) GetSelection*(var row, col: integer)  // new
 	begin 
 		assert(tab.selection # nil, 20)
 		assert(tab.selection.on, 21)
@@ -276,7 +276,7 @@ module StdTables
 		col := tab.selection.col
 	end GetSelection
 	
-	proc (var tab: Table) Select*(row, col: integer) // new
+	proc (var tab: Table) Select*(row, col: integer)  // new
 	begin 
 		assert(tab.selection # nil, 20)
 		tab.selection.on := true
@@ -290,7 +290,7 @@ module StdTables
 		tab.selection.on := false
 	end Deselect
 	
-	proc (var tab: Table) SetAttr*(l, t, r, b: integer; style: set; weight: integer; color: Ports.Color) // new
+	proc (var tab: Table) SetAttr*(l, t, r, b: integer; style: set; weight: integer; color: Ports.Color)  // new
 		var 
 			i, j: integer
 	begin 
@@ -305,7 +305,7 @@ module StdTables
 	end SetAttr
 	
 	proc (var tab: Table) GetAttr*(row, col: integer; var style: set; var weight: integer
-		var color: Ports.Color) // new
+		var color: Ports.Color)  // new
 	begin 
 		assert(tab.data # nil, 20)
 		weight := tab.weights[row, col]
@@ -316,28 +316,28 @@ module StdTables
 	
 	// Context
 	
-	proc (c: Context) GetSize(var w, h: integer)
+	proc (c: Context) GetSize(var w, h: integer) 
 	begin 
 		w := c.w
 		h := c.h
 	end GetSize
 	
-	proc (c: Context) Normalize(): boolean
+	proc (c: Context) Normalize(): boolean 
 	begin 
 		return c.base.context.Normalize()
 	end Normalize
 	
-	proc (c: Context) Consider(var p: Models.Proposal)
+	proc (c: Context) Consider(var p: Models.Proposal) 
 	begin 
 		c.base.context.Consider(p)
 	end Consider
 	
-	proc (c: Context) ThisModel(): Models.Model
+	proc (c: Context) ThisModel(): Models.Model 
 	begin 
 		return nil
 	end ThisModel
 	
-	proc NewField(t: Control; col, w, h: integer): Views.View
+	proc NewField(t: Control; col, w, h: integer): Views.View 
 		var 
 			c: Context
 			p: Controls.Prop
@@ -376,7 +376,7 @@ module StdTables
 		return v
 	end NewField
 	
-	proc SendNotifyMsg(c: Control)
+	proc SendNotifyMsg(c: Control) 
 		var 
 			msg: Views.NotifyMsg
 	begin 
@@ -386,7 +386,7 @@ module StdTables
 		Views.Omnicast(msg)
 	end SendNotifyMsg
 	
-	proc GetSize(c: Control; var rows, cols: integer)
+	proc GetSize(c: Control; var rows, cols: integer) 
 		var 
 			item: Meta.Item
 	begin 
@@ -402,7 +402,7 @@ module StdTables
 		end 
 	end GetSize
 	
-	proc GetLabel(c: Control; col: integer; var val_: Dialog.String; var ok: boolean)
+	proc GetLabel(c: Control; col: integer; var val_: Dialog.String; var ok: boolean) 
 		var 
 			t: TableValue
 	begin 
@@ -412,7 +412,7 @@ module StdTables
 	end GetLabel
 	
 	proc GetAttr(c: Control; row, col: integer
-		var style: set; var weight: integer; var color: Ports.Color; var ok: boolean)
+		var style: set; var weight: integer; var color: Ports.Color; var ok: boolean) 
 		var 
 			t: TableValue
 	begin 
@@ -421,7 +421,7 @@ module StdTables
 		t.t.GetAttr(row, col, style, weight, color)
 	end GetAttr
 	
-	proc GetText(c: Control; row, col: integer; var val_: Dialog.String; var ok: boolean)
+	proc GetText(c: Control; row, col: integer; var val_: Dialog.String; var ok: boolean) 
 		var 
 			t: TableValue
 	begin 
@@ -430,7 +430,7 @@ module StdTables
 		t.t.GetItem(row, col, val_)
 	end GetText
 	
-	proc SetText(c: Control; f: Views.Frame; row, col: integer; in val_: Dialog.String; var ok: boolean)
+	proc SetText(c: Control; f: Views.Frame; row, col: integer; in val_: Dialog.String; var ok: boolean) 
 		var 
 			t: TableValue
 	begin 
@@ -444,7 +444,7 @@ module StdTables
 		end 
 	end SetText
 	
-	proc GetSelection(c: Control; var on: boolean; var row, col: integer; var ok: boolean)
+	proc GetSelection(c: Control; var on: boolean; var row, col: integer; var ok: boolean) 
 		var 
 			t: TableValue
 	begin 
@@ -461,7 +461,7 @@ module StdTables
 		end 
 	end GetSelection
 	
-	proc SetSelection(c: Control; f: Views.Frame; on: boolean; row, col: integer; var ok: boolean)
+	proc SetSelection(c: Control; f: Views.Frame; on: boolean; row, col: integer; var ok: boolean) 
 		var 
 			t: TableValue
 	begin 
@@ -480,7 +480,7 @@ module StdTables
 	end SetSelection
 	
 	
-	proc SetupControl(t: Control)
+	proc SetupControl(t: Control) 
 		var 
 			i, asc, dsc, w: integer
 	begin 
@@ -505,7 +505,7 @@ module StdTables
 	
 	// Directory
 	
-	proc (d: Directory) NewControl*(p: Controls.Prop): Views.View end // new abstract
+	proc (d: Directory) NewControl*(p: Controls.Prop): Views.View  end // new abstract
 	
 	
 	// PropOp
@@ -578,7 +578,7 @@ module StdTables
 	
 	// properties
 	
-	proc PollProp(c: Control; var list: Properties.Property)
+	proc PollProp(c: Control; var list: Properties.Property) 
 		var 
 			p: Properties.Property
 	begin 
@@ -594,7 +594,7 @@ module StdTables
 		Properties.Insert(list, p)
 	end PollProp
 	
-	proc SetProp(c: Control; p: Properties.Property)
+	proc SetProp(c: Control; p: Properties.Property) 
 		var 
 			op: PropOp
 			valid: set
@@ -633,7 +633,7 @@ module StdTables
 	
 	// Control
 	
-	proc DrawBorder(f: Views.Frame; x, y, w, h: integer)
+	proc DrawBorder(f: Views.Frame; x, y, w, h: integer) 
 	begin 
 		f.DrawRect(x, y, x + f.dot, y + h, Ports.fill, Ports.white)
 		f.DrawRect(x + f.dot, y + 0, x + 2 * f.dot, y + h, Ports.fill, Ports.grey25)
@@ -646,7 +646,7 @@ module StdTables
 	end DrawBorder
 	
 	proc DrawLabel(f: Views.Frame; x, y, w, x0, y0, w0, h0, mode: integer
-		var is_: array of char; font: Fonts.Font; rowHeight: integer)
+		var is_: array of wchar; font: Fonts.Font; rowHeight: integer) 
 		var 
 			dx, i, j, si, sw, rw: integer
 			s: Dialog.String
@@ -700,8 +700,8 @@ module StdTables
 		DrawBorder(f, x0, y0, w0, h0)
 	end DrawLabel
 	
-	proc DrawField(f: Views.Frame; x, y, w, mode: integer; var s: array of char; font: Fonts.Font
-		color: Ports.Color)
+	proc DrawField(f: Views.Frame; x, y, w, mode: integer; var s: array of wchar; font: Fonts.Font
+		color: Ports.Color) 
 		var 
 			i, sw, rw: integer
 	begin 
@@ -738,7 +738,7 @@ module StdTables
 	end DrawField
 	
 	proc GetRect(t: Control; f: Views.Frame; row, col: integer; var x, y, w, h: integer
-		var visible: boolean)
+		var visible: boolean) 
 		var 
 			c: integer
 	begin 
@@ -763,7 +763,7 @@ module StdTables
 	end GetRect
 	
 	
-	proc DrawSelection(tab: Control; f: Views.Frame; selRow, selCol: integer; show: boolean)
+	proc DrawSelection(tab: Control; f: Views.Frame; selRow, selCol: integer; show: boolean) 
 		var 
 			c, l, t, r, b, cols, rows: integer
 	begin 
@@ -843,7 +843,7 @@ module StdTables
 		end 
 	end DrawSelection
 	
-	proc Select(c: Control; f: Views.Frame; on: boolean)
+	proc Select(c: Control; f: Views.Frame; on: boolean) 
 		var 
 			ok: boolean
 	begin 
@@ -854,7 +854,7 @@ module StdTables
 		end 
 	end Select
 	
-	proc ViewFromSelection(t: Control): Views.View
+	proc ViewFromSelection(t: Control): Views.View 
 		var 
 			str: Dialog.String
 			ok: boolean
@@ -871,7 +871,7 @@ module StdTables
 		end 
 	end ViewFromSelection
 	
-	proc GetControlSize(t: Control; dot: integer; var w, h: longint)
+	proc GetControlSize(t: Control; dot: integer; var w, h: longint) 
 		var 
 			r, c, i: integer
 	begin 
@@ -892,7 +892,7 @@ module StdTables
 		end 
 	end GetControlSize
 	
-	proc CheckPos(t: Control; x, y, dot: integer; var col, type_, p: integer)
+	proc CheckPos(t: Control; x, y, dot: integer; var col, type_, p: integer) 
 		var 
 			c, a: integer
 			w, h: longint
@@ -933,7 +933,7 @@ module StdTables
 		end 
 	end CheckPos
 	
-	proc MoveLine(t: Control; f: Views.Frame; col, x0: integer)
+	proc MoveLine(t: Control; f: Views.Frame; col, x0: integer) 
 		var 
 			w, h, x, y, x1, limit: integer
 			m: set
@@ -962,7 +962,7 @@ module StdTables
 		Views.Do(t, "#System:SetLayout", op)
 	end MoveLine
 	
-	proc ChangeAdjust(t: Control; col, mode: integer)
+	proc ChangeAdjust(t: Control; col, mode: integer) 
 		var 
 			op: FormatOp
 	begin 
@@ -974,7 +974,7 @@ module StdTables
 		Views.Do(t, "#System:SetLayout", op)
 	end ChangeAdjust
 	
-	proc ControlSections(t: Control; f: Views.Frame; vertical: boolean; var size_, part, pos: integer)
+	proc ControlSections(t: Control; f: Views.Frame; vertical: boolean; var size_, part, pos: integer) 
 		var 
 			r, c, w, max_: integer
 	begin 
@@ -1000,7 +1000,7 @@ module StdTables
 		end 
 	end ControlSections
 	
-	proc ScrollControl(t: Control; f: Views.Frame; op, pos: integer; vertical: boolean)
+	proc ScrollControl(t: Control; f: Views.Frame; op, pos: integer; vertical: boolean) 
 		var 
 			size_, part, p, delta, l, t0, r, b: integer
 	begin 
@@ -1069,7 +1069,7 @@ module StdTables
 		end 
 	end ScrollControl
 	
-	proc HandleChar(t: Control; f: Views.Frame; ch: char)
+	proc HandleChar(t: Control; f: Views.Frame; ch: wchar) 
 	begin 
 		case ch of 
 			| 10x: 
@@ -1103,7 +1103,7 @@ module StdTables
 	end HandleChar
 	
 	
-	proc (t: Control) Internalize2(var rd: Stores.Reader)
+	proc (t: Control) Internalize2(var rd: Stores.Reader) 
 		var 
 			thisVersion, i: integer
 			lockedLayout, lockedData, markRow, markCol: boolean
@@ -1158,7 +1158,7 @@ module StdTables
 		end 
 	end Internalize2
 	
-	proc (t: Control) Externalize2(var wr: Stores.Writer)
+	proc (t: Control) Externalize2(var wr: Stores.Writer) 
 		var 
 			i: integer
 	begin 
@@ -1178,7 +1178,7 @@ module StdTables
 		end 
 	end Externalize2
 	
-	proc (t: Control) CopyFromSimpleView2(source: Controls.Control)
+	proc (t: Control) CopyFromSimpleView2(source: Controls.Control) 
 	begin 
 		with source: Control do 
 			t.sprop := Properties.CopyOf(source.sprop)(Properties.StdProp)
@@ -1190,12 +1190,12 @@ module StdTables
 		end 
 	end CopyFromSimpleView2
 	
-	proc (t: Control) GetBackground(var color: Ports.Color)
+	proc (t: Control) GetBackground(var color: Ports.Color) 
 	begin 
 		color := Ports.background
 	end GetBackground
 	
-	proc Paint(c: Control; f: Views.Frame; l, t, r, b: integer)
+	proc Paint(c: Control; f: Views.Frame; l, t, r, b: integer) 
 		var 
 			width, w, h, rows, cols, row, col, x, y, rowHeight, dl, weight: integer
 			font: Fonts.Font
@@ -1279,7 +1279,7 @@ module StdTables
 		end 
 	end Paint
 	
-	proc (c: Control) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (c: Control) Restore(f: Views.Frame; l, t, r, b: integer) 
 		var 
 			visible: boolean
 			g: Views.Frame
@@ -1298,12 +1298,12 @@ module StdTables
 		end 
 	end Restore
 	
-	proc (c: Control) Update(f: Views.Frame; op, from, to_: integer)
+	proc (c: Control) Update(f: Views.Frame; op, from, to_: integer) 
 	begin 
 		Views.Update(c, Views.keepFrames)
 	end Update
 	
-	proc (c: Control) RestoreMarks(f: Views.Frame; l, t, r, b: integer)
+	proc (c: Control) RestoreMarks(f: Views.Frame; l, t, r, b: integer) 
 		var 
 			row, col: integer
 			ok, on: boolean
@@ -1324,7 +1324,7 @@ module StdTables
 		end 
 	end RestoreMarks
 	
-	proc AddEditField(t: Control; f: Views.Frame; row, col: integer)
+	proc AddEditField(t: Control; f: Views.Frame; row, col: integer) 
 		var 
 			g: Views.Frame
 			mMsg: Controllers.MarkMsg
@@ -1346,7 +1346,7 @@ module StdTables
 		end 
 	end AddEditField
 	
-	proc DisableEditField(t: Control; f: Views.Frame; update: boolean)
+	proc DisableEditField(t: Control; f: Views.Frame; update: boolean) 
 		var 
 			g: Views.Frame
 			mMsg: Controllers.MarkMsg
@@ -1368,7 +1368,7 @@ module StdTables
 		end 
 	end DisableEditField
 	
-	proc MoveEditField(t: Control; f: Views.Frame; right: boolean)
+	proc MoveEditField(t: Control; f: Views.Frame; right: boolean) 
 		var 
 			rows, cols: integer
 			ok: boolean
@@ -1393,7 +1393,7 @@ module StdTables
 		AddEditField(t, f, t.selRow, t.selCol)
 	end MoveEditField
 	
-	proc TrackMouse(t: Control; f: Views.Frame; var r, c, type_: integer)
+	proc TrackMouse(t: Control; f: Views.Frame; var r, c, type_: integer) 
 		var 
 			x, y, selr, selc: integer
 			m: set
@@ -1421,7 +1421,7 @@ module StdTables
 	end TrackMouse
 	
 	proc (t: Control) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
-		var focus: Views.View)
+		var focus: Views.View) 
 		var 
 			p, col, type_: integer
 			x, y: integer
@@ -1585,7 +1585,7 @@ module StdTables
 		end 
 	end HandleCtrlMsg2
 	
-	proc (t: Control) HandlePropMsg2(var msg: Properties.Message)
+	proc (t: Control) HandlePropMsg2(var msg: Properties.Message) 
 		var 
 			w, h: longint
 	begin 
@@ -1627,7 +1627,7 @@ module StdTables
 		end 
 	end HandlePropMsg2
 	
-	proc (c: Control) CheckLink(var ok: boolean)
+	proc (c: Control) CheckLink(var ok: boolean) 
 		var 
 			item: Meta.Item
 			mod_: Meta.Name
@@ -1737,7 +1737,7 @@ module StdTables
 		Controllers.ResetCurrentPath()
 	end Set
 	
-	proc Guard*(idx: integer; var par: Dialog.Par)
+	proc Guard*(idx: integer; var par: Dialog.Par) 
 	begin 
 		if ~(idx in dlg.known) then
 			par.disabled := true 
@@ -1746,7 +1746,7 @@ module StdTables
 		end 
 	end Guard
 	
-	proc Notifier*(idx, op, from, to_: integer)
+	proc Notifier*(idx, op, from, to_: integer) 
 	begin 
 		if op = Dialog.changed then
 			incl(dlg.valid, idx) 
@@ -1756,7 +1756,7 @@ module StdTables
 	
 	// StdDirectory
 	
-	proc InitStdProp(var p: Properties.StdProp)
+	proc InitStdProp(var p: Properties.StdProp) 
 		var 
 			f: Fonts.Font
 	begin 
@@ -1769,7 +1769,7 @@ module StdTables
 		p.weight := Fonts.normal
 	end InitStdProp
 	
-	proc InitTableProp(var p: Prop)
+	proc InitTableProp(var p: Prop) 
 	begin 
 		new(p)
 		p.layoutEditable := true
@@ -1777,7 +1777,7 @@ module StdTables
 		p.selectionStyle := cellSelect
 	end InitTableProp
 	
-	proc (d: StdDirectory) NewControl(p: Controls.Prop): Views.View
+	proc (d: StdDirectory) NewControl(p: Controls.Prop): Views.View 
 		var 
 			c: Control
 	begin 
@@ -1790,7 +1790,7 @@ module StdTables
 	end NewControl
 	
 	
-	proc SetDir*(d: Directory)
+	proc SetDir*(d: Directory) 
 	begin 
 		assert(d # nil, 20)
 		dir := d
@@ -1810,7 +1810,7 @@ module StdTables
 		Views.Deposit(dir.NewControl(p))
 	end DepositControl
 	
-	proc SetupSelectionStyleList(var l: Dialog.List)
+	proc SetupSelectionStyleList(var l: Dialog.List) 
 	begin 
 		l.SetLen(5)
 		l.SetItem(noSelect, "#Std:No Selection")

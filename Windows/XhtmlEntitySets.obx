@@ -21,7 +21,7 @@ module XhtmlEntitySets
 	
 	
 	
-	proc MapCharToEntity*(ch: char; var s: array of char)
+	proc MapCharToEntity*(ch: wchar; var s: array of wchar) 
 	begin 
 		case ch of 
 			| 0022x: 

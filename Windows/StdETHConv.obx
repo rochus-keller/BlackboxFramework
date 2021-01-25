@@ -37,10 +37,10 @@ module StdETHConv
 	var 
 		default: Fonts.Font
 	
-	proc Split(name: array of char; var d: FontDesc)
+	proc Split(name: array of wchar; var d: FontDesc) 
 		var 
 			i: integer
-			ch: char
+			ch: wchar
 	begin 
 		i := 0
 		ch := name[0]
@@ -75,7 +75,7 @@ module StdETHConv
 		end 
 	end Split
 	
-	proc ThisFont(name: array of char): Fonts.Font
+	proc ThisFont(name: array of wchar): Fonts.Font 
 		var 
 			d: FontDesc
 	begin 
@@ -91,7 +91,7 @@ module StdETHConv
 		return Fonts.dir.This(d.typeface, d.size_, d.style, d.weight)
 	end ThisFont
 	
-	proc ThisChar(ch: char): char
+	proc ThisChar(ch: wchar): wchar 
 	begin 
 		case ord(ch) of 
 			80h: 
@@ -150,7 +150,7 @@ module StdETHConv
 		return ch
 	end ThisChar
 	
-	proc StdFold(var r: Stores.Reader): Views.View
+	proc StdFold(var r: Stores.Reader): Views.View 
 		const 
 			colLeft = 0
 			colRight = 1
@@ -183,22 +183,22 @@ module StdETHConv
 		return fold
 	end StdFold
 	
-	proc LoadTextBlock(r: Stores.Reader; t: TextModels.Model)
+	proc LoadTextBlock(r: Stores.Reader; t: TextModels.Model) 
 		var 
 			r0: Stores.Reader
 			wr: TextModels.Writer
 			org, len_: integer
 			en, ano, i, n: byte
-			col, voff, ch: char
+			col, voff, ch: wchar
 			tag: integer
-			fname: array 32 of char
+			fname: array 32 of wchar
 			attr: array 32 of TextModels.Attributes
-			mod_, proc_: array 32 of array 32 of char
+			mod_, proc_: array 32 of array 32 of wchar
 		
-		proc ReadNum(var n: integer)
+		proc ReadNum(var n: integer) 
 			var 
 				s: byte
-				ch: char
+				ch: wchar
 				y: integer
 		begin 
 			s := 0
@@ -212,7 +212,7 @@ module StdETHConv
 			n := ash((ord(ch) + 64) mod 128 - 64, s) + y
 		end ReadNum
 		
-		proc ReadSet(var s: set)
+		proc ReadSet(var s: set) 
 			var 
 				x: integer
 		begin 
@@ -220,7 +220,7 @@ module StdETHConv
 			s := bits(x)
 		end ReadSet
 		
-		proc Elem(var r: Stores.Reader; span: integer)
+		proc Elem(var r: Stores.Reader; span: integer) 
 			var 
 				v: Views.View
 				end_, ew, eh, n, indent: integer
@@ -336,7 +336,7 @@ module StdETHConv
 		r.SetPos(r.Pos() + len_)
 	end LoadTextBlock
 	
-	proc ImportOberon*(f: Files.File): TextModels.Model
+	proc ImportOberon*(f: Files.File): TextModels.Model 
 		var 
 			r: Stores.Reader
 			t: TextModels.Model
@@ -357,7 +357,7 @@ module StdETHConv
 	end ImportOberon
 	
 	
-	proc ImportETHDoc*(f: Files.File; var s: Stores.Store)
+	proc ImportETHDoc*(f: Files.File; var s: Stores.Store) 
 		var 
 			t: TextModels.Model
 	begin 

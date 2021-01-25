@@ -170,20 +170,20 @@ module HostCFrames
 		updateAllowed: boolean
 		colors: array numColors of Ports.Color
 		// date format
-		dateSep: char // separator character
+		dateSep: wchar // separator character
 		yearPart, monthPart, dayPart: integer // first = 1, last = 3
 		del1, del2: integer // position of separators
 		// time format
-		timeSep: char // separator character
+		timeSep: wchar // separator character
 		lastPart: integer // 3 for 24h format, 4 for 12h format
-		desig: array 2, 8 of char // AM, PM strings
+		desig: array 2, 8 of wchar // AM, PM strings
 		inHandleMouse*: boolean // to disable the main window handler in HostMenus
 		brushes: BrushCache
 	
 	
 	// auxiliary procedures
 	
-	proc WheelToArrow(f: StdCFrames.Frame; op: integer; var done: boolean)
+	proc WheelToArrow(f: StdCFrames.Frame; op: integer; var done: boolean) 
 	begin 
 		if op in {Controllers.incLine, Controllers.incPage} then
 			f.KeyDown(AD) 
@@ -193,7 +193,7 @@ module HostCFrames
 		done := true
 	end WheelToArrow
 	
-	proc GetSize(f: StdCFrames.Frame; var x, y, w, h: integer)
+	proc GetSize(f: StdCFrames.Frame; var x, y, w, h: integer) 
 		var 
 			u, x0, y0: integer
 	begin 
@@ -215,7 +215,7 @@ module HostCFrames
 		end 
 	end GetSize
 	
-	proc Adapt(f: StdCFrames.Frame; var i: Info)
+	proc Adapt(f: StdCFrames.Frame; var i: Info) 
 		var 
 			res, x, y, w, h, cx, cy, cw, ch, udw, n, h0, h1: integer
 			r: HostPorts.Rider
@@ -267,7 +267,7 @@ module HostCFrames
 		end 
 	end Adapt
 	
-	proc BkGndColor(f: Views.Frame): Ports.Color
+	proc BkGndColor(f: Views.Frame): Ports.Color 
 		var 
 			bgnd: Ports.Color
 			g: Views.Frame
@@ -282,7 +282,7 @@ module HostCFrames
 	end BkGndColor
 	
 	proc Open(f: StdCFrames.Frame; class, name: WinApi.PtrWSTR
-		style, ex: set; var i: Info)
+		style, ex: set; var i: Info) 
 		var 
 			res, x, y, w, h, cx, cy, cw, ch, udw: integer
 			p: HostPorts.Port
@@ -356,7 +356,7 @@ module HostCFrames
 		end 
 	end Open
 	
-	proc Paint(f: StdCFrames.Frame; var i: Info)
+	proc Paint(f: StdCFrames.Frame; var i: Info) 
 		var 
 			res, u: integer
 			r: HostPorts.Rider
@@ -375,7 +375,7 @@ module HostCFrames
 		updateAllowed := false
 	end Paint
 	
-	proc PaintRect(f: StdCFrames.Frame; var i: Info; l, t, r, b: integer)
+	proc PaintRect(f: StdCFrames.Frame; var i: Info; l, t, r, b: integer) 
 		var 
 			res, u: integer
 			ri: HostPorts.Rider
@@ -416,12 +416,12 @@ module HostCFrames
 		updateAllowed := false
 	end PaintRect
 	
-	proc ExtractLine(in s: array of char; beg: integer; fnt: Fonts.Font; maxW: integer
+	proc ExtractLine(in s: array of wchar; beg: integer; fnt: Fonts.Font; maxW: integer
 		var line: Dialog.String; var lineW, end_: integer
-		)
+		) 
 		var 
 			i, len_, w: integer
-			ch: char
+			ch: wchar
 	begin 
 		len_ := len(s)
 		assert(beg >= 0, 20)
@@ -462,9 +462,9 @@ module HostCFrames
 	end ExtractLine
 	
 	proc PrintString(f: Views.Frame; w: integer
-		in string: array of char; fnt: Fonts.Font; col: Ports.Color
+		in string: array of wchar; fnt: Fonts.Font; col: Ports.Color
 		x0, y0: integer; left, right, multiLine: boolean
-		)
+		) 
 		var 
 			x, sw, asc, dsc, fw, beg, end_, len_, n: integer
 			s: Dialog.String
@@ -499,7 +499,7 @@ module HostCFrames
 		end 
 	end PrintString
 	
-	proc Print(f: StdCFrames.Frame; d, x, y: integer; label: array of char)
+	proc Print(f: StdCFrames.Frame; d, x, y: integer; label: array of wchar) 
 		var 
 			w, h, sw, a, asc, dsc, fw: integer
 			font: Fonts.Font
@@ -574,10 +574,10 @@ module HostCFrames
 		end 
 	end Print
 	
-	proc IsEdit(wnd: WinApi.HANDLE): boolean
+	proc IsEdit(wnd: WinApi.HANDLE): boolean 
 		var 
 			res: integer
-			nm: array 32 of char
+			nm: array 32 of wchar
 	begin 
 		res := WinApi.GetClassNameW(wnd, nm, len(nm))
 		if res > 0 then
@@ -588,7 +588,7 @@ module HostCFrames
 		return nm = "EDIT"
 	end IsEdit
 	
-	proc SendRightClick(edit: WinApi.HANDLE)
+	proc SendRightClick(edit: WinApi.HANDLE) 
 		var 
 			res, n, pos, x, y: integer
 	begin 
@@ -604,7 +604,7 @@ module HostCFrames
 		res := WinApi.SendMessageW(edit, WinApi.WM_RBUTTONUP, 0, pos)
 	end SendRightClick
 	
-	proc SendKey(ch: char; wnd: WinApi.HANDLE)
+	proc SendKey(ch: wchar; wnd: WinApi.HANDLE) 
 		var 
 			res, code: integer
 	begin 
@@ -661,7 +661,7 @@ module HostCFrames
 		inHandleMouse := false
 	end Cleanup
 	
-	proc HandleMouse(wnd: WinApi.HANDLE; x, y: integer; buttons: set)
+	proc HandleMouse(wnd: WinApi.HANDLE; x, y: integer; buttons: set) 
 		var 
 			res, b, hc, m: integer
 			pt: WinApi.POINT
@@ -744,7 +744,7 @@ module HostCFrames
 	
 	proc HandleWheel(wnd: WinApi.HANDLE; x, y: integer; op, nofLines: integer
 		var done: boolean
-		)
+		) 
 		var 
 			res: integer
 	begin 
@@ -766,7 +766,7 @@ module HostCFrames
 		done := true
 	end HandleWheel
 	
-	proc Mark(on, focus: boolean; var i: Info)
+	proc Mark(on, focus: boolean; var i: Info) 
 		var 
 			res: integer
 	begin 
@@ -785,12 +785,12 @@ module HostCFrames
 		end 
 	end Mark
 	
-	proc SetLabel(in in_: array of char; var out: array of char)
+	proc SetLabel(in in_: array of wchar; var out: array of wchar) 
 	begin 
 		Dialog.MapString(in_, out)
 	end SetLabel
 	
-	proc CheckLabel(in label: array of char; ctrl: integer)
+	proc CheckLabel(in label: array of wchar; ctrl: integer) 
 		var 
 			res: integer
 			lbl, s: Dialog.String
@@ -804,7 +804,7 @@ module HostCFrames
 	
 	// PushButton
 	
-	proc (f: PushButton) SetOffset(x, y: integer)
+	proc (f: PushButton) SetOffset(x, y: integer) 
 	begin 
 		f.SetOffset^(x, y)
 		Adapt(f, f.i)
@@ -850,7 +850,7 @@ module HostCFrames
 		res := WinApi.UpdateWindow(f.i.ctrl)
 	end Update
 	
-	proc (f: PushButton) Restore(l, t, r, b: integer)
+	proc (f: PushButton) Restore(l, t, r, b: integer) 
 		var 
 			style: set
 			lbl: Dialog.String
@@ -871,7 +871,7 @@ module HostCFrames
 		end 
 	end Restore
 	
-	proc (f: PushButton) MouseDown(x, y: integer; buttons: set)
+	proc (f: PushButton) MouseDown(x, y: integer; buttons: set) 
 	begin 
 		assert(~f.disabled, 100)
 		if f.rider # nil then
@@ -879,7 +879,7 @@ module HostCFrames
 		end 
 	end MouseDown
 	
-	proc Execute(f: PushButton)
+	proc Execute(f: PushButton) 
 		var 
 			old: WinApi.HANDLE
 	begin 
@@ -891,13 +891,13 @@ module HostCFrames
 		end 
 	end Execute
 	
-	proc (f: PushButton) KeyDown(ch: char)
+	proc (f: PushButton) KeyDown(ch: wchar) 
 	begin 
 		assert(~f.disabled, 100)
 		Execute(f)
 	end KeyDown
 	
-	proc (f: PushButton) Mark(on, focus: boolean)
+	proc (f: PushButton) Mark(on, focus: boolean) 
 	begin 
 		Mark(on, f.front, f.i)
 	end Mark
@@ -906,7 +906,7 @@ module HostCFrames
 	
 	// CheckBox
 	
-	proc (f: CheckBox) SetOffset(x, y: integer)
+	proc (f: CheckBox) SetOffset(x, y: integer) 
 	begin 
 		f.SetOffset^(x, y)
 		Adapt(f, f.i)
@@ -959,7 +959,7 @@ module HostCFrames
 		res := WinApi.UpdateWindow(f.i.ctrl)
 	end Update
 	
-	proc (f: CheckBox) Restore(l, t, r, b: integer)
+	proc (f: CheckBox) Restore(l, t, r, b: integer) 
 		var 
 			style: set
 			lbl: Dialog.String
@@ -983,7 +983,7 @@ module HostCFrames
 		end 
 	end Restore
 	
-	proc (f: CheckBox) MouseDown(x, y: integer; buttons: set)
+	proc (f: CheckBox) MouseDown(x, y: integer; buttons: set) 
 	begin 
 		assert(~f.disabled, 100)
 		if f.rider # nil then
@@ -991,7 +991,7 @@ module HostCFrames
 		end 
 	end MouseDown
 	
-	proc (f: CheckBox) KeyDown(ch: char)
+	proc (f: CheckBox) KeyDown(ch: wchar) 
 		var 
 			res: integer
 	begin 
@@ -1002,7 +1002,7 @@ module HostCFrames
 		end 
 	end KeyDown
 	
-	proc (f: CheckBox) Mark(on, focus: boolean)
+	proc (f: CheckBox) Mark(on, focus: boolean) 
 	begin 
 		Mark(on, f.front, f.i)
 	end Mark
@@ -1011,7 +1011,7 @@ module HostCFrames
 	
 	// RadioButton
 	
-	proc (f: RadioButton) SetOffset(x, y: integer)
+	proc (f: RadioButton) SetOffset(x, y: integer) 
 	begin 
 		f.SetOffset^(x, y)
 		Adapt(f, f.i)
@@ -1064,7 +1064,7 @@ module HostCFrames
 		res := WinApi.UpdateWindow(f.i.ctrl)
 	end Update
 	
-	proc (f: RadioButton) Restore(l, t, r, b: integer)
+	proc (f: RadioButton) Restore(l, t, r, b: integer) 
 		var 
 			lbl: Dialog.String
 	begin 
@@ -1080,7 +1080,7 @@ module HostCFrames
 		end 
 	end Restore
 	
-	proc (f: RadioButton) MouseDown(x, y: integer; buttons: set)
+	proc (f: RadioButton) MouseDown(x, y: integer; buttons: set) 
 	begin 
 		assert(~f.disabled, 100)
 		if f.rider # nil then
@@ -1088,7 +1088,7 @@ module HostCFrames
 		end 
 	end MouseDown
 	
-	proc (f: RadioButton) KeyDown(ch: char)
+	proc (f: RadioButton) KeyDown(ch: wchar) 
 		var 
 			res: integer
 	begin 
@@ -1097,7 +1097,7 @@ module HostCFrames
 		res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYUP, ord(" "), 0)
 	end KeyDown
 	
-	proc (f: RadioButton) Mark(on, focus: boolean)
+	proc (f: RadioButton) Mark(on, focus: boolean) 
 	begin 
 		Mark(on, f.front, f.i)
 	end Mark
@@ -1106,7 +1106,7 @@ module HostCFrames
 	
 	// ScrollBar
 	
-	proc (f: ScrollBar) SetOffset(x, y: integer)
+	proc (f: ScrollBar) SetOffset(x, y: integer) 
 	begin 
 		f.SetOffset^(x, y)
 		Adapt(f, f.i)
@@ -1178,7 +1178,7 @@ module HostCFrames
 		res := WinApi.UpdateWindow(f.i.ctrl)
 	end Update
 	
-	proc (f: ScrollBar) Restore(l, t, r, b: integer)
+	proc (f: ScrollBar) Restore(l, t, r, b: integer) 
 		var 
 			res, w, h: integer
 			style: set
@@ -1200,7 +1200,7 @@ module HostCFrames
 		end 
 	end Restore
 	
-	proc (f: ScrollBar) MouseDown(x, y: integer; buttons: set)
+	proc (f: ScrollBar) MouseDown(x, y: integer; buttons: set) 
 	begin 
 		assert(~f.disabled, 100)
 		if f.rider # nil then
@@ -1208,13 +1208,13 @@ module HostCFrames
 		end 
 	end MouseDown
 	
-	proc (f: ScrollBar) KeyDown(ch: char)
+	proc (f: ScrollBar) KeyDown(ch: wchar) 
 	begin 
 		assert(~f.disabled, 100)
 		SendKey(ch, f.i.ctrl)
 	end KeyDown
 	
-	proc (f: ScrollBar) Mark(on, focus: boolean)
+	proc (f: ScrollBar) Mark(on, focus: boolean) 
 	begin 
 		Mark(on, f.front, f.i)
 	end Mark
@@ -1223,7 +1223,7 @@ module HostCFrames
 	
 	// Field
 	
-	proc (f: Field) SetOffset(x, y: integer)
+	proc (f: Field) SetOffset(x, y: integer) 
 	begin 
 		f.SetOffset^(x, y)
 		Adapt(f, f.i)
@@ -1243,7 +1243,7 @@ module HostCFrames
 	// f.Close^
 	end Close
 	
-	proc InsLF(var x: array of char)
+	proc InsLF(var x: array of wchar) 
 		var 
 			i, j: integer
 	begin 
@@ -1268,7 +1268,7 @@ module HostCFrames
 		end 
 	end InsLF
 	
-	proc DelLF(var x: array of char)
+	proc DelLF(var x: array of wchar) 
 		var 
 			i, j: integer
 	begin 
@@ -1285,7 +1285,7 @@ module HostCFrames
 		x[j] := 0x
 	end DelLF
 	
-	proc Equal(f: Field; var x, y: array of char): boolean
+	proc Equal(f: Field; var x, y: array of wchar): boolean 
 	begin 
 		DelLF(y)
 		return f.Equal(f, x, y)
@@ -1294,8 +1294,8 @@ module HostCFrames
 	proc (f: Field) Update
 		var 
 			res: integer
-			s, s1: array 512 of char
-			ps, ps1: pointer to array of char
+			s, s1: array 512 of wchar
+			ps, ps1: pointer to array of wchar
 			style: set
 	begin 
 		if f.maxLen > 255 then
@@ -1352,7 +1352,7 @@ module HostCFrames
 		res := WinApi.UpdateWindow(f.i.ctrl)
 	end Update
 	
-	proc (f: Field) Restore(l, t, r, b: integer)
+	proc (f: Field) Restore(l, t, r, b: integer) 
 		var 
 			res, w, h: integer
 			style: set
@@ -1399,7 +1399,7 @@ module HostCFrames
 		end 
 	end Restore
 	
-	proc (f: Field) MouseDown(x, y: integer; buttons: set)
+	proc (f: Field) MouseDown(x, y: integer; buttons: set) 
 	begin 
 		assert(~f.disabled, 100)
 		if f.rider # nil then
@@ -1410,7 +1410,7 @@ module HostCFrames
 		end 
 	end MouseDown
 	
-	proc (f: Field) KeyDown(ch: char)
+	proc (f: Field) KeyDown(ch: wchar) 
 	begin 
 		assert(~f.disabled, 100)
 		if f.multiLine or (ch # 0dx) then
@@ -1422,7 +1422,7 @@ module HostCFrames
 		end 
 	end KeyDown
 	
-	proc (f: Field) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean)
+	proc (f: Field) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean) 
 	begin 
 		assert(~f.disabled, 100)
 		if f.rider # nil then
@@ -1431,7 +1431,7 @@ module HostCFrames
 	end WheelMove
 	
 	proc (f: Field) Edit(op: integer; var v: Views.View; var w, h: integer
-		var singleton, clipboard: boolean)
+		var singleton, clipboard: boolean) 
 		var 
 			res: integer
 	begin 
@@ -1450,7 +1450,7 @@ module HostCFrames
 	
 	proc (f: Field) Idle end // empty
 	
-	proc (f: Field) Select(from, to_: integer)
+	proc (f: Field) Select(from, to_: integer) 
 		var 
 			res: integer
 	begin 
@@ -1460,7 +1460,7 @@ module HostCFrames
 		res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_SETSEL, from, to_)
 	end Select
 	
-	proc (f: Field) GetSelection(var from, to_: integer)
+	proc (f: Field) GetSelection(var from, to_: integer) 
 		var 
 			res: integer
 	begin 
@@ -1472,12 +1472,12 @@ module HostCFrames
 		end 
 	end GetSelection
 	
-	proc (f: Field) Mark(on, focus: boolean)
+	proc (f: Field) Mark(on, focus: boolean) 
 	begin 
 		Mark(on, f.front, f.i)
 	end Mark
 	
-	proc (f: Field) Length(): integer
+	proc (f: Field) Length(): integer 
 		var 
 			res: integer
 	begin 
@@ -1485,7 +1485,7 @@ module HostCFrames
 		return res
 	end Length
 	
-	proc (f: Field) GetCursor(x, y: integer; modifiers: set; var cursor: integer)
+	proc (f: Field) GetCursor(x, y: integer; modifiers: set; var cursor: integer) 
 		var 
 			res, hc: integer
 			pt: WinApi.POINT
@@ -1503,7 +1503,7 @@ module HostCFrames
 	
 	// UpDownField
 	
-	proc (f: UpDownField) SetOffset(x, y: integer)
+	proc (f: UpDownField) SetOffset(x, y: integer) 
 	begin 
 		f.SetOffset^(x, y)
 		Adapt(f, f.i)
@@ -1527,7 +1527,7 @@ module HostCFrames
 	proc (f: UpDownField) Update
 		var 
 			res, val_: integer
-			s, s1: array 16 of char
+			s, s1: array 16 of wchar
 			style: set
 			upd: boolean
 	begin 
@@ -1583,11 +1583,11 @@ module HostCFrames
 		res := WinApi.UpdateWindow(f.i.ctrl)
 	end Update
 	
-	proc (f: UpDownField) Restore(l, t, r, b: integer)
+	proc (f: UpDownField) Restore(l, t, r, b: integer) 
 		var 
 			res, w, h: integer
 			style: set
-			s: array 16 of char
+			s: array 16 of wchar
 	begin 
 		if f.i.ctrl = 0 then // lazy allocation
 			f.view.context.GetSize(w, h)
@@ -1617,7 +1617,7 @@ module HostCFrames
 		end 
 	end Restore
 	
-	proc (f: UpDownField) MouseDown(x, y: integer; buttons: set)
+	proc (f: UpDownField) MouseDown(x, y: integer; buttons: set) 
 	begin 
 		assert(~f.disabled, 100)
 		if f.rider # nil then
@@ -1628,7 +1628,7 @@ module HostCFrames
 		end 
 	end MouseDown
 	
-	proc (f: UpDownField) KeyDown(ch: char)
+	proc (f: UpDownField) KeyDown(ch: wchar) 
 		var 
 			val_: integer
 	begin 
@@ -1670,13 +1670,13 @@ module HostCFrames
 		end 
 	end KeyDown
 	
-	proc (f: UpDownField) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean)
+	proc (f: UpDownField) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean) 
 	begin 
 		WheelToArrow(f, op, done)
 	end WheelMove
 	
 	proc (f: UpDownField) Edit(op: integer; var v: Views.View; var w, h: integer
-		var singleton, clipboard: boolean)
+		var singleton, clipboard: boolean) 
 		var 
 			res: integer
 	begin 
@@ -1695,7 +1695,7 @@ module HostCFrames
 	
 	proc (f: UpDownField) Idle end // empty
 	
-	proc (f: UpDownField) Select(from, to_: integer)
+	proc (f: UpDownField) Select(from, to_: integer) 
 		var 
 			res: integer
 	begin 
@@ -1705,7 +1705,7 @@ module HostCFrames
 		res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_SETSEL, from, to_)
 	end Select
 	
-	proc (f: UpDownField) GetSelection(var from, to_: integer)
+	proc (f: UpDownField) GetSelection(var from, to_: integer) 
 		var 
 			res: integer
 	begin 
@@ -1717,12 +1717,12 @@ module HostCFrames
 		end 
 	end GetSelection
 	
-	proc (f: UpDownField) Mark(on, focus: boolean)
+	proc (f: UpDownField) Mark(on, focus: boolean) 
 	begin 
 		Mark(on, f.front, f.i)
 	end Mark
 	
-	proc (f: UpDownField) GetCursor(x, y: integer; modifiers: set; var cursor: integer)
+	proc (f: UpDownField) GetCursor(x, y: integer; modifiers: set; var cursor: integer) 
 		var 
 			res, hc: integer
 			pt: WinApi.POINT
@@ -1740,7 +1740,7 @@ module HostCFrames
 	
 	// TimeField
 	
-	proc GetTimePart(var time: Dates.Time; part: integer; var val_, min_, max_: integer)
+	proc GetTimePart(var time: Dates.Time; part: integer; var val_, min_, max_: integer) 
 	begin 
 		if part = -1 then
 			part := lastPart 
@@ -1768,7 +1768,7 @@ module HostCFrames
 		end 
 	end GetTimePart
 	
-	proc SetTimePart(var time: Dates.Time; part: integer; val_: integer)
+	proc SetTimePart(var time: Dates.Time; part: integer; val_: integer) 
 	begin 
 		if part = -1 then
 			part := lastPart 
@@ -1786,7 +1786,7 @@ module HostCFrames
 		end 
 	end SetTimePart
 	
-	proc TimeToString(var time: Dates.Time; var str: array of char)
+	proc TimeToString(var time: Dates.Time; var str: array of wchar) 
 		var 
 			val_, min_, max_, i, j, k: integer
 	begin 
@@ -1829,7 +1829,7 @@ module HostCFrames
 		res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_SETSEL, 3 * sel - 3, 3 * sel - 1)
 	end Select
 	
-	proc (f: TimeField) SetOffset(x, y: integer)
+	proc (f: TimeField) SetOffset(x, y: integer) 
 	begin 
 		f.SetOffset^(x, y)
 		Adapt(f, f.i)
@@ -1853,7 +1853,7 @@ module HostCFrames
 	proc (f: TimeField) Update
 		var 
 			res: integer
-			s, s1: array 20 of char
+			s, s1: array 20 of wchar
 			time: Dates.Time
 			style: set
 	begin 
@@ -1906,11 +1906,11 @@ module HostCFrames
 		res := WinApi.UpdateWindow(f.i.ctrl)
 	end Update
 	
-	proc (f: TimeField) Restore(l, t, r, b: integer)
+	proc (f: TimeField) Restore(l, t, r, b: integer) 
 		var 
 			res, w, h: integer
 			style: set
-			s: array 20 of char
+			s: array 20 of wchar
 			time: Dates.Time
 	begin 
 		if f.i.ctrl = 0 then // lazy allocation
@@ -1940,7 +1940,7 @@ module HostCFrames
 		end 
 	end Restore
 	
-	proc (f: TimeField) MouseDown(x, y: integer; buttons: set)
+	proc (f: TimeField) MouseDown(x, y: integer; buttons: set) 
 		var 
 			res: integer
 			sel: integer
@@ -1964,7 +1964,7 @@ module HostCFrames
 		end 
 	end MouseDown
 	
-	proc (f: TimeField) KeyDown(ch: char)
+	proc (f: TimeField) KeyDown(ch: wchar) 
 		var 
 			sel, s, val_, v, min_, max_: integer
 			time: Dates.Time
@@ -2032,13 +2032,13 @@ module HostCFrames
 		end 
 	end KeyDown
 	
-	proc (f: TimeField) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean)
+	proc (f: TimeField) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean) 
 	begin 
 		WheelToArrow(f, op, done)
 	end WheelMove
 	
 	proc (f: TimeField) Edit(op: integer; var v: Views.View; var w, h: integer
-		var singleton, clipboard: boolean)
+		var singleton, clipboard: boolean) 
 		var 
 			res: integer
 	begin 
@@ -2049,7 +2049,7 @@ module HostCFrames
 		end 
 	end Edit
 	
-	proc (f: TimeField) Mark(on, focus: boolean)
+	proc (f: TimeField) Mark(on, focus: boolean) 
 		var 
 			res: integer
 	begin 
@@ -2061,7 +2061,7 @@ module HostCFrames
 		end 
 	end Mark
 	
-	proc (f: TimeField) GetCursor(x, y: integer; modifiers: set; var cursor: integer)
+	proc (f: TimeField) GetCursor(x, y: integer; modifiers: set; var cursor: integer) 
 		var 
 			res, hc: integer
 			pt: WinApi.POINT
@@ -2079,7 +2079,7 @@ module HostCFrames
 	
 	// DateField
 	
-	proc GetDatePart(var date: Dates.Date; part: integer; var val_, min_, max_: integer)
+	proc GetDatePart(var date: Dates.Date; part: integer; var val_, min_, max_: integer) 
 	(* GetDatePart picks the day, month or year part out of a given date and asigns it to the out
 	   parameter val, together with the min and max possible values for this part *)
 	
@@ -2116,7 +2116,7 @@ module HostCFrames
 		end 
 	end GetDatePart
 	
-	proc SetDatePart(var date: Dates.Date; part: integer; val_: integer)
+	proc SetDatePart(var date: Dates.Date; part: integer; val_: integer) 
 		(* SetDatePart sets the day, month or year part in a given date to the value specivied
 		   by the parameter val.
 		   If the month is set, the day is adjusted to the possible range of days in this month.
@@ -2147,7 +2147,7 @@ module HostCFrames
 		end 
 	end SetDatePart
 	
-	proc DateToString(var date: Dates.Date; var str: array of char)
+	proc DateToString(var date: Dates.Date; var str: array of wchar) 
 		var 
 			val_, min_, max_, p, i: integer
 	begin 
@@ -2193,7 +2193,7 @@ module HostCFrames
 		res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_SETSEL, a, b)
 	end Select
 	
-	proc (f: DateField) SetOffset(x, y: integer)
+	proc (f: DateField) SetOffset(x, y: integer) 
 	begin 
 		f.SetOffset^(x, y)
 		Adapt(f, f.i)
@@ -2217,7 +2217,7 @@ module HostCFrames
 	proc (f: DateField) Update
 		var 
 			res: integer
-			s, s1: array 20 of char
+			s, s1: array 20 of wchar
 			date: Dates.Date
 			style: set
 			sel: integer
@@ -2275,11 +2275,11 @@ module HostCFrames
 		res := WinApi.UpdateWindow(f.i.ctrl)
 	end Update
 	
-	proc (f: DateField) Restore(l, t, r, b: integer)
+	proc (f: DateField) Restore(l, t, r, b: integer) 
 		var 
 			res, w, h: integer
 			style: set
-			s: array 20 of char
+			s: array 20 of wchar
 			date: Dates.Date
 	begin 
 		if f.i.ctrl = 0 then // lazy allocation
@@ -2309,7 +2309,7 @@ module HostCFrames
 		end 
 	end Restore
 	
-	proc ActualizeDate(f: DateField)
+	proc ActualizeDate(f: DateField) 
 		var 
 			sel: integer
 			date: Dates.Date
@@ -2338,7 +2338,7 @@ module HostCFrames
 		end 
 	end ActualizeDate
 	
-	proc (f: DateField) MouseDown(x, y: integer; buttons: set)
+	proc (f: DateField) MouseDown(x, y: integer; buttons: set) 
 		var 
 			res: integer
 			sel: integer
@@ -2366,7 +2366,7 @@ module HostCFrames
 		end 
 	end MouseDown
 	
-	proc (f: DateField) KeyDown(ch: char)
+	proc (f: DateField) KeyDown(ch: wchar) 
 		var 
 			sel, s, val_, min_, max_: integer
 			date: Dates.Date
@@ -2469,13 +2469,13 @@ module HostCFrames
 		end 
 	end KeyDown
 	
-	proc (f: DateField) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean)
+	proc (f: DateField) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean) 
 	begin 
 		WheelToArrow(f, op, done)
 	end WheelMove
 	
 	proc (f: DateField) Edit(op: integer; var v: Views.View; var w, h: integer
-		var singleton, clipboard: boolean)
+		var singleton, clipboard: boolean) 
 		var 
 			res: integer
 	begin 
@@ -2486,7 +2486,7 @@ module HostCFrames
 		end 
 	end Edit
 	
-	proc (f: DateField) Mark(on, focus: boolean)
+	proc (f: DateField) Mark(on, focus: boolean) 
 		var 
 			res: integer
 	begin 
@@ -2501,7 +2501,7 @@ module HostCFrames
 		end 
 	end Mark
 	
-	proc (f: DateField) GetCursor(x, y: integer; modifiers: set; var cursor: integer)
+	proc (f: DateField) GetCursor(x, y: integer; modifiers: set; var cursor: integer) 
 		var 
 			res, hc: integer
 			pt: WinApi.POINT
@@ -2519,7 +2519,7 @@ module HostCFrames
 	
 	// ColorField
 	
-	proc (f: ColorField) SetOffset(x, y: integer)
+	proc (f: ColorField) SetOffset(x, y: integer) 
 	begin 
 		f.SetOffset^(x, y)
 		Adapt(f, f.i)
@@ -2575,7 +2575,7 @@ module HostCFrames
 		res := WinApi.UpdateWindow(f.i.ctrl)
 	end Update
 	
-	proc (f: ColorField) Restore(l, t, r, b: integer)
+	proc (f: ColorField) Restore(l, t, r, b: integer) 
 		var 
 			res, w, h, i: integer
 			style: set
@@ -2604,7 +2604,7 @@ module HostCFrames
 		end 
 	end Restore
 	
-	proc (f: ColorField) MouseDown(x, y: integer; buttons: set)
+	proc (f: ColorField) MouseDown(x, y: integer; buttons: set) 
 	begin 
 		assert(~f.disabled, 100)
 		if f.rider # nil then
@@ -2612,7 +2612,7 @@ module HostCFrames
 		end 
 	end MouseDown
 	
-	proc (f: ColorField) KeyDown(ch: char)
+	proc (f: ColorField) KeyDown(ch: wchar) 
 		var 
 			res: integer
 	begin 
@@ -2625,7 +2625,7 @@ module HostCFrames
 		end 
 	end KeyDown
 	
-	proc (f: ColorField) Mark(on, focus: boolean)
+	proc (f: ColorField) Mark(on, focus: boolean) 
 	begin 
 		Mark(on, f.front, f.i)
 	end Mark
@@ -2634,7 +2634,7 @@ module HostCFrames
 	
 	// ListBox
 	
-	proc (f: ListBox) SetOffset(x, y: integer)
+	proc (f: ListBox) SetOffset(x, y: integer) 
 	begin 
 		f.SetOffset^(x, y)
 		Adapt(f, f.i)
@@ -2756,11 +2756,11 @@ module HostCFrames
 		f.Update
 	end UpdateList
 	
-	proc (f: ListBox) Restore(l, t, r, b: integer)
+	proc (f: ListBox) Restore(l, t, r, b: integer) 
 		var 
 			i, res, w, h: integer
 			style: set
-			s: array 512 of char
+			s: array 512 of wchar
 	begin 
 		if f.i.ctrl = 0 then // lazy allocation
 			f.view.context.GetSize(w, h)
@@ -2795,7 +2795,7 @@ module HostCFrames
 	end Restore
 	
 	
-	proc (f: ListBox) DblClickOk(x, y: integer): boolean
+	proc (f: ListBox) DblClickOk(x, y: integer): boolean 
 		var 
 			res, i, j, msg: integer
 			rect: WinApi.RECT
@@ -2822,7 +2822,7 @@ module HostCFrames
 		return (x >= rect.left) & (x <= rect.right) & (y >= rect.top) & (y <= rect.bottom)
 	end DblClickOk
 	
-	proc (f: ListBox) MouseDown(x, y: integer; buttons: set)
+	proc (f: ListBox) MouseDown(x, y: integer; buttons: set) 
 	begin 
 		assert(~f.disabled, 100)
 		if f.rider # nil then
@@ -2830,7 +2830,7 @@ module HostCFrames
 		end 
 	end MouseDown
 	
-	proc (f: ListBox) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean)
+	proc (f: ListBox) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean) 
 	begin 
 		assert(~f.disabled, 100)
 		if f.rider # nil then
@@ -2838,7 +2838,7 @@ module HostCFrames
 		end 
 	end WheelMove
 	
-	proc (f: ListBox) KeyDown(ch: char)
+	proc (f: ListBox) KeyDown(ch: wchar) 
 		var 
 			res: integer
 	begin 
@@ -2851,7 +2851,7 @@ module HostCFrames
 		end 
 	end KeyDown
 	
-	proc (f: ListBox) Mark(on, focus: boolean)
+	proc (f: ListBox) Mark(on, focus: boolean) 
 	begin 
 		Mark(on, f.front, f.i)
 	end Mark
@@ -2860,7 +2860,7 @@ module HostCFrames
 	
 	// SelectionBox
 	
-	proc (f: SelectionBox) SetOffset(x, y: integer)
+	proc (f: SelectionBox) SetOffset(x, y: integer) 
 	begin 
 		f.SetOffset^(x, y)
 		Adapt(f, f.i)
@@ -2880,7 +2880,7 @@ module HostCFrames
 	// f.Close^
 	end Close
 	
-	proc (f: SelectionBox) DblClickOk(x, y: integer): boolean
+	proc (f: SelectionBox) DblClickOk(x, y: integer): boolean 
 		var 
 			res, i: integer
 			s: Dialog.String
@@ -2953,7 +2953,7 @@ module HostCFrames
 		res := WinApi.UpdateWindow(f.i.ctrl)
 	end Update
 	
-	proc (f: SelectionBox) UpdateRange(op, from, to_: integer)
+	proc (f: SelectionBox) UpdateRange(op, from, to_: integer) 
 		var 
 			res, i, a, b: integer
 			sel: boolean
@@ -3018,7 +3018,7 @@ module HostCFrames
 		f.Update
 	end UpdateList
 	
-	proc (f: SelectionBox) Restore(l, t, r, b: integer)
+	proc (f: SelectionBox) Restore(l, t, r, b: integer) 
 		var 
 			style: set
 	begin 
@@ -3041,7 +3041,7 @@ module HostCFrames
 		end 
 	end Restore
 	
-	proc (f: SelectionBox) MouseDown(x, y: integer; buttons: set)
+	proc (f: SelectionBox) MouseDown(x, y: integer; buttons: set) 
 	begin 
 		assert(~f.disabled, 100)
 		if f.rider # nil then
@@ -3049,7 +3049,7 @@ module HostCFrames
 		end 
 	end MouseDown
 	
-	proc (f: SelectionBox) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean)
+	proc (f: SelectionBox) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean) 
 	begin 
 		assert(~f.disabled, 100)
 		if f.rider # nil then
@@ -3057,7 +3057,7 @@ module HostCFrames
 		end 
 	end WheelMove
 	
-	proc (f: SelectionBox) KeyDown(ch: char)
+	proc (f: SelectionBox) KeyDown(ch: wchar) 
 		var 
 			res: integer
 	begin 
@@ -3070,15 +3070,15 @@ module HostCFrames
 		end 
 	end KeyDown
 	
-	proc (f: SelectionBox) Select(from, to_: integer) end // empty
+	proc (f: SelectionBox) Select(from, to_: integer)  end // empty
 	
-	proc (f: SelectionBox) GetSelection(var from, to_: integer)
+	proc (f: SelectionBox) GetSelection(var from, to_: integer) 
 	begin 
 		from := 0
 		to_ := max(integer)
 	end GetSelection
 	
-	proc (f: SelectionBox) Mark(on, focus: boolean)
+	proc (f: SelectionBox) Mark(on, focus: boolean) 
 	begin 
 		Mark(on, f.front, f.i)
 	end Mark
@@ -3087,7 +3087,7 @@ module HostCFrames
 	
 	// ComboBox
 	
-	proc (f: ComboBox) SetOffset(x, y: integer)
+	proc (f: ComboBox) SetOffset(x, y: integer) 
 	begin 
 		f.SetOffset^(x, y)
 		Adapt(f, f.i)
@@ -3158,7 +3158,7 @@ module HostCFrames
 		f.Update
 	end UpdateList
 	
-	proc (f: ComboBox) Restore(l, t, r, b: integer)
+	proc (f: ComboBox) Restore(l, t, r, b: integer) 
 		var 
 			res, w, h: integer
 			s: Dialog.String
@@ -3195,7 +3195,7 @@ module HostCFrames
 		end 
 	end Restore
 	
-	proc (f: ComboBox) MouseDown(x, y: integer; buttons: set)
+	proc (f: ComboBox) MouseDown(x, y: integer; buttons: set) 
 	begin 
 		assert(~f.disabled, 100)
 		if f.rider # nil then
@@ -3206,13 +3206,13 @@ module HostCFrames
 		end 
 	end MouseDown
 	
-	proc (f: ComboBox) KeyDown(ch: char)
+	proc (f: ComboBox) KeyDown(ch: wchar) 
 	begin 
 		assert(~f.disabled, 100)
 		SendKey(ch, f.edit)
 	end KeyDown
 	
-	proc (f: ComboBox) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean)
+	proc (f: ComboBox) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean) 
 		var 
 			list: WinApi.HANDLE
 			res: integer
@@ -3237,7 +3237,7 @@ module HostCFrames
 	
 	proc (f: ComboBox) Edit(op: integer
 		var v: Views.View; var w, h: integer; var singleton, clipboard: boolean
-		)
+		) 
 		var 
 			res: integer
 	begin 
@@ -3256,7 +3256,7 @@ module HostCFrames
 	
 	proc (f: ComboBox) Idle end // empty
 	
-	proc (f: ComboBox) Select(from, to_: integer)
+	proc (f: ComboBox) Select(from, to_: integer) 
 		var 
 			res: integer
 	begin 
@@ -3270,7 +3270,7 @@ module HostCFrames
 		end 
 	end Select
 	
-	proc (f: ComboBox) GetSelection(var from, to_: integer)
+	proc (f: ComboBox) GetSelection(var from, to_: integer) 
 		var 
 			res: integer
 	begin 
@@ -3282,7 +3282,7 @@ module HostCFrames
 		end 
 	end GetSelection
 	
-	proc (f: ComboBox) Mark(on, focus: boolean)
+	proc (f: ComboBox) Mark(on, focus: boolean) 
 		var 
 			res: integer
 	begin 
@@ -3301,7 +3301,7 @@ module HostCFrames
 		end 
 	end Mark
 	
-	proc (f: ComboBox) Length(): integer
+	proc (f: ComboBox) Length(): integer 
 		var 
 			res: integer
 	begin 
@@ -3309,7 +3309,7 @@ module HostCFrames
 		return res
 	end Length
 	
-	proc (f: ComboBox) GetCursor(x, y: integer; modifiers: set; var cursor: integer)
+	proc (f: ComboBox) GetCursor(x, y: integer; modifiers: set; var cursor: integer) 
 		var 
 			res, hc: integer
 			pt: WinApi.POINT
@@ -3341,7 +3341,7 @@ module HostCFrames
 	
 	// Caption
 	
-	proc (f: Caption) SetOffset(x, y: integer)
+	proc (f: Caption) SetOffset(x, y: integer) 
 	begin 
 		f.SetOffset^(x, y)
 		Adapt(f, f.i)
@@ -3378,7 +3378,7 @@ module HostCFrames
 		res := WinApi.UpdateWindow(f.i.ctrl)
 	end Update
 	
-	proc (f: Caption) Restore(l, t, r, b: integer)
+	proc (f: Caption) Restore(l, t, r, b: integer) 
 		var 
 			lbl: Dialog.String
 			style: set
@@ -3407,7 +3407,7 @@ module HostCFrames
 	
 	// Group
 	
-	proc (f: Group) SetOffset(x, y: integer)
+	proc (f: Group) SetOffset(x, y: integer) 
 	begin 
 		f.SetOffset^(x, y)
 		Adapt(f, f.i)
@@ -3444,7 +3444,7 @@ module HostCFrames
 		res := WinApi.UpdateWindow(f.i.ctrl)
 	end Update
 	
-	proc (f: Group) Restore(l, t, r, b: integer)
+	proc (f: Group) Restore(l, t, r, b: integer) 
 		var 
 			lbl: Dialog.String
 	begin 
@@ -3463,7 +3463,7 @@ module HostCFrames
 	
 	// TreeFrame
 	
-	proc (f: TreeFrame) SetOffset(x, y: integer)
+	proc (f: TreeFrame) SetOffset(x, y: integer) 
 	begin 
 		f.SetOffset^(x, y)
 		Adapt(f, f.i)
@@ -3485,7 +3485,7 @@ module HostCFrames
 		end 
 	end Close
 	
-	proc (f: TreeFrame) Recreate() // new
+	proc (f: TreeFrame) Recreate()  // new
 		var 
 			res: integer
 			style: set
@@ -3601,7 +3601,7 @@ module HostCFrames
 	
 	proc (f: TreeFrame) WinInsertItem(
 		var tn: Dialog.TreeNode; pWndAdr: integer; var wndAdr: integer
-		) // new
+		)  // new
 		var 
 			res: integer
 			p: Dialog.TreeNode
@@ -3647,7 +3647,7 @@ module HostCFrames
 		inc(f.curindex)
 	end WinInsertItem
 	
-	proc (f: TreeFrame) InsertNode(tn: Dialog.TreeNode; pWndAdr: integer) // new
+	proc (f: TreeFrame) InsertNode(tn: Dialog.TreeNode; pWndAdr: integer)  // new
 		var 
 			wndAdr: integer
 	begin 
@@ -3699,7 +3699,7 @@ module HostCFrames
 		f.inUpdateList := false
 	end UpdateList
 	
-	proc (f: TreeFrame) ExpandCollapse(index, action: integer) // new
+	proc (f: TreeFrame) ExpandCollapse(index, action: integer)  // new
 		var 
 			res: integer
 			tn: Dialog.TreeNode
@@ -3725,7 +3725,7 @@ module HostCFrames
 		res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TVM_SETITEMW, 0, SYSTEM.ADR(tvi))
 	end ExpandCollapse
 	
-	proc (f: TreeFrame) DblClickOk(x, y: integer): boolean
+	proc (f: TreeFrame) DblClickOk(x, y: integer): boolean 
 		var 
 			res: integer
 			hinf: WinCtl.TVHITTESTINFO
@@ -3740,7 +3740,7 @@ module HostCFrames
 		end 
 	end DblClickOk
 	
-	proc (f: TreeFrame) MouseDown(x, y: integer; buttons: set)
+	proc (f: TreeFrame) MouseDown(x, y: integer; buttons: set) 
 	begin 
 		assert(~f.disabled, 100)
 		if f.rider # nil then
@@ -3748,7 +3748,7 @@ module HostCFrames
 		end 
 	end MouseDown
 	
-	proc (f: TreeFrame) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean)
+	proc (f: TreeFrame) WheelMove(x, y: integer; op, nofLines: integer; var done: boolean) 
 	begin 
 		assert(~f.disabled, 100)
 		if f.rider # nil then
@@ -3756,7 +3756,7 @@ module HostCFrames
 		end 
 	end WheelMove
 	
-	proc (f: TreeFrame) Restore(l, t, r, b: integer)
+	proc (f: TreeFrame) Restore(l, t, r, b: integer) 
 	begin 
 		if f.i.ctrl = 0 then // lazy allocation
 			f.UpdateList 
@@ -3770,7 +3770,7 @@ module HostCFrames
 		end 
 	end Restore
 	
-	proc (f: TreeFrame) KeyDown(ch: char)
+	proc (f: TreeFrame) KeyDown(ch: wchar) 
 		var 
 			res: integer
 	begin 
@@ -3783,12 +3783,12 @@ module HostCFrames
 		end 
 	end KeyDown
 	
-	proc (f: TreeFrame) Mark(on, focus: boolean)
+	proc (f: TreeFrame) Mark(on, focus: boolean) 
 	begin 
 		Mark(on, f.front, f.i)
 	end Mark
 	
-	proc (f: TreeFrame) GetSize(var w, h: integer)
+	proc (f: TreeFrame) GetSize(var w, h: integer) 
 		var 
 			rect: WinApi.RECT
 			res: integer
@@ -3801,7 +3801,7 @@ module HostCFrames
 	
 	// Directory
 	
-	proc (d: Directory) GetPushButtonSize(var w, h: integer)
+	proc (d: Directory) GetPushButtonSize(var w, h: integer) 
 	begin 
 		if w = Views.undefined then
 			w := 56 * Ports.point 
@@ -3811,7 +3811,7 @@ module HostCFrames
 		end 
 	end GetPushButtonSize
 	
-	proc (d: Directory) GetCheckBoxSize(var w, h: integer)
+	proc (d: Directory) GetCheckBoxSize(var w, h: integer) 
 	begin 
 		if w = Views.undefined then
 			w := 60 * Ports.point 
@@ -3821,7 +3821,7 @@ module HostCFrames
 		end 
 	end GetCheckBoxSize
 	
-	proc (d: Directory) GetRadioButtonSize(var w, h: integer)
+	proc (d: Directory) GetRadioButtonSize(var w, h: integer) 
 	begin 
 		if w = Views.undefined then
 			w := 60 * Ports.point 
@@ -3831,7 +3831,7 @@ module HostCFrames
 		end 
 	end GetRadioButtonSize
 	
-	proc (d: Directory) GetScrollBarSize(var w, h: integer)
+	proc (d: Directory) GetScrollBarSize(var w, h: integer) 
 	begin 
 		if w = Views.undefined then
 			w := 120 * Ports.point 
@@ -3841,7 +3841,7 @@ module HostCFrames
 		end 
 	end GetScrollBarSize
 	
-	proc (d: Directory) GetFieldSize(max_: integer; var w, h: integer)
+	proc (d: Directory) GetFieldSize(max_: integer; var w, h: integer) 
 	begin 
 		if w = Views.undefined then
 			if max_ = 0 then
@@ -3863,7 +3863,7 @@ module HostCFrames
 		end 
 	end GetFieldSize
 	
-	proc (d: Directory) GetUpDownFieldSize(max_: integer; var w, h: integer)
+	proc (d: Directory) GetUpDownFieldSize(max_: integer; var w, h: integer) 
 	begin 
 		if w = Views.undefined then
 			w := 56 * Ports.point 
@@ -3873,7 +3873,7 @@ module HostCFrames
 		end 
 	end GetUpDownFieldSize
 	
-	proc (d: Directory) GetDateFieldSize(var w, h: integer)
+	proc (d: Directory) GetDateFieldSize(var w, h: integer) 
 	begin 
 		if w = Views.undefined then
 			w := 72 * Ports.point 
@@ -3883,7 +3883,7 @@ module HostCFrames
 		end 
 	end GetDateFieldSize
 	
-	proc (d: Directory) GetTimeFieldSize(var w, h: integer)
+	proc (d: Directory) GetTimeFieldSize(var w, h: integer) 
 	begin 
 		if w = Views.undefined then
 			w := 72 * Ports.point 
@@ -3893,7 +3893,7 @@ module HostCFrames
 		end 
 	end GetTimeFieldSize
 	
-	proc (d: Directory) GetColorFieldSize(var w, h: integer)
+	proc (d: Directory) GetColorFieldSize(var w, h: integer) 
 	begin 
 		if w = Views.undefined then
 			w := 36 * Ports.point 
@@ -3903,7 +3903,7 @@ module HostCFrames
 		end 
 	end GetColorFieldSize
 	
-	proc (d: Directory) GetListBoxSize(var w, h: integer)
+	proc (d: Directory) GetListBoxSize(var w, h: integer) 
 	begin 
 		if w = Views.undefined then
 			w := 100 * Ports.point 
@@ -3913,7 +3913,7 @@ module HostCFrames
 		end 
 	end GetListBoxSize
 	
-	proc (d: Directory) GetSelectionBoxSize(var w, h: integer)
+	proc (d: Directory) GetSelectionBoxSize(var w, h: integer) 
 	begin 
 		if w = Views.undefined then
 			w := 100 * Ports.point 
@@ -3923,7 +3923,7 @@ module HostCFrames
 		end 
 	end GetSelectionBoxSize
 	
-	proc (d: Directory) GetComboBoxSize(var w, h: integer)
+	proc (d: Directory) GetComboBoxSize(var w, h: integer) 
 	begin 
 		if w = Views.undefined then
 			w := 100 * Ports.point 
@@ -3933,7 +3933,7 @@ module HostCFrames
 		end 
 	end GetComboBoxSize
 	
-	proc (d: Directory) GetCaptionSize(var w, h: integer)
+	proc (d: Directory) GetCaptionSize(var w, h: integer) 
 	begin 
 		if w = Views.undefined then
 			w := 50 * Ports.point 
@@ -3943,7 +3943,7 @@ module HostCFrames
 		end 
 	end GetCaptionSize
 	
-	proc (d: Directory) GetGroupSize(var w, h: integer)
+	proc (d: Directory) GetGroupSize(var w, h: integer) 
 	begin 
 		if w = Views.undefined then
 			w := 100 * Ports.point 
@@ -3953,7 +3953,7 @@ module HostCFrames
 		end 
 	end GetGroupSize
 	
-	proc (d: Directory) GetTreeFrameSize(var w, h: integer)
+	proc (d: Directory) GetTreeFrameSize(var w, h: integer) 
 	begin 
 		if w = Views.undefined then
 			w := 100 * Ports.point 
@@ -3963,7 +3963,7 @@ module HostCFrames
 		end 
 	end GetTreeFrameSize
 	
-	proc (d: Directory) NewPushButton(): StdCFrames.PushButton
+	proc (d: Directory) NewPushButton(): StdCFrames.PushButton 
 		var 
 			f: PushButton
 	begin 
@@ -3971,7 +3971,7 @@ module HostCFrames
 		return f
 	end NewPushButton
 	
-	proc (d: Directory) NewCheckBox(): StdCFrames.CheckBox
+	proc (d: Directory) NewCheckBox(): StdCFrames.CheckBox 
 		var 
 			f: CheckBox
 	begin 
@@ -3979,7 +3979,7 @@ module HostCFrames
 		return f
 	end NewCheckBox
 	
-	proc (d: Directory) NewRadioButton(): StdCFrames.RadioButton
+	proc (d: Directory) NewRadioButton(): StdCFrames.RadioButton 
 		var 
 			f: RadioButton
 	begin 
@@ -3987,7 +3987,7 @@ module HostCFrames
 		return f
 	end NewRadioButton
 	
-	proc (d: Directory) NewScrollBar(): StdCFrames.ScrollBar
+	proc (d: Directory) NewScrollBar(): StdCFrames.ScrollBar 
 		var 
 			f: ScrollBar
 	begin 
@@ -3995,7 +3995,7 @@ module HostCFrames
 		return f
 	end NewScrollBar
 	
-	proc (d: Directory) NewField(): StdCFrames.Field
+	proc (d: Directory) NewField(): StdCFrames.Field 
 		var 
 			f: Field
 	begin 
@@ -4003,7 +4003,7 @@ module HostCFrames
 		return f
 	end NewField
 	
-	proc (d: Directory) NewUpDownField(): StdCFrames.UpDownField
+	proc (d: Directory) NewUpDownField(): StdCFrames.UpDownField 
 		var 
 			f: UpDownField
 	begin 
@@ -4011,7 +4011,7 @@ module HostCFrames
 		return f
 	end NewUpDownField
 	
-	proc (d: Directory) NewDateField(): StdCFrames.DateField
+	proc (d: Directory) NewDateField(): StdCFrames.DateField 
 		var 
 			f: DateField
 	begin 
@@ -4019,7 +4019,7 @@ module HostCFrames
 		return f
 	end NewDateField
 	
-	proc (d: Directory) NewTimeField(): StdCFrames.TimeField
+	proc (d: Directory) NewTimeField(): StdCFrames.TimeField 
 		var 
 			f: TimeField
 	begin 
@@ -4027,7 +4027,7 @@ module HostCFrames
 		return f
 	end NewTimeField
 	
-	proc (d: Directory) NewColorField(): StdCFrames.ColorField
+	proc (d: Directory) NewColorField(): StdCFrames.ColorField 
 		var 
 			f: ColorField
 	begin 
@@ -4035,7 +4035,7 @@ module HostCFrames
 		return f
 	end NewColorField
 	
-	proc (d: Directory) NewListBox(): StdCFrames.ListBox
+	proc (d: Directory) NewListBox(): StdCFrames.ListBox 
 		var 
 			f: ListBox
 	begin 
@@ -4043,7 +4043,7 @@ module HostCFrames
 		return f
 	end NewListBox
 	
-	proc (d: Directory) NewSelectionBox(): StdCFrames.SelectionBox
+	proc (d: Directory) NewSelectionBox(): StdCFrames.SelectionBox 
 		var 
 			f: SelectionBox
 	begin 
@@ -4051,7 +4051,7 @@ module HostCFrames
 		return f
 	end NewSelectionBox
 	
-	proc (d: Directory) NewComboBox(): StdCFrames.ComboBox
+	proc (d: Directory) NewComboBox(): StdCFrames.ComboBox 
 		var 
 			f: ComboBox
 	begin 
@@ -4059,7 +4059,7 @@ module HostCFrames
 		return f
 	end NewComboBox
 	
-	proc (d: Directory) NewCaption(): StdCFrames.Caption
+	proc (d: Directory) NewCaption(): StdCFrames.Caption 
 		var 
 			f: Caption
 	begin 
@@ -4067,7 +4067,7 @@ module HostCFrames
 		return f
 	end NewCaption
 	
-	proc (d: Directory) NewGroup(): StdCFrames.Group
+	proc (d: Directory) NewGroup(): StdCFrames.Group 
 		var 
 			f: Group
 	begin 
@@ -4075,7 +4075,7 @@ module HostCFrames
 		return f
 	end NewGroup
 	
-	proc (d: Directory) NewTreeFrame(): StdCFrames.TreeFrame
+	proc (d: Directory) NewTreeFrame(): StdCFrames.TreeFrame 
 		var 
 			f: TreeFrame
 	begin 
@@ -4087,7 +4087,7 @@ module HostCFrames
 	// control window class
 	
 	// Used for common controls, not standard controls
-	proc HandleNotifyMsg(wnd: WinApi.HANDLE; lParam, out: integer)
+	proc HandleNotifyMsg(wnd: WinApi.HANDLE; lParam, out: integer) 
 		var 
 			c: StdCFrames.Frame
 			ret: integer
@@ -4115,12 +4115,12 @@ module HostCFrames
 		SYSTEM.PUT(out, ret)
 	end HandleNotifyMsg
 	
-	proc HandleCommand(wnd: WinApi.HANDLE; wParam, lParam: integer)
+	proc HandleCommand(wnd: WinApi.HANDLE; wParam, lParam: integer) 
 		var 
 			res, nc, i, j: integer
 			c: StdCFrames.Frame
-			s: array 512 of char
-			ps: pointer to array of char
+			s: array 512 of wchar
+			ps: pointer to array of wchar
 			b: boolean
 	begin 
 		c := SYSTEM.VAL(StdCFrames.Frame, WinApi.GetWindowLongW(wnd, dlgWindowExtra))
@@ -4166,7 +4166,7 @@ module HostCFrames
 							if c.multiLine then
 								DelLF(ps^) 
 							end 
-							if c.del or (ps # "") then
+							if c.del or (ps^ # "") then
 								c.Set(c, ps^) 
 							end  
 						else 
@@ -4310,7 +4310,7 @@ module HostCFrames
 		end 
 	end HandleCommand
 	
-	proc HandleScroll(wnd: WinApi.HANDLE; wParam, lParam: integer)
+	proc HandleScroll(wnd: WinApi.HANDLE; wParam, lParam: integer) 
 		var 
 			nc, size_, sect, pos: integer
 			c: StdCFrames.Frame
@@ -4363,7 +4363,7 @@ module HostCFrames
 		end 
 	end HandleScroll
 	
-	proc HandleDraw(wnd: WinApi.HANDLE; wParam, lParam: integer)
+	proc HandleDraw(wnd: WinApi.HANDLE; wParam, lParam: integer) 
 		var 
 			res: integer
 			c: StdCFrames.Frame
@@ -4429,7 +4429,7 @@ module HostCFrames
 		end 
 	end HandleDraw
 	
-	proc ColorBrush(col: Ports.Color): WinApi.HANDLE
+	proc ColorBrush(col: Ports.Color): WinApi.HANDLE 
 		var 
 			p: BrushCache
 	begin 
@@ -4455,7 +4455,7 @@ module HostCFrames
 		end 
 	end ColorBrush
 	
-	proc CtrlHandler(wnd: WinApi.HANDLE; message, wParam, lParam: integer): integer
+	proc CtrlHandler(wnd: WinApi.HANDLE; message, wParam, lParam: integer): integer 
 		var 
 			res: integer
 			c: StdCFrames.Frame
@@ -4576,7 +4576,7 @@ module HostCFrames
 	proc InitNationalInfo
 		var 
 			res: integer
-			str: array 8 of char
+			str: array 8 of wchar
 	begin 
 		res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_SDATE, str, len(str))
 		dateSep := str[0]

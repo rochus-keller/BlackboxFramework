@@ -63,7 +63,7 @@ module FormViews
 	
 	// View
 	
-	proc (v: View) Internalize2-(var rd: Stores.Reader) // extensible
+	proc (v: View) Internalize2-(var rd: Stores.Reader)  // extensible
 		var 
 			thisVersion: integer
 	begin 
@@ -86,12 +86,12 @@ module FormViews
 		end 
 	end Internalize2
 	
-	proc (v: View) Externalize2-(var wr: Stores.Writer) // extensible
+	proc (v: View) Externalize2-(var wr: Stores.Writer)  // extensible
 	begin 
 		wr.WriteVersion(maxBaseVersion)
 	end Externalize2
 	
-	proc (v: View) ThisModel*(): FormModels.Model // extensible
+	proc (v: View) ThisModel*(): FormModels.Model  // extensible
 		var 
 			m: Containers.Model
 	begin 
@@ -103,27 +103,27 @@ module FormViews
 		end 
 	end ThisModel
 	
-	proc (v: View) SetBorder*(border: integer) end // new abstract
+	proc (v: View) SetBorder*(border: integer)  end // new abstract
 	// border >= 0	20
 	
-	proc (v: View) Border*(): integer end // new abstract
+	proc (v: View) Border*(): integer  end // new abstract
 	
-	proc (v: View) SetGrid*(grid, gridFactor: integer) end // new abstract
+	proc (v: View) SetGrid*(grid, gridFactor: integer)  end // new abstract
 	(* grid > 0	20
 	   gridFactor > 0	21 *)
 	
 	
 	
-	proc (v: View) Grid*(): integer end // new abstract
+	proc (v: View) Grid*(): integer  end // new abstract
 	
-	proc (v: View) GridFactor*(): integer end // new abstract
+	proc (v: View) GridFactor*(): integer  end // new abstract
 	
-	proc (v: View) SetBackground*(background: Ports.Color) end // new abstract
+	proc (v: View) SetBackground*(background: Ports.Color)  end // new abstract
 	
 	
 	// Directory
 	
-	proc (d: Directory) New*(f: FormModels.Model): View end // new abstract
+	proc (d: Directory) New*(f: FormModels.Model): View  end // new abstract
 	(* f # NIL	20
 	   f.init	21 *)
 	
@@ -158,7 +158,7 @@ module FormViews
 	
 	// StdView
 	
-	proc (v: StdView) Internalize2(var rd: Stores.Reader)
+	proc (v: StdView) Internalize2(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 	begin 
@@ -174,7 +174,7 @@ module FormViews
 		end 
 	end Internalize2
 	
-	proc (v: StdView) Externalize2(var wr: Stores.Writer)
+	proc (v: StdView) Externalize2(var wr: Stores.Writer) 
 	begin 
 		v.Externalize2^(wr)
 		wr.WriteVersion(maxStdVersion)
@@ -184,7 +184,7 @@ module FormViews
 		wr.WriteInt(v.background)
 	end Externalize2
 	
-	proc (v: StdView) CopyFromModelView2(source: Views.View; model: Models.Model)
+	proc (v: StdView) CopyFromModelView2(source: Views.View; model: Models.Model) 
 	begin 
 		with source: StdView do 
 			v.border := source.border
@@ -194,22 +194,22 @@ module FormViews
 		end 
 	end CopyFromModelView2
 	
-	proc (d: StdView) AcceptableModel(m: Containers.Model): boolean
+	proc (d: StdView) AcceptableModel(m: Containers.Model): boolean 
 	begin 
 		return m is FormModels.Model
 	end AcceptableModel
 	
-	proc (v: StdView) InitModel2(m: Containers.Model)
+	proc (v: StdView) InitModel2(m: Containers.Model) 
 	begin 
 		assert(m is FormModels.Model, 23)
 	end InitModel2
 	
-	proc (v: StdView) GetRect(f: Views.Frame; view: Views.View; var l, t, r, b: integer)
+	proc (v: StdView) GetRect(f: Views.Frame; view: Views.View; var l, t, r, b: integer) 
 	begin 
 		view.context(FormModels.Context).GetRect(l, t, r, b)
 	end GetRect
 	
-	proc (v: StdView) SetBorder(border: integer)
+	proc (v: StdView) SetBorder(border: integer) 
 		var 
 			op: ViewOp
 	begin 
@@ -228,12 +228,12 @@ module FormViews
 		Views.Do(v, "#Form:BorderChange", op)
 	end SetBorder
 	
-	proc (v: StdView) Border(): integer
+	proc (v: StdView) Border(): integer 
 	begin 
 		return v.border
 	end Border
 	
-	proc (v: StdView) SetGrid(grid, gridFactor: integer)
+	proc (v: StdView) SetGrid(grid, gridFactor: integer) 
 		var 
 			op: ViewOp
 	begin 
@@ -248,17 +248,17 @@ module FormViews
 		Views.Do(v, "#Form:GridChange", op)
 	end SetGrid
 	
-	proc (v: StdView) Grid(): integer
+	proc (v: StdView) Grid(): integer 
 	begin 
 		return v.grid
 	end Grid
 	
-	proc (v: StdView) GridFactor(): integer
+	proc (v: StdView) GridFactor(): integer 
 	begin 
 		return v.gridFactor
 	end GridFactor
 	
-	proc (v: StdView) SetBackground(background: Ports.Color)
+	proc (v: StdView) SetBackground(background: Ports.Color) 
 		var 
 			op: ViewOp
 	begin 
@@ -271,7 +271,7 @@ module FormViews
 		Views.Do(v, "#Form:BackgroundChange", op)
 	end SetBackground
 	
-	proc (v: StdView) GetBackground(var color: Ports.Color)
+	proc (v: StdView) GetBackground(var color: Ports.Color) 
 	begin 
 		if v.background = Ports.defaultColor then
 			color := Ports.dialogBackground 
@@ -280,7 +280,7 @@ module FormViews
 		end 
 	end GetBackground
 	
-	proc (v: StdView) Restore(f: Views.Frame; l, t, r, b: integer)
+	proc (v: StdView) Restore(f: Views.Frame; l, t, r, b: integer) 
 		var 
 			form: FormModels.Model
 			ctrl: Containers.Controller
@@ -334,7 +334,7 @@ module FormViews
 		end 
 	end Restore
 	
-	proc (v: StdView) HandleModelMsg2(var msg: Models.Message)
+	proc (v: StdView) HandleModelMsg2(var msg: Models.Message) 
 	begin 
 		with msg: Models.UpdateMsg do 
 			with msg: FormModels.UpdateMsg do 
@@ -346,7 +346,7 @@ module FormViews
 		end 
 	end HandleModelMsg2
 	
-	proc GetBounds(v: StdView; var w, h: integer)
+	proc GetBounds(v: StdView; var w, h: integer) 
 		var 
 			form: FormModels.Model
 			r, b: integer
@@ -383,7 +383,7 @@ module FormViews
 		end 
 	end GetBounds
 	
-	proc AssertRange(border: integer; var w, h: integer)
+	proc AssertRange(border: integer; var w, h: integer) 
 		var 
 			min_: integer
 	begin  // prevent illegal values
@@ -404,7 +404,7 @@ module FormViews
 		end 
 	end AssertRange
 	
-	proc (v: StdView) HandlePropMsg2(var p: Properties.Message)
+	proc (v: StdView) HandlePropMsg2(var p: Properties.Message) 
 		var 
 			sp: Properties.StdProp
 			q: Properties.Property
@@ -439,7 +439,7 @@ module FormViews
 	
 	// StdDirectory
 	
-	proc (d: StdDirectory) New(f: FormModels.Model): View
+	proc (d: StdDirectory) New(f: FormModels.Model): View 
 		var 
 			v: StdView
 			grid, gridFactor: integer
@@ -466,7 +466,7 @@ module FormViews
 	
 	// miscellaneous
 	
-	proc Focus*(): View
+	proc Focus*(): View 
 		var 
 			v: Views.View
 	begin 
@@ -478,7 +478,7 @@ module FormViews
 		end 
 	end Focus
 	
-	proc FocusModel*(): FormModels.Model
+	proc FocusModel*(): FormModels.Model 
 		var 
 			v: View
 	begin 
@@ -490,7 +490,7 @@ module FormViews
 		end 
 	end FocusModel
 	
-	proc RoundToGrid*(v: View; var x, y: integer)
+	proc RoundToGrid*(v: View; var x, y: integer) 
 		var 
 			grid: integer
 	begin 
@@ -501,7 +501,7 @@ module FormViews
 		y := y - y mod grid
 	end RoundToGrid
 	
-	proc New*(): View
+	proc New*(): View 
 	begin 
 		return dir.New(FormModels.dir.New())
 	end New
@@ -511,13 +511,13 @@ module FormViews
 		Views.Deposit(New())
 	end Deposit
 	
-	proc SetDir*(d: Directory)
+	proc SetDir*(d: Directory) 
 	begin 
 		assert(d # nil, 20)
 		dir := d
 	end SetDir
 	
-	proc SetCtrlDir*(d: Containers.Directory)
+	proc SetCtrlDir*(d: Containers.Directory) 
 	begin 
 		assert(d # nil, 20)
 		ctrldir := d
