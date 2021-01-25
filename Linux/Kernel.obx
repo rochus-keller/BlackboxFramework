@@ -226,13 +226,13 @@ module Kernel
 			// start of first block
 			end 
 		
-		FList = pointer to record 
+		FList = pointer to record // List of finalizers
 				next: FList
 				blk: Block
 				iptr, aiptr: boolean 
 			end 
 		
-		CList = pointer to record 
+		CList = pointer to record  // List of cleaners
 				next: CList
 				do_: Command
 				trapped: boolean 
@@ -314,13 +314,11 @@ module Kernel
 	
 	
 	// code procedures for fpu
-	
 	proc FINIT end // [code] 0DBH 0E3H
 	proc FLDCW end // [code] 0D9H 06DH 0FCH // -4, FP
 	proc FSTCW end // [code] 0D9H 07DH 0FCH // -4, FP
 	
 	// code procedure for memory erase
-	
 	proc Erase(adr, words: integer)  end // [code] 089H 0C7H 031H 0C0H 059H 0F2H 0ABH
 	// MOV EDI, EAX
 	// XOR EAX, EAX
@@ -328,7 +326,6 @@ module Kernel
 	// REP STOS
 	
 	// code procedure for stack allocate
-	
 	proc ALLOC end // [code] 0H // argument in CX // Rochus: added 0H because otherwise empty
 	(* PUSH	EAX
 	   ADD	ECX,-5
