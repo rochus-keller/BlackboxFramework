@@ -182,7 +182,7 @@ module HostPictures
 				rd.ReadByte(b)
 				// mac to windows
 				if b >= ord(" ") then
-					s[i] := chr(b mod 256)
+					s[i] := wchr(b mod 256)
 					inc(i) 
 				else 
 					dec(len_) 
@@ -1010,7 +1010,7 @@ module HostPictures
 			r.SetPos(v.model.pos)
 			while len_ # 0 do 
 				r.ReadByte(b)
-				wr.WriteSChar(short(chr(b)))
+				wr.WriteSChar(chr(b))
 				dec(len_) 
 			end  
 		else 
@@ -1147,7 +1147,7 @@ module HostPictures
 		sv.w := sw * u
 		sv.h := sh * u
 		sv.unit := u
-		sv.mode := short(chr(mode))
+		sv.mode := chr(mode)
 		new(sv.model)
 		len_ := WinApi.GetMetaFileBitsEx(mf, 0, nil)
 		new(sv.model.data, len_)

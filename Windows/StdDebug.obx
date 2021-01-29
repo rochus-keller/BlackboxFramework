@@ -171,7 +171,7 @@ module StdDebug
 						out.WriteChar(22x)
 						mode := char_ 
 					end 
-					out.WriteChar(chr(val_)) 
+					out.WriteChar(wchr(val_)) 
 				else 
 					if mode = char_ then
 						out.WriteChar(22x) 
@@ -216,9 +216,9 @@ module StdDebug
 	proc FormOf(t: Kernel.Type): char 
 	begin 
 		if SYSTEM.VAL(integer, t) div 256 = 0 then
-			return short(chr(SYSTEM.VAL(integer, t))) 
+			return chr(SYSTEM.VAL(integer, t)) 
 		else 
-			return short(chr(16 + t.id mod 4)) 
+			return chr(16 + t.id mod 4)
 		end 
 	end FormOf
 	

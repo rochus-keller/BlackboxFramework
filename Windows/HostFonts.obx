@@ -65,7 +65,7 @@ module HostFonts
 		Traverser = record (Kernel.Identifier) 
 			end 
 		
-		Par = cstruct 
+		Par = record 
 				first, last: Fonts.TypefaceInfo 
 			end 
 		ParPtr = unsafe pointer to Par
@@ -122,7 +122,7 @@ module HostFonts
 		str := " x"
 		x := s.cx
 		while i < 256 do 
-			str[0] := chr(i)
+			str[0] := wchr(i)
 			res := WinApi.GetTextExtentPoint32W(dc, str, 2, s)
 			wtab[i] := s.cx - x
 			inc(i) 
@@ -366,7 +366,7 @@ module HostFonts
 		return (f.typeface # Fonts.default) & (f.alias # f.typeface)
 	end IsAlien
 	
-	proc (f: Font) FINALIZE-
+	proc (f: Font) FINALIZE*
 	begin 
 		Cleanup(f)
 	end FINALIZE

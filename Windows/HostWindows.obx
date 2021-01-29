@@ -270,7 +270,7 @@ module HostWindows
 		assert(n >= 0, 20)
 		i := 0
 		repeat 
-			d[i] := chr(30h + n mod 10)
+			d[i] := wchr(30h + n mod 10)
 			inc(i)
 			n := n div 10
 			if useSeparators & (i mod 4 = 3) & (n # 0) then
@@ -1520,10 +1520,10 @@ module HostWindows
 			w := ThisWindow(wnd)
 			mod_ := KeyModifiers(lParam)
 			w.used := true
-			if WinApi.VkKeyScanW(chr(wParam)) >= 4 * 256 then
+			if WinApi.VkKeyScanW(wchr(wParam)) >= 4 * 256 then
 				mod_ := mod_ - {HostPorts.alt, Controllers.pick} 
 			end 
-			w.KeyDown(chr(wParam), mod_) 
+			w.KeyDown(wchr(wParam), mod_) 
 		end 
 	end HandleChar
 	

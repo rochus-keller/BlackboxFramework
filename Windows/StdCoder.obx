@@ -110,7 +110,7 @@ module StdCoder
 		assert(x >= 0, 20)
 		i := 0
 		repeat 
-			s[i] := chr(ord("0") + x mod 10)
+			s[i] := wchr(ord("0") + x mod 10)
 			inc(i)
 			x := x div 10 
 		until x = 0 
@@ -328,7 +328,7 @@ module StdCoder
 					inc(bit, 6) 
 				end 
 				if res = 0 then
-					ch := chr(x mod 256)
+					ch := wchr(x mod 256)
 					x := x div 256
 					dec(bit, 8)
 					utf8[i] := short(ch)
@@ -366,7 +366,7 @@ module StdCoder
 				inc(bit, 6) 
 			end 
 			if res = 0 then
-				ch := chr(x mod 256)
+				ch := wchr(x mod 256)
 				x := x div 256
 				dec(bit, 8)
 				ftype[i] := ch
@@ -620,9 +620,9 @@ module StdCoder
 		i := 0
 		while i < len_ do 
 			if ord(utf8[i]) > max(byte) then
-				w.WriteByte(short(short(ord(utf8[i]) - 256))) 
+				w.WriteByte(short(ord(utf8[i]) - 256))
 			else 
-				w.WriteByte(short(ord(utf8[i]))) 
+				w.WriteByte(ord(utf8[i]))
 			end 
 			inc(i) 
 		end 
@@ -799,7 +799,7 @@ module StdCoder
 					inc(n)
 					i := 0
 					while ~frd.eof & (b # 0) do 
-						utf8[i] := short(chr(b mod 256))
+						utf8[i] := chr(b mod 256)
 						inc(i)
 						frd.ReadByte(b) 
 					end 
@@ -1094,7 +1094,7 @@ module StdCoder
 					inc(n)
 					i := 0
 					while ~frd.eof & (b # 0) do 
-						utf8[i] := short(chr(b mod 256))
+						utf8[i] := chr(b mod 256)
 						inc(i)
 						frd.ReadByte(b) 
 					end 
@@ -1205,21 +1205,21 @@ module StdCoder
 		i := 2
 		j := ord("0")
 		while j <= ord("9") do 
-			code[i] := chr(j)
+			code[i] := wchr(j)
 			revCode[j] := i
 			inc(i)
 			inc(j) 
 		end 
 		j := ord("A")
 		while j <= ord("Z") do 
-			code[i] := chr(j)
+			code[i] := wchr(j)
 			revCode[j] := i
 			inc(i)
 			inc(j) 
 		end 
 		j := ord("a")
 		while j <= ord("z") do 
-			code[i] := chr(j)
+			code[i] := wchr(j)
 			revCode[j] := i
 			inc(i)
 			inc(j) 

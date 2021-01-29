@@ -235,7 +235,7 @@ module Printing
 					end  
 				elsif (ch = "a") or (ch = "A") then 
 					if printing & (0 < pno) & (pno <= 26) then
-						line.buf[j] := chr(pno + ord(ch) - 1)
+						line.buf[j] := wchr(pno + ord(ch) - 1)
 						inc(j) 
 					else 
 						l := 0

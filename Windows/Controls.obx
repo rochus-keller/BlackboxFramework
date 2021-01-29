@@ -216,15 +216,15 @@ module Controls
 	end Cleanup
 	
 	
-	proc (c: Control) Update-(f: Views.Frame; op, from, to_: integer)  end // new empty
-	proc (c: Control) UpdateList-(f: Views.Frame)  end // new empty
-	proc (c: Control) CheckLink-(var ok: boolean)  end // new empty
-	proc (c: Control) HandlePropMsg2-(var p: Views.PropMessage)  end // new empty
-	proc (c: Control) HandleViewMsg2-(f: Views.Frame; var msg: Views.Message)  end // new empty
-	proc (c: Control) HandleCtrlMsg2-(f: Views.Frame; var msg: Views.CtrlMessage
+	proc (c: Control) Update*(f: Views.Frame; op, from, to_: integer)  end // new empty
+	proc (c: Control) UpdateList*(f: Views.Frame)  end // new empty
+	proc (c: Control) CheckLink*(var ok: boolean)  end // new empty
+	proc (c: Control) HandlePropMsg2*(var p: Views.PropMessage)  end // new empty
+	proc (c: Control) HandleViewMsg2*(f: Views.Frame; var msg: Views.Message)  end // new empty
+	proc (c: Control) HandleCtrlMsg2*(f: Views.Frame; var msg: Views.CtrlMessage
 		var focus: Views.View)  end // new empty
-	proc (c: Control) Externalize2-(var wr: Stores.Writer)  end // new empty
-	proc (c: Control) Internalize2-(var rd: Stores.Reader)  end // new empty
+	proc (c: Control) Externalize2*(var wr: Stores.Writer)  end // new empty
+	proc (c: Control) Internalize2*(var rd: Stores.Reader)  end // new empty
 	
 	
 	// auxiliary procedures
@@ -683,9 +683,9 @@ module Controls
 	
 	// Control
 	
-	proc (c: Control) CopyFromSimpleView2-(source: Control)  end // new empty
+	proc (c: Control) CopyFromSimpleView2*(source: Control)  end // new empty
 	
-	proc (c: Control) CopyFromSimpleView-(source: Views.View) 
+	proc (c: Control) CopyFromSimpleView*(source: Views.View) 
 	begin 
 		with source: Control do 
 			c.item := source.item
@@ -703,7 +703,7 @@ module Controls
 		end 
 	end CopyFromSimpleView
 	
-	proc (c: Control) Internalize-(var rd: Stores.Reader) 
+	proc (c: Control) Internalize*(var rd: Stores.Reader) 
 		var 
 			thisVersion: integer
 			x, def, canc, sort: boolean
@@ -761,7 +761,7 @@ module Controls
 		OpenLink(c, c.prop)
 	end Internalize
 	
-	proc (c: Control) Externalize-(var wr: Stores.Writer) 
+	proc (c: Control) Externalize*(var wr: Stores.Writer) 
 	begin 
 		c.Externalize^(wr)
 		wr.WriteVersion(maxBaseVersion)
@@ -782,7 +782,7 @@ module Controls
 		c.Externalize2(wr)
 	end Externalize
 	
-	proc (c: Control) HandleViewMsg-(f: Views.Frame; var msg: Views.Message) 
+	proc (c: Control) HandleViewMsg*(f: Views.Frame; var msg: Views.Message) 
 		var 
 			disabled, undef, readOnly, done, allDone: boolean
 			i: integer
@@ -918,7 +918,7 @@ module Controls
 		end 
 	end HandleCtrlMsg
 	
-	proc (c: Control) HandlePropMsg-(var msg: Properties.Message) 
+	proc (c: Control) HandlePropMsg*(var msg: Properties.Message) 
 		var 
 			fpref: Properties.FocusPref
 			stp: Properties.StdProp
@@ -1615,7 +1615,7 @@ module Controls
 				x := -x 
 			end 
 			repeat 
-				d[j] := chr(x mod 10 + ord("0"))
+				d[j] := wchr(x mod 10 + ord("0"))
 				inc(j)
 				x := x div 10 
 			until x = 0 

@@ -380,7 +380,7 @@ module Dialog
 					if len_ > 0 then // shortchar run
 						while len_ > 0 do 
 							in1.ReadByte(b)
-							ch := chr(b mod 256)
+							ch := wchr(b mod 256)
 							if ch >= " " then
 								if s = 0 then // start of left part
 									j := i
@@ -411,7 +411,7 @@ module Dialog
 							in1.ReadByte(b)
 							x := b mod 256
 							in1.ReadByte(b)
-							ch := chr(x + 256 * (b + 128))
+							ch := wchr(x + 256 * (b + 128))
 							if s = 0 then // start of left part
 								j := i
 								s := 1 
@@ -896,7 +896,7 @@ module Dialog
 			x := i
 			j := 0
 			repeat 
-				a[j] := chr(x mod 10 + ord("0"))
+				a[j] := wchr(x mod 10 + ord("0"))
 				x := x div 10
 				inc(j) 
 			until x = 0 
@@ -1704,7 +1704,7 @@ module Dialog
 		end 
 	end Beep
 	
-	proc (n: LangNotifier) Notify-()  end // new abstract
+	proc (n: LangNotifier) Notify*()  end // new abstract
 	
 	proc RegisterLangNotifier*(notifier: LangNotifier) 
 		var 

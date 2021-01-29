@@ -58,7 +58,7 @@ module Services
 	
 	// Action
 	
-	proc (a: Action) Do-()  end // new abstract
+	proc (a: Action) Do*()  end // new abstract
 	
 	proc In(l, a: Action): boolean 
 	begin 

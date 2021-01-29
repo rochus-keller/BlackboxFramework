@@ -380,7 +380,7 @@ module StdFolds
 		end 
 	end FlipNested
 	
-	proc (fold: Fold) HandlePropMsg-(var msg: Properties.Message) 
+	proc (fold: Fold) HandlePropMsg*(var msg: Properties.Message) 
 		var 
 			prop: Controls.Prop
 			c: Models.Context
@@ -595,7 +595,7 @@ module StdFolds
 		DrawMarkers(fold, f, path)
 	end Restore
 	
-	proc (fold: Fold) CopyFromSimpleView-(source: Views.View) 
+	proc (fold: Fold) CopyFromSimpleView*(source: Views.View) 
 	begin 
 		// fold.CopyFrom^(source);
 		with source: Fold do 
@@ -611,7 +611,7 @@ module StdFolds
 		end 
 	end CopyFromSimpleView
 	
-	proc (fold: Fold) Internalize-(var rd: Stores.Reader) 
+	proc (fold: Fold) Internalize*(var rd: Stores.Reader) 
 		var 
 			version: integer
 			store: Stores.Store
@@ -658,7 +658,7 @@ module StdFolds
 		return ch # 0x
 	end HasWideChars
 	
-	proc (fold: Fold) Externalize-(var wr: Stores.Writer) 
+	proc (fold: Fold) Externalize*(var wr: Stores.Writer) 
 		var 
 			xint, version: integer
 	begin 

@@ -63,7 +63,7 @@ module FormViews
 	
 	// View
 	
-	proc (v: View) Internalize2-(var rd: Stores.Reader)  // extensible
+	proc (v: View) Internalize2*(var rd: Stores.Reader)  // extensible
 		var 
 			thisVersion: integer
 	begin 
@@ -86,7 +86,7 @@ module FormViews
 		end 
 	end Internalize2
 	
-	proc (v: View) Externalize2-(var wr: Stores.Writer)  // extensible
+	proc (v: View) Externalize2*(var wr: Stores.Writer)  // extensible
 	begin 
 		wr.WriteVersion(maxBaseVersion)
 	end Externalize2

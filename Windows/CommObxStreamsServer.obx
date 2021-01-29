@@ -71,7 +71,7 @@ module CommObxStreamsServer
 		if read > 0 then // write received data into log
 			i := 0
 			while i # read do 
-				p.writer.WriteChar(chr(buf[i]))
+				p.writer.WriteChar(wchr(buf[i]))
 				inc(i) 
 			end 
 			Services.DoLater(p, Services.now) 

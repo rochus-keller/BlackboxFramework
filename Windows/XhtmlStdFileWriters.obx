@@ -56,7 +56,7 @@ module XhtmlStdFileWriters
 		ch := str[0]
 		while ch # 0x do 
 			if ch <= 7fx then
-				wr.rider.WriteByte(short(short(ord(ch)))) 
+				wr.rider.WriteByte(short(ord(ch)))
 			else 
 				s1[0] := ch
 				s1[1] := 0x
@@ -65,7 +65,7 @@ module XhtmlStdFileWriters
 				j := 0
 				u := utf8Str[0]
 				while u # 0x do 
-					wr.rider.WriteByte(short(ord(u)))
+					wr.rider.WriteByte(ord(u))
 					inc(j)
 					u := utf8Str[j] 
 				end  

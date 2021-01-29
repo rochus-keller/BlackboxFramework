@@ -260,7 +260,7 @@ module CommTCP
 		end 
 	end Close
 	
-	proc (l: Listener) FINALIZE-
+	proc (l: Listener) FINALIZE*
 	begin 
 		with l: Listener do 
 			if l.sock # INVALID_SOCKET then
@@ -411,7 +411,7 @@ module CommTCP
 		s.sock := INVALID_SOCKET
 	end Close
 	
-	proc (s: Stream) FINALIZE-
+	proc (s: Stream) FINALIZE*
 	begin 
 		if s.sock # INVALID_SOCKET then
 			s.Close 

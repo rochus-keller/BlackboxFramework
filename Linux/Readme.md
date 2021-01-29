@@ -6,5 +6,7 @@ Then I removed the Cons, Dev, Dev2, Obx, Sql, and parts of the Gtk2 and Lin subs
 
 Then I removed all procedures (and some of the types and consts) from the Gtk2* and Lin* files which are no longer used by the subset of the remaining subsysytems. The resulting code has ~73 kLOC (physical code lines, no whitespace or comment only lines).
 
+Note that this version mapps all wchar to char and is only compatible with ObxIDE parser <= 0.2.
+
 The original Blackbox framework source files are licensed under a BSD 2-clause license (see file LICENSE.txt).
 

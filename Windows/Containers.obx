@@ -18,7 +18,8 @@ module Containers
 	
 	
 	
-	import Kernel, Services, Ports, Dialog, Stores, Models, Views, Controllers, Properties, Mechanisms
+	import K := Kernel, Services, Ports, Dialog, Stores, Models, Views, Controllers, 
+			Properties, Mechanisms
 	
 	const 
 		// Controller.opts
@@ -136,7 +137,7 @@ module Containers
 	
 	// Model
 	
-	proc (m: Model) Internalize-(var rd: Stores.Reader)  // extensible
+	proc (m: Model) Internalize*(var rd: Stores.Reader)  // extensible
 		var 
 			thisVersion: integer
 	begin 
@@ -147,7 +148,7 @@ module Containers
 		rd.ReadVersion(minVersion, maxModelVersion, thisVersion)
 	end Internalize
 	
-	proc (m: Model) Externalize-(var wr: Stores.Writer)  // extensible
+	proc (m: Model) Externalize*(var wr: Stores.Writer)  // extensible
 	begin 
 		m.Externalize^(wr)
 		wr.WriteVersion(maxModelVersion)
@@ -155,12 +156,12 @@ module Containers
 	
 	proc (m: Model) GetEmbeddingLimits*(var minW, maxW, minH, maxH: integer)  end // new abstract
 	proc (m: Model) ReplaceView*(old, new_: Views.View)  end // new abstract
-	proc (m: Model) InitFrom-(source: Model)  end // new empty
+	proc (m: Model) InitFrom*(source: Model)  end // new empty
 	
 	// View
 	
-	proc (v: View) AcceptableModel-(m: Model): boolean  end // new abstract
-	proc (v: View) InitModel2-(m: Model)  end // new empty
+	proc (v: View) AcceptableModel*(m: Model): boolean  end // new abstract
+	proc (v: View) InitModel2*(m: Model)  end // new empty
 	proc (v: View) InitModel*(m: Model)  // new
 	begin 
 		assert((v.model = nil) or (v.model = m), 20)
@@ -172,10 +173,10 @@ module Containers
 	end InitModel
 	
 	
-	proc (v: View) Externalize2-(var rd: Stores.Writer)  end // new empty
-	proc (v: View) Internalize2-(var rd: Stores.Reader)  end // new empty
+	proc (v: View) Externalize2*(var rd: Stores.Writer)  end // new empty
+	proc (v: View) Internalize2*(var rd: Stores.Reader)  end // new empty
 	
-	proc (v: View) Internalize-(var rd: Stores.Reader) 
+	proc (v: View) Internalize*(var rd: Stores.Reader) 
 		var 
 			st: Stores.Store
 			c: Controller
@@ -220,7 +221,7 @@ module Containers
 		v.Internalize2(rd)
 	end Internalize
 	
-	proc (v: View) Externalize-(var wr: Stores.Writer) 
+	proc (v: View) Externalize*(var wr: Stores.Writer) 
 	begin 
 		assert(v.model # nil, 20)
 		v.Externalize^(wr)
@@ -234,9 +235,9 @@ module Containers
 		v.Externalize2(wr)
 	end Externalize
 	
-	proc (v: View) CopyFromModelView2-(source: Views.View; model: Models.Model)  end // new empty
+	proc (v: View) CopyFromModelView2*(source: Views.View; model: Models.Model)  end // new empty
 	
-	proc (v: View) CopyFromModelView-(source: Views.View; model: Models.Model) 
+	proc (v: View) CopyFromModelView*(source: Views.View; model: Models.Model) 
 		var 
 			c: Controller
 	begin 
@@ -300,7 +301,7 @@ module Containers
 		end 
 	end Neutralize
 	
-	proc (v: View) ConsiderFocusRequestBy-(view: Views.View) 
+	proc (v: View) ConsiderFocusRequestBy*(view: Views.View) 
 	begin 
 		if v.controller # nil then
 			v.controller.ConsiderFocusRequestBy(view) 
@@ -308,14 +309,14 @@ module Containers
 	end ConsiderFocusRequestBy
 	
 	
-	proc (v: View) HandleModelMsg2-(var msg: Models.Message)  end // new empty
-	proc (v: View) HandleViewMsg2-(f: Views.Frame; var msg: Views.Message)  end // new empty
-	proc (v: View) HandlePropMsg2-(var p: Properties.Message)  end // new empty
-	proc (v: View) HandleCtrlMsg2-(f: Views.Frame; var msg: Controllers.Message
+	proc (v: View) HandleModelMsg2*(var msg: Models.Message)  end // new empty
+	proc (v: View) HandleViewMsg2*(f: Views.Frame; var msg: Views.Message)  end // new empty
+	proc (v: View) HandlePropMsg2*(var p: Properties.Message)  end // new empty
+	proc (v: View) HandleCtrlMsg2*(f: Views.Frame; var msg: Controllers.Message
 		var focus: Views.View)  end // new empty
 	
 	
-	proc (v: View) HandleModelMsg-(var msg: Models.Message) 
+	proc (v: View) HandleModelMsg*(var msg: Models.Message) 
 	begin 
 		v.HandleModelMsg2(msg)
 		if v.controller # nil then
@@ -323,7 +324,7 @@ module Containers
 		end 
 	end HandleModelMsg
 	
-	proc (v: View) HandleViewMsg-(f: Views.Frame; var msg: Views.Message) 
+	proc (v: View) HandleViewMsg*(f: Views.Frame; var msg: Views.Message) 
 	begin 
 		v.HandleViewMsg2(f, msg)
 		if v.controller # nil then
@@ -349,7 +350,7 @@ module Containers
 		end 
 	end HandleCtrlMsg
 	
-	proc (v: View) HandlePropMsg-(var p: Properties.Message) 
+	proc (v: View) HandlePropMsg*(var p: Properties.Message) 
 	begin 
 		v.HandlePropMsg2(p)
 		if v.controller # nil then
@@ -360,10 +361,10 @@ module Containers
 	
 	// Controller
 	
-	proc (c: Controller) Externalize2-(var rd: Stores.Writer)  end // new empty
-	proc (c: Controller) Internalize2-(var rd: Stores.Reader)  end // new empty
+	proc (c: Controller) Externalize2*(var rd: Stores.Writer)  end // new empty
+	proc (c: Controller) Internalize2*(var rd: Stores.Reader)  end // new empty
 	
-	proc (c: Controller) Internalize-(var rd: Stores.Reader) 
+	proc (c: Controller) Internalize*(var rd: Stores.Reader) 
 		var 
 			v: integer
 	begin 
@@ -379,7 +380,7 @@ module Containers
 		c.Internalize2(rd)
 	end Internalize
 	
-	proc (c: Controller) Externalize-(var wr: Stores.Writer) 
+	proc (c: Controller) Externalize*(var wr: Stores.Writer) 
 	begin 
 		c.Externalize^(wr)
 		wr.WriteVersion(maxCtrlVersion)
@@ -387,7 +388,7 @@ module Containers
 		c.Externalize2(wr)
 	end Externalize
 	
-	proc (c: Controller) CopyFrom-(source: Stores.Store)  // extensible
+	proc (c: Controller) CopyFrom*(source: Stores.Store)  // extensible
 	begin 
 		with source: Controller do 
 			c.opts := source.opts
@@ -681,7 +682,7 @@ module Containers
 		c.MarkCaret(f, show)
 	end Mark
 	
-	proc (c: Controller) RestoreMarks2-(f: Views.Frame; l, t, r, b: integer)  end // new empty
+	proc (c: Controller) RestoreMarks2*(f: Views.Frame; l, t, r, b: integer)  end // new empty
 	proc (c: Controller) RestoreMarks*(f: Views.Frame; l, t, r, b: integer)  // new
 	begin 
 		if f.mark then
@@ -690,7 +691,7 @@ module Containers
 		end 
 	end RestoreMarks
 	
-	proc (c: Controller) Neutralize2- end // new empty
+	proc (c: Controller) Neutralize2* end // new empty
 	// caret needs to be removed by this method
 	
 	proc (c: Controller) Neutralize* // new
@@ -1769,7 +1770,7 @@ module Containers
 			h: Model
 	begin 
 		assert(m # nil, 20)
-		Kernel.NewObj(h, Kernel.TypeOf(m))
+		K.NewObj(h, K.TypeOf(m))
 		h.InitFrom(m)
 		return h
 	end CloneOf

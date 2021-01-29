@@ -252,7 +252,7 @@ module Controllers
 	
 	// Controller
 	
-	proc (c: Controller) Internalize-(var rd: Stores.Reader)  // extensible
+	proc (c: Controller) Internalize*(var rd: Stores.Reader)  // extensible
 		// pre: ~c.init
 		// post: c.init
 		var 
@@ -262,7 +262,7 @@ module Controllers
 		rd.ReadVersion(minVersion, maxVersion, thisVersion)
 	end Internalize
 	
-	proc (c: Controller) Externalize-(var wr: Stores.Writer)  // extensible
+	proc (c: Controller) Externalize*(var wr: Stores.Writer)  // extensible
 	// pre: c.init
 	begin 
 		c.Externalize^(wr)

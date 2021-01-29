@@ -154,7 +154,7 @@ module HostTextConv
 			| 9fx: 
 				wr.WriteChar(0178x) 
 			| 0x .. 8x, 0bx, 0cx, 0ex .. 1fx, 7fx, 81x, 8dx, 8fx .. 90x, 9dx: 
-				wr.WriteChar(chr(0ef00h + ord(ch))) 
+				wr.WriteChar(wchr(0ef00h + ord(ch))) 
 		end 
 	end WriteWndChar
 	
@@ -162,7 +162,7 @@ module HostTextConv
 	begin 
 		if ch >= 100x then
 			if (ch >= 0ef00x) & (ch <= 0efffx) then
-				ch := chr(ord(ch) - 0ef00h) 
+				ch := wchr(ord(ch) - 0ef00h) 
 			elsif ch = 20acx then  // euro
 				ch := 80x 
 			elsif ch = 201ax then 
@@ -311,7 +311,7 @@ module HostTextConv
 				b: byte
 		begin 
 			rd.ReadByte(b)
-			ch := short(chr(b))
+			ch := chr(b)
 		end Next
 		
 		proc WriteDest(ch: wchar) 
@@ -925,7 +925,7 @@ module HostTextConv
 						Next(ch) 
 					// unicode
 					elsif comm = "u" then 
-						Write(chr(val_))
+						Write(wchr(val_))
 						skipCnt := uniCnt 
 					elsif comm = "uc" then 
 						if hasNum then
@@ -1023,7 +1023,7 @@ module HostTextConv
 					else 
 						val_ := 16 * val_ + ord(cap(ch)) - ord("A") + 10 
 					end 
-					WriteCP(short(chr(val_)))
+					WriteCP(chr(val_))
 					Next(ch) 
 				else 
 					if ch = "~" then // nonbreaking space
@@ -1577,7 +1577,7 @@ module HostTextConv
 						inc(len_, 2) 
 					elsif (ch >= " ") or (ch = TAB) then 
 						if (ch >= 0ef00x) & (ch <= 0efffx) then
-							ch := chr(ord(ch) - 0ef00h) 
+							ch := wchr(ord(ch) - 0ef00h) 
 						end 
 						SYSTEM.PUT(adr, ch)
 						inc(adr, 2)
@@ -1689,9 +1689,9 @@ module HostTextConv
 			r.ReadSChar(ch0)
 			r.ReadSChar(ch1)
 			if rev then
-				uc := chr(ord(ch1) + 256 * ord(ch0)) 
+				uc := wchr(ord(ch1) + 256 * ord(ch0)) 
 			else 
-				uc := chr(ord(ch0) + 256 * ord(ch1)) 
+				uc := wchr(ord(ch0) + 256 * ord(ch1)) 
 			end 
 			dec(len_, 2)
 			if uc = 0fffex then
@@ -1919,7 +1919,7 @@ module HostTextConv
 					wr.WriteChar(0b2x) 
 				| 0x .. 8x, 0bx, 0cx, 0ex .. 1fx, 7fx, 
 				0b0x .. 0b4x, 0b9x .. 0bcx, 0bfx .. 0c5x, 0c8x .. 0cex, 0d9x .. 0dcx, 0dfx, 0fex, 0ffx: 
-					wr.WriteChar(chr(0ef00h + ord(ch))) 
+					wr.WriteChar(wchr(0ef00h + ord(ch))) 
 			end 
 		end ConvertChar
 	
@@ -2069,7 +2069,7 @@ module HostTextConv
 						w.WriteChar(LF) 
 					elsif (ch >= " ") or (ch = TAB) then 
 						if (ch >= 0ef00x) & (ch <= 0efffx) then
-							ch := chr(ord(ch) - 0ef00h) 
+							ch := wchr(ord(ch) - 0ef00h) 
 						end 
 						w.WriteChar(ch) 
 					end 
@@ -2164,11 +2164,11 @@ module HostTextConv
 		begin 
 			rd.ReadByte(c1)
 			if c1 >= 0 then // 0xxx xxxx
-				ch := chr(c1) 
+				ch := wchr(c1) 
 			elsif bits(c1) * {7, 6, 5} = {7, 6} then  // 110x xxxx, 10xx xxxx
 				rd.ReadByte(c2)
 				if bits(c2) * {7, 6} = {7} then
-					ch := chr(64 * (c1 mod 32) + (c2 mod 64)) 
+					ch := wchr(64 * (c1 mod 32) + (c2 mod 64)) 
 				else 
 					FormatError 
 				end  
@@ -2176,7 +2176,7 @@ module HostTextConv
 				rd.ReadByte(c2)
 				rd.ReadByte(c3)
 				if (bits(c2) * {7, 6} = {7}) & (bits(c3) * {7, 6} = {7}) then
-					ch := chr(4096 * (c1 mod 16) + 64 * (c2 mod 64) + (c3 mod 64)) 
+					ch := wchr(4096 * (c1 mod 16) + 64 * (c2 mod 64) + (c3 mod 64)) 
 				else 
 					FormatError 
 				end  
@@ -2228,14 +2228,14 @@ module HostTextConv
 		proc WriteUtf8Char(var wr: Stores.Writer; ch: wchar) 
 		begin 
 			if ch <= 7fx then
-				wr.WriteByte(short(short(ord(ch)))) 
+				wr.WriteByte(short(ord(ch))) 
 			elsif ch <= 7ffx then 
-				wr.WriteByte(short(short(-64 + ord(ch) div 64)))
-				wr.WriteByte(short(short(-128 + ord(ch) mod 64))) 
+				wr.WriteByte(short(-64 + ord(ch) div 64))
+				wr.WriteByte(short(-128 + ord(ch) mod 64))
 			else 
-				wr.WriteByte(short(short(-32 + ord(ch) div 4096)))
-				wr.WriteByte(short(short(-128 + ord(ch) div 64 mod 64)))
-				wr.WriteByte(short(short(-128 + ord(ch) mod 64))) 
+				wr.WriteByte(short(-32 + ord(ch) div 4096))
+				wr.WriteByte(short(-128 + ord(ch) div 64 mod 64))
+				wr.WriteByte(short(-128 + ord(ch) mod 64))
 			end 
 		end WriteUtf8Char
 	

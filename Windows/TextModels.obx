@@ -301,7 +301,7 @@ module TextModels
 	
 	// Model
 	
-	proc (m: Model) Internalize-(var rd: Stores.Reader)  // extensible
+	proc (m: Model) Internalize*(var rd: Stores.Reader)  // extensible
 		var 
 			thisVersion: integer
 	begin 
@@ -312,7 +312,7 @@ module TextModels
 		rd.ReadVersion(minVersion, maxModelVersion, thisVersion)
 	end Internalize
 	
-	proc (m: Model) Externalize-(var wr: Stores.Writer)  // extensible
+	proc (m: Model) Externalize*(var wr: Stores.Writer)  // extensible
 	begin 
 		m.Externalize^(wr)
 		wr.WriteVersion(maxModelVersion)
@@ -352,7 +352,7 @@ module TextModels
 	
 	// Attributes
 	
-	proc (a: Attributes) CopyFrom-(source: Stores.Store)  // extensible
+	proc (a: Attributes) CopyFrom*(source: Stores.Store)  // extensible
 	// pre: ~a.init, source.init
 	// post: a.init
 	begin 
@@ -366,7 +366,7 @@ module TextModels
 		end 
 	end CopyFrom
 	
-	proc (a: Attributes) Internalize-(var rd: Stores.Reader)  // extensible
+	proc (a: Attributes) Internalize*(var rd: Stores.Reader)  // extensible
 		// pre: ~a.init
 		// post: a.init
 		var 
@@ -403,7 +403,7 @@ module TextModels
 		rd.ReadInt(a.offset)
 	end Internalize
 	
-	proc (a: Attributes) Externalize-(var wr: Stores.Writer)  // extensible
+	proc (a: Attributes) Externalize*(var wr: Stores.Writer)  // extensible
 		// pre: a.init
 		var 
 			f: Fonts.Font
@@ -508,7 +508,7 @@ module TextModels
 		return p
 	end Prop
 	
-	proc (a: Attributes) ModifyFromProp-(p: Properties.Property)  // new extensible
+	proc (a: Attributes) ModifyFromProp*(p: Properties.Property)  // new extensible
 		// pre: ~a.init
 		var 
 			face: Fonts.Typeface
@@ -603,12 +603,12 @@ module TextModels
 	
 	// AlienAttributes
 	
-	proc (a: AlienAttributes) Externalize-(var wr: Stores.Writer) 
+	proc (a: AlienAttributes) Externalize*(var wr: Stores.Writer) 
 	begin 
 		halt(100)
 	end Externalize
 	
-	proc (a: AlienAttributes) CopyFrom-(source: Stores.Store) 
+	proc (a: AlienAttributes) CopyFrom*(source: Stores.Store) 
 	begin 
 		a.CopyFrom^(source)
 		a.store := Stores.CopyOf(source(AlienAttributes).store)(Stores.Alien)
@@ -620,7 +620,7 @@ module TextModels
 		return nil
 	end Prop
 	
-	proc (a: AlienAttributes) ModifyFromProp-(p: Properties.Property) 
+	proc (a: AlienAttributes) ModifyFromProp*(p: Properties.Property) 
 	end ModifyFromProp
 	
 	
@@ -2071,7 +2071,7 @@ module TextModels
 		end 
 	end ReplaceView
 	
-	proc (t: StdModel) CopyFrom-(source: Stores.Store) 
+	proc (t: StdModel) CopyFrom*(source: Stores.Store) 
 	begin 
 		StdInit(t)
 		with source: StdModel do 
@@ -2267,7 +2267,7 @@ module TextModels
 					cache[n].end_ := rd.pos + len_ 
 				end  
 			end 
-			rd.char_ := chr(cache[n].buf[pos] mod 256)
+			rd.char_ := wchr(cache[n].buf[pos] mod 256)
 			rd.view := nil
 			inc(rd.pos)
 			inc(rd.off)
@@ -2280,7 +2280,7 @@ module TextModels
 			rd.reader := u.file.NewReader(rd.reader)
 			rd.reader.SetPos(u.org + rd.off * 2)
 			rd.reader.ReadBytes(lc, 0, 2)
-			rd.char_ := chr(lc[0] mod 256 + 256 * (lc[1] + 128))
+			rd.char_ := wchr(lc[0] mod 256 + 256 * (lc[1] + 128))
 			rd.view := nil
 			if (cache[n].id = t.id) & (rd.pos = cache[n].end_) then
 				cache[n].end_ := cache[n].end_ + 1
@@ -2380,14 +2380,14 @@ module TextModels
 					cache[n].end_ := rd.pos + 1 
 				end  
 			end 
-			rd.char_ := chr(cache[n].buf[pos] mod 256)
+			rd.char_ := wchr(cache[n].buf[pos] mod 256)
 			rd.view := nil 
 		| u: LPiece do  // ~(u IS Piece)
 			rd.attr := u.attr
 			rd.reader := u.file.NewReader(rd.reader)
 			rd.reader.SetPos(u.org + 2 * rd.off)
 			rd.reader.ReadBytes(lc, 0, 2)
-			rd.char_ := chr(lc[0] mod 256 + 256 * (lc[1] + 128))
+			rd.char_ := wchr(lc[0] mod 256 + 256 * (lc[1] + 128))
 			rd.view := nil
 			if (cache[n].id = t.id) & (rd.pos = cache[n].beg) then
 				cache[n].beg := cache[n].beg - 1
@@ -2619,7 +2619,7 @@ module TextModels
 		if t.spill.file = nil then
 			OpenSpill(t.spill) 
 		end 
-		t.spill.writer.WriteByte(short(ord(ch)))
+		t.spill.writer.WriteByte(ord(ch))
 		spillPos := t.spill.len_
 		t.spill.len_ := spillPos + 1
 		if (t.Domain() = nil) or (t.Domain().GetSequencer() = nil) then
@@ -2703,8 +2703,8 @@ module TextModels
 				OpenSpill(t.spill) 
 			end 
 			fw := t.spill.writer
-			fw.WriteByte(short(short(ord(ch))))
-			fw.WriteByte(short(short(ord(ch) div 256 - 128)))
+			fw.WriteByte(short(ord(ch)))
+			fw.WriteByte(short(ord(ch) div 256 - 128))
 			spillPos := t.spill.len_
 			t.spill.len_ := spillPos + 2
 			if (t.Domain() = nil) or (t.Domain().GetSequencer() = nil) then

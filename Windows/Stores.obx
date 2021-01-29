@@ -238,9 +238,9 @@ module Stores
 		return d
 	end Domain
 	
-	proc (s: Store) CopyFrom-(source: Store)  end // new empty
+	proc (s: Store) CopyFrom*(source: Store)  end // new empty
 	
-	proc (s: Store) Internalize-(var rd: Reader)  // new extensible
+	proc (s: Store) Internalize*(var rd: Reader)  // new extensible
 		var 
 			thisVersion: integer
 	begin 
@@ -251,9 +251,9 @@ module Stores
 		end 
 	end Internalize
 	
-	proc (s: Store) ExternalizeAs-(var s1: Store)  end // new empty
+	proc (s: Store) ExternalizeAs*(var s1: Store)  end // new empty
 	
-	proc (s: Store) Externalize-(var wr: Writer)  // new extensible
+	proc (s: Store) Externalize*(var wr: Writer)  // new extensible
 	begin 
 		wr.WriteVersion(maxStoreVersion)
 		if s.isElem then
@@ -264,7 +264,7 @@ module Stores
 	
 	// Alien
 	
-	proc (a: Alien) CopyFrom-(source: Store) 
+	proc (a: Alien) CopyFrom*(source: Store) 
 		var 
 			s, c, cp: AlienComp
 			piece: AlienPiece
@@ -302,12 +302,12 @@ module Stores
 		end 
 	end CopyFrom
 	
-	proc (a: Alien) Internalize-(var rd: Reader) 
+	proc (a: Alien) Internalize*(var rd: Reader) 
 	begin 
 		halt(100)
 	end Internalize
 	
-	proc (a: Alien) Externalize-(var w: Writer) 
+	proc (a: Alien) Externalize*(var w: Writer) 
 	begin 
 		halt(100)
 	end Externalize
@@ -911,7 +911,7 @@ module Stores
 			le: array 2 of byte
 	begin 
 		rd.rider.ReadBytes(le, 0, 2)
-		x := chr(le[0] mod 256 + (le[1] mod 256) * 256)
+		x := wchr(le[0] mod 256 + (le[1] mod 256) * 256)
 	end ReadChar
 	
 	proc (var rd: Reader) ReadByte*(var x: byte)  // new

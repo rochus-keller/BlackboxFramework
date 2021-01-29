@@ -53,7 +53,7 @@ module Coroutines
 		stackMin-, stackMax-: integer
 		nofTasks, sleep0: integer
 	
-	proc (this: Coroutine) Run-()  end // new abstract
+	proc (this: Coroutine) Run*()  end // new abstract
 	
 	proc (this: MainCoroutine) Run() 
 	begin  // must never be called
@@ -224,7 +224,7 @@ module Coroutines
 		assert(this.source = main, 80)
 	end Sleep
 	
-	proc (this: Coroutine) FINALIZE-
+	proc (this: Coroutine) FINALIZE*
 	begin 
 		// main is finalized in FiniMain
 		if this.impl # nil then

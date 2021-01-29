@@ -203,7 +203,7 @@ module TextControllers
 	
 	// Controller
 	
-	proc (c: Controller) Internalize2-(var rd: Stores.Reader)  // extensible
+	proc (c: Controller) Internalize2*(var rd: Stores.Reader)  // extensible
 		var 
 			v: integer
 	begin 
@@ -211,7 +211,7 @@ module TextControllers
 		rd.ReadVersion(minVersion, maxVersion, v)
 	end Internalize2
 	
-	proc (c: Controller) Externalize2-(var wr: Stores.Writer)  // extensible
+	proc (c: Controller) Externalize2*(var wr: Stores.Writer)  // extensible
 	begin 
 		// c.Externalize^(wr);
 		wr.WriteVersion(maxVersion)

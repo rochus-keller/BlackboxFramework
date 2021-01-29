@@ -75,14 +75,14 @@ module FormControllers
 	
 	// Controller
 	
-	proc (c: Controller) Internalize2-(var rd: Stores.Reader)  // extensible
+	proc (c: Controller) Internalize2*(var rd: Stores.Reader)  // extensible
 		var 
 			thisVersion: integer
 	begin 
 		rd.ReadVersion(minVersion, maxBaseVersion, thisVersion)
 	end Internalize2
 	
-	proc (c: Controller) Externalize2-(var wr: Stores.Writer)  // extensible
+	proc (c: Controller) Externalize2*(var wr: Stores.Writer)  // extensible
 	begin 
 		wr.WriteVersion(maxBaseVersion)
 	end Externalize2

@@ -155,7 +155,7 @@ module TextViews
 	
 	// View
 	
-	proc (v: View) Internalize2-(var rd: Stores.Reader)  // extensible
+	proc (v: View) Internalize2*(var rd: Stores.Reader)  // extensible
 		// pre: ~v.init
 		// post: v.init
 		var 
@@ -168,7 +168,7 @@ module TextViews
 		rd.ReadVersion(minVersion, maxVersion, thisVersion)
 	end Internalize2
 	
-	proc (v: View) Externalize2-(var wr: Stores.Writer)  // extensible
+	proc (v: View) Externalize2*(var wr: Stores.Writer)  // extensible
 	// pre: v.init
 	begin 
 		// v.Externalize^(wr);

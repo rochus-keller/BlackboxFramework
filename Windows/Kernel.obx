@@ -104,7 +104,7 @@ module Kernel
 				next-: Module
 				opts-: set // 0..15: compiler opts, 16..31: kernel flags
 				refcnt-: integer // <0: module invalidated
-				compTime-, loadTime-: array 6 of shortint
+				compTime-, loadTime-: carray 6 of shortint
 				ext-: integer // currently not used
 				term-: Command // terminator
 				nofimps-, nofptrs-: integer
@@ -115,7 +115,7 @@ module Kernel
 				ptrs-: unsafe pointer to carray of integer
 				imports-: unsafe pointer to carray of Module
 				export-: Directory // exported objects (name sorted)
-				name-: Utf8Name 
+				name-: carray nameLen of char // Utf8Name 
 			end 
 		
 		Type* = unsafe pointer to cstruct 
@@ -123,9 +123,9 @@ module Kernel
 				size_-: integer // record: size, array: #elem, dyn array: 0, proc: sigfp
 				mod_-: Module
 				id-: integer // name idx * 256 + lev * 16 + attr * 4 + form
-				base-: array 16 of Type // signature if form = ProcTyp
+				base-: carray 16 of Type // signature if form = ProcTyp
 				fields-: Directory // new fields (declaration order)
-				ptroffs-: array any of integer  // array of any length
+				ptroffs-: carray any of integer  // array of any length
 			end 
 		
 		Object* = unsafe pointer to ObjDesc
@@ -139,13 +139,13 @@ module Kernel
 		
 		Directory* = unsafe pointer to cstruct 
 				num-: integer // number of entries
-				obj-: array any of ObjDesc  // array of any length
+				obj-: carray any of ObjDesc  // array of any length
 			end 
 		
 		Signature* = unsafe pointer to cstruct 
 				retStruct-: Type // id of basic type or pointer to typedesc or 0
 				num-: integer // number of parameters
-				par-: array any of cstruct  // parameters
+				par-: carray any of cstruct  // parameters
 						id-: integer // name idx * 256 + kind
 						struct-: Type  // id of basic type or pointer to typedesc
 					end  
@@ -537,7 +537,7 @@ module Kernel
 	proc Lower*(ch: wchar): wchar 
 	begin 
 		if ("A" <= ch) & (ch <= "Z") then
-			return chr(ord(ch) + 32) 
+			return wchr(ord(ch) + 32) 
 		elsif ch > 7fx then 
 			return S.VAL(wchar, WinApi.CharLowerW(S.VAL(WinApi.PtrWSTR, ord(ch)))) 
 		else 
@@ -590,7 +590,7 @@ module Kernel
 					FormatError
 					return  
 				end 
-				out[j] := chr(val_)
+				out[j] := wchr(val_)
 				inc(j) 
 			elsif ch < 0f0x then 
 				val_ := ord(ch) - 224
@@ -608,7 +608,7 @@ module Kernel
 					FormatError
 					return  
 				end 
-				out[j] := chr(val_)
+				out[j] := wchr(val_)
 				inc(j) 
 			else 
 				FormatError
@@ -637,19 +637,19 @@ module Kernel
 			val_ := ord(in_[i])
 			inc(i)
 			if val_ < 128 then
-				out[j] := short(chr(val_))
+				out[j] := chr(val_)
 				inc(j) 
 			elsif val_ < 2048 then 
-				out[j] := short(chr(val_ div 64 + 192))
+				out[j] := chr(val_ div 64 + 192)
 				inc(j)
-				out[j] := short(chr(val_ mod 64 + 128))
+				out[j] := chr(val_ mod 64 + 128)
 				inc(j) 
 			else 
-				out[j] := short(chr(val_ div 4096 + 224))
+				out[j] := chr(val_ div 4096 + 224)
 				inc(j)
-				out[j] := short(chr(val_ div 64 mod 64 + 128))
+				out[j] := chr(val_ div 64 mod 64 + 128)
 				inc(j)
-				out[j] := short(chr(val_ mod 64 + 128))
+				out[j] := chr(val_ mod 64 + 128)
 				inc(j) 
 			end  
 		end 
@@ -1687,13 +1687,13 @@ module Kernel
 		S.GET(ref, mode)
 		desc := nil
 		if mode >= 0fdx then
-			mode := short(chr(ord(mode) - 0fch))
+			mode := chr(ord(mode) - 0fch)
 			inc(ref)
 			RefCh(ref, form)
 			if form = 10x then
 				S.GET(ref, desc)
 				inc(ref, 4)
-				form := short(chr(16 + desc.id mod 4)) 
+				form := chr(16 + desc.id mod 4)
 			end 
 			RefNum(ref, adr)
 			RefName(ref, name) 
@@ -2500,8 +2500,8 @@ module Kernel
 			title: array 16 of wchar
 	begin 
 		title := "Error xy"
-		title[6] := chr(id div 10 + ord("0"))
-		title[7] := chr(id mod 10 + ord("0"))
+		title[6] := wchr(id div 10 + ord("0"))
+		title[7] := wchr(id mod 10 + ord("0"))
 		res := WinApi.MessageBoxW(0, str, title, {})
 		if res = 0 then // win2000/XP
 			res := WinApi.LoadLibraryA("COMCTL32.dll")
@@ -2548,7 +2548,7 @@ module Kernel
 					if y > 9 then
 						y := y + (ord("A") - ord("0") - 10) 
 					end 
-					out[i] := chr(y + ord("0"))
+					out[i] := wchr(y + ord("0"))
 					dec(i) 
 				end 
 				inc(len_, n) 
@@ -3105,7 +3105,7 @@ module Kernel
 		total := 0
 		used := 0
 		sentinelBlock.size_ := max(integer)
-		sentinel := S.ADR(sentinelBlock)
+		sentinel := sentinelBlock
 		
 		S.PUTREG(ML, S.ADR(modList))
 		WinApi.OutputDebugStringW("BlackBox started")

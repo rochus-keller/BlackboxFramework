@@ -254,7 +254,7 @@ module Stores64
 			le: array 2 of byte
 	begin 
 		rd.rider.ReadBytes(le, 0, 2)
-		x := chr(le[0] mod 256 + (le[1] mod 256) * 256)
+		x := wchr(le[0] mod 256 + (le[1] mod 256) * 256)
 	end ReadChar
 	
 	proc (var rd: Reader) ReadByte*(var x: byte)  // new

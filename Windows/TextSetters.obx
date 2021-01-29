@@ -227,7 +227,7 @@ module TextSetters
 	
 	// Setter
 	
-	proc (s: Setter) CopyFrom-(source: Stores.Store)  // extensible
+	proc (s: Setter) CopyFrom*(source: Stores.Store)  // extensible
 	begin 
 		with source: Setter do 
 			s.text := source.text
@@ -237,7 +237,7 @@ module TextSetters
 		end 
 	end CopyFrom
 	
-	proc (s: Setter) Internalize-(var rd: Stores.Reader)  // extensible
+	proc (s: Setter) Internalize*(var rd: Stores.Reader)  // extensible
 		var 
 			thisVersion: integer
 	begin 
@@ -248,7 +248,7 @@ module TextSetters
 		rd.ReadVersion(minVersion, maxVersion, thisVersion)
 	end Internalize
 	
-	proc (s: Setter) Externalize-(var wr: Stores.Writer)  // extensible
+	proc (s: Setter) Externalize*(var wr: Stores.Writer)  // extensible
 	begin 
 		s.Externalize^(wr)
 		wr.WriteVersion(maxVersion)

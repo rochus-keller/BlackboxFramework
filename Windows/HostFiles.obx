@@ -485,7 +485,7 @@ module HostFiles
 		str := tempName
 		i := 7
 		while i > 2 do 
-			str[i] := chr(num mod 10 + ord("0"))
+			str[i] := wchr(num mod 10 + ord("0"))
 			dec(i)
 			num := num div 10 
 		end 
@@ -1308,7 +1308,7 @@ module HostFiles
 					tn := oldname
 					i := len(tn) - 1
 					repeat 
-						tn[i] := chr(ord(tn[i]) + 1)
+						tn[i] := wchr(ord(tn[i]) + 1)
 						if WinApi.MoveFileW(oldname, tn) # 0 then
 							res := ok 
 						else 

@@ -102,7 +102,7 @@ module XYplane
 	begin 
 		if WinApi.PeekMessageW(msg, 0, WinApi.WM_KEYDOWN, WinApi.WM_CHAR, 1) # 0 then
 			if msg.message = WinApi.WM_CHAR then
-				return chr(msg.wParam) 
+				return wchr(msg.wParam) 
 			else 
 				res := WinApi.TranslateMessage(msg)
 				res := WinApi.DispatchMessageW(msg) 

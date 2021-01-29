@@ -1791,16 +1791,16 @@ module HostCFrames
 			val_, min_, max_, i, j, k: integer
 	begin 
 		GetTimePart(time, 1, val_, min_, max_)
-		str[0] := chr(val_ div 10 + ord("0"))
-		str[1] := chr(val_ mod 10 + ord("0"))
+		str[0] := wchr(val_ div 10 + ord("0"))
+		str[1] := wchr(val_ mod 10 + ord("0"))
 		str[2] := timeSep
 		GetTimePart(time, 2, val_, min_, max_)
-		str[3] := chr(val_ div 10 + ord("0"))
-		str[4] := chr(val_ mod 10 + ord("0"))
+		str[3] := wchr(val_ div 10 + ord("0"))
+		str[4] := wchr(val_ mod 10 + ord("0"))
 		str[5] := timeSep
 		GetTimePart(time, 3, val_, min_, max_)
-		str[6] := chr(val_ div 10 + ord("0"))
-		str[7] := chr(val_ mod 10 + ord("0"))
+		str[6] := wchr(val_ div 10 + ord("0"))
+		str[7] := wchr(val_ mod 10 + ord("0"))
 		if lastPart = 3 then
 			str[8] := 0x 
 		else 
@@ -2160,14 +2160,14 @@ module HostCFrames
 			end 
 			GetDatePart(date, p, val_, min_, max_)
 			if max_ = 9999 then
-				str[i] := chr(val_ div 1000 mod 10 + ord("0"))
+				str[i] := wchr(val_ div 1000 mod 10 + ord("0"))
 				inc(i)
-				str[i] := chr(val_ div 100 mod 10 + ord("0"))
+				str[i] := wchr(val_ div 100 mod 10 + ord("0"))
 				inc(i) 
 			end 
-			str[i] := chr(val_ div 10 mod 10 + ord("0"))
+			str[i] := wchr(val_ div 10 mod 10 + ord("0"))
 			inc(i)
-			str[i] := chr(val_ mod 10 + ord("0"))
+			str[i] := wchr(val_ mod 10 + ord("0"))
 			inc(i)
 			inc(p) 
 		end 

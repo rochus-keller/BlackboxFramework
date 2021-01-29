@@ -307,7 +307,7 @@ module StdTabViews
 		notifier := tv.notifier
 	end GetNotifier
 	
-	proc (tv: View) Externalize-(var wr: Stores.Writer) 
+	proc (tv: View) Externalize*(var wr: Stores.Writer) 
 		var 
 			l: Dialog.String
 			i: integer
@@ -329,7 +329,7 @@ module StdTabViews
 		wr.WriteInt(tv.font.weight)
 	end Externalize
 	
-	proc (tv: View) Internalize-(var rd: Stores.Reader) 
+	proc (tv: View) Internalize*(var rd: Stores.Reader) 
 		var 
 			thisVersion, i, size_, weight: integer
 			l: Dialog.String
@@ -359,7 +359,7 @@ module StdTabViews
 		end 
 	end Internalize
 	
-	proc (tv: View) CopyFromSimpleView-(source: Views.View) 
+	proc (tv: View) CopyFromSimpleView*(source: Views.View) 
 		var 
 			l: Dialog.String
 			v: Views.View
@@ -521,7 +521,7 @@ module StdTabViews
 	
 	// Actions and Operations
 	
-	proc (a: BalanceAction) Do-
+	proc (a: BalanceAction) Do*
 	begin 
 		a.v.Reset()
 		halt(100) // Unbalanced call to BeginChanges/EndChanges
@@ -609,7 +609,7 @@ module StdTabViews
 		o.tv.Update
 	end Do
 	
-	proc (tv: View) HandlePropMsg-(var msg: Properties.Message) 
+	proc (tv: View) HandlePropMsg*(var msg: Properties.Message) 
 		var 
 			stp: Properties.StdProp
 			p: Properties.Property

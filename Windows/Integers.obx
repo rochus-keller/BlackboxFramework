@@ -949,7 +949,7 @@ module Integers
 		else 
 			d := 0 
 		end 
-		return chr(ord("0") + d)
+		return wchr(ord("0") + d)
 	end ThisDigit10
 	
 	proc Compare*(x, y: Integer): integer 
@@ -1350,7 +1350,7 @@ module Integers
 				b := short(b div 10) 
 			end 
 			repeat 
-				s[i] := chr(d div b + ord("0"))
+				s[i] := wchr(d div b + ord("0"))
 				inc(i)
 				d := short(d mod b)
 				b := short(b div 10) 
@@ -1360,7 +1360,7 @@ module Integers
 				d := x[j]
 				b := B div 10
 				repeat 
-					s[i] := chr(d div b + ord("0"))
+					s[i] := wchr(d div b + ord("0"))
 					inc(i)
 					d := short(d mod b)
 					b := short(b div 10) 

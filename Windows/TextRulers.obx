@@ -233,7 +233,7 @@ module TextRulers
 	
 	// Attributes
 	
-	proc (a: Attributes) CopyFrom-(source: Stores.Store)  // extensible
+	proc (a: Attributes) CopyFrom*(source: Stores.Store)  // extensible
 	begin 
 		with source: Attributes do 
 			assert(~a.init, 20)
@@ -263,7 +263,7 @@ module TextRulers
 		return i < a.tabs.len_
 	end HasTabsData
 	
-	proc (a: Attributes) Externalize-(var wr: Stores.Writer)  // extensible
+	proc (a: Attributes) Externalize*(var wr: Stores.Writer)  // extensible
 		// pre: a.init
 		var 
 			i: integer
@@ -317,7 +317,7 @@ module TextRulers
 		end 
 	end Externalize
 	
-	proc (a: Attributes) Internalize-(var rd: Stores.Reader)  // extensible
+	proc (a: Attributes) Internalize*(var rd: Stores.Reader)  // extensible
 		// pre: ~a.init
 		// post: a.init
 		var 
@@ -428,7 +428,7 @@ module TextRulers
 		end 
 	end ModifyFromProp
 	
-	proc (a: Attributes) ModifyFromProp-(p: Properties.Property)  // new extensible
+	proc (a: Attributes) ModifyFromProp*(p: Properties.Property)  // new extensible
 	begin 
 		ModifyFromProp(a, p)
 	end ModifyFromProp
@@ -542,12 +542,12 @@ module TextRulers
 	
 	// AlienAttributes
 	
-	proc (a: AlienAttributes) Externalize-(var wr: Stores.Writer) 
+	proc (a: AlienAttributes) Externalize*(var wr: Stores.Writer) 
 	begin 
 		halt(100)
 	end Externalize
 	
-	proc (a: AlienAttributes) Internalize-(var rd: Stores.Reader) 
+	proc (a: AlienAttributes) Internalize*(var rd: Stores.Reader) 
 	begin 
 		halt(100)
 	end Internalize
@@ -557,7 +557,7 @@ module TextRulers
 		a.InitFromProp^(nil)
 	end InitFromProp
 	
-	proc (a: AlienAttributes) ModifyFromProp-(p: Properties.Property) 
+	proc (a: AlienAttributes) ModifyFromProp*(p: Properties.Property) 
 	begin 
 		// a.InitFromProp^(NIL)
 		a.InitFromProp(nil)
@@ -577,14 +577,14 @@ module TextRulers
 	
 	
 	
-	proc (s: Style) Externalize-(var wr: Stores.Writer)  // extensible
+	proc (s: Style) Externalize*(var wr: Stores.Writer)  // extensible
 	begin 
 		s.Externalize^(wr)
 		wr.WriteVersion(maxStyleVersion)
 		WriteAttr(wr, s.attr)
 	end Externalize
 	
-	proc (s: Style) Internalize-(var rd: Stores.Reader)  // extensible
+	proc (s: Style) Internalize*(var rd: Stores.Reader)  // extensible
 		var 
 			thisVersion: integer
 	begin 
@@ -608,7 +608,7 @@ module TextRulers
 		DoSetAttrOp(s, attr)
 	end SetAttr
 	
-	proc (s: Style) CopyFrom-(source: Stores.Store)  // extensible
+	proc (s: Style) CopyFrom*(source: Stores.Store)  // extensible
 	begin 
 		with source: Style do 
 			assert(source.attr # nil, 21)
@@ -668,7 +668,7 @@ module TextRulers
 	
 	// Ruler
 	
-	proc (r: Ruler) Externalize-(var wr: Stores.Writer)  // extensible
+	proc (r: Ruler) Externalize*(var wr: Stores.Writer)  // extensible
 	begin 
 		assert(r.style # nil, 20)
 		r.Externalize^(wr)
@@ -688,7 +688,7 @@ module TextRulers
 	end InitStyle
 	
 	
-	proc (r: Ruler) Internalize-(var rd: Stores.Reader)  // extensible
+	proc (r: Ruler) Internalize*(var rd: Stores.Reader)  // extensible
 		var 
 			st: Stores.Store
 			thisVersion: integer

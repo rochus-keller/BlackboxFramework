@@ -191,7 +191,7 @@ module HostConsole
 			end 
 			j := 0
 			repeat 
-				a[j] := chr(x mod 10 + ord("0"))
+				a[j] := wchr(x mod 10 + ord("0"))
 				x := x div 10
 				inc(j) 
 			until x = 0  

@@ -682,7 +682,7 @@ module StdLinks
 		end 
 	end TrackTarget
 	
-	proc (v: Link) CopyFromSimpleView-(source: Views.View) 
+	proc (v: Link) CopyFromSimpleView*(source: Views.View) 
 	begin 
 		with source: Link do 
 			assert(source.leftSide = (source.cmd # nil), 100)
@@ -697,7 +697,7 @@ module StdLinks
 		end 
 	end CopyFromSimpleView
 	
-	proc (t: Target) CopyFromSimpleView-(source: Views.View) 
+	proc (t: Target) CopyFromSimpleView*(source: Views.View) 
 	begin 
 		with source: Target do 
 			assert(source.leftSide = (source.ident # nil), 100)
@@ -711,7 +711,7 @@ module StdLinks
 		end 
 	end CopyFromSimpleView
 	
-	proc (v: Link) Internalize-(var rd: Stores.Reader) 
+	proc (v: Link) Internalize*(var rd: Stores.Reader) 
 		var 
 			len_, version, pos: integer
 	begin 
@@ -768,7 +768,7 @@ module StdLinks
 	   0: 'cmd' stored as ASCII, standard closing behavior only
 	   1: like 0 but 'close' attribute added for non-standard closing behavior
 	   2. like 1 but 'cmd' stored as Unicode *)
-	proc (v: Link) Externalize-(var wr: Stores.Writer) 
+	proc (v: Link) Externalize*(var wr: Stores.Writer) 
 		var 
 			pos, version: integer
 	begin 
@@ -804,7 +804,7 @@ module StdLinks
 		end 
 	end Externalize
 	
-	proc (t: Target) Internalize-(var rd: Stores.Reader) 
+	proc (t: Target) Internalize*(var rd: Stores.Reader) 
 		var 
 			len_, version: integer
 	begin 
@@ -834,7 +834,7 @@ module StdLinks
 	(* version history for left side Target:
 	   0: 'ident' stored as ASCII
 	   1: like 0 but 'ident' stored as Unicode *)
-	proc (t: Target) Externalize-(var wr: Stores.Writer) 
+	proc (t: Target) Externalize*(var wr: Stores.Writer) 
 		var 
 			version: integer
 	begin 
@@ -919,7 +919,7 @@ module StdLinks
 		msg.h := asc + dsc
 	end SizePref
 	
-	proc (v: Link) HandlePropMsg-(var msg: Properties.Message) 
+	proc (v: Link) HandlePropMsg*(var msg: Properties.Message) 
 		var 
 			a: TextModels.Attributes
 			c: Models.Context
@@ -967,7 +967,7 @@ module StdLinks
 		end 
 	end HandlePropMsg
 	
-	proc (targ: Target) HandlePropMsg-(var msg: Properties.Message) 
+	proc (targ: Target) HandlePropMsg*(var msg: Properties.Message) 
 		var 
 			a: TextModels.Attributes
 			c: Models.Context

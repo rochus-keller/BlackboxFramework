@@ -368,7 +368,7 @@ module HostRegistry
 			i := 1
 			while name[i] # 0x do 
 				if (name[i] >= "A") & (name[i] <= "Z") then
-					name[i] := chr(ord(name[i]) + ord("a") - ord("A")) 
+					name[i] := wchr(ord(name[i]) + ord("a") - ord("A")) 
 				end 
 				inc(i) 
 			end  

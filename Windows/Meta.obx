@@ -1483,9 +1483,9 @@ module Meta
 		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
 		assert(var_.vis = exported, 27)
 		if var_.typ = sCharTyp then
-			SYSTEM.PUT(var_.adr, short(chr(x))) 
-		elsif var_.typ = charTyp then 
 			SYSTEM.PUT(var_.adr, chr(x)) 
+		elsif var_.typ = charTyp then 
+			SYSTEM.PUT(var_.adr, wchr(x)) 
 		elsif var_.typ = byteTyp then 
 			SYSTEM.PUT(var_.adr, short(short(x))) 
 		elsif var_.typ = sIntTyp then 
@@ -1770,7 +1770,7 @@ module Meta
 			i.adr := attr.adr
 			i.mod_ := attr.mod_
 			i.desc := attr.desc
-			i.ptr := attr.ptr
+			i.ptr := SYSTEM.VAL(ArrayPtr,attr.ptr) // RK
 			i.ext := attr.ext
 			if i.ptr = nil then
 				i.ptr := dummy 

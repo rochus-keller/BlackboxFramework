@@ -149,7 +149,7 @@ module Documents
 	
 	// Document
 	
-	proc (d: Document) Internalize2-(var rd: Stores.Reader)  // extensible
+	proc (d: Document) Internalize2*(var rd: Stores.Reader)  // extensible
 		var 
 			thisVersion: integer
 	begin 
@@ -159,7 +159,7 @@ module Documents
 		rd.ReadVersion(minVersion, maxDocVersion, thisVersion)
 	end Internalize2
 	
-	proc (d: Document) Externalize2-(var wr: Stores.Writer)  // extensible
+	proc (d: Document) Externalize2*(var wr: Stores.Writer)  // extensible
 	begin 
 		wr.WriteVersion(maxDocVersion)
 	end Externalize2

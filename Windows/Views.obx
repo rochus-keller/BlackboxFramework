@@ -234,8 +234,8 @@ module Views
 	
 	// Model protocol
 	
-	proc (v: View) CopyFromSimpleView-(source: View)  end // new empty
-	proc (v: View) CopyFromModelView-(source: View; model: Models.Model)  end // new empty
+	proc (v: View) CopyFromSimpleView*(source: View)  end // new empty
+	proc (v: View) CopyFromModelView*(source: View; model: Models.Model)  end // new empty
 	
 	proc (v: View) ThisModel*(): Models.Model  // new extensible
 	begin 
@@ -245,7 +245,7 @@ module Views
 	
 	// Store protocol
 	
-	proc (v: View) CopyFrom-(source: Stores.Store) 
+	proc (v: View) CopyFrom*(source: Stores.Store) 
 		var 
 			tm, fm: Models.Model
 			c: Models.Context
@@ -276,7 +276,7 @@ module Views
 		end 
 	end CopyFrom
 	
-	proc (v: View) Internalize-(var rd: Stores.Reader)  // extensible
+	proc (v: View) Internalize*(var rd: Stores.Reader)  // extensible
 		var 
 			thisVersion: integer
 	begin 
@@ -287,7 +287,7 @@ module Views
 		rd.ReadVersion(minVersion, maxVersion, thisVersion)
 	end Internalize
 	
-	proc (v: View) Externalize-(var wr: Stores.Writer)  // extensible
+	proc (v: View) Externalize*(var wr: Stores.Writer)  // extensible
 	begin 
 		v.Externalize^(wr)
 		wr.WriteVersion(maxVersion)
@@ -304,7 +304,7 @@ module Views
 	end InitContext
 	
 	proc (v: View) GetBackground*(var color: Ports.Color)  end // new empty
-	proc (v: View) ConsiderFocusRequestBy-(view: View)  end // new empty
+	proc (v: View) ConsiderFocusRequestBy*(view: View)  end // new empty
 	proc (v: View) Neutralize* end // new empty
 	
 	
@@ -317,25 +317,25 @@ module Views
 	
 	// handlers
 	
-	proc (v: View) HandleModelMsg-(var msg: Models.Message)  end // new empty
-	proc (v: View) HandleViewMsg-(f: Frame; var msg: Message)  end // new empty
+	proc (v: View) HandleModelMsg*(var msg: Models.Message)  end // new empty
+	proc (v: View) HandleViewMsg*(f: Frame; var msg: Message)  end // new empty
 	proc (v: View) HandleCtrlMsg*(f: Frame; var msg: CtrlMessage; var focus: View)  end // new empty
-	proc (v: View) HandlePropMsg-(var msg: PropMessage)  end // new empty
+	proc (v: View) HandlePropMsg*(var msg: PropMessage)  end // new empty
 	
 	
 	// Alien
 	
-	proc (a: Alien) Externalize-(var wr: Stores.Writer) 
+	proc (a: Alien) Externalize*(var wr: Stores.Writer) 
 	begin 
 		halt(100)
 	end Externalize
 	
-	proc (a: Alien) Internalize-(var rd: Stores.Reader) 
+	proc (a: Alien) Internalize*(var rd: Stores.Reader) 
 	begin 
 		halt(100)
 	end Internalize
 	
-	proc (a: Alien) CopyFromSimpleView-(source: View) 
+	proc (a: Alien) CopyFromSimpleView*(source: View) 
 	begin 
 		a.store := Stores.CopyOf(source(Alien).store)(Stores.Alien)
 		Stores.Join(a, a.store)

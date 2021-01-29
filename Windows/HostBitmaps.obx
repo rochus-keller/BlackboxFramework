@@ -41,7 +41,7 @@ module HostBitmaps
 		
 		BITMAPINFO8 = cstruct 
 				header: WinApi.BITMAPINFOHEADER
-				colors: array 256 of integer 
+				colors: carray 256 of integer 
 			end 
 		
 		RootContext = pointer to record (Models.Context) 
@@ -245,7 +245,7 @@ module HostBitmaps
 			r.SetPos(v.model.pos)
 			while len_ # 0 do 
 				r.ReadByte(b)
-				wr.WriteSChar(short(chr(b)))
+				wr.WriteSChar(chr(b))
 				dec(len_) 
 			end  
 		else 

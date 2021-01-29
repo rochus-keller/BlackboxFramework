@@ -177,7 +177,7 @@ module StdLoader
 		n := len(name) - 1
 		inp.ReadByte(b)
 		while (i < n) & (b # 0) do 
-			s[i] := short(chr(b mod 256))
+			s[i] := chr(b mod 256)
 			inc(i)
 			inp.ReadByte(b) 
 		end 

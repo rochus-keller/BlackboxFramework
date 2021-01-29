@@ -273,13 +273,13 @@ module HostMenus
 					dec(n, 10)
 					inc(j) 
 				end 
-				a[j] := chr(n + ord("0"))
+				a[j] := wchr(n + ord("0"))
 				a[j + 1] := 0x
 				Append(name, a) 
 			elsif i.code = ord(" ") then 
 				Append(name, spaceStr) 
 			else 
-				a[0] := chr(i.code)
+				a[0] := wchr(i.code)
 				a[1] := 0x
 				Append(name, a) 
 			end  
@@ -1369,7 +1369,7 @@ module HostMenus
 			r := f.NewReader(nil)
 			r.ReadBytes(header, 0, len(header))
 			for i:= 0 to len(header) - 1 do 
-				keyword[i] := chr(header[i]) 
+				keyword[i] := wchr(header[i]) 
 			end 
 			keyword[len(keyword) - 1] := 0x
 			if keyword = 'COMMANDLINE' then
@@ -1381,7 +1381,7 @@ module HostMenus
 				end 
 				l2[i] := " "
 				for i:= 0 to len(b) - 1 do 
-					l2[i + len_ + 1] := chr(b[i] mod 256) 
+					l2[i + len_ + 1] := wchr(b[i] mod 256) 
 				end 
 				return l2 
 			end  

@@ -4,8 +4,8 @@
 definition COM
 	
 	type
-		GUID = array 16 of byte
-		IUnknown = pointer to record end
+		GUID = carray 16 of byte
+		IUnknown = unsafe pointer to cstruct end
 		RESULT = integer
 
 	proc QUERY(_0: IUnknown; _1: GUID; _2: IUnknown): boolean

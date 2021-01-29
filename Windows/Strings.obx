@@ -57,7 +57,7 @@ module Strings
 			end 
 			j := 0
 			repeat 
-				a[j] := chr(x mod 10 + ord("0"))
+				a[j] := wchr(x mod 10 + ord("0"))
 				x := x div 10
 				inc(j) 
 			until x = 0  
@@ -633,7 +633,7 @@ module Strings
 						p := short(entier(x))
 						x := x - p 
 					end 
-					m[i] := chr(p + ord("0"))
+					m[i] := wchr(p + ord("0"))
 					inc(i)
 					if p # 0 then
 						len_ := i 
@@ -740,15 +740,15 @@ module Strings
 					inc(i) 
 				end 
 				if (expW = 3) & (i < len(s)) then
-					s[i] := chr(exp div 100 + ord("0"))
+					s[i] := wchr(exp div 100 + ord("0"))
 					inc(i) 
 				end 
 				if (expW >= 2) & (i < len(s)) then
-					s[i] := chr(exp div 10 mod 10 + ord("0"))
+					s[i] := wchr(exp div 10 mod 10 + ord("0"))
 					inc(i) 
 				end 
 				if i < len(s) then
-					s[i] := chr(exp mod 10 + ord("0"))
+					s[i] := wchr(exp mod 10 + ord("0"))
 					inc(i) 
 				end  
 			end  
@@ -1292,20 +1292,20 @@ module Strings
 			i: integer
 	begin 
 		for i:= 0 to 255 do 
-			toUpper[i] := chr(i)
-			toLower[i] := chr(i) 
+			toUpper[i] := wchr(i)
+			toLower[i] := wchr(i) 
 		end 
 		for i:= ord("A") to ord("Z") do 
-			toLower[i] := chr(i + 32)
-			toUpper[i + 32] := chr(i) 
+			toLower[i] := wchr(i + 32)
+			toUpper[i + 32] := wchr(i) 
 		end 
 		for i:= ord("À") to ord("Ö") do 
-			toLower[i] := chr(i + 32)
-			toUpper[i + 32] := chr(i) 
+			toLower[i] := wchr(i + 32)
+			toUpper[i + 32] := wchr(i) 
 		end 
 		for i:= ord("Ø") to ord("Þ") do 
-			toLower[i] := chr(i + 32)
-			toUpper[i + 32] := chr(i) 
+			toLower[i] := wchr(i + 32)
+			toUpper[i + 32] := wchr(i) 
 		end 
 		toUpper[ord("ÿ")] := "Ÿ"
 		digits := "0123456789ABCDEF"

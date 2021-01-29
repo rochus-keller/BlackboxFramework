@@ -54,7 +54,7 @@ module Models
 	
 	// Model
 	
-	proc (m: Model) Internalize-(var rd: Stores.Reader)  // extensible
+	proc (m: Model) Internalize*(var rd: Stores.Reader)  // extensible
 		var 
 			thisVersion: integer
 	begin 
@@ -65,7 +65,7 @@ module Models
 		rd.ReadVersion(minVersion, maxVersion, thisVersion)
 	end Internalize
 	
-	proc (m: Model) Externalize-(var wr: Stores.Writer)  // extensible
+	proc (m: Model) Externalize*(var wr: Stores.Writer)  // extensible
 	begin 
 		m.Externalize^(wr)
 		wr.WriteVersion(maxVersion)

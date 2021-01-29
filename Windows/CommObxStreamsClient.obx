@@ -137,7 +137,7 @@ module CommObxStreamsClient
 			while len_ # 0 do 
 				rd.ReadChar(ch)
 				if ch < 100x then // skip Unicode characters
-					s.buf[i] := short(short(ord(ch)))
+					s.buf[i] := short((ord(ch)))
 					inc(i) 
 				end 
 				dec(len_) 

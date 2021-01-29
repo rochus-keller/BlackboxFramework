@@ -255,7 +255,7 @@ module CommTCP
 			hints: Net.addrinfo
 			addr: Net.Ptrsockaddr_in
 	begin 
-		shortPName := short(peername)
+		shortPName := (peername)
 		if IsIPAddress(peername) then
 			if shortPName = "" then
 				inaddr.S_un.S_addr := Net.INADDR_ANY 

@@ -11532,7 +11532,7 @@ definition WinApi
 	proc SwitchToFiber(lpFiber: PtrVoid) 
 	// END SwitchToFiber;
 	
-	proc CreateThread(var lpThreadAttributes: SECURITY_ATTRIBUTES; dwStackSize: integer; lpStartAddress: THREAD_START_ROUTINE; lpParameter: PtrVoid; dwCreationFlags: set; var lpThreadId: integer): HANDLE 
+	proc CreateThread(var lpThreadAttributes: SECURITY_ATTRIBUTES; dwStackSize: integer; lpStartAddress: THREAD_START_ROUTINE; lpParameter: PtrVoid; dwCreationFlags: set; lpThreadId: unsafe pointer to integer): HANDLE 
 	// END CreateThread;
 	
 	proc CreateRemoteThread(hProcess: HANDLE; var lpThreadAttributes: SECURITY_ATTRIBUTES; dwStackSize: integer; lpStartAddress: THREAD_START_ROUTINE; lpParameter: PtrVoid; dwCreationFlags: set; var lpThreadId: integer): HANDLE 
@@ -11733,7 +11733,7 @@ definition WinApi
 	proc SetStdHandle(nStdHandle: integer; hHandle: HANDLE): BOOL 
 	// END SetStdHandle;
 	
-	proc WriteFile(hFile: HANDLE; lpBuffer: PtrVoid; nNumberOfBytesToWrite: integer; var lpNumberOfBytesWritten: integer; var lpOverlapped: OVERLAPPED): BOOL 
+	proc WriteFile(hFile: HANDLE; lpBuffer: PtrVoid; nNumberOfBytesToWrite: integer; lpNumberOfBytesWritten: unsafe pointer to integer; var lpOverlapped: OVERLAPPED): BOOL 
 	// END WriteFile;
 	
 	proc ReadFile(hFile: HANDLE; lpBuffer: PtrVoid; nNumberOfBytesToRead: integer; var lpNumberOfBytesRead: integer; var lpOverlapped: OVERLAPPED): BOOL 
@@ -12669,7 +12669,7 @@ definition WinApi
 	proc GetFullPathNameA(lpFileName: PtrSTR; nBufferLength: integer; lpBuffer: PtrSTR; var lpFilePart: PtrSTR): integer 
 	// END GetFullPathNameA;
 	
-	proc GetFullPathNameW(lpFileName: PtrWSTR; nBufferLength: integer; lpBuffer: PtrWSTR; var lpFilePart: PtrWSTR): integer 
+	proc GetFullPathNameW(lpFileName: PtrWSTR; nBufferLength: integer; lpBuffer: PtrWSTR; lpFilePart: PtrWSTR): integer 
 	// END GetFullPathNameW;
 	
 	proc GetFullPathName(lpFileName: PtrSTR; nBufferLength: integer; lpBuffer: PtrSTR; var lpFilePart: PtrSTR): integer 
@@ -16464,7 +16464,7 @@ definition WinApi
 	proc MultiByteToWideChar(CodePage: integer; dwFlags: set; lpMultiByteStr: PtrSTR; cchMultiByte: integer; lpWideCharStr: PtrWSTR; cchWideChar: integer): integer 
 	// END MultiByteToWideChar;
 	
-	proc WideCharToMultiByte(CodePage: integer; dwFlags: set; lpWideCharStr: PtrWSTR; cchWideChar: integer; lpMultiByteStr: PtrSTR; cchMultiByte: integer; lpDefaultChar: PtrSTR; var lpUsedDefaultChar: BOOL): integer 
+	proc WideCharToMultiByte(CodePage: integer; dwFlags: set; lpWideCharStr: PtrWSTR; cchWideChar: integer; lpMultiByteStr: PtrSTR; cchMultiByte: integer; lpDefaultChar: PtrSTR; lpUsedDefaultChar: unsafe pointer to BOOL): integer 
 	// END WideCharToMultiByte;
 	
 	proc CompareStringA(Locale: LCID; dwCmpFlags: set; lpString1: PtrSTR; cchCount1: integer; lpString2: PtrSTR; cchCount2: integer): integer 
