@@ -1,0 +1,1783 @@
+module Meta
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20070125, bh, Support for procedure signatures added
+	   - 20141027, center #19, full Unicode support for Component Pascal identifiers added
+	   - 20150415, center #38, report passing receiver parameter IN to VAR
+	   - 20150521, center #51, support for ANYPTR and SYSTEM.PTR in LookupPath
+	   - 20181213, center #194, Meta.PutParam and Kernel.Call for open arrays are mismatched
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import SYSTEM, Kernel, Strings
+	
+	const 
+		// result codes for object classes, type classes, visibility classes
+		undef* = 0
+		
+		// object classes
+		typObj* = 2
+		varObj* = 3
+		procObj* = 4
+		fieldObj* = 5
+		modObj* = 6
+		parObj* = 7
+		
+		// type classes
+		boolTyp* = 1
+		sCharTyp* = 2
+		charTyp* = 3
+		byteTyp* = 4
+		sIntTyp* = 5
+		intTyp* = 6
+		sRealTyp* = 7
+		realTyp* = 8
+		setTyp* = 9
+		longTyp* = 10
+		anyRecTyp* = 11
+		anyPtrTyp* = 12
+		sysPtrTyp* = 13
+		procTyp* = 16
+		recTyp* = 17
+		arrTyp* = 18
+		ptrTyp* = 19
+		
+		// record attributes
+		final* = 0
+		extensible* = 1
+		limited* = 2
+		abstract* = 3
+		
+		// visibility
+		hidden* = 1
+		readOnly* = 2
+		private = 3
+		exported* = 4
+		value* = 10
+		in_* = 11
+		out* = 12
+		var_* = 13
+		
+		// scanner modes
+		modScan = 1
+		globScan = 2
+		recVarScan = 3
+		recTypeScan = 4
+	
+	type 
+		Name* = array 256 of wchar
+		
+		Value* = (* abstract *) record end  // to be extended once with a single field of any type
+		
+		ArrayPtr = pointer to Array
+		
+		Item* = record (Value) 
+				obj-: integer // typObj, varObj, procObj, fieldObj, modObj, parObj
+				typ-: integer // typObj, varObj, fieldObj, parObj: type;	else: 0
+				vis-: integer // varObj, procObj, fieldObj, parObj: vis;	else: 0
+				adr-: integer // varObj, procObj: adr;	fieldObj: offs;	parObj: num;	else: 0
+				mod_: Kernel.Module // static varObj, procObj, modObj: mod;	else: NIL
+				desc: Kernel.Type // typObj, varObj, fieldObj, parObj: struct;	procObj: sig;	else: NIL
+				ptr: ArrayPtr // # NIL => item valid;	dynamic varObj: ptr;	else: dummy
+				ext: Kernel.ItemExt  // all method calls forwarded if # NIL
+			end 
+		
+		Scanner* = record 
+				this-: Item
+				eos-: boolean // end of scan
+				mode: integer // modScan, globScan, recVarScan, recTypeScan
+				base: integer // recVarScan, recTypeScan: base level index
+				vis: integer // recVarScan: record vis
+				adr: integer // recVarScan: record adr
+				idx: integer // globScan, recVarScan, recTypeScan: object index
+				desc: Kernel.Type // recVarScan, recTypeScan: record desc
+				mod_: Kernel.Module // modScan: next mod;	globScan, recVarScan: source mod
+				obj: Kernel.Object  // globScan, recVarScan, recTypeScan: actual object
+			end 
+		
+		LookupFilter* = proc (in path: array of wchar; var i: Item; var done: boolean)
+		
+		FilterHook = pointer to record 
+				next: FilterHook
+				filter: LookupFilter 
+			end 
+		
+		Array = (* extensible *) record 
+				w0, w1, w2: integer // gc header
+				len_: array 16 of integer  // dynamic array length table
+			end 
+		
+		SStringPtr = unsafe pointer to carray of char
+		StringPtr = unsafe pointer to carray of wchar
+	
+	var 
+		dummy: ArrayPtr // dummy object for item.ptr
+		filterHook: FilterHook
+	
+	
+	(* preconditions:
+	   ASSERT(i.ptr # NIL, 20);	(* invalid item *)
+	   ASSERT(i.typ >= recTyp, 21);	(* wrong type *)
+	   ASSERT(i.obj = varObj, 22);	(* wrong object class *)
+	   ASSERT((i.mod = NIL) OR (i.mod.refcnt >= 0), 23);	(* unloaded object module *)
+	   ASSERT(i.desc.mod.refcnt >= 0, 24);	(* unloaded type module *)
+	   ASSERT(d.id DIV 16 MOD 16 = 1, 25);	(* value not extended once *)
+	   ASSERT(d.fields.num = 1, 26);	(* not a single value field *)
+	   ASSERT(i.vis = exported, 27);	(* write protected destination *)
+	   ASSERT(type.desc.base[t.id DIV 16 MOD 16] = t, 28);	(* wrong pointer type *)
+	   ASSERT((i < n) & (d.obj[i].id DIV 16 MOD 16 = exported), 29);	(* unexported type *)
+	   ASSERT(type.desc.id DIV 4 MOD 4 < limited, 30);	(* limited or abstract type *)
+	   ASSERT(i.ext = NIL, 31);	(* unsupported extension *) *)
+	
+	
+	
+	proc DescOf(in x: ANYREC): Kernel.Type 
+	begin 
+		return SYSTEM.VAL(Kernel.Type, SYSTEM.TYP(x))
+	end DescOf
+	
+	proc TypOf(struct: Kernel.Type): integer 
+	begin 
+		if SYSTEM.VAL(integer, struct) div 256 = 0 then
+			return SYSTEM.VAL(integer, struct) 
+		else 
+			return 16 + struct.id mod 4 
+		end 
+	end TypOf
+	
+	proc LenOf(in i: Item): integer 
+	begin 
+		if i.desc.size_ # 0 then
+			return i.desc.size_ 
+		elsif i.ptr = dummy then 
+			return 0 
+		else 
+			return i.ptr.len_[i.desc.id div 16 mod 16 - 1] 
+		end 
+	end LenOf
+	
+	proc SizeOf(in i: Item): integer 
+		var 
+			el: Item
+	begin 
+		case i.typ of 
+			| anyRecTyp: 
+				return 0 
+			| boolTyp, sCharTyp, byteTyp: 
+				return 1 
+			| charTyp, sIntTyp: 
+				return 2 
+			| longTyp, realTyp: 
+				return 8 
+			| recTyp: 
+				return i.desc.size_ 
+			| arrTyp: 
+				el.desc := i.desc.base[0]
+				el.typ := TypOf(el.desc)
+				el.ptr := i.ptr
+				return LenOf(i) * SizeOf(el) 
+		else 
+			return 4 
+		end 
+	end SizeOf
+	
+	proc SignatureOf(in i: Item): Kernel.Signature 
+	begin 
+		if i.obj = procObj then
+			return SYSTEM.VAL(Kernel.Signature, i.desc) 
+		else 
+			return SYSTEM.VAL(Kernel.Signature, i.desc.base[0]) 
+		end 
+	end SignatureOf
+	
+	
+	proc GetName(in path: array of wchar; var name: array of wchar; var i: integer) 
+		var 
+			j: integer
+			ch: wchar
+	begin 
+		j := 0
+		ch := path[i]
+		while (j < len(name) - 1) & Strings.IsIdent(ch) do 
+			name[j] := ch
+			inc(i)
+			inc(j)
+			ch := path[i] 
+		end 
+		if (ch = 0x) or (ch = ".") or (ch = "[") or (ch = "^") then
+			name[j] := 0x 
+		else 
+			name[0] := 0x 
+		end 
+	end GetName
+	
+	proc LegalName(in name: array of wchar): boolean 
+		var 
+			i: integer
+			ch: wchar
+	begin 
+		i := 0
+		ch := name[0]
+		while (i < len(name) - 1) & Strings.IsIdent(ch) do 
+			inc(i)
+			ch := name[i] 
+		end 
+		return (i > 0) & (ch = 0x)
+	end LegalName
+	
+	
+	// ---------- Item properties ----------
+	
+	proc (in i: Item) Valid*(): boolean  // new
+	begin 
+		if i.ext # nil then
+			return i.ext.Valid() 
+		end 
+		return (i.ptr # nil) & ((i.mod_ = nil) or (i.mod_.refcnt >= 0)) & ((i.typ < recTyp) or (i.desc.mod_.refcnt >= 0))
+	end Valid
+	
+	proc (in i: Item) GetTypeName*(var mod_, type_: Name)  // new
+		var 
+			modName: Kernel.Name
+			n: Kernel.Name
+	begin 
+		assert(i.ext = nil, 31)
+		assert(i.ptr # nil, 20)
+		assert(i.typ >= recTyp, 21)
+		assert(i.desc.mod_.refcnt >= 0, 24)
+		Kernel.GetModName(i.desc.mod_, modName)
+		mod_ := modName
+		Kernel.GetTypeName(i.desc, n)
+		type_ := n
+	end GetTypeName
+	
+	proc (in i: Item) BaseTyp*(): integer  // new
+	begin 
+		if i.ext # nil then
+			return i.ext.BaseTyp() 
+		end 
+		assert(i.ptr # nil, 20)
+		assert(i.typ in {arrTyp, recTyp, ptrTyp}, 21)
+		return TypOf(i.desc.base[0])
+	end BaseTyp
+	
+	proc (in i: Item) Level*(): integer  // new
+	begin 
+		assert(i.ext = nil, 31)
+		assert(i.ptr # nil, 20)
+		assert(i.typ in {recTyp, arrTyp}, 21)
+		return i.desc.id div 16 mod 16
+	end Level
+	
+	proc (in i: Item) Attribute*(): integer  // new
+	begin 
+		assert(i.ext = nil, 31)
+		assert(i.ptr # nil, 20)
+		assert(i.typ = recTyp, 21)
+		return i.desc.id div 4 mod 4
+	end Attribute
+	
+	proc (in i: Item) Size*(): integer  // new
+	begin 
+		if i.ext # nil then
+			return i.ext.Size() 
+		end 
+		assert(i.ptr # nil, 20)
+		assert(i.typ # undef, 21)
+		return SizeOf(i)
+	end Size
+	
+	proc (in arr: Item) Len*(): integer  // new
+	begin 
+		if arr.ext # nil then
+			return arr.ext.Len() 
+		end 
+		assert(arr.ptr # nil, 20)
+		assert(arr.typ = arrTyp, 21)
+		return LenOf(arr)
+	end Len
+	
+	// ---------- Item generation ----------
+	
+	proc SetUndef(var i: Item) 
+	begin 
+		i.typ := undef
+		i.obj := undef
+		i.vis := undef
+		i.adr := undef
+		i.mod_ := nil
+		i.desc := nil
+		i.ptr := nil
+		i.ext := nil
+	end SetUndef
+	
+	proc SetItem(var i: Item; obj: Kernel.Object; mod_: Kernel.Module) 
+		var 
+			t: Kernel.Type
+	begin 
+		i.obj := obj.id mod 16
+		i.vis := obj.id div 16 mod 16
+		if i.obj = procObj then
+			i.typ := undef
+			i.desc := SYSTEM.VAL(Kernel.Type, obj.struct)
+			i.adr := mod_.procBase + obj.offs
+			i.mod_ := mod_ 
+		else 
+			i.typ := TypOf(obj.struct)
+			i.desc := obj.struct
+			if i.obj = varObj then
+				i.adr := mod_.varBase + obj.offs
+				i.mod_ := mod_ 
+			elsif i.obj = fieldObj then 
+				i.adr := obj.offs
+				i.mod_ := nil 
+			else 
+				i.adr := undef
+				i.mod_ := nil 
+			end  
+		end 
+		i.ext := nil
+	end SetItem
+	
+	proc SetMod(var i: Item; mod_: Kernel.Module) 
+	begin 
+		i.obj := modObj
+		i.typ := undef
+		i.vis := undef
+		i.adr := undef
+		i.mod_ := mod_
+		i.desc := nil
+		i.ptr := dummy
+		i.ext := nil
+	end SetMod
+	
+	
+	proc GetItem*(obj: ANYPTR; var i: Item) 
+	begin 
+		assert(obj # nil, 28)
+		i.obj := varObj
+		i.typ := recTyp
+		i.vis := exported
+		i.adr := SYSTEM.ADR(obj^)
+		i.ptr := SYSTEM.VAL(ArrayPtr, obj)
+		i.mod_ := nil
+		i.desc := Kernel.TypeOf(obj)
+		i.ext := nil
+	end GetItem
+	
+	proc Lookup*(in name: array of wchar; var mod_: Item) 
+		var 
+			m: Kernel.Module
+			done: boolean
+			filter: FilterHook
+	begin 
+		done := false
+		filter := filterHook
+		while ~done & (filter # nil) do 
+			filter.filter(name, mod_, done)
+			filter := filter.next 
+		end 
+		if ~done & LegalName(name) then
+			m := Kernel.ThisMod(name)
+			if m # nil then
+				SetMod(mod_, m) 
+			else 
+				SetUndef(mod_) 
+			end  
+		else 
+			SetUndef(mod_) 
+		end 
+	end Lookup
+	
+	proc (in in_: Item) Lookup*(in name: array of wchar; var i: Item)  // new
+		var 
+			obj: Kernel.Object
+			o, v, lev, j, a: integer
+			m: Kernel.Module
+	begin 
+		if in_.ext # nil then
+			in_.ext.Lookup(name, i)
+			return  
+		end 
+		assert(in_.ptr # nil, 20)
+		if LegalName(name) then
+			if in_.obj = modObj then
+				obj := Kernel.ThisObject(in_.mod_, name)
+				if obj # nil then
+					SetItem(i, obj, in_.mod_)
+					i.ptr := dummy
+					if (i.vis = hidden) or (i.obj < typObj) then
+						SetUndef(i) 
+					end  
+				else 
+					SetUndef(i) 
+				end  
+			elsif in_.typ = recTyp then 
+				assert(in_.desc.mod_.refcnt >= 0, 24)
+				lev := in_.desc.id div 16 mod 16
+				j := 0
+				repeat 
+					obj := Kernel.ThisField(in_.desc.base[j], name)
+					inc(j) 
+				until (obj # nil) or (j > lev) 
+				if obj # nil then
+					o := in_.obj
+					a := in_.adr
+					v := in_.vis
+					m := in_.mod_
+					SetItem(i, obj, m)
+					i.ptr := in_.ptr
+					if i.vis # hidden then
+						if o = varObj then
+							i.obj := varObj
+							inc(i.adr, a)
+							i.mod_ := m
+							if v < i.vis then
+								i.vis := v 
+							end  
+						end  
+					else 
+						SetUndef(i) 
+					end  
+				else 
+					SetUndef(i) 
+				end  
+			else 
+				halt(21) 
+			end  
+		else 
+			SetUndef(i) 
+		end 
+	end Lookup
+	
+	proc (in i: Item) GetBaseType*(var base: Item)  // new
+		var 
+			n: integer
+	begin 
+		assert(i.ext = nil, 31)
+		assert(i.ptr # nil, 20)
+		assert(i.typ in {arrTyp, recTyp, ptrTyp}, 21)
+		n := 0
+		if i.typ = recTyp then
+			n := i.desc.id div 16 mod 16 - 1 
+		end 
+		if n >= 0 then
+			base.obj := typObj
+			base.vis := undef
+			base.adr := undef
+			base.mod_ := nil
+			base.ptr := dummy
+			base.ext := nil
+			base.desc := i.desc.base[n]
+			base.typ := TypOf(base.desc) 
+		else 
+			SetUndef(base) 
+		end 
+	end GetBaseType
+	
+	proc (in rec: Item) GetThisBaseType*(level: integer; var base: Item)  // new
+	begin 
+		assert(rec.ext = nil, 31)
+		assert(rec.ptr # nil, 20)
+		assert(rec.typ = recTyp, 21)
+		assert((level >= 0) & (level < 16), 28)
+		if level <= rec.desc.id div 16 mod 16 then
+			base.obj := typObj
+			base.vis := undef
+			base.adr := undef
+			base.mod_ := nil
+			base.ptr := dummy
+			base.ext := nil
+			base.desc := rec.desc.base[level]
+			base.typ := TypOf(base.desc) 
+		else 
+			SetUndef(base) 
+		end 
+	end GetThisBaseType
+	
+	proc (in proc_: Item) NumParam*(): integer  // new
+		var 
+			sig: Kernel.Signature
+	begin 
+		assert(proc_.ext = nil, 31)
+		assert(proc_.ptr # nil, 20)
+		assert((proc_.obj = procObj) or (proc_.typ = procTyp), 21)
+		sig := SignatureOf(proc_)
+		if sig # nil then
+			return sig.num 
+		else 
+			return -1 
+		end 
+	end NumParam
+	
+	proc (in proc_: Item) GetParam*(n: integer; var par: Item)  // new
+		var 
+			sig: Kernel.Signature
+	begin 
+		assert(proc_.ext = nil, 31)
+		assert(proc_.ptr # nil, 20)
+		assert((proc_.obj = procObj) or (proc_.typ = procTyp), 21)
+		sig := SignatureOf(proc_)
+		if (sig # nil) & (n >= 0) & (n < sig.num) then
+			par.obj := parObj
+			par.adr := n
+			par.vis := sig.par[n].id mod 16
+			par.mod_ := nil
+			par.ptr := dummy
+			par.ext := nil
+			par.desc := sig.par[n].struct
+			par.typ := TypOf(par.desc) 
+		else 
+			SetUndef(par) 
+		end 
+	end GetParam
+	
+	proc (in proc_: Item) GetParamName*(n: integer; var name: Name)  // new
+		var 
+			sig: Kernel.Signature
+			mod_: Kernel.Module
+			nm: Kernel.Name
+	begin 
+		assert(proc_.ext = nil, 31)
+		assert(proc_.ptr # nil, 20)
+		if proc_.obj = procObj then
+			mod_ := proc_.mod_ 
+		else 
+			assert(proc_.typ = procTyp, 21)
+			mod_ := proc_.desc.mod_ 
+		end 
+		assert(mod_.refcnt >= 0, 23)
+		sig := SignatureOf(proc_)
+		if (sig # nil) & (n >= 0) & (n < sig.num) then
+			Kernel.GetObjName(mod_, SYSTEM.VAL(Kernel.Object, SYSTEM.ADR(sig.par[n]) - 8), nm)
+			name := nm 
+		else 
+			name := "" 
+		end 
+	end GetParamName
+	
+	proc (in proc_: Item) GetReturnType*(var type_: Item)  // new
+		var 
+			sig: Kernel.Signature
+	begin 
+		assert(proc_.ext = nil, 31)
+		assert(proc_.ptr # nil, 20)
+		assert((proc_.obj = procObj) or (proc_.typ = procTyp), 21)
+		sig := SignatureOf(proc_)
+		if sig # nil then
+			type_.obj := typObj
+			type_.vis := undef
+			type_.adr := undef
+			type_.mod_ := nil
+			type_.ptr := dummy
+			type_.ext := nil
+			type_.desc := sig.retStruct
+			type_.typ := TypOf(type_.desc) 
+		else 
+			SetUndef(type_) 
+		end 
+	end GetReturnType
+	
+	proc (in rec: Item) Is*(in type_: Value): boolean  // new
+		var 
+			d: Kernel.Type
+	begin 
+		assert(rec.ext = nil, 31)
+		assert(rec.ptr # nil, 20)
+		assert(rec.typ = recTyp, 21)
+		with type_: Item do 
+			assert(type_.ptr # nil, 20)
+			assert(type_.typ = recTyp, 21)
+			d := type_.desc 
+		else 
+			d := DescOf(type_) // type of value rec
+			assert(d.id div 16 mod 16 = 1, 25) // level of type = 1
+			assert(d.fields.num = 1, 26) // one field in type
+			d := d.fields.obj[0].struct // type of field
+			assert(SYSTEM.VAL(integer, d) div 256 # 0, 21) // type is structured
+			if d.id mod 4 = 3 then // deref ptr
+				d := d.base[0] 
+			end  
+		end 
+		return rec.desc.base[d.id div 16 mod 16] = d // rec IS d
+	end Is
+	
+	proc (in ptr: Item) Deref*(var ref: Item)  // new
+	begin 
+		if ptr.ext # nil then
+			ptr.ext.Deref(ref)
+			return  
+		end 
+		assert(ptr.ptr # nil, 20)
+		assert(ptr.typ in {sysPtrTyp, anyPtrTyp, ptrTyp}, 21)
+		assert(ptr.obj = varObj, 22)
+		assert((ptr.mod_ = nil) or (ptr.mod_.refcnt >= 0), 23)
+		SYSTEM.GET(ptr.adr, ref.adr)
+		if ref.adr # 0 then
+			if ptr.typ # ptrTyp then
+				ref.typ := recTyp 
+			else 
+				ref.desc := ptr.desc.base[0]
+				ref.typ := TypOf(ref.desc) 
+			end 
+			ref.obj := varObj // !!!
+			ref.mod_ := nil
+			ref.vis := exported
+			ref.ptr := SYSTEM.VAL(ArrayPtr, ref.adr)
+			if ref.typ = recTyp then
+				ref.desc := DescOf(ref.ptr^)  // dynamic type
+			elsif ref.typ = arrTyp then 
+				ref.adr := SYSTEM.ADR(ref.ptr.len_[ref.desc.id div 16 mod 16])  // descriptor offset
+			else 
+				halt(100) 
+			end  
+		else 
+			SetUndef(ref) 
+		end 
+	end Deref
+	
+	proc (in arr: Item) Index*(index: integer; var elem: Item)  // new
+	begin 
+		if arr.ext # nil then
+			arr.ext.Index(index, elem)
+			return  
+		end 
+		assert(arr.ptr # nil, 20)
+		assert(arr.typ = arrTyp, 21)
+		assert(arr.obj = varObj, 22)
+		if (index >= 0) & (index < LenOf(arr)) then
+			elem.obj := varObj
+			elem.vis := arr.vis
+			elem.mod_ := arr.mod_
+			elem.ptr := arr.ptr
+			elem.ext := nil
+			elem.desc := arr.desc.base[0]
+			elem.typ := TypOf(elem.desc)
+			elem.adr := arr.adr + index * SizeOf(elem) 
+		else 
+			SetUndef(elem) 
+		end 
+	end Index
+	
+	proc LookupPath*(in path: array of wchar; var i: Item) 
+		var 
+			j, n: integer
+			name: Name
+			ch: wchar
+			done: boolean
+			filter: FilterHook
+	begin 
+		done := false
+		filter := filterHook
+		while ~done & (filter # nil) do 
+			filter.filter(path, i, done)
+			filter := filter.next 
+		end 
+		if ~done then
+			j := 0
+			GetName(path, name, j)
+			Lookup(name, i)
+			if (i.obj = modObj) & (path[j] = ".") then
+				inc(j)
+				GetName(path, name, j)
+				i.Lookup(name, i)
+				ch := path[j]
+				inc(j)
+				while (i.obj = varObj) & (ch # 0x) do 
+					if i.typ in {ptrTyp, anyPtrTyp, sysPtrTyp} then
+						i.Deref(i) 
+					end 
+					if ch = "." then
+						GetName(path, name, j)
+						if i.typ = recTyp then
+							i.Lookup(name, i) 
+						else 
+							SetUndef(i) 
+						end  
+					elsif ch = "[" then 
+						n := 0
+						ch := path[j]
+						inc(j)
+						while (ch >= "0") & (ch <= "9") do 
+							n := 10 * n + ord(ch) - ord("0")
+							ch := path[j]
+							inc(j) 
+						end 
+						if (ch = "]") & (i.typ = arrTyp) then
+							i.Index(n, i) 
+						else 
+							SetUndef(i) 
+						end  
+					end 
+					ch := path[j]
+					inc(j) 
+				end  
+			end  
+		end 
+	end LookupPath
+	
+	// ---------- Scanner ----------
+	
+	proc (var s: Scanner) ConnectToMods* // new
+	begin 
+		SetUndef(s.this)
+		s.this.ptr := dummy
+		s.mod_ := Kernel.modList
+		s.mode := modScan
+		s.eos := false
+	end ConnectToMods
+	
+	proc (var s: Scanner) ConnectTo*(in obj: Item)  // new
+	begin 
+		assert(obj.ptr # nil, 20)
+		SetUndef(s.this)
+		s.vis := obj.vis
+		s.this.ptr := obj.ptr
+		s.mod_ := obj.mod_
+		s.idx := 0
+		if obj.obj = modObj then
+			assert(s.mod_.refcnt >= 0, 23)
+			s.mode := globScan 
+		elsif obj.typ = recTyp then 
+			assert(obj.desc.mod_.refcnt >= 0, 24)
+			s.desc := obj.desc
+			s.base := 0
+			if obj.obj = varObj then
+				s.mode := recVarScan
+				s.adr := obj.adr 
+			else 
+				s.mode := recTypeScan 
+			end  
+		else 
+			halt(21) 
+		end 
+		s.eos := false
+	end ConnectTo
+	
+	proc (var s: Scanner) Scan* // new
+		var 
+			desc: Kernel.Type
+	begin 
+		assert(s.this.ptr # nil, 20)
+		if s.mode = modScan then
+			if s.mod_ # nil then
+				SetMod(s.this, s.mod_)
+				s.mod_ := s.mod_.next 
+			else 
+				SetUndef(s.this)
+				s.eos := true 
+			end  
+		elsif s.mode = globScan then 
+			assert(s.mod_.refcnt >= 0, 23)
+			repeat 
+				if s.idx >= s.mod_.export.num then
+					SetUndef(s.this)
+					s.eos := true
+					return  
+				end 
+				s.obj := SYSTEM.VAL(Kernel.Object, SYSTEM.ADR(s.mod_.export.obj[s.idx]))
+				SetItem(s.this, s.obj, s.mod_)
+				inc(s.idx) 
+			until (s.this.obj in {procObj, varObj, typObj}) & (s.this.vis # hidden)  
+		else 
+			assert(s.desc.mod_.refcnt >= 0, 24)
+			desc := s.desc.base[s.base]
+			repeat 
+				while s.idx >= desc.fields.num do 
+					if desc = s.desc then
+						SetUndef(s.this)
+						s.eos := true
+						return  
+					end 
+					inc(s.base)
+					desc := s.desc.base[s.base]
+					s.idx := 0 
+				end 
+				s.obj := SYSTEM.VAL(Kernel.Object, SYSTEM.ADR(desc.fields.obj[s.idx]))
+				SetItem(s.this, s.obj, s.mod_)
+				inc(s.idx) 
+			until s.this.vis # hidden 
+			if s.mode = recVarScan then
+				s.this.obj := varObj
+				inc(s.this.adr, s.adr)
+				s.this.mod_ := s.mod_
+				if s.vis < s.this.vis then
+					s.this.vis := s.vis 
+				end  
+			end  
+		end 
+	end Scan
+	
+	proc (var s: Scanner) GetObjName*(var name: Name)  // new
+		var 
+			mod_: Kernel.Module
+			n: Kernel.Name
+	begin 
+		assert(s.this.ptr # nil, 20)
+		if s.mode = modScan then
+			Kernel.GetModName(s.this.mod_, n) // mf 24.08.2004
+			name := n 
+		else 
+			if s.mode = globScan then
+				mod_ := s.mod_ 
+			else 
+				mod_ := s.desc.base[s.base].mod_ 
+			end 
+			assert(mod_.refcnt >= 0, 23)
+			Kernel.GetObjName(mod_, s.obj, n)
+			name := n 
+		end 
+	end GetObjName
+	
+	proc (var s: Scanner) Level*(): integer  // new
+	begin 
+		assert(s.this.ptr # nil, 20)
+		assert(s.mode >= recVarScan, 22)
+		return s.base
+	end Level
+	
+	// ---------- access to item values ----------
+	
+	proc ValToItem(in x: Value; var i: Item) 
+		var 
+			desc: Kernel.Type
+	begin 
+		desc := DescOf(x)
+		assert(desc.id div 16 mod 16 = 1, 25) // level of x = 1
+		assert(desc.fields.num = 1, 26) // one field in x
+		i.desc := desc.fields.obj[0].struct
+		i.typ := TypOf(i.desc)
+		i.obj := varObj
+		i.ext := nil
+		i.vis := exported
+		i.ptr := dummy
+		i.adr := SYSTEM.ADR(x)
+	end ValToItem
+	
+	proc EqualType(a, b: Kernel.Type): boolean 
+	begin 
+		loop 
+			if a = b then
+				return true 
+			end 
+			if (SYSTEM.VAL(integer, a) div 256 = 0) 
+				or (SYSTEM.VAL(integer, b) div 256 = 0) 
+				or (a.id mod 4 # b.id mod 4) then
+				return false 
+			end 
+			case a.id mod 4 of 
+				| recTyp - 16: 
+					return false 
+				| arrTyp - 16: 
+					if (a.size_ # 0) or (b.size_ # 0) then
+						return false 
+					end  
+				| procTyp - 16: 
+					return EqualSignature(SYSTEM.VAL(Kernel.Signature, a.base[0]), 
+						SYSTEM.VAL(Kernel.Signature, b.base[0])) 
+			else   // ptrTyp
+			end 
+			a := a.base[0]
+			b := b.base[0] 
+		end 
+	end EqualType
+	
+	proc EqualSignature(a, b: Kernel.Signature): boolean 
+		var 
+			i: integer
+	begin 
+		if (a.num # b.num) or ~EqualType(a.retStruct, b.retStruct) then
+			return false 
+		end 
+		i := 0
+		while i < a.num do 
+			if (a.par[i].id mod 256 # b.par[i].id mod 256) 
+				or ~EqualType(a.par[i].struct, b.par[i].struct) then
+				return false 
+			end 
+			inc(i) 
+		end 
+		return true
+	end EqualSignature
+	
+	proc Copy(in a, b: Item; var ok: boolean)  // b := a
+		var 
+			n: integer
+			at, bt: Item
+	begin 
+		ok := false
+		if a.obj = procObj then
+			if (b.typ # procTyp) 
+				or ~EqualSignature(SignatureOf(a), SignatureOf(b)) then
+				return  
+			end 
+			SYSTEM.PUT(b.adr, a.adr) 
+		else  // a.obj = varObj
+			if a.typ # b.typ then
+				return  
+			end 
+			if a.typ >= recTyp then
+				if a.typ = ptrTyp then
+					at.desc := a.desc.base[0]
+					at.typ := TypOf(at.desc)
+					at.ptr := dummy
+					at.ext := nil
+					bt.desc := b.desc.base[0]
+					bt.typ := TypOf(bt.desc)
+					bt.ptr := dummy
+					bt.ext := nil
+					SYSTEM.GET(a.adr, n)
+					if (at.typ = recTyp) & (n # 0) then
+						SYSTEM.GET(SYSTEM.VAL(integer, n) - 4, at.desc) // dynamic type
+						at.desc := at.desc.base[bt.desc.id div 16 mod 16]  // projection to b
+					end  
+				else 
+					at := a
+					bt := b 
+				end 
+				while (at.typ = arrTyp) & (bt.typ = arrTyp) do 
+					if LenOf(at) # LenOf(bt) then
+						return  
+					end 
+					at.desc := at.desc.base[0]
+					at.typ := TypOf(at.desc)
+					bt.desc := bt.desc.base[0]
+					bt.typ := TypOf(bt.desc) 
+				end 
+				if (at.desc # bt.desc) & 
+					~((at.typ = procTyp) & (bt.typ = procTyp) 
+					& EqualSignature(SignatureOf(at), SignatureOf(bt))) then
+					return  
+				end  
+			end 
+			SYSTEM.MOVE(a.adr, b.adr, SizeOf(b)) 
+		end 
+		ok := true
+	end Copy
+	
+	proc (in proc_: Item) Call*(var ok: boolean)  // new
+		var 
+			p: Kernel.Command
+			sig: Kernel.Signature
+	begin 
+		if proc_.ext # nil then
+			proc_.ext.Call(ok)
+			return  
+		end 
+		assert(proc_.ptr # nil, 20)
+		if proc_.obj = procObj then
+			p := SYSTEM.VAL(Kernel.Command, proc_.adr) 
+		else 
+			assert((proc_.obj = varObj) & (proc_.typ = procTyp), 22)
+			SYSTEM.GET(proc_.adr, p) 
+		end 
+		assert((proc_.mod_ = nil) or (proc_.mod_.refcnt >= 0), 23)
+		sig := SignatureOf(proc_)
+		if (sig.retStruct = nil) & (sig.num = 0) & (p # nil) then
+			p()
+			ok := true 
+		else 
+			ok := false 
+		end 
+	end Call
+	
+	proc PutParam(in par: Item; sig: Kernel.Signature; p: integer
+		var data: array of integer; var n: integer
+		var ok: boolean)  // check & assign a parameter
+		var 
+			mode, fTyp, aTyp, padr, i, top: integer
+			fDesc, aDesc: Kernel.Type
+			l: longint
+			s: shortint
+			b: byte
+	begin 
+		ok := false
+		assert(par.ext = nil, 31)
+		assert(par.ptr # nil, 20)
+		assert(par.obj = varObj, 22)
+		assert((par.mod_ = nil) or (par.mod_.refcnt >= 0), 23)
+		mode := sig.par[p].id mod 16
+		if mode >= out then
+			assert(par.vis = exported, 27) 
+		end 
+		fDesc := sig.par[p].struct
+		fTyp := TypOf(fDesc)
+		aDesc := par.desc
+		aTyp := TypOf(aDesc)
+		padr := par.adr
+		if (fTyp = recTyp) or (fTyp = anyRecTyp) then
+			if (aTyp # recTyp) 
+				or (mode = value) & (aDesc # fDesc) 
+				or (fTyp = recTyp) & (aDesc.base[fDesc.id div 16 mod 16] # fDesc) then
+				return  
+			end 
+			data[n] := padr
+			inc(n)
+			data[n] := SYSTEM.VAL(integer, aDesc)
+			inc(n) 
+		elsif fTyp = arrTyp then 
+			data[n] := padr
+			inc(n)
+			if fDesc.size_ # 0 then
+				data[n] := SizeOf(par)
+				inc(n) 
+			else  // pass N-dim open array as  length_N-1 .. length_0
+				top := n + fDesc.id div 16 mod 16 
+			end 
+			while (TypOf(fDesc) = arrTyp) & (TypOf(aDesc) = arrTyp) do 
+				if aDesc.size_ # 0 then // actual static size
+					i := aDesc.size_ 
+				else  // actual dynamic size
+					i := par.ptr.len_[aDesc.id div 16 mod 16 - 1] 
+				end 
+				if fDesc.size_ = 0 then
+					dec(top)
+					data[top] := i
+					inc(n) 
+				elsif fDesc.size_ # i then 
+					return  
+				end 
+				fDesc := fDesc.base[0]
+				aDesc := aDesc.base[0] 
+			end 
+			if fDesc # aDesc then
+				return  
+			end  
+		elsif fTyp >= anyPtrTyp then  // pointer
+			if fTyp = ptrTyp then
+				fDesc := fDesc.base[0] // formal base type
+				if (mode = value) & (TypOf(fDesc) = recTyp) then
+					if (aTyp # ptrTyp) & (aTyp # anyPtrTyp) then
+						return  
+					end 
+					SYSTEM.GET(padr, i) // dynamic record type
+					SYSTEM.GET(i - 4, aDesc)
+					aDesc := aDesc.base[fDesc.id div 16 mod 16]  // projection
+				else 
+					if aTyp # ptrTyp then
+						return  
+					end 
+					aDesc := aDesc.base[0] // actual base type
+					while (TypOf(fDesc) = arrTyp) & (TypOf(aDesc) = arrTyp) do 
+						if fDesc.size_ # aDesc.size_ then
+							return  
+						end 
+						fDesc := fDesc.base[0]
+						aDesc := aDesc.base[0] 
+					end  
+				end 
+				if fDesc # aDesc then
+					return  
+				end  
+			elsif fTyp = anyPtrTyp then 
+				if (aTyp # anyPtrTyp) & ((aTyp # ptrTyp) or (TypOf(aDesc.base[0]) # recTyp)) then
+					return  
+				end  
+			elsif fTyp = procTyp then 
+				if (aTyp # procTyp) or (fDesc.size_ # aDesc.size_) then // same fingerprint
+					return  
+				end  
+			end 
+			if mode = value then
+				SYSTEM.GET(padr, data[n])
+				inc(n) 
+			else 
+				data[n] := padr
+				inc(n) 
+			end  
+		else  // basic type
+			if fTyp # aTyp then
+				return  
+			end 
+			if mode = value then
+				case SizeOf(par) of 
+					| 1: 
+						SYSTEM.GET(padr, b)
+						data[n] := b
+						inc(n) 
+					| 2: 
+						SYSTEM.GET(padr, s)
+						data[n] := s
+						inc(n) 
+					| 4: 
+						SYSTEM.GET(padr, i)
+						data[n] := i
+						inc(n) 
+					| 8: 
+						SYSTEM.GET(padr, l)
+						data[n] := short(l)
+						inc(n)
+						data[n] := short(l div 100000000h)
+						inc(n) 
+				end  
+			else  // var par
+				data[n] := padr
+				inc(n) 
+			end  
+		end 
+		ok := true
+	end PutParam
+	
+	proc GetResult(ret: longint; var dest: Item; sig: Kernel.Signature
+		var ok: boolean)  // assign return value
+		var 
+			x: Item
+			i: integer
+			s: shortint
+			b: byte
+	begin 
+		assert(dest.ext = nil, 31)
+		assert(dest.ptr # nil, 20)
+		assert(dest.obj = varObj, 22)
+		assert((dest.mod_ = nil) or (dest.mod_.refcnt >= 0), 23)
+		assert(dest.vis = exported, 27)
+		x.desc := sig.retStruct
+		x.typ := TypOf(x.desc)
+		x.obj := varObj
+		x.ptr := dummy
+		case TypOf(sig.retStruct) of 
+			| boolTyp, sCharTyp, byteTyp: 
+				b := (short(short(ret)))
+				x.adr := SYSTEM.ADR(b) 
+			| charTyp, sIntTyp: 
+				s := short(short(ret))
+				x.adr := SYSTEM.ADR(s) 
+			| longTyp, realTyp: 
+				x.adr := SYSTEM.ADR(ret) 
+			| intTyp, sRealTyp, setTyp, anyPtrTyp, procTyp, ptrTyp: 
+				i := short(ret)
+				x.adr := SYSTEM.ADR(i) 
+		end 
+		Copy(x, dest, ok)
+	end GetResult
+	
+	proc (in proc_: Item) ParamCall*(in par: array of Item; var dest: Item
+		var ok: boolean)  // new
+		var 
+			n, p, adr, padr: integer
+			ret: longint
+			data: array 256 of integer
+			sig: Kernel.Signature
+	begin 
+		ok := true
+		assert(proc_.ext = nil, 31)
+		assert(proc_.ptr # nil, 20)
+		if proc_.obj = procObj then
+			adr := proc_.adr 
+		else 
+			assert((proc_.obj = varObj) & (proc_.typ = procTyp), 22)
+			SYSTEM.GET(proc_.adr, adr)
+			if adr = 0 then
+				ok := false
+				return  
+			end  
+		end 
+		assert((proc_.mod_ = nil) or (proc_.mod_.refcnt >= 0), 23)
+		sig := SignatureOf(proc_)
+		assert((sig # nil) & (len(par) >= sig.num), 32)
+		n := 0
+		p := 0
+		while ok & (p < sig.num) do  // check & assign parameters
+			PutParam(par[p], sig, p, data, n, ok)
+			inc(p) 
+		end 
+		if ok then
+			ret := Kernel.Call(adr, sig, data, n)
+			if sig.retStruct # nil then
+				GetResult(ret, dest, sig, ok) 
+			end  
+		end 
+	end ParamCall
+	
+	proc (in proc_: Item) ParamCallVal*(in par: array of pointer to Value; var dest: Value
+		var ok: boolean)  // new
+		type 
+			IP = pointer to Item
+		var 
+			n, p, adr, padr: integer
+			ret: longint
+			x: Item
+			data: array 256 of integer
+			sig: Kernel.Signature
+	begin 
+		ok := true
+		assert(proc_.ext = nil, 31)
+		assert(proc_.ptr # nil, 20)
+		if proc_.obj = procObj then
+			adr := proc_.adr 
+		else 
+			assert((proc_.obj = varObj) & (proc_.typ = procTyp), 22)
+			SYSTEM.GET(proc_.adr, adr)
+			if adr = 0 then
+				ok := false
+				return  
+			end  
+		end 
+		assert((proc_.mod_ = nil) or (proc_.mod_.refcnt >= 0), 23)
+		sig := SignatureOf(proc_)
+		assert((sig # nil) & (len(par) >= sig.num), 32)
+		n := 0
+		p := 0
+		while ok & (p < sig.num) do  // check & assign parameters
+			if par[p] is IP then
+				PutParam(par[p](IP)^, sig, p, data, n, ok) 
+			else 
+				ValToItem(par[p]^, x)
+				PutParam(x, sig, p, data, n, ok) 
+			end 
+			inc(p) 
+		end 
+		if ok then
+			ret := Kernel.Call(adr, sig, data, n)
+			if sig.retStruct # nil then
+				with dest: Item do 
+					GetResult(ret, dest, sig, ok) 
+				else 
+					ValToItem(dest, x)
+					GetResult(ret, x, sig, ok) 
+				end  
+			end  
+		end 
+	end ParamCallVal
+	
+	proc (in var_: Item) GetVal*(var x: Value; var ok: boolean)  // new
+		var 
+			xi: Item
+	begin 
+		assert(var_.ext = nil, 31)
+		assert(var_.ptr # nil, 20)
+		assert(var_.obj in {varObj, procObj}, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		with x: Item do 
+			assert(x.ptr # nil, 20)
+			assert(x.obj = varObj, 22)
+			assert((x.mod_ = nil) or (x.mod_.refcnt >= 0), 23)
+			assert(x.vis = exported, 27)
+			Copy(var_, x, ok) 
+		else 
+			ValToItem(x, xi)
+			Copy(var_, xi, ok) 
+		end 
+	end GetVal
+	
+	proc (in var_: Item) PutVal*(in x: Value; var ok: boolean)  // new
+		var 
+			xi: Item
+	begin 
+		assert(var_.ext = nil, 31)
+		assert(var_.ptr # nil, 20)
+		assert(var_.obj = varObj, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		assert(var_.vis = exported, 27)
+		with x: Item do 
+			assert(x.ptr # nil, 20)
+			assert(x.obj in {varObj, procObj}, 22)
+			assert((x.mod_ = nil) or (x.mod_.refcnt >= 0), 23)
+			Copy(x, var_, ok) 
+		else 
+			ValToItem(x, xi)
+			Copy(xi, var_, ok) 
+		end 
+	end PutVal
+	
+	proc (in var_: Item) GetStringVal*(var x: array of wchar; var ok: boolean)  // new
+		var 
+			i, n: integer
+			p: StringPtr
+	begin 
+		if var_.ext # nil then
+			var_.ext.GetStringVal(x, ok)
+			return  
+		end 
+		assert(var_.ptr # nil, 20)
+		assert((var_.typ = arrTyp) & (SYSTEM.VAL(integer, var_.desc.base[0]) = charTyp), 21)
+		assert(var_.obj = varObj, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		p := SYSTEM.VAL(StringPtr, var_.adr)
+		i := 0
+		n := LenOf(var_)
+		while (i < n) & (p[i] # 0x) do 
+			inc(i) 
+		end 
+		if (i < n) & (i < len(x)) then
+			x := p^
+			ok := true 
+		else 
+			x := ""
+			ok := false 
+		end 
+	end GetStringVal
+	
+	proc (in var_: Item) GetSStringVal*(var x: array of char; var ok: boolean)  // new
+		var 
+			i, n: integer
+			p: SStringPtr
+	begin 
+		if var_.ext # nil then
+			var_.ext.GetSStringVal(x, ok)
+			return  
+		end 
+		assert(var_.ptr # nil, 20)
+		assert((var_.typ = arrTyp) & (SYSTEM.VAL(integer, var_.desc.base[0]) = sCharTyp), 21)
+		assert(var_.obj = varObj, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		p := SYSTEM.VAL(SStringPtr, var_.adr)
+		i := 0
+		n := LenOf(var_)
+		while (i < n) & (p[i] # 0x) do 
+			inc(i) 
+		end 
+		if (i < n) & (i < len(x)) then
+			x := p^
+			ok := true 
+		else 
+			x := ""
+			ok := false 
+		end 
+	end GetSStringVal
+	
+	proc (in var_: Item) PutStringVal*(in x: array of wchar; var ok: boolean)  // new
+		var 
+			i: integer
+			p: StringPtr
+	begin 
+		if var_.ext # nil then
+			var_.ext.PutStringVal(x, ok)
+			return  
+		end 
+		assert(var_.ptr # nil, 20)
+		assert((var_.typ = arrTyp) & (SYSTEM.VAL(integer, var_.desc.base[0]) = charTyp), 21)
+		assert(var_.obj = varObj, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		assert(var_.vis = exported, 27)
+		p := SYSTEM.VAL(StringPtr, var_.adr)
+		i := 0
+		while (i < len(x)) & (x[i] # 0x) do 
+			inc(i) 
+		end 
+		if (i < len(x)) & (i < LenOf(var_)) then
+			p^ := x
+			ok := true 
+		else 
+			ok := false 
+		end 
+	end PutStringVal
+	
+	proc (in var_: Item) PutSStringVal*(in x: array of char; var ok: boolean)  // new
+		var 
+			i: integer
+			p: SStringPtr
+	begin 
+		if var_.ext # nil then
+			var_.ext.PutSStringVal(x, ok)
+			return  
+		end 
+		assert(var_.ptr # nil, 20)
+		assert((var_.typ = arrTyp) & (SYSTEM.VAL(integer, var_.desc.base[0]) = sCharTyp), 21)
+		assert(var_.obj = varObj, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		assert(var_.vis = exported, 27)
+		p := SYSTEM.VAL(SStringPtr, var_.adr)
+		i := 0
+		while (i < len(x)) & (x[i] # 0x) do 
+			inc(i) 
+		end 
+		if (i < len(x)) & (i < LenOf(var_)) then
+			p^ := x
+			ok := true 
+		else 
+			ok := false 
+		end 
+	end PutSStringVal
+	
+	proc (in var_: Item) PtrVal*(): ANYPTR  // new
+		var 
+			p: ANYPTR
+	begin 
+		if var_.ext # nil then
+			return var_.ext.PtrVal() 
+		end 
+		assert(var_.ptr # nil, 20)
+		assert(var_.typ in {anyPtrTyp, ptrTyp}, 21)
+		assert(var_.obj = varObj, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		SYSTEM.GET(var_.adr, p)
+		return p
+	end PtrVal
+	
+	proc (in var_: Item) PutPtrVal*(x: ANYPTR)  // new
+		var 
+			vt, xt: Kernel.Type
+	begin 
+		if var_.ext # nil then
+			var_.ext.PutPtrVal(x)
+			return  
+		end 
+		assert(var_.ptr # nil, 20)
+		assert(var_.typ in {anyPtrTyp, ptrTyp}, 21)
+		assert(var_.obj = varObj, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		assert(var_.vis = exported, 27)
+		if (x # nil) & (var_.typ = ptrTyp) then
+			vt := var_.desc.base[0]
+			xt := Kernel.TypeOf(x)
+			assert(xt.base[vt.id div 16 mod 16] = vt, 28)  // xt IS vt
+		end 
+		SYSTEM.PUT(var_.adr, x)
+	end PutPtrVal
+	
+	proc (in var_: Item) IntVal*(): integer  // new
+		var 
+			sc: char
+			ch: wchar
+			s: byte
+			i: shortint
+			x: integer
+	begin 
+		if var_.ext # nil then
+			return var_.ext.IntVal() 
+		end 
+		assert(var_.ptr # nil, 20)
+		assert(var_.obj = varObj, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		if var_.typ = sCharTyp then
+			SYSTEM.GET(var_.adr, sc)
+			x := ord(sc) 
+		elsif var_.typ = charTyp then 
+			SYSTEM.GET(var_.adr, ch)
+			x := ord(ch) 
+		elsif var_.typ = byteTyp then 
+			SYSTEM.GET(var_.adr, s)
+			x := s 
+		elsif var_.typ = sIntTyp then 
+			SYSTEM.GET(var_.adr, i)
+			x := i 
+		elsif var_.typ = intTyp then 
+			SYSTEM.GET(var_.adr, x) 
+		else 
+			halt(21) 
+		end 
+		return x
+	end IntVal
+	
+	proc (in var_: Item) PutIntVal*(x: integer)  // new
+	begin 
+		if var_.ext # nil then
+			var_.ext.PutIntVal(x)
+			return  
+		end 
+		assert(var_.ptr # nil, 20)
+		assert(var_.obj = varObj, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		assert(var_.vis = exported, 27)
+		if var_.typ = sCharTyp then
+			SYSTEM.PUT(var_.adr, chr(x)) 
+		elsif var_.typ = charTyp then 
+			SYSTEM.PUT(var_.adr, wchr(x)) 
+		elsif var_.typ = byteTyp then 
+			SYSTEM.PUT(var_.adr, short(short(x))) 
+		elsif var_.typ = sIntTyp then 
+			SYSTEM.PUT(var_.adr, short(x)) 
+		elsif var_.typ = intTyp then 
+			SYSTEM.PUT(var_.adr, x) 
+		else 
+			halt(21) 
+		end 
+	end PutIntVal
+	
+	proc (in var_: Item) RealVal*(): longreal  // new
+		var 
+			r: real
+			x: longreal
+	begin 
+		if var_.ext # nil then
+			return var_.ext.RealVal() 
+		end 
+		assert(var_.ptr # nil, 20)
+		assert(var_.obj = varObj, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		if var_.typ = sRealTyp then
+			SYSTEM.GET(var_.adr, r)
+			x := r 
+		elsif var_.typ = realTyp then 
+			SYSTEM.GET(var_.adr, x) 
+		else 
+			halt(21) 
+		end 
+		return x
+	end RealVal
+	
+	proc (in var_: Item) PutRealVal*(x: longreal)  // new
+	begin 
+		if var_.ext # nil then
+			var_.ext.PutRealVal(x)
+			return  
+		end 
+		assert(var_.ptr # nil, 20)
+		assert(var_.obj = varObj, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		assert(var_.vis = exported, 27)
+		if var_.typ = sRealTyp then
+			SYSTEM.PUT(var_.adr, short(x)) 
+		elsif var_.typ = realTyp then 
+			SYSTEM.PUT(var_.adr, x) 
+		else 
+			halt(21) 
+		end 
+	end PutRealVal
+	
+	proc (in var_: Item) LongVal*(): longint  // new
+		var 
+			x: longint
+	begin 
+		if var_.ext # nil then
+			return var_.ext.LongVal() 
+		end 
+		assert(var_.ptr # nil, 20)
+		assert(var_.typ = longTyp, 21)
+		assert(var_.obj = varObj, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		SYSTEM.GET(var_.adr, x)
+		return x
+	end LongVal
+	
+	proc (in var_: Item) PutLongVal*(x: longint)  // new
+	begin 
+		if var_.ext # nil then
+			var_.ext.PutLongVal(x)
+			return  
+		end 
+		assert(var_.ptr # nil, 20)
+		assert(var_.typ = longTyp, 21)
+		assert(var_.obj = varObj, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		assert(var_.vis = exported, 27)
+		SYSTEM.PUT(var_.adr, x)
+	end PutLongVal
+	
+	proc (in var_: Item) CharVal*(): wchar  // new
+		var 
+			x: wchar
+			s: char
+	begin 
+		if var_.ext # nil then
+			return var_.ext.CharVal() 
+		end 
+		assert(var_.ptr # nil, 20)
+		assert(var_.obj = varObj, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		if var_.typ = sCharTyp then
+			SYSTEM.GET(var_.adr, s)
+			x := s 
+		elsif var_.typ = charTyp then 
+			SYSTEM.GET(var_.adr, x) 
+		else 
+			halt(21) 
+		end 
+		return x
+	end CharVal
+	
+	proc (in var_: Item) PutCharVal*(x: wchar)  // new
+	begin 
+		if var_.ext # nil then
+			var_.ext.PutCharVal(x)
+			return  
+		end 
+		assert(var_.ptr # nil, 20)
+		assert(var_.obj = varObj, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		assert(var_.vis = exported, 27)
+		if var_.typ = sCharTyp then
+			SYSTEM.PUT(var_.adr, short(x)) 
+		elsif var_.typ = charTyp then 
+			SYSTEM.PUT(var_.adr, x) 
+		else 
+			halt(21) 
+		end 
+	end PutCharVal
+	
+	proc (in var_: Item) BoolVal*(): boolean  // new
+		var 
+			x: boolean
+	begin 
+		if var_.ext # nil then
+			return var_.ext.BoolVal() 
+		end 
+		assert(var_.ptr # nil, 20)
+		assert(var_.typ = boolTyp, 21)
+		assert(var_.obj = varObj, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		SYSTEM.GET(var_.adr, x)
+		return x
+	end BoolVal
+	
+	proc (in var_: Item) PutBoolVal*(x: boolean)  // new
+	begin 
+		if var_.ext # nil then
+			var_.ext.PutBoolVal(x)
+			return  
+		end 
+		assert(var_.ptr # nil, 20)
+		assert(var_.typ = boolTyp, 21)
+		assert(var_.obj = varObj, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		assert(var_.vis = exported, 27)
+		SYSTEM.PUT(var_.adr, x)
+	end PutBoolVal
+	
+	proc (in var_: Item) SetVal*(): set  // new
+		var 
+			x: set
+	begin 
+		if var_.ext # nil then
+			return var_.ext.SetVal() 
+		end 
+		assert(var_.ptr # nil, 20)
+		assert(var_.typ = setTyp, 21)
+		assert(var_.obj = varObj, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		SYSTEM.GET(var_.adr, x)
+		return x
+	end SetVal
+	
+	proc (in var_: Item) PutSetVal*(x: set)  // new
+	begin 
+		if var_.ext # nil then
+			var_.ext.PutSetVal(x)
+			return  
+		end 
+		assert(var_.ptr # nil, 20)
+		assert(var_.typ = setTyp, 21)
+		assert(var_.obj = varObj, 22)
+		assert((var_.mod_ = nil) or (var_.mod_.refcnt >= 0), 23)
+		assert(var_.vis = exported, 27)
+		SYSTEM.PUT(var_.adr, x)
+	end PutSetVal
+	
+	proc (in type_: Item) New*(): ANYPTR  // new
+		var 
+			p: ANYPTR
+			i, n, id: integer
+			d: Kernel.Directory
+			desc: Kernel.Type
+	begin 
+		assert(type_.ext = nil, 31)
+		assert(type_.ptr # nil, 20)
+		desc := type_.desc
+		if type_.typ = ptrTyp then
+			desc := desc.base[0] 
+		end 
+		assert(TypOf(desc) = recTyp, 21)
+		assert(desc.mod_.refcnt >= 0, 24)
+		i := 0
+		d := type_.desc.mod_.export
+		n := d.num
+		id := type_.desc.id div 256
+		while (i < n) & (d.obj[i].id div 256 # id) do 
+			inc(i) 
+		end 
+		assert((i < n) & (d.obj[i].id div 16 mod 16 = exported), 29)
+		assert(desc.id div 4 mod 4 < limited, 30)
+		Kernel.NewObj(p, desc)
+		return p
+	end New
+	
+	proc (in val_: Item) Copy*(): ANYPTR  // new
+		var 
+			p: ANYPTR
+			i, n, id: integer
+			d: Kernel.Directory
+	begin 
+		assert(val_.ext = nil, 31)
+		assert(val_.ptr # nil, 20)
+		assert(val_.typ = recTyp, 21)
+		assert(val_.obj = varObj, 22)
+		assert(val_.desc.mod_.refcnt >= 0, 24)
+		i := 0
+		d := val_.desc.mod_.export
+		n := d.num
+		id := val_.desc.id div 256
+		while (i < n) & (d.obj[i].id div 256 # id) do 
+			inc(i) 
+		end 
+		assert((i < n) & (d.obj[i].id div 16 mod 16 = exported), 29)
+		assert(val_.desc.id div 4 mod 4 < limited, 30)
+		Kernel.NewObj(p, val_.desc)
+		SYSTEM.MOVE(val_.adr, p, val_.desc.size_)
+		return p
+	end Copy
+	
+	proc (in rec: Item) CallWith*(proc_: proc (var rec, par: ANYREC); var par: ANYREC)  // new
+	begin 
+		assert(rec.ext = nil, 31)
+		assert(rec.ptr # nil, 20)
+		assert(rec.typ = recTyp, 21)
+		assert(rec.obj = varObj, 22)
+		assert((rec.mod_ = nil) or (rec.mod_.refcnt >= 0), 23)
+		// TODO proc_(SYSTEM.THISRECORD(rec.adr, SYSTEM.VAL(integer, rec.desc)), par)
+	end CallWith
+	
+	
+	proc InstallFilter*(filter: LookupFilter) 
+		var 
+			h: FilterHook
+	begin 
+		assert(filter # nil, 20)
+		new(h)
+		h.filter := filter
+		h.next := filterHook
+		filterHook := h
+	end InstallFilter
+	
+	proc UninstallFilter*(filter: LookupFilter) 
+		var 
+			h, a: FilterHook
+	begin 
+		assert(filter # nil, 20)
+		h := filterHook
+		a := nil
+		while (h # nil) & (h.filter # filter) do 
+			a := h
+			h := h.next 
+		end 
+		if h # nil then
+			if a = nil then
+				filterHook := h.next 
+			else 
+				a.next := h.next 
+			end  
+		end 
+	end UninstallFilter
+	
+	proc GetThisItem*(in attr: ANYREC; var i: Item) 
+	begin 
+		with attr: Kernel.ItemAttr do 
+			i.obj := attr.obj
+			i.vis := attr.vis
+			i.typ := attr.typ
+			i.adr := attr.adr
+			i.mod_ := attr.mod_
+			i.desc := attr.desc
+			i.ptr := SYSTEM.VAL(ArrayPtr,attr.ptr) // RK
+			i.ext := attr.ext
+			if i.ptr = nil then
+				i.ptr := dummy 
+			end  
+		end 
+	end GetThisItem
+
+begin
+	new(dummy)
+end Meta

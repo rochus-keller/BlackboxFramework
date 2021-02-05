@@ -1,0 +1,1809 @@
+module Documents
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20070326, bh, SetPage corrected
+	   - 20070327, bh, SetOrientation calls added
+	   - 20181203, center #193, typing error in Documents.SetPageOp.Do
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import 
+		Kernel, Files, Ports, Dates, Printers, 
+		Stores, Sequencers, Models, Views, Controllers, Properties, 
+		Dialog, Printing, Containers
+	
+	const 
+		// Document.SetPage/PollPage decorate
+		plain* = false
+		decorate* = true
+		
+		// Controller.opts
+		pageWidth* = 16
+		pageHeight* = 17
+		winWidth* = 18
+		winHeight* = 19
+		
+		point = Ports.point
+		mm = Ports.mm
+		
+		defB = 8 * point // defB also used by HostWindows in DefBorders
+		
+		scrollUnit = 16 * point
+		abort = 1
+		
+		resizingKey = "#System:Resizing"
+		pageSetupKey = "#System:PageSetup"
+		
+		docTag = 6f4f4443h
+		docVersion = 0
+		
+		minVersion = 0
+		maxModelVersion = 0
+		maxCtrlVersion = 0
+		maxDocVersion = 0
+		maxStdDocVersion = 0
+	
+	
+	type 
+		Document* = pointer to (* abstract *) record (Containers.View) end 
+		
+		Context* = pointer to (* abstract *) record (Models.Context) end 
+		
+		Directory* = pointer to (* abstract *) record end 
+		
+		
+		Model = pointer to record (Containers.Model) 
+				doc: StdDocument
+				view: Views.View
+				l, t, r, b: integer  // possibly  r, b >= Views.infinite
+			// l, t: constant (= defB)
+			// r-l, b-t: invalid in some cases, use PollRect
+			end 
+		
+		Controller = pointer to record (Containers.Controller) 
+				doc: StdDocument 
+			end 
+		
+		StdDocument = pointer to record (Document) 
+				model: Model
+				original: StdDocument // original # NIL => d IS copy of original
+				pw, ph, pl, pt, pr, pb: integer // invalid if original # NIL, use PollPage
+				decorate: boolean
+				x, y: integer  // scroll state
+			end 
+		
+		StdContext = pointer to record (Context) 
+				model: Model 
+			end 
+		
+		StdDirectory = pointer to record (Directory) end 
+		
+		SetRectOp = pointer to record (Stores.Operation) 
+				model: Model
+				w, h: integer 
+			end 
+		SetPageOp = pointer to record (Stores.Operation) 
+				d: StdDocument
+				pw, ph, pl, pt, pr, pb: integer
+				decorate: boolean 
+			end 
+		ReplaceViewOp = pointer to record (Stores.Operation) 
+				model: Model
+				new_: Views.View 
+			end 
+		
+		PrinterContext = pointer to record (Models.Context) 
+				param: Printing.Par
+				date: Dates.Date
+				time: Dates.Time
+				pr: Printers.Printer
+				l, t, r, b: integer // frame
+				pw, ph: integer  // paper
+			end 
+		
+		UpdateMsg = record (Views.Message) 
+				doc: StdDocument 
+			end 
+		
+		
+		PContext = pointer to record (Models.Context) 
+				view: Views.View
+				w, h: integer  // content size
+			end 
+		Pager = pointer to record (Views.View) 
+				con: PContext
+				w, h: integer // page size
+				x, y: integer  // origin
+			end 
+		
+		PrintingHook = pointer to record (Printing.Hook) end 
+		
+		TrapCleaner = pointer to record (Kernel.TrapCleaner) end 
+	
+	var 
+		dir-, stdDir-: Directory
+		cleaner: TrapCleaner
+		current: integer
+	
+	
+	// Cleaner
+	
+	proc (c: TrapCleaner) Cleanup
+	begin 
+		Printing.par := nil
+		current := -1
+	end Cleanup
+	
+	
+	// Document
+	
+	proc (d: Document) Internalize2*(var rd: Stores.Reader)  // extensible
+		var 
+			thisVersion: integer
+	begin 
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minVersion, maxDocVersion, thisVersion)
+	end Internalize2
+	
+	proc (d: Document) Externalize2*(var wr: Stores.Writer)  // extensible
+	begin 
+		wr.WriteVersion(maxDocVersion)
+	end Externalize2
+	
+	proc (d: Document) GetNewFrame*(var frame: Views.Frame) 
+		var 
+			f: Views.RootFrame
+	begin 
+		new(f)
+		frame := f
+	end GetNewFrame
+	
+	proc (d: Document) GetBackground*(var color: Ports.Color) 
+	begin 
+		color := Ports.background
+	end GetBackground
+	
+	proc (d: Document) DocCopyOf*(v: Views.View): Document  end // new abstract
+	proc (d: Document) SetView*(view: Views.View; w, h: integer)  end // new abstract
+	proc (d: Document) ThisView*(): Views.View  end // new abstract
+	proc (d: Document) OriginalView*(): Views.View  end // new abstract
+	
+	proc (d: Document) SetRect*(l, t, r, b: integer)  end // new abstract
+	proc (d: Document) PollRect*(var l, t, r, b: integer)  end // new abstract
+	proc (d: Document) SetPage*(w, h, l, t, r, b: integer; decorate: boolean)  end // new abstract
+	proc (d: Document) PollPage*(var w, h, l, t, r, b: integer
+		var decorate: boolean)  end // new abstract
+	
+	
+	// Context
+	
+	proc (c: Context) ThisDoc*(): Document  end // new abstract
+	
+	
+	// Directory
+	
+	proc (d: Directory) New*(view: Views.View; w, h: integer): Document  end // new abstract
+	
+	
+	// operations
+	
+	proc (op: SetRectOp) Do
+		var 
+			m: Model
+			w, h: integer
+			upd: UpdateMsg
+	begin 
+		m := op.model
+		w := m.r - m.l
+		h := m.b - m.t
+		m.r := m.l + op.w
+		m.b := m.t + op.h
+		op.w := w
+		op.h := h
+		if m.doc.context # nil then
+			upd.doc := m.doc
+			Views.Domaincast(m.doc.Domain(), upd) 
+		end 
+	end Do
+	
+	proc (op: SetPageOp) Do
+		var 
+			d: StdDocument
+			pw, ph, pl, pt, pr, pb: integer
+			decorate: boolean
+			upd: UpdateMsg
+	begin 
+		d := op.d
+		pw := d.pw
+		ph := d.ph
+		pl := d.pl
+		pt := d.pt
+		pr := d.pr
+		pb := d.pb
+		decorate := d.decorate
+		d.pw := op.pw
+		d.ph := op.ph
+		d.pl := op.pl
+		d.pt := op.pt
+		d.pr := op.pr
+		d.pb := op.pb
+		d.decorate := op.decorate
+		op.pw := pw
+		op.ph := ph
+		op.pl := pl
+		op.pt := pt
+		op.pr := pr
+		op.pb := pb
+		op.decorate := decorate
+		if d.context # nil then
+			upd.doc := d
+			Views.Domaincast(d.Domain(), upd) 
+		end 
+	end Do
+	
+	proc (op: ReplaceViewOp) Do
+		var 
+			new_: Views.View
+			upd: UpdateMsg
+	begin 
+		new_ := op.new_
+		op.new_ := op.model.view
+		op.model.view := new_
+		upd.doc := op.model.doc
+		if upd.doc.context # nil then
+			Views.Domaincast(upd.doc.Domain(), upd) 
+		end 
+	end Do
+	
+	
+	// printing support for StdDocument
+	
+	proc CheckOrientation(d: Document; prt: Printers.Printer) 
+		var 
+			w, h, l, t, r, b: integer
+			decorate: boolean
+	begin 
+		d.PollPage(w, h, l, t, r, b, decorate)
+		prt.SetOrientation(w > h)
+	end CheckOrientation
+	
+	proc NewPrinterContext(d: Document; prt: Printers.Printer; p: Printing.Par): PrinterContext 
+		var 
+			c: PrinterContext
+			pw, ph, x0, y0, x1, y1, l, t, r, b: integer
+			decorate: boolean
+	begin 
+		prt.GetRect(x0, y0, x1, y1)
+		d.PollPage(pw, ph, l, t, r, b, decorate)
+		inc(l, x0)
+		inc(t, y0)
+		inc(r, x0)
+		inc(b, y0)
+		new(c) // c.Domain() := d.Domain(); (* dom *)
+		c.param := p
+		Dates.GetDate(c.date)
+		Dates.GetTime(c.time)
+		c.pr := prt
+		c.l := l
+		c.t := t
+		c.r := r
+		c.b := b
+		c.pw := pw + 2 * x0 // paper reduced to printer range
+		c.ph := ph + 2 * y0
+		return c
+	end NewPrinterContext
+	
+	proc Decorate(c: PrinterContext; f: Views.Frame) 
+		var 
+			p: Printing.Par
+			x0, x1, y, asc, dsc, w: integer
+			alt: boolean
+	begin 
+		p := c.param
+		alt := p.page.alternate & ~odd(p.page.first + Printing.Current()(* p.page.current *))
+		if alt then
+			x0 := c.pw - c.r
+			x1 := c.pw - c.l 
+		else 
+			x0 := c.l
+			x1 := c.r 
+		end 
+		if (alt & (p.header.left # "")) or (~alt & (p.header.right # "")) then
+			p.header.font.GetBounds(asc, dsc, w)
+			y := c.t - p.header.gap - dsc
+			Printing.PrintBanner(f, p.page, p.header, c.date, c.time, x0, x1, y) 
+		end 
+		if (alt & (p.footer.left # "")) or (~alt & (p.footer.right # "")) then
+			p.footer.font.GetBounds(asc, dsc, w)
+			y := c.b + p.footer.gap + asc
+			Printing.PrintBanner(f, p.page, p.footer, c.date, c.time, x0, x1, y) 
+		end 
+	end Decorate
+	
+	
+	// support for StdDocument paging
+	
+	proc HasFocus(v: Views.View; f: Views.Frame): boolean 
+		var 
+			focus: Views.View
+			dummy: Controllers.PollFocusMsg
+	begin 
+		focus := nil
+		dummy.focus := nil
+		v.HandleCtrlMsg(f, dummy, focus)
+		return focus # nil
+	end HasFocus
+	
+	proc ScrollDoc(v: StdDocument; x, y: integer) 
+	begin 
+		if (x # v.x) or (y # v.y) then
+			Views.Scroll(v, x - v.x, y - v.y)
+			v.x := x
+			v.y := y 
+		end 
+	end ScrollDoc
+	
+	proc PollSection(v: StdDocument; f: Views.Frame; var msg: Controllers.PollSectionMsg) 
+		var 
+			mv: Views.View
+			g: Views.Frame
+			vs, ps, ws, p, l, t, r, b: integer
+			c: Containers.Controller
+	begin 
+		mv := v.model.view
+		g := Views.ThisFrame(f, mv)
+		c := v.ThisController()
+		if c.Singleton() # nil then
+			g := nil 
+		end 
+		if g # nil then
+			Views.ForwardCtrlMsg(g, msg) 
+		end 
+		if (g = nil) or ~msg.done & (~msg.focus or ~HasFocus(mv, g)) then
+			v.PollRect(l, t, r, b)
+			if msg.vertical then
+				ps := f.b - f.t
+				vs := b + t
+				p := -v.y 
+			else 
+				ps := f.r - f.l
+				vs := r + l
+				p := -v.x 
+			end 
+			if ps > vs then
+				ps := vs 
+			end 
+			ws := vs - ps
+			if p > ws then
+				p := ws
+				if msg.vertical then
+					ScrollDoc(v, v.x, -p) 
+				else 
+					ScrollDoc(v, -p, v.y) 
+				end  
+			end 
+			msg.wholeSize := vs
+			msg.partSize := ps
+			msg.partPos := p
+			msg.valid := ws > Ports.point 
+		end 
+		msg.done := true
+	end PollSection
+	
+	proc Scroll(v: StdDocument; f: Views.Frame; var msg: Controllers.ScrollMsg) 
+		var 
+			mv: Views.View
+			g: Views.Frame
+			vs, ps, ws, p, l, t, r, b: integer
+			c: Containers.Controller
+	begin 
+		mv := v.model.view
+		g := Views.ThisFrame(f, mv)
+		c := v.ThisController()
+		if c.Singleton() # nil then
+			g := nil 
+		end 
+		if g # nil then
+			Views.ForwardCtrlMsg(g, msg) 
+		end 
+		if (g = nil) or ~msg.done & (~msg.focus or ~HasFocus(mv, g)) then
+			v.PollRect(l, t, r, b)
+			if msg.vertical then
+				ps := f.b - f.t
+				vs := b + t
+				p := -v.y 
+			else 
+				ps := f.r - f.l
+				vs := r + l
+				p := -v.x 
+			end 
+			ws := vs - ps
+			case msg.op of 
+				Controllers.decLine: 
+					p := max(0, p - scrollUnit) 
+				| Controllers.incLine: 
+					p := min(ws, p + scrollUnit) 
+				| Controllers.decPage: 
+					p := max(0, p - ps + scrollUnit) 
+				| Controllers.incPage: 
+					p := min(ws, p + ps - scrollUnit) 
+				| Controllers.gotoPos: 
+					p := max(0, min(ws, msg.pos)) 
+			else  
+			end 
+			if msg.vertical then
+				ScrollDoc(v, v.x, -p) 
+			else 
+				ScrollDoc(v, -p, v.y) 
+			end  
+		end 
+		msg.done := true
+	end Scroll
+	
+	proc MakeVisible*(d: Document; f: Views.Frame; l, t, r, b: integer) 
+		var 
+			x, y, w, h, dw, dh, ml, mt, mr, mb: integer
+	begin 
+		with d: StdDocument do 
+			d.context.GetSize(w, h)
+			x := -d.x
+			y := -d.y
+			d.PollRect(ml, mt, mr, mb)
+			dw := mr + ml - w
+			dh := mb + mt - h
+			if dw > 0 then
+				if r > x + w - 2 * ml then
+					x := r - w + 2 * ml 
+				end 
+				if l < x then
+					x := l 
+				end 
+				if x < 0 then
+					x := 0 
+				elsif x > dw then 
+					x := dw 
+				end  
+			end 
+			if dh > 0 then
+				if b > y + h - 2 * mt then
+					y := b - h + 2 * mt 
+				end 
+				if t < y then
+					y := t 
+				end 
+				if y < 0 then
+					y := 0 
+				elsif y > dh then 
+					y := dh 
+				end  
+			end 
+			ScrollDoc(d, -x, -y) 
+		end 
+	end MakeVisible
+	
+	proc Page(d: StdDocument; f: Views.Frame
+		var msg: Controllers.PageMsg) 
+		var 
+			g: Views.Frame
+	begin 
+		g := Views.ThisFrame(f, d.model.view)
+		if g # nil then
+			Views.ForwardCtrlMsg(g, msg) 
+		end 
+	end Page
+	
+	
+	// Model
+	
+	proc (m: Model) Internalize(var rd: Stores.Reader) 
+		var 
+			c: StdContext
+			thisVersion: integer
+			l, t, r, b: integer
+	begin 
+		m.Internalize^(rd)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minVersion, maxModelVersion, thisVersion)
+		if rd.cancelled then
+			return  
+		end 
+		Views.ReadView(rd, m.view)
+		rd.ReadInt(l)
+		rd.ReadInt(t)
+		rd.ReadInt(r)
+		rd.ReadInt(b)
+		m.l := defB
+		m.t := defB
+		m.r := defB + r - l
+		m.b := defB + b - t
+		new(c)
+		c.model := m
+		m.view.InitContext(c)
+	end Internalize
+	
+	proc (m: Model) Externalize(var wr: Stores.Writer) 
+	begin 
+		assert(m.doc.original = nil, 100)
+		m.Externalize^(wr)
+		wr.WriteVersion(maxModelVersion)
+		Views.WriteView(wr, m.view)
+		wr.WriteInt(m.l)
+		wr.WriteInt(m.t)
+		wr.WriteInt(m.r)
+		wr.WriteInt(m.b)
+	end Externalize
+	
+	proc (m: Model) CopyFrom(source: Stores.Store) 
+		var 
+			c: StdContext
+	begin 
+		with source: Model do 
+			m.view := Stores.CopyOf(source.view)(Views.View)
+			m.l := source.l
+			m.t := source.t
+			m.r := source.r
+			m.b := source.b
+			new(c)
+			c.model := m
+			m.view.InitContext(c) 
+		end 
+	end CopyFrom
+	
+	proc (m: Model) InitFrom(source: Containers.Model) 
+		var 
+			c: StdContext
+	begin 
+		with source: Model do 
+			m.view := Stores.CopyOf(source.view)(Views.View)
+			m.l := source.l
+			m.t := source.t
+			m.r := source.r
+			m.b := source.b
+			new(c)
+			c.model := m
+			m.view.InitContext(c) 
+		end 
+	end InitFrom
+	
+	proc (m: Model) GetEmbeddingLimits(var minW, maxW, minH, maxH: integer) 
+	begin 
+		minW := 5 * mm
+		minH := 5 * mm
+		maxW := max(integer) div 2
+		maxH := max(integer) div 2
+	end GetEmbeddingLimits
+	
+	proc (m: Model) ReplaceView(old, new_: Views.View) 
+		var 
+			con: Models.Context
+			op: ReplaceViewOp
+	begin 
+		assert(old # nil, 20)
+		con := old.context
+		assert(con # nil, 21)
+		assert(con.ThisModel() = m, 22)
+		assert(new_ # nil, 23)
+		assert((new_.context = nil) or (new_.context = con), 24)
+		if new_ # old then
+			if new_.context = nil then
+				new_.InitContext(con) 
+			end 
+			Stores.Join(m, new_)
+			new(op)
+			op.model := m
+			op.new_ := new_
+			Models.Do(m, "#System:ReplaceView", op) 
+		end 
+	end ReplaceView
+	
+	
+	// StdDocument
+	
+	proc (d: StdDocument) Internalize2(var rd: Stores.Reader) 
+		var 
+			thisVersion: integer
+			c: Containers.Controller
+	begin 
+		d.Internalize2^(rd)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minVersion, maxStdDocVersion, thisVersion)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadInt(d.pw)
+		rd.ReadInt(d.ph)
+		rd.ReadInt(d.pl)
+		rd.ReadInt(d.pt)
+		rd.ReadInt(d.pr)
+		rd.ReadInt(d.pb)
+		rd.ReadBool(d.decorate)
+		// change infinite height to "fit to window"
+		c := d.ThisController()
+		if (c # nil) & (d.model.b >= 29000 * Ports.mm) & (c.opts * {winHeight, pageHeight} = {}) then
+			c.SetOpts(c.opts + {winHeight}) 
+		end 
+		c.SetOpts(c.opts - {Containers.noSelection})
+		d.x := 0
+		d.y := 0
+		Stores.InitDomain(d)
+	end Internalize2
+	
+	proc (d: StdDocument) Externalize2(var wr: Stores.Writer) 
+	begin 
+		assert(d.original = nil, 100)
+		d.Externalize2^(wr)
+		wr.WriteVersion(maxStdDocVersion)
+		wr.WriteInt(d.pw)
+		wr.WriteInt(d.ph)
+		wr.WriteInt(d.pl)
+		wr.WriteInt(d.pt)
+		wr.WriteInt(d.pr)
+		wr.WriteInt(d.pb)
+		wr.WriteBool(d.decorate)
+	end Externalize2
+	
+	proc (d: StdDocument) CopyFromModelView2(source: Views.View; model: Models.Model) 
+	begin 
+		with source: StdDocument do 
+			d.pw := source.pw
+			d.ph := source.ph
+			d.pl := source.pl
+			d.pt := source.pt
+			d.pr := source.pr
+			d.pb := source.pb
+			d.decorate := source.decorate 
+		end 
+	end CopyFromModelView2
+	
+	proc (d: StdDocument) AcceptableModel(m: Containers.Model): boolean 
+	begin 
+		return m is Model
+	end AcceptableModel
+	
+	proc (d: StdDocument) InitModel2(m: Containers.Model) 
+	begin 
+		assert((d.model = nil) or (d.model = m), 20)
+		assert(m is Model, 23)
+		with m: Model do 
+			d.model := m
+			m.doc := d 
+		end 
+	end InitModel2
+	
+	proc (d: StdDocument) PollRect(var l, t, r, b: integer) 
+		var 
+			c: Containers.Controller
+			doc: StdDocument
+			ww, wh, pw, ph: integer
+	begin 
+		if d.original = nil then
+			doc := d 
+		else 
+			doc := d.original 
+		end 
+		l := d.model.l
+		t := d.model.t
+		pw := doc.pr - doc.pl
+		ph := doc.pb - doc.pt
+		if d.context = nil then
+			ww := 0
+			wh := 0 
+		elsif d.context is PrinterContext then 
+			ww := pw
+			wh := ph 
+		else 
+			d.context.GetSize(ww, wh)
+			dec(ww, 2 * l)
+			dec(wh, 2 * t) 
+		end 
+		c := d.ThisController()
+		if pageWidth in c.opts then
+			r := l + pw 
+		elsif winWidth in c.opts then 
+			if ww > 0 then
+				r := l + ww 
+			else 
+				r := d.model.r 
+			end  
+		else 
+			r := l + doc.model.r - doc.model.l 
+		end 
+		if pageHeight in c.opts then
+			b := t + ph 
+		elsif winHeight in c.opts then 
+			if wh > 0 then
+				b := t + wh 
+			else 
+				b := d.model.b 
+			end  
+		else 
+			b := t + doc.model.b - doc.model.t 
+		end 
+		assert(r > l, 60)
+		assert(b > t, 61)
+	end PollRect
+	
+	proc (d: StdDocument) PollPage(var w, h, l, t, r, b: integer; var decorate: boolean) 
+		var 
+			doc: StdDocument
+	begin 
+		if d.original = nil then
+			doc := d 
+		else 
+			doc := d.original 
+		end 
+		w := doc.pw
+		h := doc.ph
+		l := doc.pl
+		t := doc.pt
+		r := doc.pr
+		b := doc.pb
+		decorate := doc.decorate
+	end PollPage
+	
+	proc (d: StdDocument) DocCopyOf(v: Views.View): Document 
+		var 
+			c0, c1: Containers.Controller
+			u: Views.View
+			new_: Document
+			w, h: integer
+	begin 
+		assert(v # nil, 20)
+		assert(~(v is Document), 21)
+		assert(d.Domain() = v.Domain(), 22)
+		assert(d.Domain() # nil, 23)
+		Views.BeginModification(3, v)
+		u := Views.CopyOf(v, Views.shallow)
+		v.context.GetSize(w, h)
+		new_ := dir.New(u, w, h)
+		with new_: StdDocument do 
+			if d.original # nil then
+				new_.original := d.original 
+			else 
+				new_.original := d 
+			end  
+		end 
+		c0 := d.ThisController()
+		c1 := new_.ThisController()
+		c1.SetOpts(c0.opts)
+		Views.EndModification(3, v)
+		return new_
+	end DocCopyOf
+	
+	proc (d: StdDocument) Restore(f: Views.Frame; l, t, r, b: integer) 
+		var 
+			c: Containers.Controller
+			m: Model
+			con: Models.Context
+			s: Views.View
+	begin 
+		m := d.model
+		con := d.context
+		with con: PrinterContext do 
+			if con.param.page.alternate & ~odd(con.param.page.first + Printing.Current()) then
+				Views.InstallFrame(f, m.view, con.pw - con.r, con.t, 0, false) 
+			else 
+				Views.InstallFrame(f, m.view, con.l, con.t, 0, false) 
+			end  
+		else 
+			c := d.ThisController()
+			s := c.Singleton()
+			Views.InstallFrame(f, m.view, m.l + d.x, m.t + d.y, 0, s = nil) 
+		end 
+	end Restore
+	
+	proc (d: StdDocument) GetRect(f: Views.Frame; view: Views.View; var l, t, r, b: integer) 
+		var 
+			l0, t0, r0, b0: integer
+	begin 
+		d.PollRect(l0, t0, r0, b0)
+		l := l0 + d.x
+		t := t0 + d.y
+		r := r0 + d.x
+		b := b0 + d.y
+	end GetRect
+	
+	proc (d: StdDocument) SetView(view: Views.View; w, h: integer) 
+		const 
+			wA4 = 210 * mm // A4 default paper size
+			hA4 = 296 * mm
+			lm = 20 * mm
+			tm = 20 * mm
+			rm = 20 * mm
+			bm = 20 * mm
+		var 
+			m: Model
+			c: StdContext
+			prt: Printers.Printer
+			ctrl: Containers.Controller
+			opts: set
+			rp: Properties.ResizePref
+			u, minW, maxW, minH, maxH, defW, defH, dw, dh, pw, ph, 
+			pageW, pageH, paperW, paperH, leftM, topM, rightM, botM: integer
+			l, t, r, b: integer
+			port: Ports.Port
+	begin 
+		assert(view # nil, 20)
+		assert(~(view is Document), 21)
+		assert(d.original = nil, 100)
+		m := d.model
+		new(c)
+		c.model := m
+		view.InitContext(c)
+		if d.context # nil then
+			Stores.Join(d, view) 
+		end 
+		if Printers.dir # nil then
+			prt := Printers.dir.Current() 
+		else 
+			prt := nil 
+		end 
+		if prt # nil then
+			prt.SetOrientation(false)
+			port := prt.ThisPort()
+			prt.GetRect(l, t, r, b)
+			port.GetSize(pw, ph)
+			u := port.unit
+			paperW := r - l
+			paperH := b - t
+			pageW := paperW - lm - rm
+			pageH := paperH - tm - bm
+			leftM := lm
+			topM := tm
+			rightM := rm
+			botM := bm
+			if pageW > pw * u then
+				pageW := pw * u 
+			end 
+			if pageH > ph * u then
+				pageH := ph * u 
+			end 
+			if leftM + l < 0 then
+				dw := -(leftM + l) 
+			elsif paperW - rightM + l > pw * u then 
+				dw := pw * u - (paperW - rightM + l) 
+			else 
+				dw := 0 
+			end 
+			if topM + t < 0 then
+				dh := -(topM + t) 
+			elsif paperH - botM + t > ph * u then 
+				dh := ph * u - (paperH - botM + t) 
+			else 
+				dh := 0 
+			end 
+			inc(leftM, dw)
+			inc(topM, dh)
+			inc(rightM, dw)
+			inc(botM, dh) 
+		else 
+			paperW := wA4
+			paperH := hA4
+			pageW := paperW - lm - rm
+			pageH := paperH - tm - bm
+			leftM := lm
+			topM := tm
+			rightM := rm
+			botM := bm 
+		end 
+		m.GetEmbeddingLimits(minW, maxW, minH, maxH)
+		defW := max(minW, pageW - m.l - defB)
+		defH := max(minH, pageH - m.t - defB)
+		Properties.PreferredSize(view, minW, maxW, minH, maxH, defW, defH, w, h)
+		opts := {}
+		rp.fixed := false
+		rp.horFitToPage := false
+		rp.verFitToPage := false
+		rp.horFitToWin := false
+		rp.verFitToWin := false
+		Views.HandlePropMsg(view, rp)
+		if rp.horFitToPage then
+			incl(opts, pageWidth) 
+		elsif rp.horFitToWin then 
+			incl(opts, winWidth) 
+		end 
+		if rp.verFitToPage then
+			incl(opts, pageHeight) 
+		elsif rp.verFitToWin then 
+			incl(opts, winHeight) 
+		end 
+		Views.BeginModification(Views.notUndoable, d)
+		m.view := view
+		d.x := 0
+		d.y := 0
+		ctrl := d.ThisController()
+		ctrl.SetOpts(ctrl.opts - {pageWidth..winHeight})
+		d.SetPage(paperW, paperH, leftM, topM, paperW - rightM, paperH - botM, plain)
+		assert(w > 0, 100)
+		assert(h > 0, 101)
+		d.SetRect(m.l, m.t, m.l + w, m.t + h)
+		ctrl.SetOpts(ctrl.opts + opts)
+		Views.EndModification(Views.notUndoable, d)
+		Stores.Join(d, view)
+		Views.Update(d, Views.rebuildFrames)
+	end SetView
+	
+	proc (d: StdDocument) ThisView(): Views.View 
+	begin 
+		return d.model.view
+	end ThisView
+	
+	proc (d: StdDocument) OriginalView(): Views.View 
+	begin 
+		if d.original = nil then
+			return d.model.view 
+		else 
+			return d.original.model.view 
+		end 
+	end OriginalView
+	
+	proc (d: StdDocument) SetRect(l, t, r, b: integer) 
+		var 
+			m: Model
+			op: SetRectOp
+			c: Containers.Controller
+			w, h: integer
+	begin 
+		assert(l < r, 22)
+		assert(t < b, 25)
+		m := d.model
+		if (m.l # l) or (m.t # t) then
+			m.r := l + m.r - m.l
+			m.l := l
+			m.b := t + m.b - m.t
+			m.t := t
+			Views.Update(d, Views.rebuildFrames) 
+		end 
+		if d.original # nil then
+			m := d.original.model 
+		end 
+		c := d.ThisController()
+		w := r - l
+		h := b - t
+		if (pageWidth in c.opts) or (winWidth in c.opts) then
+			w := m.r - m.l 
+		end 
+		if (pageHeight in c.opts) or (winHeight in c.opts) then
+			h := m.b - m.t 
+		end 
+		if (w # m.r - m.l) or (h # m.b - m.t) then
+			new(op)
+			op.model := m
+			op.w := w
+			op.h := h
+			Views.Do(d, resizingKey, op) 
+		end 
+	end SetRect
+	
+	proc (d: StdDocument) SetPage(pw, ph, pl, pt, pr, pb: integer; decorate: boolean) 
+		var 
+			op: SetPageOp
+			doc: StdDocument
+	begin 
+		if d.original = nil then
+			doc := d 
+		else 
+			doc := d.original 
+		end 
+		if (doc.pw # pw) or (doc.ph # ph) or (doc.decorate # decorate) 
+			or (doc.pl # pl) or (doc.pt # pt) or (doc.pr # pr) or (doc.pb # pb) then
+			assert(0 <= pw, 20)
+			assert(0 <= ph, 22)
+			assert(0 <= pl, 24)
+			assert(pl < pr, 25)
+			assert(pr <= pw, 26)
+			assert(0 <= pt, 27)
+			assert(pt < pb, 28)
+			assert(pb <= ph, 29)
+			new(op)
+			op.d := doc
+			op.pw := pw
+			op.ph := ph
+			op.pl := pl
+			op.pt := pt
+			op.pr := pr
+			op.pb := pb
+			op.decorate := decorate
+			Views.Do(doc, pageSetupKey, op) 
+		end 
+	end SetPage
+	
+	proc (v: StdDocument) HandleViewMsg2(f: Views.Frame; var msg: Views.Message) 
+	begin 
+		with msg: UpdateMsg do 
+			if (msg.doc = v) or (msg.doc = v.original) then
+				Views.Update(v, Views.rebuildFrames) 
+			end  
+		else  
+		end 
+	end HandleViewMsg2
+	
+	proc (d: StdDocument) HandleCtrlMsg2(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View) 
+	begin 
+		with f: Views.RootFrame do 
+			with msg: Controllers.PollSectionMsg do 
+				PollSection(d, f, msg)
+				focus := nil 
+			| msg: Controllers.ScrollMsg do 
+				Scroll(d, f, msg)
+				focus := nil 
+			| msg: Controllers.PageMsg do 
+				Page(d, f, msg)
+				focus := nil 
+			else  
+			end  
+		end 
+	end HandleCtrlMsg2
+	
+	
+	// Controller
+	
+	proc (c: Controller) Internalize2(var rd: Stores.Reader) 
+		var 
+			v: integer
+	begin 
+		rd.ReadVersion(minVersion, maxCtrlVersion, v)
+	end Internalize2
+	
+	proc (c: Controller) Externalize2(var wr: Stores.Writer) 
+	begin 
+		wr.WriteVersion(maxCtrlVersion)
+	end Externalize2
+	
+	proc (c: Controller) InitView2(v: Views.View) 
+	begin 
+		if v # nil then
+			c.doc := v(StdDocument) 
+		else 
+			c.doc := nil 
+		end 
+	end InitView2
+	
+	proc (c: Controller) GetContextType(var type_: Stores.TypeName) 
+	end GetContextType
+	
+	proc (c: Controller) GetValidOps(var valid: set) 
+	begin 
+		if c.Singleton() # nil then
+			valid := {Controllers.copy_} 
+		end 
+	end GetValidOps
+	
+	proc (c: Controller) NativeModel(m: Models.Model): boolean 
+	begin 
+		return m is Model
+	end NativeModel
+	
+	proc (c: Controller) NativeView(v: Views.View): boolean 
+	begin 
+		return v is StdDocument
+	end NativeView
+	
+	proc (c: Controller) NativeCursorAt(f: Views.Frame; x, y: integer): integer 
+	begin 
+		return Ports.arrowCursor
+	end NativeCursorAt
+	
+	proc (c: Controller) PollNativeProp(selection: boolean; var p: Properties.Property
+		var truncated: boolean) 
+	end PollNativeProp
+	
+	proc (c: Controller) SetNativeProp(selection: boolean; p, old: Properties.Property) 
+	end SetNativeProp
+	
+	proc (c: Controller) GetFirstView(selection: boolean; var v: Views.View) 
+	begin 
+		if selection then
+			v := c.Singleton() 
+		else 
+			v := c.doc.model.view 
+		end 
+	end GetFirstView
+	
+	proc (c: Controller) GetNextView(selection: boolean; var v: Views.View) 
+	begin 
+		v := nil
+	end GetNextView
+	
+	proc (c: Controller) GetPrevView(selection: boolean; var v: Views.View) 
+	begin 
+		v := nil
+	end GetPrevView
+	
+	proc (c: Controller) TrackMarks(f: Views.Frame; x, y: integer
+		units, extend, add: boolean) 
+	begin 
+		c.Neutralize
+	end TrackMarks
+	
+	proc (c: Controller) RestoreMarks2(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		if c.doc.context is PrinterContext then
+			Decorate(c.doc.context(PrinterContext), f) 
+		end 
+	end RestoreMarks2
+	
+	proc (c: Controller) Resize(view: Views.View; l, t, r, b: integer) 
+		var 
+			d: StdDocument
+			l0, t0: integer
+	begin 
+		d := c.doc
+		assert(view = d.model.view, 20)
+		l0 := d.model.l
+		t0 := d.model.t
+		d.SetRect(l0, t0, l0 + r - l, t0 + b - t)
+	end Resize
+	
+	proc (c: Controller) DeleteSelection
+	end DeleteSelection
+	
+	proc (c: Controller) MoveLocalSelection(f, dest: Views.Frame; x, y: integer
+		dx, dy: integer) 
+		var 
+			m: Model
+			l, t, r, b: integer
+	begin 
+		if f = dest then
+			m := c.doc.model
+			dec(dx, x)
+			dec(dy, y)
+			l := m.l + dx
+			t := m.t + dy
+			r := m.r + dx
+			b := m.b + dy
+			c.Resize(m.view, l, t, r, b)
+			if c.Singleton() = nil then
+				c.SetSingleton(m.view) 
+			end  
+		end 
+	end MoveLocalSelection
+	
+	proc (c: Controller) SelectionCopy(): Model 
+	begin 
+		return nil
+	end SelectionCopy
+	
+	proc (c: Controller) NativePaste(m: Models.Model; f: Views.Frame) 
+		var 
+			m0: Model
+	begin 
+		with m: Model do 
+			m0 := c.doc.model
+			m0.ReplaceView(m0.view, m.view)
+			c.doc.SetRect(m.l, m.t, m.r, m.b) 
+		end 
+	end NativePaste
+	
+	proc (c: Controller) PasteView(f: Views.Frame; v: Views.View; w, h: integer) 
+		var 
+			m: Model
+			minW, maxW, minH, maxH, defW, defH: integer
+	begin 
+		m := c.doc.model
+		m.GetEmbeddingLimits(minW, maxW, minH, maxH)
+		defW := m.r - m.l
+		defH := m.b - m.t
+		Properties.PreferredSize(v, minW, maxW, minH, maxH, defW, defH, w, h)
+		m.ReplaceView(m.view, v)
+		c.doc.SetRect(m.l, m.t, m.l + w, m.t + h)
+	end PasteView
+	
+	proc (c: Controller) Drop(src, dst: Views.Frame; sx, sy, x, y, w, h, rx, ry: integer
+		v: Views.View; isSingle: boolean) 
+		var 
+			m: Model
+			minW, maxW, minH, maxH, defW, defH: integer
+	begin 
+		m := c.doc.model
+		m.GetEmbeddingLimits(minW, maxW, minH, maxH)
+		defW := m.r - m.l
+		defH := m.b - m.t
+		Properties.PreferredSize(v, minW, maxW, minH, maxH, defW, defH, w, h)
+		m.ReplaceView(m.view, v)
+		c.doc.SetRect(m.l, m.t, m.l + w, m.t + h)
+	end Drop
+	
+	// selection
+	
+	proc (c: Controller) Selectable(): boolean 
+	begin 
+		return true
+	end Selectable
+	
+	proc (c: Controller) SelectAll(select: boolean) 
+	begin 
+		if ~select & (c.Singleton() # nil) then
+			c.SetSingleton(nil) 
+		elsif select & (c.Singleton() = nil) then 
+			c.SetSingleton(c.doc.model.view) 
+		end 
+	end SelectAll
+	
+	proc (c: Controller) InSelection(f: Views.Frame; x, y: integer): boolean 
+	begin 
+		return c.Singleton() # nil
+	end InSelection
+	
+	// caret
+	
+	proc (c: Controller) HasCaret(): boolean 
+	begin 
+		return false
+	end HasCaret
+	
+	proc (c: Controller) MarkCaret(f: Views.Frame; show: boolean) 
+	end MarkCaret
+	
+	proc (c: Controller) CanDrop(f: Views.Frame; x, y: integer): boolean 
+	begin 
+		return false
+	end CanDrop
+	
+	// handlers
+	
+	proc (c: Controller) HandleCtrlMsg(f: Views.Frame
+		var msg: Controllers.Message; var focus: Views.View) 
+		var 
+			l, t, r, b: integer
+	begin 
+		if ~(Containers.noFocus in c.opts) then
+			with msg: Controllers.TickMsg do 
+				if c.Singleton() = nil then
+					c.SetFocus(c.doc.model.view) 
+				end  
+			| msg: Controllers.CursorMessage do 
+				if c.Singleton() = nil then // delegate to focus, even if not directly hit
+					focus := c.ThisFocus()
+					c.doc.GetRect(f, focus, l, t, r, b) // except for resize in lower right corner
+					if (c.opts * {pageWidth..winHeight} # {}) 
+						or (msg.x < r) or (msg.y < b) then
+						return  
+					end  
+				end  
+			else  
+			end  
+		end 
+		c.HandleCtrlMsg^(f, msg, focus)
+	end HandleCtrlMsg
+	
+	
+	proc (c: Controller) PasteChar(ch: wchar) 
+	end PasteChar
+	
+	proc (c: Controller) ControlChar(f: Views.Frame; ch: wchar) 
+	end ControlChar
+	
+	proc (c: Controller) ArrowChar(f: Views.Frame; ch: wchar; units, select: boolean) 
+	end ArrowChar
+	
+	proc (c: Controller) CopyLocalSelection(src, dst: Views.Frame; sx, sy, dx, dy: integer) 
+	end CopyLocalSelection
+	
+	
+	// StdContext
+	
+	proc (c: StdContext) ThisModel(): Models.Model 
+	begin 
+		return c.model
+	end ThisModel
+	
+	proc (c: StdContext) GetSize(var w, h: integer) 
+		var 
+			m: Model
+			dc: Models.Context
+			l, t, r, b: integer
+	begin 
+		m := c.model
+		m.doc.PollRect(l, t, r, b)
+		w := r - l
+		h := b - t
+		dc := m.doc.context
+		if dc # nil then
+			with dc: PrinterContext do 
+				w := min(w, dc.r - dc.l)
+				h := min(h, dc.b - dc.t) 
+			else  
+			end  
+		end 
+		assert(w > 0, 60)
+		assert(h > 0, 61)
+	end GetSize
+	
+	proc (c: StdContext) SetSize(w, h: integer) 
+		var 
+			m: Model
+			d: StdDocument
+			minW, maxW, minH, maxH, defW, defH: integer
+	begin 
+		m := c.model
+		d := m.doc
+		assert(d # nil, 20)
+		m.GetEmbeddingLimits(minW, maxW, minH, maxH)
+		defW := m.r - m.l
+		defH := m.b - m.t
+		Properties.PreferredSize(m.view, minW, maxW, minH, maxH, defW, defH, w, h)
+		d.SetRect(m.l, m.t, m.l + w, m.t + h)
+	end SetSize
+	
+	proc (c: StdContext) Normalize(): boolean 
+	begin 
+		return true
+	end Normalize
+	
+	proc (c: StdContext) ThisDoc(): Document 
+	begin 
+		return c.model.doc
+	end ThisDoc
+	
+	proc (c: StdContext) MakeVisible(l, t, r, b: integer) 
+	begin 
+		MakeVisible(c.model.doc, nil, l, t, r, b)
+	end MakeVisible
+	
+	
+	// PrinterContext
+	
+	proc (c: PrinterContext) GetSize(var w, h: integer) 
+		var 
+			p: Ports.Port
+	begin 
+		p := c.pr.ThisPort()
+		p.GetSize(w, h)
+		w := w * p.unit
+		h := h * p.unit
+	end GetSize
+	
+	proc (c: PrinterContext) Normalize(): boolean 
+	begin 
+		return true
+	end Normalize
+	
+	proc (c: PrinterContext) SetSize(w, h: integer) 
+	end SetSize
+	
+	proc (c: PrinterContext) ThisModel(): Models.Model 
+	begin 
+		return nil
+	end ThisModel
+	
+	
+	// StdDirectory
+	
+	proc (d: StdDirectory) New(view: Views.View; w, h: integer): Document 
+		var 
+			doc: StdDocument
+			m: Model
+			c: Controller
+	begin 
+		assert(view # nil, 20)
+		assert(~(view is Document), 21)
+		new(m)
+		new(doc)
+		doc.InitModel(m)
+		new(c)
+		doc.SetController(c)
+		doc.SetRect(defB, defB, defB + 1, defB + 1) // set top-left point
+		doc.SetView(view, w, h) // joins store graphs of doc and view
+		Stores.InitDomain(doc) // domains of new documents are bound
+		return doc
+	end New
+	
+	
+	// PContext
+	
+	proc (c: PContext) GetSize(var w, h: integer) 
+	begin 
+		w := c.w
+		h := c.h
+	end GetSize
+	
+	proc (c: PContext) Normalize(): boolean 
+	begin 
+		return true
+	end Normalize
+	
+	proc (c: PContext) SetSize(w, h: integer) 
+	end SetSize
+	
+	proc (c: PContext) ThisModel(): Models.Model 
+	begin 
+		return nil
+	end ThisModel
+	
+	
+	// Pager
+	
+	
+	proc (p: Pager) Restore(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		Views.InstallFrame(f, p.con.view, -p.x, -p.y, 0, false)
+	end Restore
+	
+	proc (p: Pager) HandleCtrlMsg(f: Views.Frame; var msg: Views.CtrlMessage; var focus: Views.View) 
+		var 
+			v: Views.View
+			g: Views.Frame
+	begin 
+		with msg: Controllers.PageMsg do 
+			v := p.con.view
+			g := Views.ThisFrame(f, v)
+			if g = nil then
+				Views.InstallFrame(f, v, 0, 0, 0, false)
+				g := Views.ThisFrame(f, v) 
+			end 
+			if g # nil then
+				Views.ForwardCtrlMsg(g, msg)
+				if ~msg.done then
+					if p.con.w > p.w then // needs horizontal paging
+						if msg.op = Controllers.gotoPageX then
+							p.x := msg.pageX * p.w
+							msg.done := true 
+						elsif msg.op = Controllers.nextPageX then 
+							p.x := p.x + p.w
+							msg.done := true 
+						end 
+						if p.x >= p.con.w then
+							msg.eox := true
+							p.x := 0 
+						end  
+					end 
+					if p.con.h > p.h then // needs vertical paging
+						if msg.op = Controllers.gotoPageY then
+							p.y := msg.pageY * p.h
+							msg.done := true 
+						elsif msg.op = Controllers.nextPageY then 
+							p.y := p.y + p.h
+							msg.done := true 
+						end 
+						if p.y >= p.con.h then
+							msg.eoy := true
+							p.y := 0 
+						end  
+					end  
+				end  
+			end  
+		else 
+			focus := p.con.view 
+		end 
+	end HandleCtrlMsg
+	
+	proc NewPager(v: Views.View; w, h, pw, ph: integer): Pager 
+		var 
+			p: Pager
+			c: PContext
+	begin 
+		new(c)
+		c.view := v
+		c.w := w
+		c.h := h
+		v.InitContext(c)
+		new(p)
+		p.con := c
+		p.w := pw
+		p.h := ph
+		p.x := 0
+		p.y := 0
+		Stores.Join(v, p)
+		return p
+	end NewPager
+	
+	proc PrinterDoc(d: Document; c: PrinterContext): Document 
+		var 
+			v, u, p: Views.View
+			w, h, l, t, r, b, pw, ph: integer
+			pd: Document
+			ct: Containers.Controller
+			dec_: boolean
+			seq: ANYPTR
+	begin 
+		v := d.ThisView()
+		
+		if d.Domain() # nil then
+			seq := d.Domain().GetSequencer()
+			if seq # nil then
+				seq(Sequencers.Sequencer).BeginModification(Sequencers.invisible, d) 
+			end  
+		end 
+		u := Views.CopyOf(v, Views.shallow)
+		if d.Domain() # nil then
+			seq := d.Domain().GetSequencer()
+			if seq # nil then
+				seq(Sequencers.Sequencer).EndModification(Sequencers.invisible, d) 
+			end  
+		end 
+		
+		d.PollPage(w, h, l, t, r, b, dec_) // page size
+		pw := r - l
+		ph := b - t
+		v.context.GetSize(w, h)
+		ct := d.ThisController()
+		if winWidth in ct.opts then // fit to win -> fit to page
+			w := pw 
+		end 
+		if winHeight in ct.opts then
+			h := ph 
+		end 
+		p := NewPager(u, w, h, pw, ph)
+		assert(Stores.Joined(p, d), 100)
+		pd := dir.New(p, pw, ph)
+		pd.InitContext(c)
+		return pd
+	end PrinterDoc
+	
+	
+	// miscellaneous
+	
+	proc Print*(d: Document; p: Printers.Printer; par: Printing.Par) 
+		var 
+			dom: Stores.Domain
+			d1: Document
+			f: Views.RootFrame
+			g: Views.Frame
+			c: PrinterContext
+			from, to_, this, copies, w, h, u, k: integer
+			page: Controllers.PageMsg
+			title: Views.Title
+			port: Ports.Port
+	begin 
+		assert(d # nil, 20)
+		assert(p # nil, 21)
+		assert(par # nil, 22)
+		assert(par.page.from >= 0, 23)
+		assert(par.page.from <= par.page.to_, 24)
+		assert(par.copies > 0, 25)
+		if (par.header.right # "") or (par.page.alternate & (par.header.left # "")) then
+			assert(par.header.font # nil, 26) 
+		end 
+		if (par.footer.right # "") or (par.page.alternate & (par.footer.left # "")) then
+			assert(par.footer.font # nil, 27) 
+		end 
+		if par.page.title = "" then
+			title := "(" + Dialog.appName + ")" 
+		else 
+			title := par.page.title 
+		end 
+		from := par.page.from
+		to_ := par.page.to_
+		copies := par.copies
+		CheckOrientation(d, p)
+		p.OpenJob(copies, title)
+		if p.res = 0 then
+			dom := d.Domain()
+			assert(dom # nil, 100)
+			c := NewPrinterContext(d, p, par)
+			d1 := PrinterDoc(d, c)
+			CheckOrientation(d, p) // New in PrinterDoc resets printer orientation
+			d1.GetNewFrame(g)
+			f := g(Views.RootFrame)
+			f.ConnectTo(p.ThisPort())
+			Views.SetRoot(f, d1, false, {})
+			Views.AdaptRoot(f)
+			current := 0 // par.page.current := 0;
+			d1.Restore(f, 0, 0, 0, 0) // install frame for doc's view
+			Kernel.PushTrapCleaner(cleaner)
+			port := p.ThisPort()
+			Printing.par := par
+			page.op := Controllers.gotoPageX
+			page.pageX := 0
+			page.done := false
+			page.eox := false
+			Views.ForwardCtrlMsg(f, page)
+			if page.done then
+				this := 0 
+			else 
+				this := from 
+			end 
+			page.op := Controllers.gotoPageY
+			page.pageY := this
+			page.done := false
+			page.eoy := false
+			Views.ForwardCtrlMsg(f, page)
+			if ~page.done & (from > 0) or page.eox or page.eoy then
+				to_ := -1 
+			end 
+			while this <= to_ do 
+				if this >= from then
+					current := this // par.page.current := this;
+					port.GetSize(w, h)
+					u := port.unit
+					for k:= copies to par.copies do 
+						p.OpenPage
+						if p.res = 0 then
+							Views.RemoveFrames(f, 0, 0, w * u, h * u)
+							Views.RestoreRoot(f, 0, 0, w * u, h * u) 
+						end 
+						p.ClosePage 
+					end  
+				end 
+				if p.res # abort then
+					inc(this) 
+				else 
+					to_ := -1 
+				end 
+				if this <= to_ then
+					page.op := Controllers.nextPageX
+					page.done := false
+					page.eox := false
+					Views.ForwardCtrlMsg(f, page)
+					if ~page.done or page.eox then
+						if page.done then
+							page.op := Controllers.gotoPageX
+							page.pageX := 0
+							page.done := false
+							page.eox := false
+							Views.ForwardCtrlMsg(f, page) 
+						end 
+						page.op := Controllers.nextPageY
+						page.done := false
+						page.eoy := false
+						Views.ForwardCtrlMsg(f, page)
+						if ~page.done or page.eoy then
+							to_ := -1 
+						end  
+					end  
+				end  
+			end 
+			Printing.par := nil
+			Kernel.PopTrapCleaner(cleaner) 
+		else 
+			Dialog.ShowMsg("#System:FailedToOpenPrintJob") 
+		end 
+		p.CloseJob
+	end Print
+	
+	proc (hook: PrintingHook) Current(): integer 
+	begin 
+		return current
+	end Current
+	
+	proc (hook: PrintingHook) Print(v: Views.View; par: Printing.Par) 
+		var 
+			dom: Stores.Domain
+			d: Document
+			f: Views.RootFrame
+			c: PrinterContext
+			w, h, u: integer
+			p: Printers.Printer
+			g: Views.Frame
+			title: Views.Title
+			k, copies: integer
+			port: Ports.Port
+	begin 
+		assert(v # nil, 20)
+		p := Printers.dir.Current()
+		assert(p # nil, 21)
+		if v is Document then
+			Print(v(Document), p, par)
+			return  
+		end 
+		if (v.context # nil) & (v.context is Context) then
+			Print(v.context(Context).ThisDoc(), p, par)
+			return  
+		end 
+		p.SetOrientation(false)
+		if par.page.title = "" then
+			title := "(" + Dialog.appName + ")" 
+		else 
+			title := par.page.title 
+		end 
+		copies := par.copies
+		p.OpenJob(copies, title)
+		if p.res = 0 then
+			Printing.par := par
+			Stores.InitDomain(v)
+			dom := v.Domain()
+			v := Views.CopyOf(v, Views.shallow)
+			d := dir.New(v, Views.undefined, Views.undefined)
+			c := NewPrinterContext(d, (* dom, *)p, par)
+			d.InitContext(c) // Stores.InitDomain(d, c.Domain()); (* nicht mehr noetig *)
+			d.GetNewFrame(g)
+			f := g(Views.RootFrame)
+			port := p.ThisPort()
+			f.ConnectTo(port)
+			Views.SetRoot(f, d, false, {})
+			Views.AdaptRoot(f)
+			port.GetSize(w, h)
+			u := port.unit
+			for k:= copies to par.copies do 
+				p.OpenPage
+				if p.res = 0 then
+					Views.RemoveFrames(f, 0, 0, w * u, h * u)
+					Views.RestoreRoot(f, 0, 0, w * u, h * u) 
+				end 
+				p.ClosePage 
+			end  
+		end 
+		Printing.par := nil
+		p.CloseJob
+	end Print
+	
+	
+	proc ImportDocument*(f: Files.File; var s: Stores.Store) 
+		var 
+			r: Stores.Reader
+			tag, version: integer
+	begin 
+		assert(f # nil, 20)
+		r.ConnectTo(f)
+		r.ReadInt(tag)
+		if tag = docTag then
+			r.ReadInt(version)
+			assert(version = docVersion, 100)
+			r.ReadStore(s)
+			if s is Document then
+				s := s(Document).ThisView() 
+			else 
+				s := nil 
+			end  
+		end 
+	end ImportDocument
+	
+	proc ExportDocument*(s: Stores.Store; f: Files.File) 
+		var 
+			w: Stores.Writer
+			v: Views.View
+	begin 
+		assert(s # nil, 20)
+		assert(s is Views.View, 21)
+		assert(f # nil, 22)
+		v := s(Views.View)
+		if (v.context # nil) & (v.context is Context) then
+			v := v.context(Context).ThisDoc() 
+		end 
+		if ~(v is Document) then
+			if v.context # nil then
+				v := Views.CopyOf(v, Views.shallow) 
+			end 
+			v := dir.New(v, Views.undefined, Views.undefined) 
+		end 
+		w.ConnectTo(f)
+		w.WriteInt(docTag)
+		w.WriteInt(docVersion)
+		w.WriteStore(v)
+	end ExportDocument
+	
+	
+	proc SetDir*(d: Directory) 
+	begin 
+		assert(d # nil, 20)
+		dir := d
+		if stdDir = nil then
+			stdDir := d 
+		end 
+	end SetDir
+	
+	proc Init
+		var 
+			d: StdDirectory
+			h: PrintingHook
+	begin 
+		new(d)
+		SetDir(d)
+		new(h)
+		Printing.SetHook(h)
+		new(cleaner)
+	end Init
+
+begin
+	Init
+end Documents

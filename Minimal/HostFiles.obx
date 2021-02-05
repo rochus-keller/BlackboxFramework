@@ -1,0 +1,1823 @@
+module HostFiles
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20070130, bh, Unicode support
+	   - 20141027, center #19, full Unicode support for Component Pascal identifiers added
+	   - 20141226, center #22, HostFiles.NewWriter violating the specification
+	   - 20150529, center #56, fixes in HostFiles
+	   - 20160111, center #94, using BlackBox without the Windows registry
+	   - 20161022, center #138, Support for files larger than 2GB
+	   - 20190630, center #200, network file delete under Win10 sometimes fails
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import SYSTEM, WinApi, Files, Kernel
+	
+	const 
+		tempName = "odcxxxxx.tmp"
+		docType = "odc"
+		
+		serverVersion = true
+		
+		pathLen* = 260
+		
+		nofbufs = 4 // max number of buffers per file
+		bufsize = 2 * 1024 // size of each buffer
+		
+		invalid = WinApi.INVALID_HANDLE_VALUE
+		
+		temp = 0 // file states
+		new_ = 1
+		shared = 2
+		hidden = 3
+		exclusive = 4
+		closed = 5
+		create = -1
+		
+		ok = 0
+		invalidName = 1
+		invalidNameErr = 123
+		paramErr = 87
+		notFound = 2
+		fileNotFoundErr = 2
+		pathNotFoundErr = 3
+		existsAlready = 3
+		fileExistsErr = 80
+		alreadyExistsErr = 183
+		writeProtected = 4
+		writeProtectedErr = 19
+		ioError = 5
+		accessDenied = 6
+		accessDeniedErr = 5
+		sharingErr = 32
+		netAccessDeniedErr = 65
+		notEnoughMem = 80
+		notEnoughMemoryErr = 8
+		notEnoughDisk = 81
+		diskFullErr = 39
+		tooManyOpenFilesErr = 4
+		noSystemResourcesErr = 1450
+		
+		noMoreFilesErr = 18
+		
+		cancel = -8
+		retry = -9
+	
+	type 
+		FullName* = array pathLen of wchar
+		
+		Locator* = pointer to record (Files.Locator) 
+				path-: FullName // without trailing "/"
+				maxLen-: integer // maximum name length
+				caseSens-: boolean // case sensitive file compares
+				rootLen-: integer  // for network version
+			end 
+		
+		Buffer = pointer to record 
+				dirty: boolean
+				org, len_: integer
+				data: array bufsize of byte 
+			end 
+		
+		
+		File = pointer to record (Files.File) 
+				state: integer
+				name: FullName
+				ref: WinApi.HANDLE
+				loc: Locator
+				swapper: integer // index into file table / next buffer to swap
+				len_: integer
+				bufs: array nofbufs of Buffer
+				t: longint  // time stamp of last file operation
+			end 
+		
+		Reader = pointer to record (Files.Reader) 
+				base: File
+				org, offset: integer
+				buf: Buffer 
+			end 
+		
+		Writer = pointer to record (Files.Writer) 
+				base: File
+				org, offset: integer
+				buf: Buffer 
+			end 
+		
+		Directory = pointer to record (Files.Directory) 
+				temp, startup: Locator 
+			end 
+		
+		Identifier = record (Kernel.Identifier) 
+				name: FullName 
+			end 
+		
+		Searcher = record (Kernel.Identifier) 
+				t0: integer
+				f: File 
+			end 
+		
+		Counter = record (Kernel.Identifier) 
+				count: integer 
+			end 
+	
+	
+	var 
+		MapParamString*: proc (in_, p0, p1, p2: array of wchar; var out: array of wchar)
+		appName-: FullName
+		ignoreAsk-: boolean // file/directory operations ignore the 'ask' parameter and don't ask; used for scripting
+		dir: Directory
+		wildcard: Files.Type
+		startupDir: FullName
+		startupLen: integer
+		res: integer
+	
+	
+	proc Error(n: integer): integer 
+		var 
+			res: integer
+	begin 
+		if n = ok then
+			res := ok 
+		elsif n = invalidNameErr then 
+			res := invalidName 
+		elsif (n = fileNotFoundErr) or (n = pathNotFoundErr) then 
+			res := notFound 
+		elsif (n = fileExistsErr) or (n = alreadyExistsErr) then 
+			res := existsAlready 
+		elsif n = writeProtectedErr then 
+			res := writeProtected 
+		elsif (n = sharingErr) or (n = accessDeniedErr) or (n = netAccessDeniedErr) then 
+			res := accessDenied 
+		elsif n = notEnoughMemoryErr then 
+			res := notEnoughMem 
+		elsif (n = diskFullErr) or (n = tooManyOpenFilesErr) then 
+			res := notEnoughDisk 
+		else 
+			res := -n 
+		end 
+		return res
+	end Error
+	
+	proc Diff(in a, b: array of wchar; caseSens: boolean): integer 
+		var 
+			i: integer
+			cha, chb: wchar
+	begin 
+		i := 0
+		repeat 
+			cha := a[i]
+			chb := b[i]
+			inc(i)
+			if cha # chb then
+				if ~caseSens then
+					cha := Kernel.Upper(cha)
+					chb := Kernel.Upper(chb) 
+				end 
+				if cha = "\" then
+					cha := "/" 
+				end 
+				if chb = "\" then
+					chb := "/" 
+				end 
+				if cha # chb then
+					return ord(cha) - ord(chb) 
+				end  
+			end  
+		(* IF (cha = chb)
+		   OR ~caseSens & (CAP(cha) = CAP(chb)) & (CAP(cha) >= "A") & ((CAP(cha) <= "Z") OR (cha >= "À"))
+		   OR ((cha = "/") OR (cha = "\")) & ((chb = "/") OR (chb = "\")) THEN	(* ok *)
+		   ELSE RETURN 1
+		   END *)
+		
+		
+		until cha = 0x 
+		return 0
+	end Diff
+	
+	proc NewLocator*(in fname: array of wchar): Locator 
+		var 
+			loc: Locator
+			res, n, max_, i: integer
+			root: FullName
+			ch: wchar
+			f: set
+	begin 
+		new(loc)
+		loc.path := fname
+		i := 0
+		while loc.path[i] # 0x do 
+			inc(i) 
+		end 
+		if (loc.path[i - 1] = "/") or (loc.path[i - 1] = "\") then
+			loc.path[i - 1] := 0x 
+		end 
+		i := 0
+		n := 1
+		if ((fname[0] = "\") or (fname[0] = "/")) & ((fname[1] = "\") or (fname[1] = "/")) then
+			n := 4 
+		end 
+		repeat 
+			ch := fname[i]
+			root[i] := ch
+			inc(i)
+			if (ch = "/") or (ch = "\") then
+				dec(n) 
+			end  
+		until (ch = 0x) or (n = 0) 
+		if ch = 0x then
+			root[i - 1] := "\" 
+		end 
+		root[i] := 0x
+		res := WinApi.GetVolumeInformationW(root, nil, 0, n, max_, f, nil, 0)
+		if res = 0 then
+			max_ := 12 // FAT values
+			f := {} 
+		end 
+		loc.maxLen := max_ // 0 IN f; // NT erroneously returns true here
+		loc.caseSens := false
+		return loc
+	end NewLocator
+	
+	proc GetType(in name: array of wchar; var type_: Files.Type) 
+		var 
+			i, j: integer
+			ch: wchar
+	begin 
+		i := 0
+		j := 0
+		while name[i] # 0x do 
+			inc(i) 
+		end 
+		while (i > 0) & (name[i] # ".") do 
+			dec(i) 
+		end 
+		if i > 0 then
+			inc(i)
+			ch := name[i]
+			while (j < len(type_) - 1) & (ch # 0x) do 
+				ch := Kernel.Lower(ch)
+				type_[j] := ch
+				inc(j)
+				inc(i)
+				ch := name[i] 
+			end  
+		end 
+		type_[j] := 0x
+	end GetType
+	
+	proc Append(in path, name: array of wchar; type_: Files.Type; max_: integer
+		var res: array of wchar
+		) 
+		var 
+			i, j, n, m, dot: integer
+			ch: wchar
+	begin 
+		i := 0
+		while path[i] # 0x do 
+			res[i] := path[i]
+			inc(i) 
+		end 
+		if path # "" then
+			assert((res[i - 1] # "/") & (res[i - 1] # "\"), 100)
+			res[i] := "\"
+			inc(i) 
+		end 
+		j := 0
+		ch := name[0]
+		n := 0
+		m := max_
+		dot := -1
+		if max_ = 12 then
+			m := 8 
+		end 
+		while (i < len(res) - 1) & (ch # 0x) do 
+			if (ch = "/") or (ch = "\") then
+				res[i] := ch
+				inc(i)
+				n := 0
+				m := max_
+				dot := -1
+				if max_ = 12 then
+					m := 8 
+				end  
+			elsif (n < m) or (ch = ".") & (n = 8) then 
+				res[i] := ch
+				inc(i)
+				inc(n)
+				if ch = "." then
+					dot := n
+					if max_ = 12 then
+						m := n + 3 
+					end  
+				end  
+			end 
+			inc(j)
+			ch := name[j] 
+		end 
+		if (dot = -1) & (type_ # "") then
+			if max_ = 12 then
+				m := n + 4 
+			end 
+			if (n < m) & (i < len(res) - 1) then
+				res[i] := "."
+				inc(i)
+				inc(n)
+				dot := n 
+			end  
+		end 
+		if n = dot then
+			j := 0
+			while (n < m) & (i < len(res) - 1) & (type_[j] # 0x) do 
+				res[i] := type_[j]
+				inc(i)
+				inc(j) 
+			end  
+		end 
+		res[i] := 0x
+	end Append
+	
+	proc CloseFileHandle(f: File; var res: integer) 
+	begin 
+		if (f.ref = invalid) or (WinApi.CloseHandle(f.ref) # 0) then // !!!
+			res := ok 
+		else 
+			res := WinApi.GetLastError() 
+		end 
+		f.ref := invalid
+	end CloseFileHandle
+	
+	proc CloseFile(f: File; var res: integer) 
+		var 
+			s: integer
+	begin 
+		if f.state = exclusive then
+			f.Flush
+			res := WinApi.FlushFileBuffers(f.ref) 
+		end 
+		s := f.state
+		f.state := closed
+		CloseFileHandle(f, res)
+		if (s in {temp, new_, hidden}) & (f.name # "") then
+			res := WinApi.DeleteFileW(f.name) 
+		end 
+	end CloseFile
+	
+	proc (f: File) FINALIZE
+		var 
+			res: integer
+	begin 
+		if f.state # closed then
+			CloseFile(f, res) 
+		end 
+	end FINALIZE
+	
+	proc (var id: Identifier) Identified(): boolean 
+		var 
+			f: File
+	begin 
+		f := id.obj(File)
+		return (f.state in {shared, exclusive}) & (Diff(f.name, id.name, f.loc.caseSens) = 0)
+	end Identified
+	
+	proc ThisFile(in name: FullName): File 
+		var 
+			id: Identifier
+			p: ANYPTR
+	begin 
+		id.typ := SYSTEM.TYP(File)
+		id.name := name
+		p := Kernel.ThisFinObj(id)
+		if p # nil then
+			return p(File) 
+		else 
+			return nil 
+		end 
+	end ThisFile
+	
+	proc (var s: Searcher) Identified(): boolean 
+		var 
+			f: File
+	begin 
+		f := s.obj(File)
+		if (f.ref # invalid) & ((s.f = nil) or (f.t < s.f.t)) then
+			s.f := f 
+		end 
+		return false
+	end Identified
+	
+	proc SearchFileToClose
+		var  // res: LONGINT;
+			s: Searcher
+			p: ANYPTR
+	begin 
+		s.typ := SYSTEM.TYP(File)
+		s.f := nil
+		p := Kernel.ThisFinObj(s)
+		if s.f # nil then
+			res := WinApi.CloseHandle(s.f.ref)
+			s.f.ref := invalid
+			if res = 0 then
+				res := WinApi.GetLastError()
+				halt(100) 
+			end  
+		end 
+	end SearchFileToClose
+	
+	proc NewFileRef(state: integer; var name: FullName): WinApi.HANDLE 
+	begin 
+		if state = create then
+			return WinApi.CreateFileW(name, WinApi.GENERIC_READ + WinApi.GENERIC_WRITE, {}, 
+				nil, WinApi.CREATE_NEW, WinApi.FILE_ATTRIBUTE_TEMPORARY, 0) 
+		elsif state = shared then 
+			return WinApi.CreateFileW(name, WinApi.GENERIC_READ, WinApi.FILE_SHARE_READ, 
+				nil, WinApi.OPEN_EXISTING, {}, 0) 
+		else 
+			return WinApi.CreateFileW(name, WinApi.GENERIC_READ + WinApi.GENERIC_WRITE, {}, 
+				nil, WinApi.OPEN_EXISTING, {}, 0) 
+		end 
+	end NewFileRef
+	
+	proc OpenFile(state: integer; var name: FullName; var ref, res: integer) 
+	begin 
+		ref := NewFileRef(state, name)
+		if ref = invalid then
+			res := WinApi.GetLastError()
+			if (res = tooManyOpenFilesErr) or (res = noSystemResourcesErr) then
+				Kernel.Collect
+				ref := NewFileRef(state, name)
+				if ref = invalid then
+					res := WinApi.GetLastError()
+					if (res = tooManyOpenFilesErr) or (res = noSystemResourcesErr) then
+						SearchFileToClose
+						ref := NewFileRef(state, name)
+						if ref = invalid then
+							res := WinApi.GetLastError() 
+						else 
+							res := ok 
+						end  
+					end  
+				else 
+					res := ok 
+				end  
+			end  
+		else 
+			res := ok 
+		end 
+	end OpenFile
+	
+	proc GetTempFileName(in path: FullName; var name: FullName; num: integer) 
+		var 
+			i: integer
+			str: array 16 of wchar
+	begin 
+		str := tempName
+		i := 7
+		while i > 2 do 
+			str[i] := wchr(num mod 10 + ord("0"))
+			dec(i)
+			num := num div 10 
+		end 
+		Append(path, str, "", 8, name)
+	end GetTempFileName
+	
+	proc CreateFile(f: File; var res: integer) 
+		var 
+			num, n: integer
+	begin 
+		if f.name = "" then
+			num := WinApi.GetTickCount()
+			n := 200
+			repeat 
+				GetTempFileName(f.loc.path, f.name, num)
+				inc(num)
+				dec(n)
+				OpenFile(create, f.name, f.ref, res) 
+			until (res # fileExistsErr) & (res # alreadyExistsErr) & (res # paramErr) or (n = 0)  
+		else 
+			OpenFile(f.state, f.name, f.ref, res) 
+		end 
+	end CreateFile
+	
+	proc Delete(in fname, path: FullName; var res: integer) 
+		var 
+			num, n, s: integer
+			f: File
+			new_: FullName
+			attr: set
+	begin 
+		assert(fname # "", 100)
+		f := ThisFile(fname)
+		if f = nil then
+			if WinApi.DeleteFileW(fname) # 0 then
+				res := ok 
+			else 
+				res := WinApi.GetLastError() 
+			end  
+		else  // still in use => make it anonymous
+			if f.ref # invalid then // !!!
+				res := WinApi.CloseHandle(f.ref)
+				f.ref := invalid 
+			end 
+			attr := bits(WinApi.GetFileAttributesW(fname))
+			assert(attr # {0..max(set)}, 101)
+			if WinApi.FILE_ATTRIBUTE_READONLY * attr = {} then
+				s := f.state
+				num := WinApi.GetTickCount()
+				n := 200
+				repeat 
+					GetTempFileName(path, new_, num)
+					inc(num)
+					dec(n)
+					if WinApi.MoveFileW(fname, new_) # 0 then
+						res := ok 
+					else 
+						res := WinApi.GetLastError() 
+					end  
+				until (res # fileExistsErr) & (res # alreadyExistsErr) & (res # paramErr) & (res # sharingErr) 
+					& (res # accessDeniedErr) or (n = 0) 
+				if res = ok then
+					f.state := hidden
+					f.name := new_ 
+				end  
+			else 
+				res := writeProtectedErr 
+			end  
+		end 
+	end Delete
+	
+	proc FlushBuffer(f: File; i: integer) 
+		var 
+			buf: Buffer
+			res, h: integer
+	begin 
+		buf := f.bufs[i]
+		if (buf # nil) & buf.dirty then
+			if f.ref = invalid then // ASSERT(res = ok, 100)
+				CreateFile(f, res) 
+			end 
+			if f.ref # invalid then
+				h := 0
+				h := WinApi.SetFilePointer(f.ref, buf.org, h, 0)
+				if (WinApi.WriteFile(f.ref, SYSTEM.ADR(buf.data), buf.len_, h, nil) = 0) or (h < buf.len_) then
+					res := WinApi.GetLastError()
+					halt(101) 
+				end 
+				buf.dirty := false
+				f.t := Kernel.Time() 
+			end  
+		end 
+	end FlushBuffer
+	
+	
+	
+	// File
+	
+	proc (f: File) NewReader(old: Files.Reader): Files.Reader 
+		var 
+			r: Reader
+	begin  // portable
+		assert(f.state # closed, 20)
+		if (old # nil) & (old is Reader) then
+			r := old(Reader) 
+		else 
+			new(r) 
+		end 
+		if r.base # f then
+			r.base := f
+			r.buf := nil
+			r.SetPos(0) 
+		end 
+		r.eof := false
+		return r
+	end NewReader
+	
+	proc (f: File) NewWriter(old: Files.Writer): Files.Writer 
+		var 
+			w: Writer
+	begin  // portable
+		assert(f.state # closed, 20)
+		assert(f.state # shared, 21)
+		if (old # nil) & (old is Writer) then
+			w := old(Writer) 
+		else 
+			new(w) 
+		end 
+		if w.base # f then
+			w.base := f
+			w.buf := nil
+			w.SetPos(f.len_) 
+		end 
+		return w
+	end NewWriter
+	
+	proc (f: File) Length(): integer 
+	begin  // portable
+		return f.len_
+	end Length
+	
+	proc (f: File) Flush
+		var 
+			i: integer
+	begin  // portable
+		i := 0
+		while i # nofbufs do 
+			FlushBuffer(f, i)
+			inc(i) 
+		end 
+	end Flush
+	
+	proc GetPath(in fname: FullName; var path: FullName) 
+		var 
+			i: integer
+	begin 
+		path := fname
+		i := len(path)
+		while (i > 0) & (path[i] # "\") & (path[i] # "/") & (path[i - 1] # ":") do 
+			dec(i) 
+		end 
+		path[i] := 0x
+	end GetPath
+	
+	proc CreateDir(in path: FullName; var res: integer) 
+		var 
+			sec: WinApi.SECURITY_ATTRIBUTES
+			p: FullName
+	begin 
+		assert(path # "", 100)
+		sec.nLength := size(WinApi.SECURITY_ATTRIBUTES)
+		sec.lpSecurityDescriptor := 0
+		sec.bInheritHandle := 0
+		res := WinApi.CreateDirectoryW(path, sec)
+		if res = 0 then
+			res := WinApi.GetLastError() 
+		else 
+			res := ok 
+		end 
+		if (res = fileNotFoundErr) or (res = pathNotFoundErr) then
+			GetPath(path, p)
+			if path # p then
+				CreateDir(p, res) // recursive call
+				if res = ok then
+					res := WinApi.CreateDirectoryW(path, sec)
+					if res = 0 then
+						res := WinApi.GetLastError() 
+					else 
+						res := ok 
+					end  
+				end  
+			end  
+		end 
+	end CreateDir
+	
+	proc CheckPath(var path: FullName; ask: boolean; var res: integer) 
+		var 
+			s: array 300 of wchar
+			t: array 32 of wchar
+	begin 
+		if ask & ~ignoreAsk then
+			if MapParamString # nil then
+				MapParamString("#Host:CreateDir", path, "", "", s)
+				MapParamString("#Host:MissingDirectory", "", "", "", t) 
+			else 
+				s := path
+				t := "Missing Directory" 
+			end 
+			res := WinApi.MessageBoxW(Kernel.mainWnd, s, t, {0, 6})  // ok cancel, icon information
+		else 
+			res := 1 
+		end 
+		if res = 1 then
+			CreateDir(path, res) 
+		elsif res = 2 then 
+			res := cancel 
+		end 
+	end CheckPath
+	
+	proc CheckDelete(in fname, path: FullName; ask: boolean; var res: integer) 
+		var 
+			s: array 300 of wchar
+			t: array 16 of wchar
+	begin 
+		repeat 
+			Delete(fname, path, res)
+			if (res = writeProtectedErr) or (res = sharingErr) or (res = accessDeniedErr) 
+				or (res = netAccessDeniedErr) 
+			then
+				if ask & ~ignoreAsk then
+					if MapParamString # nil then
+						if res = writeProtectedErr then
+							MapParamString("#Host:ReplaceWriteProtected", fname, 0dx, "", s) 
+						elsif (res = accessDeniedErr) or (res = netAccessDeniedErr) then 
+							MapParamString("#Host:ReplaceAccessDenied", fname, 0dx, "", s) 
+						else 
+							MapParamString("#Host:ReplaceInUse", fname, 0dx, "", s) 
+						end 
+						MapParamString("#Host:FileError", "", "", "", t) 
+					else 
+						s := fname
+						t := "File Error" 
+					end 
+					res := WinApi.MessageBoxW(Kernel.mainWnd, s, t, {0, 2, 4, 5}) // retry cancel, icon warning
+					if res = 2 then
+						res := cancel 
+					elsif res = 4 then 
+						res := retry 
+					end  
+				else 
+					res := cancel 
+				end  
+			else 
+				res := ok 
+			end  
+		until res # retry 
+	end CheckDelete
+	
+	proc (f: File) Register(name: Files.Name; type_: Files.Type; ask: boolean; var res: integer) 
+		var 
+			b: integer
+			fname: FullName
+	begin 
+		assert(f.state = new_, 20)
+		assert(name # "", 21)
+		Append(f.loc.path, name, type_, f.loc.maxLen, fname)
+		CheckDelete(fname, f.loc.path, ask, res)
+		assert(res # paramErr, 100)
+		if res = ok then
+			if f.name = "" then
+				f.name := fname
+				OpenFile(create, f.name, f.ref, res)
+				if res = ok then
+					f.state := exclusive
+					CloseFile(f, res)
+					b := WinApi.SetFileAttributesW(f.name, WinApi.FILE_ATTRIBUTE_ARCHIVE) 
+				end  
+			else 
+				f.state := exclusive
+				CloseFile(f, res)
+				if WinApi.MoveFileW(f.name, fname) # 0 then
+					res := ok
+					f.name := fname
+					b := WinApi.SetFileAttributesW(f.name, WinApi.FILE_ATTRIBUTE_ARCHIVE) 
+				else 
+					res := WinApi.GetLastError()
+					assert(res # paramErr, 101)
+					b := WinApi.DeleteFileW(f.name) 
+				end  
+			end  
+		end 
+		res := Error(res)
+	end Register
+	
+	proc (f: File) Close
+		var 
+			res: integer
+	begin  // portable
+		if f.state # closed then
+			(* IF f.state = exclusive THEN
+			   CloseFile(f, res)
+			   ELSE
+			   CloseFileHandle(f, res)
+			   END *)
+			
+			
+			CloseFile(f, res) 
+		end 
+	end Close
+	
+	proc (f: File) Closed(): boolean 
+	begin 
+		return f.state = closed
+	end Closed
+	
+	proc (f: File) Shared(): boolean 
+	begin 
+		return f.state = shared
+	end Shared
+	
+	// Locator
+	
+	proc (loc: Locator) This*(in path: array of wchar): Locator 
+		var 
+			new_: Locator
+			i: integer
+	begin 
+		if path = "" then
+			new(new_)
+			new_^ := loc^ 
+		elsif path[1] = ":" then  // absolute path
+			new_ := NewLocator(path)
+			new_.rootLen := 0 
+		elsif (path[0] = "\") or (path[0] = "/") then 
+			if (path[1] = "\") or (path[1] = "/") then // network path
+				new_ := NewLocator(path)
+				new_.rootLen := 0 
+			else 
+				new(new_)
+				new_^ := dir.startup^
+				new_.res := invalidName
+				return new_ 
+			end  
+		else 
+			new(new_)
+			Append(loc.path, path, "", loc.maxLen, new_.path)
+			i := 0
+			while new_.path[i] # 0x do 
+				inc(i) 
+			end 
+			if (new_.path[i - 1] = "/") or (new_.path[i - 1] = "\") then
+				new_.path[i - 1] := 0x 
+			end 
+			new_.maxLen := loc.maxLen
+			new_.caseSens := loc.caseSens
+			new_.rootLen := loc.rootLen 
+		end 
+		new_.res := ok
+		return new_
+	end This
+	
+	
+	// Reader
+	
+	proc (r: Reader) Base(): Files.File 
+	begin  // portable
+		return r.base
+	end Base
+	
+	(* PROCEDURE (r: Reader) Available (): INTEGER;
+	   BEGIN	(* portable *)
+	   ASSERT(r.base # NIL, 20);
+	   RETURN r.base.len - r.org - r.offset
+	   END Available; *)
+	
+	
+	proc (r: Reader) SetPos(pos: integer) 
+		var 
+			f: File
+			org, offset, i, count, res: integer
+			buf: Buffer
+	begin 
+		f := r.base
+		assert(f # nil, 20)
+		assert(f.state # closed, 25)
+		assert(pos >= 0, 22)
+		assert(pos <= f.len_, 21)
+		offset := pos mod bufsize
+		org := pos - offset
+		i := 0
+		while (i # nofbufs) & (f.bufs[i] # nil) & (org # f.bufs[i].org) do 
+			inc(i) 
+		end 
+		if i # nofbufs then
+			buf := f.bufs[i]
+			if buf = nil then // create new buffer
+				new(buf)
+				f.bufs[i] := buf
+				buf.org := -1 
+			end  
+		else  // choose an existing buffer
+			f.swapper := (f.swapper + 1) mod nofbufs
+			FlushBuffer(f, f.swapper)
+			buf := f.bufs[f.swapper]
+			buf.org := -1 
+		end 
+		if buf.org # org then
+			if org + bufsize > f.len_ then
+				buf.len_ := f.len_ - org 
+			else 
+				buf.len_ := bufsize 
+			end 
+			count := buf.len_
+			if count > 0 then
+				if f.ref = invalid then // ASSERT(res = ok, 100)
+					CreateFile(f, res) 
+				end 
+				if f.ref # invalid then
+					i := 0
+					i := WinApi.SetFilePointer(f.ref, org, i, 0)
+					if (WinApi.ReadFile(f.ref, SYSTEM.ADR(buf.data), count, i, nil) = 0) or (i < count) then
+						res := WinApi.GetLastError()
+						res := Error(res)
+						halt(101) 
+					end 
+					f.t := Kernel.Time() 
+				end  
+			end 
+			buf.org := org
+			buf.dirty := false 
+		end 
+		r.buf := buf
+		r.org := org
+		r.offset := offset
+		r.eof := false
+	// 0<= r.org <= r.base.len
+	// 0 <= r.offset < bufsize
+	// 0 <= r.buf.len <= bufsize
+	// r.offset <= r.base.len
+	// r.offset <= r.buf.len
+	end SetPos
+	
+	proc (r: Reader) Pos(): integer 
+	begin  // portable
+		assert(r.base # nil, 20)
+		return r.org + r.offset
+	end Pos
+	
+	proc (r: Reader) ReadByte(var x: byte) 
+	begin  // portable
+		if (r.org # r.buf.org) or (r.offset >= bufsize) then
+			r.SetPos(r.org + r.offset) 
+		end 
+		if r.offset < r.buf.len_ then
+			x := r.buf.data[r.offset]
+			inc(r.offset) 
+		else 
+			x := 0
+			r.eof := true 
+		end 
+	end ReadByte
+	
+	proc (r: Reader) ReadBytes(var x: array of byte; beg, len_: integer) 
+		var 
+			from, to_, count, restInBuf: integer
+	begin  // portable
+		assert(beg >= 0, 21)
+		if len_ > 0 then
+			assert(beg + len_ <= len(x), 23)
+			while len_ # 0 do 
+				if (r.org # r.buf.org) or (r.offset >= bufsize) then
+					r.SetPos(r.org + r.offset) 
+				end 
+				restInBuf := r.buf.len_ - r.offset
+				if restInBuf = 0 then
+					r.eof := true
+					return  
+				elsif restInBuf <= len_ then 
+					count := restInBuf 
+				else 
+					count := len_ 
+				end 
+				from := SYSTEM.ADR(r.buf.data[r.offset])
+				to_ := SYSTEM.ADR(x) + beg
+				SYSTEM.MOVE(from, to_, count)
+				inc(r.offset, count)
+				inc(beg, count)
+				dec(len_, count) 
+			end 
+			r.eof := false 
+		else 
+			assert(len_ = 0, 22) 
+		end 
+	end ReadBytes
+	
+	
+	
+	// Writer
+	
+	proc (w: Writer) Base(): Files.File 
+	begin  // portable
+		return w.base
+	end Base
+	
+	proc (w: Writer) SetPos(pos: integer) 
+		var 
+			f: File
+			org, offset, i, count, res: integer
+			buf: Buffer
+	begin 
+		f := w.base
+		assert(f # nil, 20)
+		assert(f.state # closed, 25)
+		assert(pos >= 0, 22)
+		assert(pos <= f.len_, 21)
+		offset := pos mod bufsize
+		org := pos - offset
+		i := 0
+		while (i # nofbufs) & (f.bufs[i] # nil) & (org # f.bufs[i].org) do 
+			inc(i) 
+		end 
+		if i # nofbufs then
+			buf := f.bufs[i]
+			if buf = nil then // create new buffer
+				new(buf)
+				f.bufs[i] := buf
+				buf.org := -1 
+			end  
+		else  // choose an existing buffer
+			f.swapper := (f.swapper + 1) mod nofbufs
+			FlushBuffer(f, f.swapper)
+			buf := f.bufs[f.swapper]
+			buf.org := -1 
+		end 
+		if buf.org # org then
+			if org + bufsize > f.len_ then
+				buf.len_ := f.len_ - org 
+			else 
+				buf.len_ := bufsize 
+			end 
+			count := buf.len_
+			if count > 0 then
+				if f.ref = invalid then // ASSERT(res = ok, 100)
+					CreateFile(f, res) 
+				end 
+				if f.ref # invalid then
+					i := 0
+					i := WinApi.SetFilePointer(f.ref, org, i, 0)
+					if (WinApi.ReadFile(f.ref, SYSTEM.ADR(buf.data), count, i, nil) = 0) or (i < count) then
+						res := WinApi.GetLastError()
+						res := Error(res)
+						halt(101) 
+					end 
+					f.t := Kernel.Time() 
+				end  
+			end 
+			buf.org := org
+			buf.dirty := false 
+		end 
+		w.buf := buf
+		w.org := org
+		w.offset := offset
+	// 0<= w.org <= w.base.len
+	// 0 <= w.offset < bufsize
+	// 0 <= w.buf.len <= bufsize
+	// w.offset <= w.base.len
+	// w.offset <= w.buf.len
+	end SetPos
+	
+	proc (w: Writer) Pos(): integer 
+	begin  // portable
+		assert(w.base # nil, 20)
+		return w.org + w.offset
+	end Pos
+	
+	proc (w: Writer) WriteByte(x: byte) 
+	begin  // portable
+		assert(w.base.state # closed, 25)
+		if (w.org # w.buf.org) or (w.offset >= bufsize) then
+			w.SetPos(w.org + w.offset) 
+		end 
+		w.buf.data[w.offset] := x
+		w.buf.dirty := true
+		if w.offset = w.buf.len_ then
+			inc(w.buf.len_)
+			inc(w.base.len_) 
+		end 
+		inc(w.offset)
+	end WriteByte
+	
+	proc (w: Writer) WriteBytes(in x: array of byte; beg, len_: integer) 
+		var 
+			from, to_, count, restInBuf: integer
+	begin  // portable
+		assert(beg >= 0, 21)
+		assert(w.base.state # closed, 25)
+		if len_ > 0 then
+			assert(beg + len_ <= len(x), 23)
+			while len_ # 0 do 
+				if (w.org # w.buf.org) or (w.offset >= bufsize) then
+					w.SetPos(w.org + w.offset) 
+				end 
+				restInBuf := bufsize - w.offset
+				if restInBuf <= len_ then
+					count := restInBuf 
+				else 
+					count := len_ 
+				end 
+				from := SYSTEM.ADR(x) + beg
+				to_ := SYSTEM.ADR(w.buf.data[w.offset])
+				SYSTEM.MOVE(from, to_, count)
+				inc(w.offset, count)
+				inc(beg, count)
+				dec(len_, count)
+				if w.offset > w.buf.len_ then
+					inc(w.base.len_, w.offset - w.buf.len_)
+					w.buf.len_ := w.offset 
+				end 
+				w.buf.dirty := true 
+			end  
+		else 
+			assert(len_ = 0, 22) 
+		end 
+	end WriteBytes
+	
+	
+	
+	// Directory
+	
+	proc (d: Directory) This(in path: array of wchar): Files.Locator 
+	begin 
+		return d.startup.This(path)
+	end This
+	
+	proc (d: Directory) New(loc: Files.Locator; ask: boolean): Files.File 
+		var 
+			f: File
+			res: integer
+			attr: set
+	begin 
+		assert(loc # nil, 20)
+		f := nil
+		res := ok
+		with loc: Locator do 
+			if loc.path # "" then
+				attr := bits(WinApi.GetFileAttributesW(loc.path))
+				if attr = {0..max(set)} then // error
+					res := WinApi.GetLastError()
+					if (res = fileNotFoundErr) or (res = pathNotFoundErr) then
+						if loc.res = 76 then
+							CreateDir(loc.path, res) 
+						else 
+							CheckPath(loc.path, ask, res) 
+						end  
+					else 
+						res := pathNotFoundErr 
+					end  
+				elsif WinApi.FILE_ATTRIBUTE_DIRECTORY * attr = {} then 
+					res := fileExistsErr 
+				end  
+			end 
+			if res = ok then
+				new(f)
+				f.loc := loc
+				f.name := ""
+				f.state := new_
+				f.swapper := -1
+				f.len_ := 0
+				f.ref := invalid 
+			end  
+		else 
+			res := invalidNameErr 
+		end 
+		loc.res := Error(res)
+		return f
+	end New
+	
+	proc (d: Directory) Temp(): Files.File 
+		var 
+			f: File
+	begin 
+		new(f)
+		f.loc := d.temp
+		f.name := ""
+		f.state := temp
+		f.swapper := -1
+		f.len_ := 0
+		f.ref := invalid
+		return f
+	end Temp
+	
+	proc GetShadowDir(loc: Locator; var dir: FullName) 
+		var 
+			i, j: integer
+	begin 
+		dir := startupDir
+		i := startupLen
+		j := loc.rootLen
+		while loc.path[j] # 0x do 
+			dir[i] := loc.path[j]
+			inc(i)
+			inc(j) 
+		end 
+		dir[i] := 0x
+	end GetShadowDir
+	
+	proc (d: Directory) Old(loc: Files.Locator; name: Files.Name; shrd: boolean): Files.File 
+		var 
+			res, i, j: integer
+			f: File
+			ref: WinApi.HANDLE
+			fname: FullName
+			type_: Files.Type
+			s: byte
+	begin 
+		assert(loc # nil, 20)
+		assert(name # "", 21)
+		res := ok
+		f := nil
+		with loc: Locator do 
+			Append(loc.path, name, "", loc.maxLen, fname)
+			f := ThisFile(fname)
+			if f # nil then
+				if ~shrd or (f.state = exclusive) then
+					loc.res := Error(sharingErr)
+					return nil 
+				else 
+					loc.res := ok
+					return f 
+				end  
+			end 
+			if shrd then
+				s := shared 
+			else 
+				s := exclusive 
+			end 
+			OpenFile(s, fname, ref, res)
+			if ((res = fileNotFoundErr) or (res = pathNotFoundErr)) & (loc.rootLen > 0) then
+				GetShadowDir(loc, fname)
+				Append(fname, name, "", loc.maxLen, fname)
+				f := ThisFile(fname)
+				if f # nil then
+					if ~shrd or (f.state = exclusive) then
+						loc.res := Error(sharingErr)
+						return nil 
+					else 
+						loc.res := ok
+						return f 
+					end  
+				end 
+				OpenFile(s, fname, ref, res) 
+			end 
+			if res = ok then
+				new(f)
+				f.loc := loc
+				f.swapper := -1
+				i := 0
+				GetType(name, type_)
+				f.InitType(type_)
+				assert(ref # invalid, 107)
+				f.ref := ref
+				f.name := fname
+				f.state := s
+				f.t := Kernel.Time()
+				f.len_ := WinApi.GetFileSize(ref, j)
+				if (f.len_ < 0) or (j # 0) then // file length exceeds MAX(INTEGER)
+					f.len_ := -1 
+				end  
+			end  
+		end 
+		loc.res := Error(res)
+		return f
+	end Old
+	
+	proc (d: Directory) Delete*(loc: Files.Locator; name: Files.Name) 
+		var 
+			res: integer
+			fname: FullName
+	begin 
+		assert(loc # nil, 20)
+		with loc: Locator do 
+			Append(loc.path, name, "", loc.maxLen, fname)
+			Delete(fname, loc.path, res) 
+		else 
+			res := invalidNameErr 
+		end 
+		loc.res := Error(res)
+	end Delete
+	
+	proc (d: Directory) Rename*(loc: Files.Locator; old, new_: Files.Name; ask: boolean) 
+		var 
+			res, i: integer
+			oldname, newname, tn: FullName
+			f: File
+			attr: set
+	begin 
+		assert(loc # nil, 20)
+		with loc: Locator do 
+			Append(loc.path, old, "", loc.maxLen, oldname)
+			Append(loc.path, new_, "", loc.maxLen, newname)
+			attr := bits(WinApi.GetFileAttributesW(oldname))
+			if ord(attr) # -1 then
+				f := ThisFile(oldname)
+				if (f # nil) & (f.ref # invalid) then
+					res := WinApi.CloseHandle(f.ref)
+					f.ref := invalid 
+				end 
+				if Diff(oldname, newname, loc.caseSens) # 0 then
+					CheckDelete(newname, loc.path, ask, res)
+					if res = ok then
+						if WinApi.MoveFileW(oldname, newname) # 0 then
+							if f # nil then // still in use => update file table
+								f.name := newname 
+							end  
+						else 
+							res := WinApi.GetLastError() 
+						end  
+					end  
+				else  // destination is same file as source
+					tn := oldname
+					i := len(tn) - 1
+					repeat 
+						tn[i] := wchr(ord(tn[i]) + 1)
+						if WinApi.MoveFileW(oldname, tn) # 0 then
+							res := ok 
+						else 
+							res := WinApi.GetLastError() 
+						end  
+					until (res # fileExistsErr) & (res # alreadyExistsErr) & (res # paramErr) 
+					if res = ok then
+						if WinApi.MoveFileW(tn, newname) = 0 then
+							res := WinApi.GetLastError() 
+						end  
+					end  
+				end  
+			else 
+				res := fileNotFoundErr 
+			end  
+		else 
+			res := invalidNameErr 
+		end 
+		loc.res := Error(res)
+	end Rename
+	
+	proc (d: Directory) SameFile*(loc0: Files.Locator; name0: Files.Name
+		loc1: Files.Locator; name1: Files.Name): boolean 
+		var 
+			p0, p1: FullName
+	begin 
+		assert(loc0 # nil, 20)
+		assert(loc1 # nil, 21)
+		with loc0: Locator do 
+			Append(loc0.path, name0, "", loc0.maxLen, p0) 
+		end 
+		with loc1: Locator do 
+			Append(loc1.path, name1, "", loc1.maxLen, p1) 
+		end 
+		return Diff(p0, p1, loc0(Locator).caseSens) = 0
+	end SameFile
+	
+	proc (d: Directory) FileList*(loc: Files.Locator): Files.FileInfo 
+		var 
+			i, res, firstRes, diff: integer
+			info, first, last: Files.FileInfo
+			s: FullName
+			find: WinApi.HANDLE
+			fd: WinApi.WIN32_FIND_DATAW
+			st: WinApi.SYSTEMTIME
+	begin 
+		assert(loc # nil, 20)
+		first := nil
+		last := nil
+		with loc: Locator do 
+			Append(loc.path, wildcard, wildcard, loc.maxLen, s)
+			find := WinApi.FindFirstFileW(s, fd)
+			if find # invalid then
+				repeat 
+					if ~(WinApi.FILE_ATTRIBUTE_DIRECTORY * fd.dwFileAttributes # {}) 
+						& (len(fd.cFileName) < len(info.name)) then
+						info := first
+						last := nil
+						s := fd.cFileName
+						while (info # nil) & (Diff(info.name, s, loc.caseSens) < 0) do 
+							last := info
+							info := info.next 
+						end 
+						new(info)
+						info.name := fd.cFileName
+						info.length := fd.nFileSizeLow
+						if (info.length < 0) or (fd.nFileSizeHigh # 0) then
+							info.length := -1 
+						end 
+						res := WinApi.FileTimeToSystemTime(fd.ftLastWriteTime, st)
+						info.modified.year := st.wYear
+						info.modified.month := st.wMonth
+						info.modified.day := st.wDay
+						info.modified.hour := st.wHour
+						info.modified.minute := st.wMinute
+						info.modified.second := st.wSecond
+						info.attr := {}
+						if WinApi.FILE_ATTRIBUTE_HIDDEN * fd.dwFileAttributes # {} then
+							incl(info.attr, Files.hidden) 
+						end 
+						if WinApi.FILE_ATTRIBUTE_READONLY * fd.dwFileAttributes # {} then
+							incl(info.attr, Files.readOnly) 
+						end 
+						if WinApi.FILE_ATTRIBUTE_SYSTEM * fd.dwFileAttributes # {} then
+							incl(info.attr, Files.system) 
+						end 
+						if WinApi.FILE_ATTRIBUTE_ARCHIVE * fd.dwFileAttributes # {} then
+							incl(info.attr, Files.archive) 
+						end 
+						GetType(fd.cFileName, info.type_)
+						if last = nil then
+							info.next := first
+							first := info 
+						else 
+							info.next := last.next
+							last.next := info 
+						end  
+					end 
+					i := WinApi.FindNextFileW(find, fd) 
+				until i = 0 
+				res := WinApi.GetLastError()
+				i := WinApi.FindClose(find) 
+			else 
+				res := WinApi.GetLastError() 
+			end 
+			if res = noMoreFilesErr then
+				res := ok 
+			end 
+			firstRes := res
+			// check startup directory
+			if (loc.rootLen > 0) & ((res = ok) or (res = fileNotFoundErr) or (res = pathNotFoundErr)) then
+				GetShadowDir(loc, s)
+				Append(s, wildcard, wildcard, loc.maxLen, s)
+				find := WinApi.FindFirstFileW(s, fd)
+				if find # invalid then
+					repeat 
+						if ~(WinApi.FILE_ATTRIBUTE_DIRECTORY * fd.dwFileAttributes # {}) 
+							& (len(fd.cFileName) < len(info.name)) then
+							info := first
+							last := nil
+							s := fd.cFileName
+							if info # nil then
+								diff := Diff(info.name, s, loc.caseSens) 
+							end 
+							while (info # nil) & (diff < 0) do 
+								last := info
+								info := info.next
+								if info # nil then
+									diff := Diff(info.name, s, loc.caseSens) 
+								end  
+							end 
+							if (info = nil) or (diff # 0) then
+								new(info)
+								info.name := fd.cFileName
+								info.length := fd.nFileSizeLow
+								if (info.length < 0) or (fd.nFileSizeHigh # 0) then
+									info.length := -1 
+								end 
+								res := WinApi.FileTimeToSystemTime(fd.ftLastWriteTime, st)
+								info.modified.year := st.wYear
+								info.modified.month := st.wMonth
+								info.modified.day := st.wDay
+								info.modified.hour := st.wHour
+								info.modified.minute := st.wMinute
+								info.modified.second := st.wSecond
+								info.attr := {}
+								if WinApi.FILE_ATTRIBUTE_HIDDEN * fd.dwFileAttributes # {} then
+									incl(info.attr, Files.hidden) 
+								end 
+								if WinApi.FILE_ATTRIBUTE_READONLY * fd.dwFileAttributes # {} then
+									incl(info.attr, Files.readOnly) 
+								end 
+								if WinApi.FILE_ATTRIBUTE_SYSTEM * fd.dwFileAttributes # {} then
+									incl(info.attr, Files.system) 
+								end 
+								if WinApi.FILE_ATTRIBUTE_ARCHIVE * fd.dwFileAttributes # {} then
+									incl(info.attr, Files.archive) 
+								end 
+								GetType(fd.cFileName, info.type_)
+								if last = nil then
+									info.next := first
+									first := info 
+								else 
+									info.next := last.next
+									last.next := info 
+								end  
+							end  
+						end 
+						i := WinApi.FindNextFileW(find, fd) 
+					until i = 0 
+					res := WinApi.GetLastError()
+					i := WinApi.FindClose(find) 
+				else 
+					res := WinApi.GetLastError() 
+				end 
+				if res = noMoreFilesErr then
+					res := ok 
+				end  
+			end 
+			if (res = fileNotFoundErr) or (res = pathNotFoundErr) then
+				res := firstRes 
+			end 
+			loc.res := Error(res) 
+		else 
+			loc.res := invalidName 
+		end 
+		return first
+	end FileList
+	
+	proc (d: Directory) LocList*(loc: Files.Locator): Files.LocInfo 
+		var 
+			i, res, firstRes, diff: integer
+			first, last, info: Files.LocInfo
+			s: FullName
+			find: WinApi.HANDLE
+			fd: WinApi.WIN32_FIND_DATAW
+	begin 
+		assert(loc # nil, 20)
+		first := nil
+		last := nil
+		with loc: Locator do 
+			Append(loc.path, wildcard, wildcard, loc.maxLen, s)
+			find := WinApi.FindFirstFileW(s, fd)
+			if find # invalid then
+				repeat 
+					if (WinApi.FILE_ATTRIBUTE_DIRECTORY * fd.dwFileAttributes # {}) 
+						& (fd.cFileName # ".") & (fd.cFileName # "..") & (len(fd.cFileName) < len(info.name)) then
+						info := first
+						last := nil
+						s := fd.cFileName
+						while (info # nil) & (Diff(info.name, s, loc.caseSens) < 0) do 
+							last := info
+							info := info.next 
+						end 
+						new(info)
+						info.name := fd.cFileName
+						info.attr := {}
+						if WinApi.FILE_ATTRIBUTE_HIDDEN * fd.dwFileAttributes # {} then
+							incl(info.attr, Files.hidden) 
+						end 
+						if WinApi.FILE_ATTRIBUTE_READONLY * fd.dwFileAttributes # {} then
+							incl(info.attr, Files.readOnly) 
+						end 
+						if WinApi.FILE_ATTRIBUTE_SYSTEM * fd.dwFileAttributes # {} then
+							incl(info.attr, Files.system) 
+						end 
+						if WinApi.FILE_ATTRIBUTE_ARCHIVE * fd.dwFileAttributes # {} then
+							incl(info.attr, Files.archive) 
+						end 
+						if last = nil then
+							info.next := first
+							first := info 
+						else 
+							info.next := last.next
+							last.next := info 
+						end  
+					end 
+					i := WinApi.FindNextFileW(find, fd) 
+				until i = 0 
+				res := WinApi.GetLastError()
+				i := WinApi.FindClose(find) 
+			else 
+				res := WinApi.GetLastError() 
+			end 
+			if res = noMoreFilesErr then
+				res := ok 
+			end 
+			firstRes := res
+			// check startup directory
+			if (loc.rootLen > 0) & ((res = ok) or (res = fileNotFoundErr) or (res = pathNotFoundErr)) then
+				GetShadowDir(loc, s)
+				Append(s, wildcard, wildcard, loc.maxLen, s)
+				find := WinApi.FindFirstFileW(s, fd)
+				if find # invalid then
+					repeat 
+						if (WinApi.FILE_ATTRIBUTE_DIRECTORY * fd.dwFileAttributes # {}) 
+							& (fd.cFileName # ".") & (fd.cFileName # "..") & (len(fd.cFileName) < len(info.name)) then
+							info := first
+							last := nil
+							s := fd.cFileName
+							if info # nil then
+								diff := Diff(info.name, s, loc.caseSens) 
+							end 
+							while (info # nil) & (diff < 0) do 
+								last := info
+								info := info.next
+								if info # nil then
+									diff := Diff(info.name, s, loc.caseSens) 
+								end  
+							end 
+							if (info = nil) or (diff # 0) then
+								new(info)
+								info.name := fd.cFileName
+								info.attr := {}
+								if WinApi.FILE_ATTRIBUTE_HIDDEN * fd.dwFileAttributes # {} then
+									incl(info.attr, Files.hidden) 
+								end 
+								if WinApi.FILE_ATTRIBUTE_READONLY * fd.dwFileAttributes # {} then
+									incl(info.attr, Files.readOnly) 
+								end 
+								if WinApi.FILE_ATTRIBUTE_SYSTEM * fd.dwFileAttributes # {} then
+									incl(info.attr, Files.system) 
+								end 
+								if WinApi.FILE_ATTRIBUTE_ARCHIVE * fd.dwFileAttributes # {} then
+									incl(info.attr, Files.archive) 
+								end 
+								if last = nil then
+									info.next := first
+									first := info 
+								else 
+									info.next := last.next
+									last.next := info 
+								end  
+							end  
+						end 
+						i := WinApi.FindNextFileW(find, fd) 
+					until i = 0 
+					res := WinApi.GetLastError()
+					i := WinApi.FindClose(find) 
+				else 
+					res := WinApi.GetLastError() 
+				end 
+				if res = noMoreFilesErr then
+					res := ok 
+				end  
+			end 
+			if (res = fileNotFoundErr) or (res = pathNotFoundErr) then
+				res := firstRes 
+			end 
+			loc.res := Error(res) 
+		else 
+			loc.res := invalidName 
+		end 
+		return first
+	end LocList
+	
+	proc (d: Directory) GetFileName(name: Files.Name; type_: Files.Type; var filename: Files.Name) 
+	begin 
+		Append("", name, type_, len(filename), filename)
+	end GetFileName
+	
+	// Miscellaneous
+	
+	proc (var id: Counter) Identified(): boolean 
+		var 
+			f: File
+	begin 
+		f := id.obj(File)
+		if f.state # closed then
+			inc(id.count) 
+		end 
+		return false
+	end Identified
+	
+	proc NofFiles*(): integer 
+		var 
+			p: ANYPTR
+			cnt: Counter
+	begin 
+		cnt.typ := SYSTEM.TYP(File)
+		cnt.count := 0
+		p := Kernel.ThisFinObj(cnt)
+		return cnt.count
+	end NofFiles
+	
+	proc GetModDate*(f: Files.File; var year, month, day, hour, minute, second: integer) 
+		var 
+			res: integer
+			ft: WinApi.FILETIME
+			st: WinApi.SYSTEMTIME
+	begin 
+		assert(f is File, 20)
+		res := WinApi.GetFileTime(f(File).ref, nil, nil, ft)
+		res := WinApi.FileTimeToSystemTime(ft, st)
+		year := st.wYear
+		month := st.wMonth
+		day := st.wDay
+		hour := st.wHour
+		minute := st.wMinute
+		second := st.wSecond
+	end GetModDate
+	
+	proc SetRootDir*(path: array of wchar) 
+		var 
+			i: integer
+	begin 
+		dir.startup := NewLocator(path)
+		dir.startup.rootLen := 0
+		i := 0
+		while startupDir[i] # 0x do 
+			inc(i) 
+		end 
+		startupLen := i
+	end SetRootDir
+	
+	proc GetName*(var p: WinApi.PtrWSTR; var i: integer; var name, opt: FullName) 
+		var 
+			ch, tch: wchar
+			j: integer
+	begin 
+		j := 0
+		ch := p[i]
+		tch := " "
+		while ch = " " do 
+			inc(i)
+			ch := p[i] 
+		end 
+		if (ch = "'") or (ch = '"') then
+			tch := ch
+			inc(i)
+			ch := p[i] 
+		end 
+		while (ch >= " ") & (ch # tch) do 
+			name[j] := ch
+			if Kernel.IsLower(ch) then
+				ch := Kernel.Upper(ch) 
+			elsif ch = "-" then 
+				ch := "/" 
+			end 
+			opt[j] := ch
+			inc(j)
+			inc(i)
+			ch := p[i] 
+		end 
+		if ch > " " then
+			inc(i)
+			ch := p[i] 
+		end 
+		while (ch # 0x) & (ch <= " ") do 
+			inc(i)
+			ch := p[i] 
+		end 
+		name[j] := 0x
+		opt[j] := 0x
+	end GetName
+	
+	proc Init
+		var 
+			res, res1, i, j: integer
+			path, opt, s: FullName
+			attr: set
+			p: WinApi.PtrWSTR
+			find: WinApi.HANDLE
+			fd: WinApi.WIN32_FIND_DATAW
+	begin 
+		ignoreAsk := false
+		wildcard := "*"
+		new(dir)
+		res := WinApi.GetModuleFileNameW(0, path, len(path))
+		GetPath(path, startupDir)
+		dir.startup := NewLocator(startupDir)
+		dir.startup.rootLen := 0
+		i := len(startupDir)
+		startupLen := i
+		find := WinApi.FindFirstFileW(path, fd)
+		if find # invalid then
+			appName := fd.cFileName
+			res := WinApi.FindClose(find) 
+		else 
+			inc(i)
+			j := 0
+			while path[i] # 0x do 
+				appName[j] := path[i]
+				inc(i)
+				inc(j) 
+			end  
+		end 
+		i := 0
+		j := -1
+		while appName[i] # 0x do 
+			if appName[i] = "." then
+				j := i 
+			end 
+			inc(i) 
+		end 
+		if j > 0 then
+			appName[j] := 0x 
+		end 
+		p := WinApi.GetCommandLineW()
+		i := 0
+		res := 1
+		repeat 
+			GetName(p, i, path, opt)
+			if opt = "/USE" then
+				GetName(p, i, path, opt)
+				res1 := WinApi.ExpandEnvironmentStringsW(path, s, len(s) - 2)
+				if (res1 = 0) or (res1 > len(s) - 2) then
+					s := path 
+				else 
+					path := s 
+				end 
+				res1 := WinApi.GetFullPathNameW(s, len(path), path, nil)
+				attr := bits(WinApi.GetFileAttributesW(path))
+				if (attr # {0..max(set)}) & (WinApi.FILE_ATTRIBUTE_DIRECTORY * attr # {}) then
+					res := 0 
+				elsif (path[1] = ":") & ((path[2] = 0x) or (path[2] = "\") & (path[3] = 0x)) 
+					& (WinApi.GetDriveTypeW(s) >= 2) then 
+					res := 0 
+				end  
+			end  
+		until (res = 0) or (p[i] < " ") 
+		if serverVersion & (res = 0) then
+			i := len(path)
+			if (path[i - 1] = "/") or (path[i - 1] = "\") then
+				dec(i)
+				path[i] := 0x 
+			end 
+			dir.startup := NewLocator(path)
+			dir.startup.rootLen := i 
+		end 
+		res := WinApi.GetTempPathW(len(path), path)
+		dir.temp := NewLocator(path)
+		Files.SetDir(dir)
+	end Init
+	
+	(* use this mode e.g. for scripting, i.e. when modal dialog boxes are not appropriate;
+	   implicitly uses OK in OK/Cancel dialogs and Cancel in Retry/Cancel dialogs *)
+	proc IgnoreAsk*
+	begin 
+		ignoreAsk := true
+	end IgnoreAsk
+	
+	(* use this mode for interactive usage of BlackBox, i.e. when modal dialog boxes are appropriate;
+	   this is the default behavior. *)
+	proc UseAsk*
+	begin 
+		ignoreAsk := false
+	end UseAsk
+
+begin
+	Init
+end HostFiles

@@ -1,0 +1,104 @@
+module Sequencers
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import Stores
+	
+	const 
+		clean* = 0
+		notUndoable* = 1
+		invisible* = 2
+	
+	type 
+		Message* = (* abstract *) record end 
+		
+		Notifier* = pointer to (* abstract *) record 
+				next: Notifier 
+			end 
+		
+		Sequencer* = pointer to (* abstract *) record 
+				notifiers: Notifier 
+			end 
+		
+		CloseMsg* = record (Message) 
+				sticky*: boolean  // OUT, preset to FALSE
+			end 
+		
+		RemoveMsg* = record (Message) end 
+		
+		Directory* = pointer to (* abstract *) record end 
+	
+	var 
+		dir*: Directory
+	
+	// Directory
+	proc (dir: Directory) New*(): Sequencer  end // new abstract
+	
+	proc SetDir*(d: Directory) 
+	begin 
+		assert(d # nil, 20)
+		dir := d
+	end SetDir
+	
+	
+	// Notifier
+	
+	proc (f: Notifier) Notify*(var msg: Message)  end // new empty
+	
+	
+	// Sequencer
+	
+	proc (s: Sequencer) Dirty*(): boolean  end // new abstract
+	proc (s: Sequencer) SetDirty*(dirty: boolean)  end // new abstract
+	proc (s: Sequencer) BeginScript*(in name: Stores.OpName
+		var script: Stores.Operation)  end // new abstract
+	proc (s: Sequencer) Do*(st: Stores.Store; in name: Stores.OpName
+		op: Stores.Operation)  end // new abstract
+	proc (s: Sequencer) LastOp*(st: Stores.Store): Stores.Operation  end // new abstract
+	proc (s: Sequencer) Bunch*(st: Stores.Store)  end // new abstract
+	proc (s: Sequencer) EndScript*(script: Stores.Operation)  end // new abstract
+	proc (s: Sequencer) StopBunching*()  end // new abstract
+	proc (s: Sequencer) BeginModification*(type_: integer; st: Stores.Store)  end // new abstract
+	proc (s: Sequencer) EndModification*(type_: integer; st: Stores.Store)  end // new abstract
+	proc (s: Sequencer) CanUndo*(): boolean  end // new abstract
+	proc (s: Sequencer) CanRedo*(): boolean  end // new abstract
+	proc (s: Sequencer) GetUndoName*(var name: Stores.OpName)  end // new abstract
+	proc (s: Sequencer) GetRedoName*(var name: Stores.OpName)  end // new abstract
+	proc (s: Sequencer) Undo*()  end // new abstract
+	proc (s: Sequencer) Redo*()  end // new abstract
+	
+	proc (s: Sequencer) Handle*(var msg: ANYREC)  end // new empty
+	
+	proc (s: Sequencer) Notify*(var msg: Message)  // new
+		var 
+			n: Notifier
+	begin 
+		n := s.notifiers
+		while n # nil do 
+			n.Notify(msg)
+			n := n.next 
+		end 
+	end Notify
+	
+	proc (s: Sequencer) InstallNotifier*(n: Notifier)  // new
+	begin 
+		n.next := s.notifiers
+		s.notifiers := n
+	end InstallNotifier
+
+end Sequencers

@@ -1,0 +1,390 @@
+module HostRegistry
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20070130, bh, Unicode support
+	   - 20070510, mf, WriteString: call to RegSetValueW corrected
+	   - 20141008, center #15, Dialog.appVersion/-version set according to System property appVersion
+	   - 20160111, center #94, using BlackBox without the Windows registry
+	   - 20180515, center #187, adding a run-time debugger to BlackBox
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import WinApi, Files, HostFiles, Dialog, Strings
+	
+	var 
+		localeId*: integer
+		iniFile: pointer to HostFiles.FullName // NIL if using the Windows registry
+	
+	proc Split(in key: array of wchar; var section, entry: array of wchar) 
+		var 
+			i, n: integer
+	begin 
+		n := len(key)
+		i := n
+		while (i > 0) & (key[i - 1] # "\") & (key[i - 1] # "/") do 
+			dec(i) 
+		end 
+		if i = 0 then
+			section := Dialog.appName
+			entry := key 
+		else 
+			Strings.Extract(key, 0, i - 1, section)
+			Strings.Extract(key, i, n, entry)
+			section := Dialog.appName + "\" + section 
+		end 
+	end Split
+	
+	proc ReadFile(in key: array of wchar; var str: array of wchar; var res: integer) 
+		var 
+			section, entry: array 256 of wchar
+			notfound: array 2 of wchar
+		const 
+			ERROR_NOT_FOUND = 1168
+	begin 
+		Split(key, section, entry)
+		WinApi.SetLastError(0)
+		notfound[0] := 0ffffx
+		notfound[1] := 0x
+		res := WinApi.GetPrivateProfileStringW(section, entry, notfound, str, len(str), iniFile^)
+		if str = notfound then
+			res := ERROR_NOT_FOUND 
+		else 
+			res := WinApi.GetLastError() 
+		end 
+	end ReadFile
+	
+	proc ReadRegistry(
+		in key: array of wchar; var str: array of wchar; var res: integer
+		) 
+		var 
+			r, len_: integer
+			sw, comp, appl, vers: WinApi.HANDLE
+	begin 
+		res := WinApi.RegOpenKeyW(WinApi.HKEY_CURRENT_USER, "Software", sw)
+		if res = 0 then
+			res := WinApi.RegOpenKeyW(sw, "Oberon", comp)
+			if res = 0 then
+				res := WinApi.RegOpenKeyW(comp, Dialog.appName, appl)
+				if res = 0 then
+					res := WinApi.RegOpenKeyW(appl, "CurrentVersion", vers)
+					if res = 0 then
+						len_ := len(str) * 2
+						res := WinApi.RegQueryValueW(vers, key, str, len_)
+						r := WinApi.RegCloseKey(vers) 
+					end 
+					r := WinApi.RegCloseKey(appl) 
+				end 
+				r := WinApi.RegCloseKey(comp) 
+			end 
+			r := WinApi.RegCloseKey(sw) 
+		end 
+	end ReadRegistry
+	
+	proc ReadString*(in key: array of wchar; var str: array of wchar; var res: integer) 
+	begin 
+		if iniFile # nil then
+			ReadFile(key, str, res) 
+		else 
+			ReadRegistry(key, str, res) 
+		end 
+	end ReadString
+	
+	proc ReadInt*(in key: array of wchar; var x: integer; var res: integer) 
+		var 
+			str: array 64 of wchar
+	begin 
+		ReadString(key, str, res)
+		if res = 0 then
+			Strings.StringToInt(str, x, res) 
+		end 
+	end ReadInt
+	
+	proc ReadBool*(in key: array of wchar; var x: boolean; var res: integer) 
+		var 
+			str: array 4 of wchar
+	begin 
+		ReadString(key, str, res)
+		if res = 0 then
+			x := str = "1" 
+		end 
+	end ReadBool
+	
+	proc ReadIntList*(in key: array of wchar; var x: array of integer; var res: integer) 
+		var 
+			i, n, val_, sig: integer
+			str: array 256 of wchar
+	begin 
+		ReadString(key, str, res)
+		if res = 0 then
+			n := 0
+			i := 0
+			while str[i] # 0x do 
+				if n >= len(x) then
+					res := 2
+					return  
+				end 
+				val_ := 0
+				sig := 1
+				if str[i] = "-" then
+					sig := -1
+					inc(i) 
+				end 
+				while (str[i] >= "0") & (str[i] <= "9") do 
+					val_ := 10 * val_ + ord(str[i]) - ord("0")
+					inc(i) 
+				end 
+				x[n] := sig * val_
+				if str[i] = "," then
+					inc(i) 
+				elsif str[i] # 0x then 
+					res := 1
+					return  
+				end 
+				inc(n) 
+			end  
+		end 
+	end ReadIntList
+	
+	proc WriteFile(in key: array of wchar; in str: array of wchar) 
+		var 
+			res: integer
+			section, entry: array 256 of wchar
+	begin 
+		Split(key, section, entry)
+		res := WinApi.WritePrivateProfileStringW(section, entry, str, iniFile^)
+	end WriteFile
+	
+	proc WriteRegistry(in key: array of wchar; in str: array of wchar) 
+		var 
+			res: integer
+			sw, comp, appl, vers: WinApi.HANDLE
+	begin 
+		res := WinApi.RegCreateKeyW(WinApi.HKEY_CURRENT_USER, "Software", sw)
+		if res = 0 then
+			res := WinApi.RegCreateKeyW(sw, "Oberon", comp)
+			if res = 0 then
+				res := WinApi.RegCreateKeyW(comp, Dialog.appName, appl)
+				if res = 0 then
+					res := WinApi.RegCreateKeyW(appl, "CurrentVersion", vers)
+					if res = 0 then
+						res := WinApi.RegSetValueW(vers, key, WinApi.REG_SZ, str, len(str) * 2) 
+					end 
+					res := WinApi.RegCloseKey(appl) 
+				end 
+				res := WinApi.RegCloseKey(comp) 
+			end 
+			res := WinApi.RegCloseKey(sw) 
+		end 
+	end WriteRegistry
+	
+	proc WriteString*(in key: array of wchar; in str: array of wchar) 
+	begin 
+		if iniFile # nil then
+			WriteFile(key, str) 
+		else 
+			WriteRegistry(key, str) 
+		end 
+	end WriteString
+	
+	proc WriteInt*(in key: array of wchar; x: integer) 
+		var 
+			str: array 64 of wchar
+	begin 
+		Strings.IntToString(x, str)
+		WriteString(key, str)
+	end WriteInt
+	
+	proc WriteBool*(in key: array of wchar; x: boolean) 
+	begin 
+		if x then
+			WriteString(key, "1") 
+		else 
+			WriteString(key, "0") 
+		end 
+	end WriteBool
+	
+	proc WriteIntList*(in key: array of wchar; in x: array of integer) 
+		var 
+			i, j, n: integer
+			str: array 256 of wchar
+			s: array 16 of wchar
+	begin 
+		n := 0
+		i := 0
+		while n < len(x) do 
+			if (n > 0) & (i < len(str)) then
+				str[i] := ","
+				inc(i) 
+			end 
+			Strings.IntToString(x[n], s)
+			j := 0
+			while (s[j] # 0x) & (i < len(str)) do 
+				str[i] := s[j]
+				inc(i)
+				inc(j) 
+			end 
+			inc(n) 
+		end 
+		if i < len(str) then
+			str[i] := 0x 
+		else 
+			str[len(str) - 1] := 0x 
+		end 
+		WriteString(key, str)
+	end WriteIntList
+	
+	
+	proc ReadMeasure
+		var 
+			res, len_: integer
+			cp, int_: WinApi.HANDLE
+			str: array 4 of wchar
+	begin 
+		res := WinApi.GetProfileIntW("intl", "iMeasure", 1)
+		Dialog.metricSystem := res = 0
+	end ReadMeasure
+	
+	proc GetMajorVersion(v: array of wchar): integer 
+		var 
+			majorVersion, pos, res: integer
+	begin 
+		Strings.Find(v, ".", 0, pos)
+		if pos >= 0 then // maps string v of pattern  "x.yz" to integer xy
+			Strings.Replace(v, pos, 1, "")
+			while ("0" <= v[pos]) & (v[pos] <= "9") do 
+				inc(pos) 
+			end 
+			v[pos] := 0x
+			Strings.StringToInt(v, majorVersion, res)
+			if res = 0 then
+				return majorVersion 
+			end  
+		end 
+		return 0 // invalid pattern; avoid TRAP in startup sequence
+	end GetMajorVersion
+	
+	proc SetDbgAppName
+		var 
+			i: integer
+			p: WinApi.PtrWSTR
+			dbg: boolean
+			name, opt: HostFiles.FullName
+	begin 
+		p := WinApi.GetCommandLineW()
+		i := 0
+		dbg := false
+		repeat 
+			HostFiles.GetName(p, i, name, opt)
+			if (opt = "/LOAD") & (p[i] >= " ") then
+				HostFiles.GetName(p, i, name, opt)
+				if name = "DevRTDebug" then // BlackBox is used as run-time debugger
+					Dialog.MapString("#Dev:RTDebugApp", Dialog.appName)
+					dbg := true 
+				end  
+			end  
+		until dbg or (p[i] < " ") 
+	end SetDbgAppName
+	
+	proc SetIniFile
+		var 
+			loc: Files.Locator
+			i: integer
+			p: WinApi.PtrWSTR
+			name, opt: HostFiles.FullName
+	begin 
+		p := WinApi.GetCommandLineW()
+		i := 0
+		repeat 
+			HostFiles.GetName(p, i, name, opt)
+			if opt = "/INIFILE" then
+				HostFiles.GetName(p, i, name, opt)
+				new(iniFile)
+				loc := Files.dir.This(name)
+				iniFile^ := loc(HostFiles.Locator).path 
+			elsif opt = "/PORTABLE" then 
+				new(iniFile)
+				loc := Files.dir.This(Dialog.appName + ".ini")
+				iniFile^ := loc(HostFiles.Locator).path 
+			end  
+		until (iniFile # nil) or (p[i] < " ") 
+	end SetIniFile
+	
+	proc SetDbgRegistry(appName, dbgName: array of wchar) 
+		var 
+			val_: array 256 of wchar
+			res: integer
+		
+		proc InheritRegEntry(in key: array of wchar) 
+		begin 
+			Dialog.appName := appName
+			ReadString(key, val_, res)
+			Dialog.appName := dbgName
+			if res = 0 then
+				WriteString(key, val_) 
+			end 
+		end InheritRegEntry
+	
+	begin 
+		ReadString("MainWindow", val_, res)
+		if res # 0 then // no registry keys for debugger
+			InheritRegEntry("MainWindow")
+			InheritRegEntry("language")
+			InheritRegEntry("DefFontName")
+			InheritRegEntry("DefFontSize")
+			InheritRegEntry("DlgFontName")
+			InheritRegEntry("DlgFontSize")
+			InheritRegEntry("DlgFontStyle") 
+		end 
+	end SetDbgRegistry
+	
+	proc Init
+		var 
+			name, bname: Dialog.String
+			res, i, v: integer
+	begin 
+		v := WinApi.GetVersion()
+		localeId := 1024 // user default
+		name := HostFiles.appName
+		bname := "BLACKBOX"
+		i := 0
+		while (i < 8) & (cap(name[i]) = bname[i]) do 
+			inc(i) 
+		end 
+		if i = 8 then
+			name := "BlackBox" 
+		elsif (v < 0) & (v mod 256 < 4) then 
+			i := 1
+			while name[i] # 0x do 
+				if (name[i] >= "A") & (name[i] <= "Z") then
+					name[i] := wchr(ord(name[i]) + ord("a") - ord("A")) 
+				end 
+				inc(i) 
+			end  
+		end 
+		Dialog.appName := name
+		Dialog.MapString("#System:appVersion", Dialog.appVersion)
+		Dialog.version := GetMajorVersion(Dialog.appVersion)
+		SetDbgAppName
+		SetIniFile
+		if Dialog.appName # name then
+			SetDbgRegistry(name, Dialog.appName) 
+		end 
+		Dialog.Call("Startup.Setup", "", res)
+		ReadMeasure
+	end Init
+
+begin
+	Init
+end HostRegistry

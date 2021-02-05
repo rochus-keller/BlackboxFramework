@@ -1,0 +1,1866 @@
+module Stores
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems, Fyodor Tkachov"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20050312, mf (reported by Fyodor Tkachov), replaced PROCEDURE ThisId (d: TypeDict; ...
+	   by PROCEDURE ThisId (VAR d: TypeDict; ...
+	   - 20050312, mf (reported by Fyodor Tkachov), replaced PROCEDURE ThisBaseId (d: TypeDict; ...
+	   by PROCEDURE ThisBaseId (VAR d: TypeDict; ...
+	   - 20141027, center #19, full Unicode support for Component Pascal identifiers added
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import SYSTEM, Kernel, Dialog, Strings, Files
+	
+	const 
+		// Alien.cause, Reader.TurnIntoAlien cause - flagged by internalization procs
+		alienVersion* = 1
+		alienComponent* = 2
+		// Alien.cause - internally detected
+		inconsistentVersion* = -1
+		inconsistentType* = -2
+		moduleFileNotFound* = -3
+		invalidModuleFile* = -4
+		inconsModuleVersion* = -5
+		typeNotFound* = -6
+		
+		dictLineLen = 32 // length of type & elem dict lines
+		
+		newBase = 0f0x // new base type (level = 0), i.e. not yet in dict
+		newExt = 0f1x // new extension type (level = 1), i.e. not yet in dict
+		oldType = 0f2x // old type, i.e. already in dict
+		
+		nil_ = 080x // nil store
+		link = 081x // link to another elem in same file
+		store = 082x // general store
+		elem = 083x // elem store
+		newlink = 084x // link to another non-elem store in same file
+		
+		minVersion = 0
+		maxStoreVersion = 0
+		
+		elemTName = "Stores.ElemDesc" // type of pre-1.3 elems
+		modelTName = "Models.ModelDesc" // the only known family of pre-1.3 elems
+		
+		inited = true // values to be used when calling NewDomain
+		anonymousDomain = false
+		
+		compatible = true
+	
+	
+	type 
+		TypeName* = array 64 of wchar
+		TypePath* = array 16 of TypeName
+		OpName* = array 32 of wchar
+		
+		Domain* = pointer to (* limited *) record 
+				sequencer: ANYPTR
+				dlink: Domain
+				initialized, copyDomain: boolean
+				level, copyera, nextElemId: integer
+				sDict: StoreDict
+				cleaner: TrapCleaner
+				s: Store  // used for CopyOf
+			end 
+		
+		Operation* = pointer to (* abstract *) record end 
+		
+		Store* = pointer to (* abstract *) record 
+				dlink: Domain
+				era*, id*: integer // externalization era and id
+				isElem: boolean  // to preserve file format: is this an elem in the old sense?
+			end 
+		
+		
+		AlienComp* = pointer to (* limited *) record 
+				next-: AlienComp 
+			end 
+		
+		AlienPiece* = pointer to (* limited *) record (AlienComp) 
+				pos-, len_-: integer 
+			end 
+		
+		AlienPart* = pointer to (* limited *) record (AlienComp) 
+				store-: Store 
+			end 
+		
+		Alien* = pointer to (* limited *) record (Store) 
+				path-: TypePath // the type this store would have if it were not an alien
+				cause-: integer // # 0, the cause that turned this store into an alien
+				file-: Files.File // base file holding alien pieces
+				comps-: AlienComp  // the constituent components of this alien store
+			end 
+		
+		ReaderState = record 
+				next: integer // position of next store in current level
+				end_: integer  // position just after last read store
+			end 
+		
+		WriterState = record 
+				linkpos: integer  // address of threading link
+			end 
+		
+		TypeDict = pointer to record 
+				next: TypeDict
+				org: integer // origin id of this dict line
+				type_: array dictLineLen of TypeName // type[org] .. type[org + dictLineLen - 1]
+				baseId: array dictLineLen of integer 
+			end 
+		
+		StoreDict = pointer to record 
+				next: StoreDict
+				org: integer // origin id of this dict line
+				elem: array dictLineLen of Store  // elem[org] .. elem[org + dictLineLen - 1]
+			end 
+		
+		Reader* = record 
+				rider-: Files.Reader
+				cancelled-: boolean // current Internalize has been cancelled
+				readAlien-: boolean // at least one alien read since ConnectTo
+				cause: integer
+				nextTypeId, nextElemId, nextStoreId: integer // next id of non-dict type, "elem", store
+				tDict, tHead: TypeDict // mapping (id <-> type) - self-organizing list
+				eDict, eHead: StoreDict // mapping (id -> elem) - self-organizing list
+				sDict, sHead: StoreDict // mapping (id -> store) - self-organizing list
+				st: ReaderState
+				noDomain: boolean
+				store: Store 
+			end 
+		
+		Writer* = record 
+				rider-: Files.Writer
+				writtenStore-: Store
+				era: integer // current externalization era
+				noDomain: boolean // no domain encountered yet
+				modelType: Kernel.Type
+				domain: Domain // domain of current era
+				nextTypeId, nextElemId, nextStoreId: integer // next id of non-dict type or elem
+				tDict, tHead: TypeDict // mapping (id -> type) - self-organizing list
+				st: WriterState 
+			end 
+		
+		TrapCleaner = pointer to record (Kernel.TrapCleaner) 
+				d: Domain 
+			end 
+	
+	var 
+		nextEra: integer // next externalization era
+		thisTypeRes: integer // side-effect res code of ThisType
+		logReports: boolean
+	
+	
+	// Cleaner
+	
+	proc (c: TrapCleaner) Cleanup
+	begin 
+		c.d.level := 0
+		c.d.sDict := nil
+		c.d.s := nil
+	end Cleanup
+	
+	proc (d: Domain) SetSequencer*(sequencer: ANYPTR)  // new
+	begin 
+		assert(d.sequencer = nil)
+		d.sequencer := sequencer
+	end SetSequencer
+	
+	proc (d: Domain) GetSequencer*(): ANYPTR  // new
+	begin 
+		return d.sequencer
+	end GetSequencer
+	
+	
+	// Operation
+	
+	proc (op: Operation) Do*()  end // new abstract
+	
+	
+	// Store
+	
+	proc NewDomain(initialized: boolean): Domain 
+		var 
+			d: Domain
+	begin 
+		new(d)
+		d.level := 0
+		d.sDict := nil
+		d.cleaner := nil
+		d.initialized := initialized
+		d.copyDomain := false
+		return d
+	end NewDomain
+	
+	proc DomainOf(s: Store): Domain 
+		var 
+			d, p, q, r: Domain
+	begin 
+		d := s.dlink
+		if (d # nil) & (d.dlink # nil) then
+			p := nil
+			q := d
+			r := q.dlink
+			while r # nil do 
+				q.dlink := p
+				p := q
+				q := r
+				r := q.dlink 
+			end 
+			d := q
+			while p # nil do 
+				q := p
+				p := q.dlink
+				q.dlink := d 
+			end 
+			s.dlink := d 
+		end 
+		return d
+	end DomainOf
+	
+	proc (s: Store) Domain*(): Domain  // new
+		var 
+			d: Domain
+	begin 
+		d := DomainOf(s)
+		if (d # nil) & ~d.initialized then
+			d := nil 
+		end 
+		return d
+	end Domain
+	
+	proc (s: Store) CopyFrom*(source: Store)  end // new empty
+	
+	proc (s: Store) Internalize*(var rd: Reader)  // new extensible
+		var 
+			thisVersion: integer
+	begin 
+		rd.ReadVersion(minVersion, maxStoreVersion, thisVersion)
+		if ~rd.cancelled & s.isElem then
+			rd.ReadVersion(minVersion, maxStoreVersion, thisVersion) 
+		// works since maxStoreVersion = maxElemVersion = 0 in pre-1.3
+		end 
+	end Internalize
+	
+	proc (s: Store) ExternalizeAs*(var s1: Store)  end // new empty
+	
+	proc (s: Store) Externalize*(var wr: Writer)  // new extensible
+	begin 
+		wr.WriteVersion(maxStoreVersion)
+		if s.isElem then
+			wr.WriteVersion(maxStoreVersion) 
+		end 
+	end Externalize
+	
+	
+	// Alien
+	
+	proc (a: Alien) CopyFrom*(source: Store) 
+		var 
+			s, c, cp: AlienComp
+			piece: AlienPiece
+			part: AlienPart
+	begin 
+		with source: Alien do 
+			a.path := source.path
+			a.cause := source.cause
+			a.file := source.file
+			a.comps := nil
+			s := source.comps
+			cp := nil
+			while s # nil do 
+				with s: AlienPiece do 
+					new(piece)
+					c := piece
+					piece.pos := s.pos
+					piece.len_ := s.len_ 
+				| s: AlienPart do 
+					new(part)
+					c := part
+					if s.store # nil then
+						part.store := CopyOf(s.store)
+						Join(part.store, a) 
+					end  
+				end 
+				if cp # nil then
+					cp.next := c 
+				else 
+					a.comps := c 
+				end 
+				cp := c
+				s := s.next 
+			end  
+		end 
+	end CopyFrom
+	
+	proc (a: Alien) Internalize*(var rd: Reader) 
+	begin 
+		halt(100)
+	end Internalize
+	
+	proc (a: Alien) Externalize*(var w: Writer) 
+	begin 
+		halt(100)
+	end Externalize
+	
+	
+	// types
+	
+	proc GetThisTypeName(t: Kernel.Type; var type_: TypeName) 
+		var 
+			i, j: integer
+			ch: wchar
+			modName, name: Kernel.Name
+	begin 
+		Kernel.GetModName(t.mod_, modName)
+		Kernel.GetTypeName(t, name)
+		type_ := modName
+		i := 0
+		ch := type_[0]
+		while ch # 0x do 
+			inc(i)
+			ch := type_[i] 
+		end 
+		type_[i] := "."
+		inc(i)
+		j := 0
+		repeat 
+			ch := name[j]
+			type_[i] := ch
+			inc(i)
+			inc(j) 
+		until ch = 0x 
+		// type := modName + "." + name;
+		
+		
+		if compatible then
+			if type_[i - 2] = "^" then // for backward compatibility
+				type_[i - 2] := "D"
+				type_[i - 1] := "e"
+				type_[i] := "s"
+				type_[i + 1] := "c"
+				type_[i + 2] := 0x 
+			end  
+		end 
+	end GetThisTypeName
+	
+	proc ThisType(type_: TypeName): Kernel.Type 
+		var 
+			m: Kernel.Module
+			t: Kernel.Type
+			i, j: integer
+			ch: wchar
+			typ, mod_: Kernel.Name
+			res: integer
+			str: array 256 of wchar
+	begin 
+		assert(type_ # "", 20)
+		i := 0
+		ch := type_[0]
+		while (ch # ".") & (ch # 0x) do 
+			mod_[i] := ch
+			inc(i)
+			ch := type_[i] 
+		end 
+		assert(ch = ".", 21)
+		mod_[i] := 0x
+		inc(i)
+		m := Kernel.ThisMod(mod_)
+		if m # nil then
+			j := 0
+			repeat 
+				ch := type_[i]
+				typ[j] := ch
+				inc(i)
+				inc(j) 
+			until ch = 0x 
+			t := Kernel.ThisType(m, typ)
+			if (t = nil) & (j >= 5) then // try pointer type
+				if (typ[j - 5] = "D") & (typ[j - 4] = "e") & (typ[j - 3] = "s") & (typ[j - 2] = "c") then
+					typ[j - 5] := "^"
+					typ[j - 4] := 0x
+					t := Kernel.ThisType(m, typ) 
+				end  
+			end 
+			if t = nil then
+				thisTypeRes := typeNotFound 
+			end  
+		else 
+			t := nil
+			Kernel.GetLoaderResult(res, str, str, str)
+			case res of 
+				| Kernel.fileNotFound: 
+					thisTypeRes := moduleFileNotFound 
+				| Kernel.syntaxError: 
+					thisTypeRes := invalidModuleFile 
+				| Kernel.objNotFound: 
+					thisTypeRes := inconsModuleVersion 
+				| Kernel.illegalFPrint: 
+					thisTypeRes := inconsModuleVersion 
+				| Kernel.cyclicImport:  // cyclic import ...
+					thisTypeRes := invalidModuleFile 
+			else 
+				thisTypeRes := invalidModuleFile 
+			end  
+		end 
+		return t
+	end ThisType
+	
+	proc SameType(in x, y: TypeName): boolean 
+		var 
+			i: integer
+	begin 
+		if x = y then
+			return true 
+		else 
+			i := 0
+			while x[i] = y[i] do 
+				inc(i) 
+			end 
+			return 
+				(x[i] = "^") & (x[i + 1] = 0x) & (y[i] = "D") & (y[i + 1] = "e") & (y[i + 2] = "s") & (y[i + 3] = "c") & (y[i + 4] = 0x) 
+				or (y[i] = "^") & (y[i + 1] = 0x) & (x[i] = "D") & (x[i + 1] = "e") & (x[i + 2] = "s") & (x[i + 3] = "c") & (x[i + 4] = 0x) 
+		end 
+	end SameType
+	
+	proc SamePath(t: Kernel.Type; var path: TypePath): boolean 
+		// check whether t coincides with path
+		var 
+			tn: TypeName
+			i, n: integer
+	begin 
+		i := -1
+		n := Kernel.LevelOf(t)
+		repeat 
+			GetThisTypeName(t.base[n], tn)
+			dec(n)
+			inc(i) 
+		until (n < 0) or ~SameType(tn, path[i]) 
+		return SameType(tn, path[i])
+	end SamePath
+	
+	proc NewStore(t: Kernel.Type): Store 
+		var 
+			p: ANYPTR
+	begin 
+		assert(t # nil, 20)
+		Kernel.NewObj(p, t)
+		assert(p # nil, 100)
+		assert(p is Store, 21)
+		return p(Store)
+	end NewStore
+	
+	
+	// type dictionary
+	
+	proc GetThisType(var d: TypeDict; id: integer; var type_: TypeName) 
+		// pre: (id, t) IN dict
+		var 
+			h, p: TypeDict
+			org, k: integer
+	begin 
+		k := id mod dictLineLen
+		org := id - k
+		h := nil
+		p := d
+		while p.org # org do 
+			h := p
+			p := p.next 
+		end 
+		if h # nil then
+			h.next := p.next
+			p.next := d
+			d := p 
+		end 
+		type_ := p.type_[k]
+		assert(type_ # "", 100)
+	end GetThisType
+	
+	proc ThisId(var d: TypeDict; t: TypeName): integer 
+		// pre: t # ""
+		// post: res = id if (t, id) in dict, res = -1 else
+		var 
+			h, p: TypeDict
+			k, id: integer
+	begin 
+		h := nil
+		p := d
+		id := -1
+		while (p # nil) & (id < 0) do 
+			k := 0
+			while (k < dictLineLen) & (p.type_[k, 0] # 0x) & (p.type_[k] # t) do 
+				inc(k) 
+			end 
+			if (k < dictLineLen) & (p.type_[k, 0] # 0x) then
+				id := p.org + k 
+			else 
+				h := p
+				p := p.next 
+			end  
+		end 
+		if (id >= 0) & (h # nil) then
+			h.next := p.next
+			p.next := d
+			d := p 
+		end 
+		return id
+	end ThisId
+	
+	proc ThisBaseId(var d: TypeDict; id: integer): integer 
+		// post: res = id if base(t) # NIL, res = -1 if base(t) = NIL; res >= 0 => T(res) = base(t)
+		var 
+			h, p: TypeDict
+			k, org, baseId: integer
+	begin 
+		k := id mod dictLineLen
+		org := id - k
+		h := nil
+		p := d
+		while p.org # org do 
+			h := p
+			p := p.next 
+		end 
+		if h # nil then
+			h.next := p.next
+			p.next := d
+			d := p 
+		end 
+		baseId := p.baseId[k]
+		return baseId
+	end ThisBaseId
+	
+	proc AddType(var d, h: TypeDict; id: integer; type_: TypeName) 
+		var 
+			k: integer
+	begin 
+		k := id mod dictLineLen
+		if (h = nil) or ((k = 0) & (h.org # id)) then
+			new(h)
+			h.org := id - k
+			h.next := d
+			d := h 
+		end 
+		h.type_[k] := type_
+		h.baseId[k] := -1
+	end AddType
+	
+	proc AddBaseId(h: TypeDict; id, baseId: integer) 
+		var 
+			k: integer
+	begin 
+		k := id mod dictLineLen
+		h.baseId[k] := baseId
+	end AddBaseId
+	
+	proc InitTypeDict(var d, h: TypeDict; var nextID: integer) 
+	begin 
+		d := nil
+		h := nil
+		nextID := 0
+	end InitTypeDict
+	
+	
+	// store dictionary - used to maintain referential sharing
+	
+	proc ThisStore(var d: StoreDict; id: integer): Store 
+		// pre: (id, s) IN dict
+		var 
+			h, p: StoreDict
+			s: Store
+			k, org: integer
+	begin 
+		k := id mod dictLineLen
+		org := id - k
+		h := nil
+		p := d
+		while p.org # org do 
+			h := p
+			p := p.next 
+		end 
+		if h # nil then
+			h.next := p.next
+			p.next := d
+			d := p 
+		end 
+		s := p.elem[k]
+		assert(s # nil, 100)
+		return s
+	end ThisStore
+	
+	proc AddStore(var d, h: StoreDict; s: Store) 
+		var 
+			k: integer
+	begin 
+		k := s.id mod dictLineLen
+		if (h = nil) or ((k = 0) & (h.org # s.id)) then
+			new(h)
+			h.org := s.id - k
+			h.next := d
+			d := h 
+		end 
+		h.elem[k] := s
+	end AddStore
+	
+	proc InitStoreDict(var d, h: StoreDict; var nextID: integer) 
+	begin 
+		d := nil
+		h := nil
+		nextID := 0
+	end InitStoreDict
+	
+	
+	// support for type mapping
+	
+	proc ReadPath(var rd: Reader; var path: TypePath) 
+		var 
+			h: TypeDict
+			id, extId: integer
+			i: integer
+			kind: char
+		
+		proc ReadUtf8(var x: array of wchar) 
+			var 
+				utf8: Kernel.Utf8Name
+				res: integer
+		begin 
+			rd.ReadSString(utf8)
+			Kernel.Utf8ToString(utf8, x, res)
+			assert(res = 0)
+		end ReadUtf8
+		
+		proc AddPathComp(var rd: Reader) 
+		begin 
+			if h # nil then
+				AddBaseId(h, extId, rd.nextTypeId) 
+			end 
+			AddType(rd.tDict, rd.tHead, rd.nextTypeId, path[i])
+			h := rd.tHead
+			extId := rd.nextTypeId
+		end AddPathComp
+	
+	begin 
+		h := nil
+		i := 0
+		rd.ReadSChar(kind)
+		while kind = newExt do 
+			ReadUtf8(path[i])
+			AddPathComp(rd)
+			inc(rd.nextTypeId)
+			if path[i] # elemTName then
+				inc(i) 
+			end 
+			rd.ReadSChar(kind) 
+		end 
+		if kind = newBase then
+			ReadUtf8(path[i])
+			AddPathComp(rd)
+			inc(rd.nextTypeId)
+			inc(i) 
+		else 
+			assert(kind = oldType, 100)
+			rd.ReadInt(id)
+			if h # nil then
+				AddBaseId(h, extId, id) 
+			end 
+			repeat 
+				GetThisType(rd.tDict, id, path[i])
+				id := ThisBaseId(rd.tDict, id)
+				if path[i] # elemTName then
+					inc(i) 
+				end  
+			until id = -1  
+		end 
+		path[i] := ""
+	end ReadPath
+	
+	proc WritePath(var wr: Writer; var path: TypePath) 
+		var 
+			h: TypeDict
+			id, extId: integer
+			i, n: integer
+		
+		proc WriteUtf8(in x: array of wchar) 
+			var 
+				utf8: Kernel.Utf8Name
+				res: integer
+		begin 
+			Kernel.StringToUtf8(x, utf8, res)
+			assert(res = 0)
+			wr.WriteSString(utf8)
+		end WriteUtf8
+	
+	begin 
+		h := nil
+		n := 0
+		while path[n] # "" do 
+			inc(n) 
+		end 
+		i := 0
+		while i < n do 
+			id := ThisId(wr.tDict, path[i])
+			if id >= 0 then
+				if h # nil then
+					AddBaseId(h, extId, id) 
+				end 
+				wr.WriteSChar(oldType)
+				wr.WriteInt(id)
+				n := i 
+			else 
+				if i + 1 < n then
+					wr.WriteSChar(newExt) 
+				else 
+					wr.WriteSChar(newBase) 
+				end 
+				WriteUtf8(path[i])
+				if h # nil then
+					AddBaseId(h, extId, wr.nextTypeId) 
+				end 
+				AddType(wr.tDict, wr.tHead, wr.nextTypeId, path[i])
+				h := wr.tHead
+				extId := wr.nextTypeId
+				inc(wr.nextTypeId)
+				if path[i] = modelTName then
+					id := ThisId(wr.tDict, elemTName)
+					assert(id < 0, 100)
+					assert(i + 2 = n, 101)
+					wr.WriteSChar(newExt)
+					WriteUtf8(elemTName)
+					if h # nil then
+						AddBaseId(h, extId, wr.nextTypeId) 
+					end 
+					AddType(wr.tDict, wr.tHead, wr.nextTypeId, elemTName)
+					h := wr.tHead
+					extId := wr.nextTypeId
+					inc(wr.nextTypeId) 
+				end  
+			end 
+			inc(i) 
+		end 
+	end WritePath
+	
+	proc WriteType(var wr: Writer; t: Kernel.Type) 
+		var 
+			path: TypePath
+			n, i: integer
+	begin 
+		i := 0
+		n := Kernel.LevelOf(t)
+		while n >= 0 do 
+			GetThisTypeName(t.base[n], path[i])
+			dec(n)
+			inc(i) 
+		end 
+		path[i] := ""
+		WritePath(wr, path)
+	end WriteType
+	
+	
+	// support for alien mapping
+	
+	proc InternalizeAlien(var rd: Reader; var comps: AlienComp; down, pos, len_: integer) 
+		var 
+			h, p: AlienComp
+			piece: AlienPiece
+			part: AlienPart
+			file: Files.File
+			next, end_, max_: integer
+	begin 
+		file := rd.rider.Base()
+		max_ := file.Length()
+		end_ := pos + len_
+		h := nil
+		if down # 0 then
+			next := down 
+		else 
+			next := end_ 
+		end 
+		while pos < end_ do 
+			assert(end_ <= max_, 100)
+			if pos < next then
+				new(piece)
+				piece.pos := pos
+				piece.len_ := next - pos
+				p := piece
+				pos := next 
+			else 
+				assert(pos = next, 101)
+				rd.SetPos(next)
+				new(part)
+				rd.ReadStore(part.store)
+				assert(rd.st.end_ > next, 102)
+				p := part
+				pos := rd.st.end_
+				if rd.st.next > 0 then
+					assert(rd.st.next > next, 103)
+					next := rd.st.next 
+				else 
+					next := end_ 
+				end  
+			end 
+			if h = nil then
+				comps := p 
+			else 
+				h.next := p 
+			end 
+			h := p 
+		end 
+		assert(pos = end_, 104)
+		rd.SetPos(end_)
+	end InternalizeAlien
+	
+	proc ExternalizePiece(var wr: Writer; file: Files.File; p: AlienPiece) 
+		var 
+			r: Files.Reader
+			w: Files.Writer
+			b: byte
+			l, len_: integer
+	begin 
+		l := file.Length()
+		len_ := p.len_
+		assert(0 <= p.pos, 100)
+		assert(p.pos <= l, 101)
+		assert(0 <= len_, 102)
+		assert(len_ <= l - p.pos, 103)
+		r := file.NewReader(nil)
+		r.SetPos(p.pos)
+		w := wr.rider
+		while len_ # 0 do 
+			r.ReadByte(b)
+			w.WriteByte(b)
+			dec(len_) 
+		end 
+	end ExternalizePiece
+	
+	proc ExternalizeAlien(var wr: Writer; file: Files.File; comps: AlienComp) 
+		var 
+			p: AlienComp
+	begin 
+		p := comps
+		while p # nil do 
+			with p: AlienPiece do 
+				ExternalizePiece(wr, file, p) 
+			| p: AlienPart do 
+				wr.WriteStore(p.store) 
+			end 
+			p := p.next 
+		end 
+	end ExternalizeAlien
+	
+	
+	// Reader
+	
+	proc (var rd: Reader) ConnectTo*(f: Files.File)  // new
+	// pre: rd.rider = NIL  OR  f = NIL
+	begin 
+		if f = nil then
+			rd.rider := nil 
+		else 
+			assert(rd.rider = nil, 20)
+			rd.rider := f.NewReader(rd.rider)
+			rd.SetPos(0)
+			InitTypeDict(rd.tDict, rd.tHead, rd.nextTypeId)
+			InitStoreDict(rd.eDict, rd.eHead, rd.nextElemId)
+			InitStoreDict(rd.sDict, rd.sHead, rd.nextStoreId)
+			rd.noDomain := true 
+		end 
+		rd.readAlien := false
+	end ConnectTo
+	
+	proc (var rd: Reader) SetPos*(pos: integer)  // new
+	begin 
+		rd.rider.SetPos(pos)
+	end SetPos
+	
+	proc (var rd: Reader) Pos*(): integer  // new
+	begin 
+		return rd.rider.Pos()
+	end Pos
+	
+	proc (var rd: Reader) ReadBool*(var x: boolean)  // new
+		var 
+			b: byte
+	begin 
+		rd.rider.ReadByte(b)
+		x := b # 0
+	end ReadBool
+	
+	proc (var rd: Reader) ReadSChar*(var x: char)  // new
+	begin 
+		rd.rider.ReadByte(SYSTEM.VAL(byte, x))
+	end ReadSChar
+	
+	proc (var rd: Reader) ReadXChar*(var x: wchar)  // new
+		var 
+			c: char
+	begin 
+		rd.rider.ReadByte(SYSTEM.VAL(byte, c))
+		x := c
+	end ReadXChar
+	
+	proc (var rd: Reader) ReadChar*(var x: wchar)  // new
+		var  // little endian, big endian
+			le: array 2 of byte
+	begin 
+		rd.rider.ReadBytes(le, 0, 2)
+		x := wchr(le[0] mod 256 + (le[1] mod 256) * 256)
+	end ReadChar
+	
+	proc (var rd: Reader) ReadByte*(var x: byte)  // new
+	begin 
+		rd.rider.ReadByte(x)
+	end ReadByte
+	
+	proc (var rd: Reader) ReadSInt*(var x: shortint)  // new
+		var  // little endian, big endian
+			le, be: array 2 of byte
+	begin 
+		rd.rider.ReadBytes(le, 0, 2)
+		if Kernel.littleEndian then
+			x := SYSTEM.VAL(shortint, le) 
+		else 
+			be[0] := le[1]
+			be[1] := le[0]
+			x := SYSTEM.VAL(shortint, be) 
+		end 
+	end ReadSInt
+	
+	proc (var rd: Reader) ReadXInt*(var x: integer)  // new
+		var  // little endian, big endian
+			le, be: array 2 of byte
+	begin 
+		rd.rider.ReadBytes(le, 0, 2)
+		if Kernel.littleEndian then
+			x := SYSTEM.VAL(shortint, le) 
+		else 
+			be[0] := le[1]
+			be[1] := le[0]
+			x := SYSTEM.VAL(shortint, be) 
+		end 
+	end ReadXInt
+	
+	proc (var rd: Reader) ReadInt*(var x: integer)  // new
+		var  // little endian, big endian
+			le, be: array 4 of byte
+	begin 
+		rd.rider.ReadBytes(le, 0, 4)
+		if Kernel.littleEndian then
+			x := SYSTEM.VAL(integer, le) 
+		else 
+			be[0] := le[3]
+			be[1] := le[2]
+			be[2] := le[1]
+			be[3] := le[0]
+			x := SYSTEM.VAL(integer, be) 
+		end 
+	end ReadInt
+	
+	proc (var rd: Reader) ReadLong*(var x: longint)  // new
+		var  // little endian, big endian
+			le, be: array 8 of byte
+	begin 
+		rd.rider.ReadBytes(le, 0, 8)
+		if Kernel.littleEndian then
+			x := SYSTEM.VAL(longint, le) 
+		else 
+			be[0] := le[7]
+			be[1] := le[6]
+			be[2] := le[5]
+			be[3] := le[4]
+			be[4] := le[3]
+			be[5] := le[2]
+			be[6] := le[1]
+			be[7] := le[0]
+			x := SYSTEM.VAL(longint, be) 
+		end 
+	end ReadLong
+	
+	proc (var rd: Reader) ReadSReal*(var x: real)  // new
+		var  // little endian, big endian
+			le, be: array 4 of byte
+	begin 
+		rd.rider.ReadBytes(le, 0, 4)
+		if Kernel.littleEndian then
+			x := SYSTEM.VAL(real, le) 
+		else 
+			be[0] := le[3]
+			be[1] := le[2]
+			be[2] := le[1]
+			be[3] := le[0]
+			x := SYSTEM.VAL(real, be) 
+		end 
+	end ReadSReal
+	
+	proc (var rd: Reader) ReadXReal*(var x: longreal)  // new
+		var  // little endian, big endian
+			le, be: array 4 of byte
+	begin 
+		rd.rider.ReadBytes(le, 0, 4)
+		if Kernel.littleEndian then
+			x := SYSTEM.VAL(real, le) 
+		else 
+			be[0] := le[3]
+			be[1] := le[2]
+			be[2] := le[1]
+			be[3] := le[0]
+			x := SYSTEM.VAL(real, be) 
+		end 
+	end ReadXReal
+	
+	proc (var rd: Reader) ReadReal*(var x: longreal)  // new
+		var  // little endian, big endian
+			le, be: array 8 of byte
+	begin 
+		rd.rider.ReadBytes(le, 0, 8)
+		if Kernel.littleEndian then
+			x := SYSTEM.VAL(longreal, le) 
+		else 
+			be[0] := le[7]
+			be[1] := le[6]
+			be[2] := le[5]
+			be[3] := le[4]
+			be[4] := le[3]
+			be[5] := le[2]
+			be[6] := le[1]
+			be[7] := le[0]
+			x := SYSTEM.VAL(longreal, be) 
+		end 
+	end ReadReal
+	
+	proc (var rd: Reader) ReadSet*(var x: set)  // new
+		var  // little endian, big endian
+			le, be: array 4 of byte
+	begin 
+		rd.rider.ReadBytes(le, 0, 4)
+		if Kernel.littleEndian then
+			x := SYSTEM.VAL(set, le) 
+		else 
+			be[0] := le[3]
+			be[1] := le[2]
+			be[2] := le[1]
+			be[3] := le[0]
+			x := SYSTEM.VAL(set, be) 
+		end 
+	end ReadSet
+	
+	proc (var rd: Reader) ReadSString*(var x: array of char)  // new
+		var 
+			i: integer
+			ch: char
+	begin 
+		i := 0
+		repeat 
+			rd.ReadSChar(ch)
+			x[i] := ch
+			inc(i) 
+		until ch = 0x 
+	end ReadSString
+	
+	proc (var rd: Reader) ReadXString*(var x: array of wchar)  // new
+		var 
+			i: integer
+			ch: wchar
+	begin 
+		i := 0
+		repeat 
+			rd.ReadXChar(ch)
+			x[i] := ch
+			inc(i) 
+		until ch = 0x 
+	end ReadXString
+	
+	proc (var rd: Reader) ReadString*(var x: array of wchar)  // new
+		var 
+			i: integer
+			ch: wchar
+	begin 
+		i := 0
+		repeat 
+			rd.ReadChar(ch)
+			x[i] := ch
+			inc(i) 
+		until ch = 0x 
+	end ReadString
+	
+	proc AlienReport(cause: integer) 
+		var 
+			s, e: array 32 of wchar
+	begin 
+		case cause of 
+			| alienVersion: 
+				s := "#System:AlienVersion" 
+			| alienComponent: 
+				s := "#System:AlienComponent" 
+			| inconsistentVersion: 
+				s := "#System:InconsistentVersion" 
+		else 
+			s := "#System:UnknownCause" 
+		end 
+		Strings.IntToString(cause, e)
+		Report("#System:AlienCause ^0 ^1 ^2", s, e, "")
+	end AlienReport
+	
+	proc AlienTypeReport(cause: integer; t: array of wchar) 
+		var 
+			s: array 64 of wchar
+	begin 
+		case cause of 
+			| inconsistentType: 
+				s := "#System:InconsistentType ^0" 
+			| moduleFileNotFound: 
+				s := "#System:CodeFileNotFound ^0" 
+			| invalidModuleFile: 
+				s := "#System:InvalidCodeFile ^0" 
+			| inconsModuleVersion: 
+				s := "#System:InconsistentModuleVersion ^0" 
+			| typeNotFound: 
+				s := "#System:TypeNotFound ^0" 
+		end 
+		Report(s, t, "", "")
+	end AlienTypeReport
+	
+	proc (var rd: Reader) TurnIntoAlien*(cause: integer)  // new
+	begin 
+		assert(cause > 0, 20)
+		rd.cancelled := true
+		rd.readAlien := true
+		rd.cause := cause
+		AlienReport(cause)
+	end TurnIntoAlien
+	
+	proc (var rd: Reader) ReadVersion*(min_, max_: integer; var version: integer)  // new
+		var 
+			v: byte
+	begin 
+		rd.ReadByte(v)
+		version := v
+		if (version < min_) or (version > max_) then
+			rd.TurnIntoAlien(alienVersion) 
+		end 
+	end ReadVersion
+	
+	proc (var rd: Reader) ReadStore*(var x: Store)  // new
+		var 
+			a: Alien
+			t: Kernel.Type
+			len_, pos, pos1, id, comment, next, down, downPos, nextTypeId, nextElemId, nextStoreId: integer
+			kind: char
+			path: TypePath
+			type_: TypeName
+			save: ReaderState
+	begin 
+		rd.ReadSChar(kind)
+		if kind = nil_ then
+			rd.ReadInt(comment)
+			rd.ReadInt(next)
+			rd.st.end_ := rd.Pos()
+			if (next > 0) or ((next = 0) & odd(comment)) then
+				rd.st.next := rd.st.end_ + next 
+			else 
+				rd.st.next := 0 
+			end 
+			x := nil 
+		elsif kind = link then 
+			rd.ReadInt(id)
+			rd.ReadInt(comment)
+			rd.ReadInt(next)
+			rd.st.end_ := rd.Pos()
+			if (next > 0) or ((next = 0) & odd(comment)) then
+				rd.st.next := rd.st.end_ + next 
+			else 
+				rd.st.next := 0 
+			end 
+			x := ThisStore(rd.eDict, id) 
+		elsif kind = newlink then 
+			rd.ReadInt(id)
+			rd.ReadInt(comment)
+			rd.ReadInt(next)
+			rd.st.end_ := rd.Pos()
+			if (next > 0) or ((next = 0) & odd(comment)) then
+				rd.st.next := rd.st.end_ + next 
+			else 
+				rd.st.next := 0 
+			end 
+			x := ThisStore(rd.sDict, id) 
+		elsif (kind = store) or (kind = elem) then 
+			if kind = elem then
+				id := rd.nextElemId
+				inc(rd.nextElemId) 
+			else 
+				id := rd.nextStoreId
+				inc(rd.nextStoreId) 
+			end 
+			ReadPath(rd, path)
+			type_ := path[0]
+			nextTypeId := rd.nextTypeId
+			nextElemId := rd.nextElemId
+			nextStoreId := rd.nextStoreId
+			rd.ReadInt(comment)
+			pos1 := rd.Pos()
+			rd.ReadInt(next)
+			rd.ReadInt(down)
+			rd.ReadInt(len_)
+			pos := rd.Pos()
+			if next > 0 then
+				rd.st.next := pos1 + next + 4 
+			else 
+				rd.st.next := 0 
+			end 
+			if down > 0 then
+				downPos := pos1 + down + 8 
+			else 
+				downPos := 0 
+			end 
+			rd.st.end_ := pos + len_
+			rd.cause := 0
+			assert(len_ >= 0, 101)
+			if next # 0 then
+				assert(rd.st.next > pos1, 102)
+				if down # 0 then
+					assert(downPos < rd.st.next, 103) 
+				end  
+			end 
+			if down # 0 then
+				assert(downPos > pos1, 104)
+				assert(downPos < rd.st.end_, 105) 
+			end 
+			t := ThisType(type_)
+			if t # nil then
+				x := NewStore(t)
+				x.isElem := kind = elem 
+			else 
+				rd.cause := thisTypeRes
+				AlienTypeReport(rd.cause, type_)
+				x := nil 
+			end 
+			if x # nil then
+				if SamePath(t, path) then
+					if kind = elem then
+						x.id := id
+						AddStore(rd.eDict, rd.eHead, x) 
+					else 
+						x.id := id
+						AddStore(rd.sDict, rd.sHead, x) 
+					end 
+					save := rd.st
+					rd.cause := 0
+					rd.cancelled := false
+					x.Internalize(rd)
+					rd.st := save
+					if rd.cause # 0 then
+						x := nil 
+					elsif (rd.Pos() # rd.st.end_) or rd.rider.eof then 
+						rd.cause := inconsistentVersion
+						AlienReport(rd.cause)
+						x := nil 
+					end  
+				else 
+					rd.cause := inconsistentType
+					AlienTypeReport(rd.cause, type_)
+					x := nil 
+				end  
+			end 
+			
+			if x # nil then
+				if rd.noDomain then
+					rd.store := x
+					rd.noDomain := false 
+				else 
+					Join(rd.store, x) 
+				end  
+			else  // x is an alien
+				rd.SetPos(pos)
+				assert(rd.cause # 0, 107)
+				new(a)
+				a.path := path
+				a.cause := rd.cause
+				a.file := rd.rider.Base()
+				if rd.noDomain then
+					rd.store := a
+					rd.noDomain := false 
+				else 
+					Join(rd.store, a) 
+				end 
+				if kind = elem then
+					a.id := id
+					AddStore(rd.eDict, rd.eHead, a) 
+				else 
+					a.id := id
+					AddStore(rd.sDict, rd.sHead, a) 
+				end 
+				save := rd.st
+				rd.nextTypeId := nextTypeId
+				rd.nextElemId := nextElemId
+				rd.nextStoreId := nextStoreId
+				InternalizeAlien(rd, a.comps, downPos, pos, len_)
+				rd.st := save
+				x := a
+				assert(rd.Pos() = rd.st.end_, 108)
+				rd.cause := 0
+				rd.cancelled := false
+				rd.readAlien := true 
+			end  
+		else 
+			pos := rd.Pos()
+			halt(20) 
+		end 
+	end ReadStore
+	
+	
+	// Writer
+	
+	proc (var wr: Writer) ConnectTo*(f: Files.File)  // new
+	// pre: wr.rider = NIL  OR  f = NIL
+	begin 
+		if f = nil then
+			wr.rider := nil 
+		else 
+			assert(wr.rider = nil, 20)
+			wr.rider := f.NewWriter(wr.rider)
+			wr.SetPos(f.Length())
+			wr.era := nextEra
+			inc(nextEra)
+			wr.noDomain := true
+			wr.modelType := ThisType(modelTName)
+			InitTypeDict(wr.tDict, wr.tHead, wr.nextTypeId)
+			wr.nextElemId := 0
+			wr.nextStoreId := 0
+			wr.st.linkpos := -1 
+		end 
+		wr.writtenStore := nil
+	end ConnectTo
+	
+	proc (var wr: Writer) SetPos*(pos: integer)  // new
+	begin 
+		wr.rider.SetPos(pos)
+	end SetPos
+	
+	proc (var wr: Writer) Pos*(): integer  // new
+	begin 
+		return wr.rider.Pos()
+	end Pos
+	
+	proc (var wr: Writer) WriteBool*(x: boolean)  // new
+	begin 
+		if x then
+			wr.rider.WriteByte(1) 
+		else 
+			wr.rider.WriteByte(0) 
+		end 
+	end WriteBool
+	
+	proc (var wr: Writer) WriteSChar*(x: char)  // new
+	begin 
+		wr.rider.WriteByte(SYSTEM.VAL(byte, x))
+	end WriteSChar
+	
+	proc (var wr: Writer) WriteXChar*(x: wchar)  // new
+		var 
+			c: char
+	begin 
+		c := short(x)
+		wr.rider.WriteByte(SYSTEM.VAL(byte, c))
+	end WriteXChar
+	
+	proc (var wr: Writer) WriteChar*(x: wchar)  // new
+		type 
+			a = array 2 of byte
+		var  // little endian, big endian
+			le, be: a
+	begin 
+		if Kernel.littleEndian then
+			le := SYSTEM.VAL(a, x) 
+		else 
+			be := SYSTEM.VAL(a, x)
+			le[0] := be[1]
+			le[1] := be[0] 
+		end 
+		wr.rider.WriteBytes(le, 0, 2)
+	end WriteChar
+	
+	proc (var wr: Writer) WriteByte*(x: byte)  // new
+	begin 
+		wr.rider.WriteByte(x)
+	end WriteByte
+	
+	proc (var wr: Writer) WriteSInt*(x: shortint)  // new
+		type 
+			a = array 2 of byte
+		var  // little endian, big endian
+			le, be: a
+	begin 
+		if Kernel.littleEndian then
+			le := SYSTEM.VAL(a, x) 
+		else 
+			be := SYSTEM.VAL(a, x)
+			le[0] := be[1]
+			le[1] := be[0] 
+		end 
+		wr.rider.WriteBytes(le, 0, 2)
+	end WriteSInt
+	
+	proc (var wr: Writer) WriteXInt*(x: integer)  // new
+		type 
+			a = array 2 of byte
+		var  // little endian, big endian
+			y: shortint
+			le, be: a
+	begin 
+		y := short(x)
+		if Kernel.littleEndian then
+			le := SYSTEM.VAL(a, y) 
+		else 
+			be := SYSTEM.VAL(a, y)
+			le[0] := be[1]
+			le[1] := be[0] 
+		end 
+		wr.rider.WriteBytes(le, 0, 2)
+	end WriteXInt
+	
+	proc (var wr: Writer) WriteInt*(x: integer)  // new
+		type 
+			a = array 4 of byte
+		var  // little endian, big endian
+			le, be: a
+	begin 
+		if Kernel.littleEndian then
+			le := SYSTEM.VAL(a, x) 
+		else 
+			be := SYSTEM.VAL(a, x)
+			le[0] := be[3]
+			le[1] := be[2]
+			le[2] := be[1]
+			le[3] := be[0] 
+		end 
+		wr.rider.WriteBytes(le, 0, 4)
+	end WriteInt
+	
+	proc (var wr: Writer) WriteLong*(x: longint)  // new
+		type 
+			a = array 8 of byte
+		var  // little endian, big endian
+			le, be: a
+	begin 
+		if Kernel.littleEndian then
+			le := SYSTEM.VAL(a, x) 
+		else 
+			be := SYSTEM.VAL(a, x)
+			le[0] := be[7]
+			le[1] := be[6]
+			le[2] := be[5]
+			le[3] := be[4]
+			le[4] := be[3]
+			le[5] := be[2]
+			le[6] := be[1]
+			le[7] := be[0] 
+		end 
+		wr.rider.WriteBytes(le, 0, 8)
+	end WriteLong
+	
+	proc (var wr: Writer) WriteSReal*(x: real)  // new
+		type 
+			a = array 4 of byte
+		var  // little endian, big endian
+			le, be: a
+	begin 
+		if Kernel.littleEndian then
+			le := SYSTEM.VAL(a, x) 
+		else 
+			be := SYSTEM.VAL(a, x)
+			le[0] := be[3]
+			le[1] := be[2]
+			le[2] := be[1]
+			le[3] := be[0] 
+		end 
+		wr.rider.WriteBytes(le, 0, 4)
+	end WriteSReal
+	
+	proc (var wr: Writer) WriteXReal*(x: longreal)  // new
+		type 
+			a = array 4 of byte
+		var  // little endian, big endian
+			y: real
+			le, be: a
+	begin 
+		y := short(x)
+		if Kernel.littleEndian then
+			le := SYSTEM.VAL(a, y) 
+		else 
+			be := SYSTEM.VAL(a, y)
+			le[0] := be[3]
+			le[1] := be[2]
+			le[2] := be[1]
+			le[3] := be[0] 
+		end 
+		wr.rider.WriteBytes(le, 0, 4)
+	end WriteXReal
+	
+	proc (var wr: Writer) WriteReal*(x: longreal)  // new
+		type 
+			a = array 8 of byte
+		var  // little endian, big endian
+			le, be: a
+	begin 
+		if Kernel.littleEndian then
+			le := SYSTEM.VAL(a, x) 
+		else 
+			be := SYSTEM.VAL(a, x)
+			le[0] := be[7]
+			le[1] := be[6]
+			le[2] := be[5]
+			le[3] := be[4]
+			le[4] := be[3]
+			le[5] := be[2]
+			le[6] := be[1]
+			le[7] := be[0] 
+		end 
+		wr.rider.WriteBytes(le, 0, 8)
+	end WriteReal
+	
+	proc (var wr: Writer) WriteSet*(x: set)  // new
+		// SIZE(SET) = 4
+		type 
+			a = array 4 of byte
+		var  // little endian, big endian
+			le, be: a
+	begin 
+		if Kernel.littleEndian then
+			le := SYSTEM.VAL(a, x) 
+		else 
+			be := SYSTEM.VAL(a, x)
+			le[0] := be[3]
+			le[1] := be[2]
+			le[2] := be[1]
+			le[3] := be[0] 
+		end 
+		wr.rider.WriteBytes(le, 0, 4)
+	end WriteSet
+	
+	proc (var wr: Writer) WriteSString*(in x: array of char)  // new
+		var 
+			i: integer
+			ch: char
+	begin 
+		i := 0
+		ch := x[0]
+		while ch # 0x do 
+			wr.WriteSChar(ch)
+			inc(i)
+			ch := x[i] 
+		end 
+		wr.WriteSChar(0x)
+	end WriteSString
+	
+	proc (var wr: Writer) WriteXString*(in x: array of wchar)  // new
+		var 
+			i: integer
+			ch: wchar
+	begin 
+		i := 0
+		ch := x[0]
+		while ch # 0x do 
+			wr.WriteXChar(ch)
+			inc(i)
+			ch := x[i] 
+		end 
+		wr.WriteSChar(0x)
+	end WriteXString
+	
+	proc (var wr: Writer) WriteString*(in x: array of wchar)  // new
+		var 
+			i: integer
+			ch: wchar
+	begin 
+		i := 0
+		ch := x[0]
+		while ch # 0x do 
+			wr.WriteChar(ch)
+			inc(i)
+			ch := x[i] 
+		end 
+		wr.WriteChar(0x)
+	end WriteString
+	
+	proc (var wr: Writer) WriteVersion*(version: integer)  // new
+	begin 
+		wr.WriteByte(short(short(version)))
+	end WriteVersion
+	
+	proc (var wr: Writer) WriteStore*(x: Store)  // new
+		var 
+			t: Kernel.Type
+			pos1, pos2, pos: integer
+			save: WriterState
+	begin 
+		assert(wr.rider # nil, 20)
+		if x # nil then
+			if wr.noDomain then
+				wr.domain := x.Domain()
+				wr.noDomain := false 
+			else 
+				assert(x.Domain() = wr.domain, 21) 
+			end 
+			x.ExternalizeAs(x)
+			if x = nil then
+				wr.writtenStore := nil
+				return  
+			end  
+		end 
+		if wr.st.linkpos > 0 then // link to previous block's <next> or up block's <down>
+			pos := wr.Pos()
+			if pos - wr.st.linkpos = 4 then
+				(* hack to resolve ambiguity between next = 0 because of end-of-chain, or because of offset = 0.
+				   above guard holds only if for the latter case.
+				   ASSUMPTION:
+				   this can happen only if linkpos points to a next (not a down)
+				   and there is a comment byte just before *)
+				
+				wr.SetPos(wr.st.linkpos - 4)
+				wr.WriteInt(1)
+				wr.WriteInt(pos - wr.st.linkpos - 4) 
+			else 
+				wr.SetPos(wr.st.linkpos)
+				wr.WriteInt(pos - wr.st.linkpos - 4) 
+			end 
+			wr.SetPos(pos) 
+		end 
+		if x = nil then
+			wr.WriteSChar(nil_)
+			wr.WriteInt(0) // <comment>
+			wr.st.linkpos := wr.Pos()
+			wr.WriteInt(0)  // <next>
+		elsif x.era >= wr.era then 
+			assert(x.era = wr.era, 23)
+			if x.isElem then
+				wr.WriteSChar(link) 
+			else 
+				wr.WriteSChar(newlink) 
+			end 
+			wr.WriteInt(x.id)
+			wr.WriteInt(0) // <comment>
+			wr.st.linkpos := wr.Pos()
+			wr.WriteInt(0)  // <next>
+		else 
+			x.era := wr.era
+			with x: Alien do 
+				if x.isElem then
+					wr.WriteSChar(elem)
+					x.id := wr.nextElemId
+					inc(wr.nextElemId) 
+				else 
+					wr.WriteSChar(store)
+					x.id := wr.nextStoreId
+					inc(wr.nextStoreId) 
+				end 
+				WritePath(wr, x.path) 
+			else 
+				t := Kernel.TypeOf(x)
+				x.isElem := t.base[1] = wr.modelType
+				if x.isElem then
+					wr.WriteSChar(elem)
+					x.id := wr.nextElemId
+					inc(wr.nextElemId) 
+				else 
+					wr.WriteSChar(store)
+					x.id := wr.nextStoreId
+					inc(wr.nextStoreId) 
+				end 
+				WriteType(wr, t) 
+			end 
+			wr.WriteInt(0) // <comment>
+			pos1 := wr.Pos() // <next>, <down>
+			wr.WriteInt(0)
+			wr.WriteInt(0)
+			pos2 := wr.Pos() // <len>
+			wr.WriteInt(0)
+			save := wr.st // push current writer state; switch to structured
+			wr.st.linkpos := pos1 + 4
+			with x: Alien do 
+				ExternalizeAlien(wr, x.file, x.comps) 
+			else 
+				x.Externalize(wr) 
+			end 
+			wr.st := save // pop writer state
+			wr.st.linkpos := pos1
+			pos := wr.Pos()
+			wr.SetPos(pos2) // patch <len>
+			wr.WriteInt(pos - pos2 - 4)
+			wr.SetPos(pos) 
+		end 
+		wr.writtenStore := x
+	end WriteStore
+	
+	
+	// miscellaneous
+	
+	proc Report*(in msg, p0, p1, p2: array of wchar) 
+	begin 
+		if logReports then
+			Dialog.ShowParamMsg(msg, p0, p1, p2) 
+		end 
+	end Report
+	
+	proc BeginCloning(d: Domain) 
+	begin 
+		assert(d # nil, 20)
+		inc(d.level)
+		if d.level = 1 then
+			d.copyera := nextEra
+			inc(nextEra)
+			d.nextElemId := 0
+			if d.cleaner = nil then
+				new(d.cleaner)
+				d.cleaner.d := d 
+			end 
+			Kernel.PushTrapCleaner(d.cleaner) 
+		end 
+	end BeginCloning
+	
+	proc EndCloning(d: Domain) 
+	begin 
+		assert(d # nil, 20)
+		dec(d.level)
+		if d.level = 0 then
+			d.sDict := nil
+			Kernel.PopTrapCleaner(d.cleaner)
+			d.s := nil 
+		end 
+	end EndCloning
+	
+	proc CopyOf*(s: Store): Store 
+		var 
+			h: Store
+			c: StoreDict
+			d: Domain
+			k, org: integer
+	begin 
+		assert(s # nil, 20)
+		
+		d := DomainOf(s)
+		if d = nil then
+			d := NewDomain(anonymousDomain)
+			s.dlink := d
+			d.copyDomain := true 
+		end 
+		
+		BeginCloning(d)
+		if s.era >= d.copyera then // s has already been copied
+			assert(s.era = d.copyera, 21)
+			k := s.id mod dictLineLen
+			org := s.id - k
+			c := d.sDict
+			while (c # nil) & (c.org # org) do 
+				c := c.next 
+			end 
+			assert((c # nil) & (c.elem[k] # nil), 100)
+			h := c.elem[k] 
+		else 
+			s.era := d.copyera
+			s.id := d.nextElemId
+			inc(d.nextElemId)
+			Kernel.NewObj(h, Kernel.TypeOf(s))
+			k := s.id mod dictLineLen
+			if k = 0 then
+				new(c)
+				c.org := s.id
+				c.next := d.sDict
+				d.sDict := c 
+			else 
+				c := d.sDict 
+			end 
+			assert((c # nil) & (c.org = s.id - k) & (c.elem[k] = nil), 101)
+			c.elem[k] := h
+			if d.s = nil then
+				d.s := h 
+			else 
+				Join(h, d.s) 
+			end 
+			h.CopyFrom(s) 
+		end 
+		EndCloning(d)
+		return h
+	end CopyOf
+	
+	proc ExternalizeProxy*(s: Store): Store 
+	begin 
+		if s # nil then
+			s.ExternalizeAs(s) 
+		end 
+		return s
+	end ExternalizeProxy
+	
+	proc InitDomain*(s: Store) 
+		var 
+			d: Domain
+	begin 
+		assert(s # nil, 20)
+		d := DomainOf(s)
+		if d = nil then
+			d := NewDomain(inited)
+			s.dlink := d 
+		else 
+			d.initialized := true 
+		end 
+	end InitDomain
+	
+	proc Join*(s0, s1: Store) 
+		var 
+			d0, d1: Domain
+	begin 
+		assert(s0 # nil, 20)
+		assert(s1 # nil, 21)
+		d0 := DomainOf(s0)
+		d1 := DomainOf(s1)
+		if (d0 = nil) & (d1 = nil) then
+			s0.dlink := NewDomain(anonymousDomain)
+			s1.dlink := s0.dlink 
+		elsif d0 = nil then 
+			s0.dlink := d1
+			d1.copyDomain := false 
+		elsif d1 = nil then 
+			s1.dlink := d0
+			d0.copyDomain := false 
+		elsif d0 # d1 then 
+			assert(~d0.initialized or ~d1.initialized, 22)
+			// PRE 22	s0.Domain() = NIL OR s1.Domain() = NIL OR s0.Domain() = s1.Domain()
+			if ~d0.initialized & (d0.level = 0) then
+				d0.dlink := d1
+				d1.copyDomain := false 
+			elsif ~d1.initialized & (d1.level = 0) then 
+				d1.dlink := d0
+				d0.copyDomain := false 
+			else 
+				halt(100) 
+			end  
+		end 
+	end Join
+	
+	proc Joined*(s0, s1: Store): boolean 
+		var 
+			d0, d1: Domain
+	begin 
+		assert(s0 # nil, 20)
+		assert(s1 # nil, 21)
+		d0 := DomainOf(s0)
+		d1 := DomainOf(s1)
+		return (s0 = s1) or ((d0 = d1) & (d0 # nil))
+	end Joined
+	
+	proc Unattached*(s: Store): boolean 
+	begin 
+		assert(s # nil, 20)
+		return (s.dlink = nil) or s.dlink.copyDomain
+	end Unattached
+
+begin
+	nextEra := 1
+	logReports := false
+end Stores

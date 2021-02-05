@@ -1,0 +1,1778 @@
+module Containers
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - 20160719, center #117, fixes for non-local drop behavior
+	   - 20170905, center #173, adding new modifiers to Controllers
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	import K := Kernel, Services, Ports, Dialog, Stores, Models, Views, Controllers, 
+			Properties, Mechanisms
+	
+	const 
+		// Controller.opts
+		noSelection* = 0
+		noFocus* = 1
+		noCaret* = 2
+		mask* = {noSelection, noCaret}
+		layout* = {noFocus}
+		modeOpts = {noSelection, noFocus, noCaret}
+		
+		// Controller.SelectAll select
+		deselect* = false
+		select* = true
+		
+		// Controller.PollNativeProp/etc. selection
+		any* = false
+		selection* = true
+		
+		// Mark/MarkCaret/MarkSelection/MarkSingleton show
+		hide* = false
+		show* = true
+		
+		indirect = false
+		direct = true
+		
+		TAB = 9x
+		LTAB = 0ax
+		ENTER = 0dx
+		ESC = 01bx
+		PL = 10x
+		PR = 11x
+		PU = 12x
+		PD = 13x
+		DL = 14x
+		DR = 15
+		DU = 16x
+		DD = 17x
+		AL = 1cx
+		AR = 1dx
+		AU = 1ex
+		AD = 1fx
+		
+		minVersion = 0
+		maxModelVersion = 0
+		maxViewVersion = 0
+		maxCtrlVersion = 0
+	
+	type 
+		Model* = pointer to (* abstract *) record (Models.Model) end 
+		
+		View* = pointer to (* abstract *) record (Views.View) 
+				model: Model
+				controller: Controller
+				alienCtrl: Stores.Store  // alienCtrl = NIL  OR  controller = NIL
+			end 
+		
+		Controller* = pointer to (* abstract *) record (Controllers.Controller) 
+				opts-: set
+				model: Model // connected iff model # NIL
+				view: View
+				focus, singleton: Views.View
+				bVis: boolean  // control visibility of focus/singleton border
+			end 
+		
+		Directory* = pointer to (* abstract *) record end 
+		
+		PollFocusMsg = record (Controllers.PollFocusMsg) 
+				all: boolean
+				ctrl: Controller 
+			end 
+		
+		ViewOp = pointer to record (Stores.Operation) 
+				v: View
+				controller: Controller // may be NIL
+				alienCtrl: Stores.Store 
+			end 
+		
+		ControllerOp = pointer to record (Stores.Operation) 
+				c: Controller
+				opts: set 
+			end 
+		
+		ViewMessage = (* abstract *) record (Views.Message) end 
+		
+		FocusMsg = record (ViewMessage) 
+				set_: boolean 
+			end 
+		
+		SingletonMsg = record (ViewMessage) 
+				set_: boolean 
+			end 
+		
+		FadeMsg = record (ViewMessage) 
+				show: boolean 
+			end 
+		
+		DropPref* = record (Properties.Preference) 
+				mode-: set
+				okToDrop*: boolean 
+			end 
+		
+		GetOpts* = record (Views.PropMessage) 
+				valid*, opts*: set 
+			end 
+		
+		SetOpts* = record (Views.PropMessage) 
+				valid*, opts*: set 
+			end 
+	proc (c: Controller) InitView2*(v: Views.View)  end // new empty
+	// called by view's Neutralize
+	// called by view's HandleModelMsg after handling msg
+	// called by view's HandleViewMsg after handling msg
+	// called by view's HandleCtrlMsg *before* handling msg; focus is respected/used by view
+	// called by view's HandlePropMsg after handling msg; controller can override view
+	
+	// Model
+	
+	proc (m: Model) Internalize*(var rd: Stores.Reader)  // extensible
+		var 
+			thisVersion: integer
+	begin 
+		m.Internalize^(rd)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minVersion, maxModelVersion, thisVersion)
+	end Internalize
+	
+	proc (m: Model) Externalize*(var wr: Stores.Writer)  // extensible
+	begin 
+		m.Externalize^(wr)
+		wr.WriteVersion(maxModelVersion)
+	end Externalize
+	
+	proc (m: Model) GetEmbeddingLimits*(var minW, maxW, minH, maxH: integer)  end // new abstract
+	proc (m: Model) ReplaceView*(old, new_: Views.View)  end // new abstract
+	proc (m: Model) InitFrom*(source: Model)  end // new empty
+	
+	// View
+	
+	proc (v: View) AcceptableModel*(m: Model): boolean  end // new abstract
+	proc (v: View) InitModel2*(m: Model)  end // new empty
+	proc (v: View) InitModel*(m: Model)  // new
+	begin 
+		assert((v.model = nil) or (v.model = m), 20)
+		assert(m # nil, 21)
+		assert(v.AcceptableModel(m), 22)
+		v.model := m
+		Stores.Join(v, m)
+		v.InitModel2(m)
+	end InitModel
+	
+	
+	proc (v: View) Externalize2*(var rd: Stores.Writer)  end // new empty
+	proc (v: View) Internalize2*(var rd: Stores.Reader)  end // new empty
+	
+	proc (v: View) Internalize*(var rd: Stores.Reader) 
+		var 
+			st: Stores.Store
+			c: Controller
+			m: Model
+			thisVersion: integer
+	begin 
+		v.Internalize^(rd)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minVersion, maxViewVersion, thisVersion)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadStore(st)
+		assert(st # nil, 100)
+		if ~(st is Model) then
+			rd.TurnIntoAlien(Stores.alienComponent)
+			Stores.Report("#System:AlienModel", "", "", "")
+			return  
+		end 
+		m := st(Model)
+		rd.ReadStore(st)
+		if st = nil then
+			c := nil
+			v.alienCtrl := nil 
+		elsif st is Stores.Alien then 
+			c := nil
+			v.alienCtrl := st
+			Stores.Join(v, v.alienCtrl)
+			Stores.Report("#System:AlienControllerWarning", "", "", "") 
+		else 
+			c := st(Controller)
+			v.alienCtrl := nil 
+		end 
+		v.InitModel(m)
+		if c # nil then
+			v.SetController(c) 
+		else 
+			v.controller := nil 
+		end 
+		v.Internalize2(rd)
+	end Internalize
+	
+	proc (v: View) Externalize*(var wr: Stores.Writer) 
+	begin 
+		assert(v.model # nil, 20)
+		v.Externalize^(wr)
+		wr.WriteVersion(maxViewVersion)
+		wr.WriteStore(v.model)
+		if v.controller # nil then
+			wr.WriteStore(v.controller) 
+		else 
+			wr.WriteStore(v.alienCtrl) 
+		end 
+		v.Externalize2(wr)
+	end Externalize
+	
+	proc (v: View) CopyFromModelView2*(source: Views.View; model: Models.Model)  end // new empty
+	
+	proc (v: View) CopyFromModelView*(source: Views.View; model: Models.Model) 
+		var 
+			c: Controller
+	begin 
+		with source: View do 
+			v.InitModel(model(Model))
+			if source.controller # nil then
+				c := Stores.CopyOf(source.controller)(Controller) 
+			else 
+				c := nil 
+			end 
+			if source.alienCtrl # nil then
+				v.alienCtrl := Stores.CopyOf(source.alienCtrl)(Stores.Alien) 
+			end 
+			if c # nil then
+				v.SetController(c) 
+			else 
+				v.controller := nil 
+			end  
+		end 
+		v.CopyFromModelView2(source, model)
+	end CopyFromModelView
+	
+	proc (v: View) ThisModel*(): Model  // extensible
+	begin 
+		return v.model
+	end ThisModel
+	
+	proc (v: View) SetController*(c: Controller)  // new
+		var 
+			op: ViewOp
+	begin 
+		assert(v.model # nil, 20)
+		if v.controller # c then
+			Stores.Join(v, c)
+			new(op)
+			op.v := v
+			op.controller := c
+			op.alienCtrl := nil
+			Views.Do(v, "#System:ViewSetting", op) 
+		end 
+	end SetController
+	
+	proc (v: View) ThisController*(): Controller  // new extensible
+	begin 
+		return v.controller
+	end ThisController
+	
+	proc (v: View) GetRect*(f: Views.Frame; view: Views.View; var l, t, r, b: integer)  end // new abstract
+	
+	proc (v: View) RestoreMarks*(f: Views.Frame; l, t, r, b: integer) 
+	begin 
+		if v.controller # nil then
+			v.controller.RestoreMarks(f, l, t, r, b) 
+		end 
+	end RestoreMarks
+	
+	proc (v: View) Neutralize*
+	begin 
+		if v.controller # nil then
+			v.controller.Neutralize 
+		end 
+	end Neutralize
+	
+	proc (v: View) ConsiderFocusRequestBy*(view: Views.View) 
+	begin 
+		if v.controller # nil then
+			v.controller.ConsiderFocusRequestBy(view) 
+		end 
+	end ConsiderFocusRequestBy
+	
+	
+	proc (v: View) HandleModelMsg2*(var msg: Models.Message)  end // new empty
+	proc (v: View) HandleViewMsg2*(f: Views.Frame; var msg: Views.Message)  end // new empty
+	proc (v: View) HandlePropMsg2*(var p: Properties.Message)  end // new empty
+	proc (v: View) HandleCtrlMsg2*(f: Views.Frame; var msg: Controllers.Message
+		var focus: Views.View)  end // new empty
+	
+	
+	proc (v: View) HandleModelMsg*(var msg: Models.Message) 
+	begin 
+		v.HandleModelMsg2(msg)
+		if v.controller # nil then
+			v.controller.HandleModelMsg(msg) 
+		end 
+	end HandleModelMsg
+	
+	proc (v: View) HandleViewMsg*(f: Views.Frame; var msg: Views.Message) 
+	begin 
+		v.HandleViewMsg2(f, msg)
+		if v.controller # nil then
+			v.controller.HandleViewMsg(f, msg) 
+		end 
+	end HandleViewMsg
+	
+	proc (v: View) HandleCtrlMsg*(f: Views.Frame; var msg: Controllers.Message; var focus: Views.View) 
+	begin 
+		if v.controller # nil then
+			v.controller.HandleCtrlMsg(f, msg, focus) 
+		end 
+		v.HandleCtrlMsg2(f, msg, focus)
+		with msg: Controllers.PollSectionMsg do 
+			if ~msg.focus then
+				focus := nil 
+			end  
+		| msg: Controllers.ScrollMsg do 
+			if ~msg.focus then
+				focus := nil 
+			end  
+		else  
+		end 
+	end HandleCtrlMsg
+	
+	proc (v: View) HandlePropMsg*(var p: Properties.Message) 
+	begin 
+		v.HandlePropMsg2(p)
+		if v.controller # nil then
+			v.controller.HandlePropMsg(p) 
+		end 
+	end HandlePropMsg
+	
+	
+	// Controller
+	
+	proc (c: Controller) Externalize2*(var rd: Stores.Writer)  end // new empty
+	proc (c: Controller) Internalize2*(var rd: Stores.Reader)  end // new empty
+	
+	proc (c: Controller) Internalize*(var rd: Stores.Reader) 
+		var 
+			v: integer
+	begin 
+		c.Internalize^(rd)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadVersion(minVersion, maxCtrlVersion, v)
+		if rd.cancelled then
+			return  
+		end 
+		rd.ReadSet(c.opts)
+		c.Internalize2(rd)
+	end Internalize
+	
+	proc (c: Controller) Externalize*(var wr: Stores.Writer) 
+	begin 
+		c.Externalize^(wr)
+		wr.WriteVersion(maxCtrlVersion)
+		wr.WriteSet(c.opts)
+		c.Externalize2(wr)
+	end Externalize
+	
+	proc (c: Controller) CopyFrom*(source: Stores.Store)  // extensible
+	begin 
+		with source: Controller do 
+			c.opts := source.opts
+			c.focus := nil
+			c.singleton := nil
+			c.bVis := false 
+		end 
+	end CopyFrom
+	
+	proc (c: Controller) InitView*(v: Views.View)  // new
+		var 
+			view: View
+			model: Model
+	begin 
+		assert((v = nil) # (c.view = nil) or (v = c.view), 21)
+		if c.view = nil then
+			assert(v is View, 22) // subclass may assert narrower type
+			view := v(View)
+			model := view.ThisModel()
+			assert(model # nil, 24)
+			c.view := view
+			c.model := model
+			Stores.Join(c, c.view) 
+		else 
+			c.view.Neutralize
+			c.view := nil
+			c.model := nil 
+		end 
+		c.focus := nil
+		c.singleton := nil
+		c.bVis := false
+		c.InitView2(v)
+	end InitView
+	
+	proc (c: Controller) ThisView*(): View  // new extensible
+	begin 
+		return c.view
+	end ThisView
+	
+	
+	// options
+	
+	proc (c: Controller) SetOpts*(opts: set)  // new extensible
+		var 
+			op: ControllerOp
+	begin 
+		if c.view # nil then
+			new(op)
+			op.c := c
+			op.opts := opts
+			Views.Do(c.view, "#System:ChangeOptions", op) 
+		else 
+			c.opts := opts 
+		end 
+	end SetOpts
+	
+	
+	// subclass hooks
+	
+	proc (c: Controller) GetContextType*(var type_: Stores.TypeName)  end // new abstract
+	proc (c: Controller) GetValidOps*(var valid: set)  end // new abstract
+	proc (c: Controller) NativeModel*(m: Models.Model): boolean  end // new abstract
+	proc (c: Controller) NativeView*(v: Views.View): boolean  end // new abstract
+	proc (c: Controller) NativeCursorAt*(f: Views.Frame; x, y: integer): integer  end // new abstract
+	proc (c: Controller) PickNativeProp*(f: Views.Frame; x, y: integer; var p: Properties.Property)  end // new empty
+	proc (c: Controller) PollNativeProp*(selection: boolean; var p: Properties.Property; var truncated: boolean)  end // new empty
+	proc (c: Controller) SetNativeProp*(selection: boolean; old, p: Properties.Property)  end // new empty
+	
+	proc (c: Controller) MakeViewVisible*(v: Views.View)  end // new empty
+	
+	proc (c: Controller) GetFirstView*(selection: boolean; var v: Views.View)  end // new abstract
+	proc (c: Controller) GetNextView*(selection: boolean; var v: Views.View)  end // new abstract
+	
+	proc (c: Controller) GetPrevView*(selection: boolean; var v: Views.View)  // new extensible
+		var 
+			p, q: Views.View
+	begin 
+		assert(v # nil, 20)
+		c.GetFirstView(selection, p)
+		if p # v then
+			while (p # nil) & (p # v) do 
+				q := p
+				c.GetNextView(selection, p) 
+			end 
+			assert(p # nil, 21)
+			v := q 
+		else 
+			v := nil 
+		end 
+	end GetPrevView
+	
+	proc (c: Controller) CanDrop*(f: Views.Frame; x, y: integer): boolean  // new extensible
+	begin 
+		return true
+	end CanDrop
+	
+	proc (c: Controller) GetSelectionBounds*(f: Views.Frame; var x, y, w, h: integer)  // new extensible
+		var 
+			g: Views.Frame
+			v: Views.View
+	begin 
+		x := 0
+		y := 0
+		w := 0
+		h := 0
+		v := c.singleton
+		if v # nil then
+			g := Views.ThisFrame(f, v)
+			if g # nil then
+				x := g.gx - f.gx
+				y := g.gy - f.gy
+				v.context.GetSize(w, h) 
+			end  
+		end 
+	end GetSelectionBounds
+	
+	proc (c: Controller) MarkDropTarget*(src, dst: Views.Frame
+		sx, sy, dx, dy, w, h, rx, ry: integer
+		type_: Stores.TypeName
+		isSingle, show: boolean)  end // new empty
+	
+	proc (c: Controller) Drop*(src, dst: Views.Frame; sx, sy, dx, dy, w, h, rx, ry: integer
+		view: Views.View; isSingle: boolean)  end // new abstract
+	
+	proc (c: Controller) MarkPickTarget*(src, dst: Views.Frame
+		sx, sy, dx, dy: integer; show: boolean)  end // new empty
+	
+	proc (c: Controller) TrackMarks*(f: Views.Frame; x, y: integer; units, extend, add: boolean)  end // new abstract
+	proc (c: Controller) Resize*(view: Views.View; l, t, r, b: integer)  end // new abstract
+	proc (c: Controller) DeleteSelection* end // new abstract
+	proc (c: Controller) MoveLocalSelection*(src, dst: Views.Frame; sx, sy, dx, dy: integer)  end // new abstract
+	proc (c: Controller) CopyLocalSelection*(src, dst: Views.Frame; sx, sy, dx, dy: integer)  end // new abstract
+	proc (c: Controller) SelectionCopy*(): Model  end // new abstract
+	proc (c: Controller) NativePaste*(m: Models.Model; f: Views.Frame)  end // new abstract
+	proc (c: Controller) ArrowChar*(f: Views.Frame; ch: wchar; units, select: boolean)  end // new abstract
+	proc (c: Controller) ControlChar*(f: Views.Frame; ch: wchar)  end // new abstract
+	proc (c: Controller) PasteChar*(ch: wchar)  end // new abstract
+	proc (c: Controller) PasteView*(f: Views.Frame; v: Views.View; w, h: integer)  end // new abstract
+	
+	
+	// selection
+	
+	proc (c: Controller) HasSelection*(): boolean  // new extensible
+	// extended by subclass to include intrinsic selections
+	begin 
+		assert(c.model # nil, 20)
+		return c.singleton # nil
+	end HasSelection
+	
+	proc (c: Controller) Selectable*(): boolean  end // new abstract
+	
+	proc (c: Controller) Singleton*(): Views.View  // new // LEAF
+	begin 
+		if c = nil then
+			return nil 
+		else 
+			return c.singleton 
+		end 
+	end Singleton
+	
+	proc (c: Controller) SetSingleton*(s: Views.View)  // new extensible
+		// extended by subclass to adjust intrinsic selections
+		var 
+			con: Models.Context
+			msg: SingletonMsg
+	begin 
+		assert(c.model # nil, 20)
+		assert(~(noSelection in c.opts), 21)
+		if c.singleton # s then
+			if s # nil then
+				con := s.context
+				assert(con # nil, 22)
+				assert(con.ThisModel() = c.model, 23)
+				c.view.Neutralize 
+			elsif c.singleton # nil then 
+				c.bVis := false
+				msg.set_ := false
+				Views.Broadcast(c.view, msg) 
+			end 
+			c.singleton := s
+			if s # nil then
+				c.bVis := true
+				msg.set_ := true
+				Views.Broadcast(c.view, msg) 
+			end  
+		end 
+	end SetSingleton
+	
+	proc (c: Controller) SelectAll*(select: boolean)  end // new abstract
+	// replaced by subclass to include intrinsic selections
+	
+	proc (c: Controller) InSelection*(f: Views.Frame; x, y: integer): boolean  end // new abstract
+	// replaced by subclass to include intrinsic selections
+	
+	proc (c: Controller) MarkSelection*(f: Views.Frame; show: boolean)  // new extensible
+	// replaced by subclass to include intrinsic selections
+	begin 
+		MarkSingleton(c, f, show)
+	end MarkSelection
+	
+	
+	// focus
+	
+	proc (c: Controller) ThisFocus*(): Views.View  // new extensible
+	begin 
+		assert(c.model # nil, 20)
+		return c.focus
+	end ThisFocus
+	
+	proc (c: Controller) SetFocus*(focus: Views.View)  // new // LEAF
+		var 
+			focus0: Views.View
+			con: Models.Context
+			msg: FocusMsg
+	begin 
+		assert(c.model # nil, 20)
+		focus0 := c.focus
+		if focus # focus0 then
+			if focus # nil then
+				con := focus.context
+				assert(con # nil, 21)
+				assert(con.ThisModel() = c.model, 22)
+				if focus0 = nil then
+					c.view.Neutralize 
+				end  
+			end 
+			if focus0 # nil then
+				if ~Views.IsInvalid(focus0) then
+					focus0.Neutralize 
+				end 
+				c.bVis := false
+				msg.set_ := false
+				Views.Broadcast(c.view, msg) 
+			end 
+			c.focus := focus
+			if focus # nil then
+				c.MakeViewVisible(focus)
+				c.bVis := true
+				msg.set_ := true
+				Views.Broadcast(c.view, msg) 
+			end  
+		end 
+	end SetFocus
+	
+	proc (c: Controller) ConsiderFocusRequestBy*(view: Views.View)  // new
+		var 
+			con: Models.Context
+	begin 
+		assert(c.model # nil, 20)
+		assert(view # nil, 21)
+		con := view.context
+		assert(con # nil, 22)
+		assert(con.ThisModel() = c.model, 23)
+		if c.focus = nil then
+			c.SetFocus(view) 
+		end 
+	end ConsiderFocusRequestBy
+	
+	
+	// caret
+	
+	proc (c: Controller) HasCaret*(): boolean  end // new abstract
+	proc (c: Controller) MarkCaret*(f: Views.Frame; show: boolean)  end // new abstract
+	
+	
+	// general marking protocol
+	
+	proc CheckMaskFocus(c: Controller; f: Views.Frame; var focus: Views.View) 
+		var 
+			v: Views.View
+	begin 
+		if f.mark & (c.opts * modeOpts = mask) & (c.model # nil) & ((focus = nil) or ~ClaimFocus(focus)) then
+			c.GetFirstView(any, v)
+			while (v # nil) & ~ClaimFocus(v) do 
+				c.GetNextView(any, v) 
+			end 
+			if v # nil then
+				c.SetFocus(v)
+				focus := v 
+			else 
+				c.SetFocus(nil)
+				focus := nil 
+			end  
+		end 
+	end CheckMaskFocus
+	
+	proc (c: Controller) Mark*(f: Views.Frame; l, t, r, b: integer; show: boolean)  // new extensible
+	begin 
+		MarkFocus(c, f, show)
+		c.MarkSelection(f, show)
+		c.MarkCaret(f, show)
+	end Mark
+	
+	proc (c: Controller) RestoreMarks2*(f: Views.Frame; l, t, r, b: integer)  end // new empty
+	proc (c: Controller) RestoreMarks*(f: Views.Frame; l, t, r, b: integer)  // new
+	begin 
+		if f.mark then
+			c.Mark(f, l, t, r, b, show)
+			c.RestoreMarks2(f, l, t, r, b) 
+		end 
+	end RestoreMarks
+	
+	proc (c: Controller) Neutralize2* end // new empty
+	// caret needs to be removed by this method
+	
+	proc (c: Controller) Neutralize* // new
+	begin 
+		c.SetFocus(nil)
+		c.SelectAll(deselect)
+		c.Neutralize2
+	end Neutralize
+	
+	
+	// message handlers
+	
+	proc (c: Controller) HandleModelMsg*(var msg: Models.Message)  // new extensible
+	begin 
+		assert(c.model # nil, 20)
+	end HandleModelMsg
+	
+	proc (c: Controller) HandleViewMsg*(f: Views.Frame; var msg: Views.Message)  // new extensible
+		var 
+			g: Views.Frame
+			mark: Controllers.MarkMsg
+	begin 
+		assert(c.model # nil, 20)
+		if msg.view = c.view then
+			with msg: ViewMessage do 
+				with msg: FocusMsg do 
+					g := Views.ThisFrame(f, c.focus)
+					if g # nil then
+						if msg.set_ then
+							MarkFocus(c, f, show)
+							mark.show := true
+							mark.focus := true
+							Views.ForwardCtrlMsg(g, mark) 
+						else 
+							mark.show := false
+							mark.focus := true
+							Views.ForwardCtrlMsg(g, mark)
+							MarkFocus(c, f, hide) 
+						end  
+					end  
+				| msg: SingletonMsg do 
+					MarkSingleton(c, f, msg.set_) 
+				| msg: FadeMsg do 
+					MarkFocus(c, f, msg.show)
+					MarkSingleton(c, f, msg.show) 
+				end  
+			else  
+			end  
+		end 
+	end HandleViewMsg
+	
+	
+	proc CollectControlPref(c: Controller; focus: Views.View; ch: wchar; cyclic: boolean
+		var v: Views.View; var getFocus, accepts: boolean) 
+		var 
+			first, w: Views.View
+			p: Properties.ControlPref
+			back: boolean
+	begin 
+		back := (ch = LTAB) or (ch = AL) or (ch = AU)
+		first := c.focus
+		if first = nil then
+			c.GetFirstView(any, first)
+			if back then
+				w := first
+				while w # nil do 
+					first := w
+					c.GetNextView(any, w) 
+				end  
+			end  
+		end 
+		v := first
+		while v # nil do 
+			p.char_ := ch
+			p.focus := focus
+			p.getFocus := (v # focus) & ((ch = TAB) or (ch = LTAB)) & ClaimFocus(v)
+			p.accepts := (v = focus) & (ch # TAB) & (ch # LTAB)
+			Views.HandlePropMsg(v, p)
+			if p.accepts or (v # focus) & p.getFocus then
+				getFocus := p.getFocus
+				accepts := p.accepts
+				return  
+			end 
+			if back then
+				c.GetPrevView(any, v) 
+			else 
+				c.GetNextView(any, v) 
+			end 
+			if cyclic & (v = nil) then
+				c.GetFirstView(any, v)
+				if back then
+					w := v
+					while w # nil do 
+						v := w
+						c.GetNextView(any, w) 
+					end  
+				end  
+			end 
+			if v = first then
+				v := nil 
+			end  
+		end 
+		getFocus := false
+		accepts := false
+	end CollectControlPref
+	
+	proc (c: Controller) HandlePropMsg*(var msg: Properties.Message)  // new extensible
+		var 
+			v: Views.View
+	begin 
+		assert(c.model # nil, 20)
+		with msg: Properties.PollMsg do 
+			msg.prop := ThisProp(c, indirect) 
+		| msg: Properties.SetMsg do 
+			SetProp(c, msg.old, msg.prop, indirect) 
+		| msg: Properties.FocusPref do 
+			if {noSelection, noFocus, noCaret} - c.opts # {} then
+				msg.setFocus := true 
+			end  
+		| msg: GetOpts do 
+			msg.valid := modeOpts
+			msg.opts := c.opts 
+		| msg: SetOpts do 
+			c.SetOpts(c.opts - msg.valid + (msg.opts * msg.valid)) 
+		| msg: Properties.ControlPref do 
+			if c.opts * modeOpts = mask then
+				v := msg.focus
+				if v = c.view then
+					v := c.focus 
+				end 
+				CollectControlPref(c, v, msg.char_, false, v, msg.getFocus, msg.accepts)
+				if msg.getFocus then
+					msg.accepts := true 
+				end  
+			end  
+		else  
+		end 
+	end HandlePropMsg
+	
+	
+	// Directory
+	
+	proc (d: Directory) NewController*(opts: set): Controller  end // new abstract
+	
+	proc (d: Directory) New*(): Controller  // new extensible
+	begin 
+		return d.NewController({})
+	end New
+	
+	
+	// ViewOp
+	
+	proc (op: ViewOp) Do
+		var 
+			v: View
+			c0, c1: Controller
+			a0, a1: Stores.Store
+	begin 
+		v := op.v
+		c0 := v.controller
+		a0 := v.alienCtrl
+		c1 := op.controller
+		a1 := op.alienCtrl
+		if c0 # nil then
+			c0.InitView(nil) 
+		end 
+		v.controller := c1
+		v.alienCtrl := a1
+		op.controller := c0
+		op.alienCtrl := a0
+		if c1 # nil then
+			c1.InitView(v) 
+		end 
+		Views.Update(v, Views.keepFrames)
+	end Do
+	
+	
+	// ControllerOp
+	
+	proc (op: ControllerOp) Do
+		var 
+			c: Controller
+			opts: set
+	begin 
+		c := op.c
+		opts := c.opts
+		c.opts := op.opts
+		op.opts := opts
+		Views.Update(c.view, Views.keepFrames)
+	end Do
+	
+	
+	// Controller implementation support
+	
+	proc BorderVisible(c: Controller; f: Views.Frame): boolean 
+	begin 
+		if 31 in c.opts then
+			return true 
+		end 
+		if f is Views.RootFrame then
+			return false 
+		end 
+		if Services.Is(c.focus, "OleClient.View") then
+			return false 
+		end 
+		return true
+	end BorderVisible
+	
+	proc MarkFocus(c: Controller; f: Views.Frame; show: boolean) 
+		var 
+			focus: Views.View
+			f1: Views.Frame
+			l, t, r, b: integer
+	begin 
+		focus := c.focus
+		if f.front & (focus # nil) & (~show or c.bVis) & BorderVisible(c, f) & ~(noSelection in c.opts) then
+			f1 := Views.ThisFrame(f, focus)
+			if f1 # nil then
+				c.bVis := show
+				c.view.GetRect(f, focus, l, t, r, b)
+				if (l # max(integer)) & (t # max(integer)) then
+					Mechanisms.MarkFocusBorder(f, focus, l, t, r, b, show) 
+				end  
+			end  
+		end 
+	end MarkFocus
+	
+	proc MarkSingleton*(c: Controller; f: Views.Frame; show: boolean) 
+		var 
+			l, t, r, b: integer
+	begin 
+		if (* (f.front OR f.target) & *)(~show or c.bVis) & (c.singleton # nil) then
+			c.bVis := show
+			c.view.GetRect(f, c.singleton, l, t, r, b)
+			if (l # max(integer)) & (t # max(integer)) then
+				Mechanisms.MarkSingletonBorder(f, c.singleton, l, t, r, b, show) 
+			end  
+		end 
+	end MarkSingleton
+	
+	proc FadeMarks*(c: Controller; show: boolean) 
+		var 
+			msg: FadeMsg
+			v: Views.View
+			fc: Controller
+	begin 
+		if (c.focus # nil) or (c.singleton # nil) then
+			if c.bVis # show then
+				if ~show then
+					v := c.focus
+					while (v # nil) & (v is View) do 
+						fc := v(View).ThisController()
+						fc.bVis := false
+						v := fc.focus 
+					end  
+				end 
+				c.bVis := show
+				msg.show := show
+				Views.Broadcast(c.view, msg) 
+			end  
+		end 
+	end FadeMarks
+	
+	
+	// handle controller messages in editor mode
+	
+	proc ClaimFocus(v: Views.View): boolean 
+		var 
+			p: Properties.FocusPref
+	begin 
+		p.atLocation := false
+		p.hotFocus := false
+		p.setFocus := false
+		Views.HandlePropMsg(v, p)
+		return p.setFocus
+	end ClaimFocus
+	
+	proc ClaimFocusAt(v: Views.View; f, g: Views.Frame; x, y: integer; mask: boolean): boolean 
+		var 
+			p: Properties.FocusPref
+	begin 
+		p.atLocation := true
+		p.x := x + f.gx - g.gx
+		p.y := y + f.gy - g.gy
+		p.hotFocus := false
+		p.setFocus := false
+		Views.HandlePropMsg(v, p)
+		return p.setFocus & (mask or ~p.hotFocus)
+	end ClaimFocusAt
+	
+	proc NeedFocusAt(v: Views.View; f, g: Views.Frame; x, y: integer): boolean 
+		var 
+			p: Properties.FocusPref
+	begin 
+		p.atLocation := true
+		p.x := x + f.gx - g.gx
+		p.y := y + f.gy - g.gy
+		p.hotFocus := false
+		p.setFocus := false
+		Views.HandlePropMsg(v, p)
+		return p.hotFocus or p.setFocus
+	end NeedFocusAt
+	
+	
+	proc TrackToResize(c: Controller; f: Views.Frame; v: Views.View; x, y: integer; buttons: set) 
+		var 
+			minW, maxW, minH, maxH, l, t, r, b, w0, h0, w, h: integer
+			op: integer
+			sg, fc: Views.View
+	begin 
+		c.model.GetEmbeddingLimits(minW, maxW, minH, maxH)
+		c.view.GetRect(f, v, l, t, r, b)
+		w0 := r - l
+		h0 := b - t
+		w := w0
+		h := h0
+		Mechanisms.TrackToResize(f, v, minW, maxW, minH, maxH, l, t, r, b, op, x, y, buttons)
+		if op = Mechanisms.resize then
+			sg := c.singleton
+			fc := c.focus
+			c.Resize(v, l, t, r, b)
+			if c.singleton # sg then
+				c.SetSingleton(sg) 
+			end 
+			if c.focus # fc then // delayed c.SetFocus(fc)
+				c.focus := fc
+				c.bVis := false 
+			end  
+		end 
+	end TrackToResize
+	
+	proc TrackToDrop(c: Controller; f: Views.Frame; var x, y: integer; buttons: set
+		var pass: boolean) 
+		var 
+			dest: Views.Frame
+			m: Models.Model
+			v: Views.View
+			x0, y0, x1, y1, w, h, rx, ry, destX, destY: integer
+			op: integer
+			isDown, isSingle: boolean
+			mo: set
+			script: Stores.Operation
+	begin  // drag and drop c's selection: mouse is in selection
+		x0 := x
+		y0 := y
+		repeat 
+			f.Input(x1, y1, mo, isDown) 
+		until ~isDown or (abs(x1 - x) > 3 * Ports.point) or (abs(y1 - y) > 3 * Ports.point) 
+		pass := ~isDown
+		if ~pass then
+			v := c.Singleton()
+			if v = nil then
+				v := c.view
+				isSingle := false 
+			else 
+				isSingle := true 
+			end 
+			c.GetSelectionBounds(f, rx, ry, w, h)
+			rx := x0 - rx
+			ry := y0 - ry
+			if rx < 0 then
+				rx := 0 
+			elsif rx > w then 
+				rx := w 
+			end 
+			if ry < 0 then
+				ry := 0 
+			elsif ry > h then 
+				ry := h 
+			end 
+			if noCaret in c.opts then
+				op := Mechanisms.copy_ 
+			else 
+				op := 0 
+			end 
+			Mechanisms.TrackToDrop(f, v, isSingle, w, h, rx, ry, dest, destX, destY, op, x, y, buttons)
+			if (op in {Mechanisms.copy_, Mechanisms.move}) then // copy or move selection
+				if dest # nil then
+					m := dest.view.ThisModel()
+					if (dest.view = c.view) or (m # nil) & (m = c.view.ThisModel()) then // local drop
+						if op = Mechanisms.copy_ then // local copy
+							c.CopyLocalSelection(f, dest, x0, y0, destX, destY) 
+						elsif op = Mechanisms.move then  // local move
+							c.MoveLocalSelection(f, dest, x0, y0, destX, destY) 
+						end  
+					else  // non-local drop
+						CopyView(c, v, w, h) // create copy of selection
+						if (op = Mechanisms.copy_) or (noCaret in c.opts) then // drop copy
+							Controllers.Drop(x, y, f, x0, y0, v, isSingle, w, h, rx, ry) 
+						elsif op = Mechanisms.move then  // drop copy and delete original
+							if (c.view.Domain() # nil) & (c.view.Domain() = dest.view.Domain()) then
+								Views.BeginScript(c.view, "#System:Moving", script) 
+							else 
+								script := nil 
+							end 
+							c.DeleteSelection // delete first because Controllers.Drop can remove the selection
+							Controllers.Drop(x, y, f, x0, y0, v, isSingle, w, h, rx, ry)
+							if script # nil then
+								Views.EndScript(c.view, script) 
+							end  
+						end  
+					end  
+				elsif (op = Mechanisms.move) & ~(noCaret in c.opts) then 
+					c.DeleteSelection 
+				end  
+			end  
+		end 
+	end TrackToDrop
+	
+	proc TrackToPick(c: Controller; f: Views.Frame; x, y: integer; buttons: set
+		var pass: boolean) 
+		var 
+			p: Properties.Property
+			dest: Views.Frame
+			x0, y0, x1, y1, destX, destY: integer
+			op: integer
+			isDown: boolean
+			m: set
+	begin 
+		x0 := x
+		y0 := y
+		repeat 
+			f.Input(x1, y1, m, isDown) 
+		until ~isDown or (abs(x1 - x) > 3 * Ports.point) or (abs(y1 - y) > 3 * Ports.point) 
+		pass := ~isDown
+		if ~pass then
+			Mechanisms.TrackToPick(f, dest, destX, destY, op, x, y, buttons)
+			if op in {Mechanisms.pick, Mechanisms.pickForeign} then
+				Properties.Pick(x, y, f, x0, y0, p)
+				if p # nil then
+					SetProp(c, nil, p, direct) 
+				end  
+			end  
+		end 
+	end TrackToPick
+	
+	proc MarkViews(f: Views.Frame) 
+		var 
+			x, y: integer
+			isDown: boolean
+			root: Views.RootFrame
+			m: set
+	begin 
+		root := Views.RootOf(f)
+		Views.MarkBorders(root)
+		repeat 
+			f.Input(x, y, m, isDown) 
+		until ~isDown 
+		Views.MarkBorders(root)
+	end MarkViews
+	
+	proc Track(c: Controller; f: Views.Frame; var msg: Controllers.TrackMsg; var focus: Views.View) 
+		var 
+			res, l, t, r, b: integer
+			cursor: integer
+			sel: Views.View
+			obj: Views.Frame
+			inSel, pass, extend, add, double, popup, pick: boolean
+	begin 
+		cursor := Mechanisms.outside
+		sel := c.Singleton()
+		if focus # nil then
+			c.view.GetRect(f, focus, l, t, r, b)
+			if (BorderVisible(c, f) or (f is Views.RootFrame)) & ~(noSelection in c.opts) then
+				cursor := Mechanisms.FocusBorderCursor(f, focus, l, t, r, b, msg.x, msg.y) 
+			elsif (msg.x >= l) & (msg.x <= r) & (msg.y >= t) & (msg.y <= b) then 
+				cursor := Mechanisms.inside 
+			end  
+		elsif sel # nil then 
+			c.view.GetRect(f, sel, l, t, r, b)
+			cursor := Mechanisms.SelBorderCursor(f, sel, l, t, r, b, msg.x, msg.y) 
+		end 
+		if cursor >= 0 then
+			if focus # nil then
+				// resize focus
+				TrackToResize(c, f, focus, msg.x, msg.y, msg.modifiers)
+				focus := nil 
+			else 
+				// resize singleton
+				TrackToResize(c, f, sel, msg.x, msg.y, msg.modifiers) 
+			end  
+		elsif (focus # nil) & (cursor = Mechanisms.inside) then  
+		// forward to focus
+		else 
+			if (focus # nil) & (c.opts * modeOpts # mask) then
+				c.SetFocus(nil) 
+			end 
+			focus := nil
+			inSel := c.InSelection(f, msg.x, msg.y)
+			extend := Controllers.extend in msg.modifiers
+			add := Controllers.modify in msg.modifiers
+			double := Controllers.doubleClick in msg.modifiers
+			popup := Controllers.popup in msg.modifiers
+			pick := Controllers.pick in msg.modifiers
+			obj := Views.FrameAt(f, msg.x, msg.y)
+			if ~inSel & (~extend or (noSelection in c.opts)) then
+				if obj # nil then
+					if ~(noFocus in c.opts) & NeedFocusAt(obj.view, f, obj, msg.x, msg.y) 
+						& (~pick or (noSelection in c.opts)) then
+						// set hot focus
+						focus := obj.view
+						if ClaimFocusAt(focus, f, obj, msg.x, msg.y, c.opts * modeOpts = mask) then
+							// set permanent focus
+							c.SelectAll(deselect)
+							c.SetFocus(focus) 
+						end  
+					end 
+					if (focus = nil) & ~add & ~(noSelection in c.opts) then
+						// select object
+						c.SelectAll(deselect)
+						c.SetSingleton(obj.view)
+						inSel := true 
+					end  
+				elsif ~add then 
+					c.SelectAll(deselect) 
+				end  
+			end 
+			if focus = nil then
+				if inSel & double & (popup or pick) then // properties
+					Dialog.Call("StdCmds.ShowProp", "", res) 
+				elsif inSel & double & (obj # nil) then  // primary verb
+					Dialog.Call("HostMenus.PrimaryVerb", "", res) 
+				elsif ~inSel & pick & extend then 
+					MarkViews(f) 
+				else 
+					if inSel & ~extend then // drag
+						if pick then
+							if ~(noCaret in c.opts) then
+								TrackToPick(c, f, msg.x, msg.y, msg.modifiers, pass) 
+							end  
+						else 
+							TrackToDrop(c, f, msg.x, msg.y, msg.modifiers, pass) 
+						end 
+						if ~pass then
+							return  
+						end  
+					end 
+					if ~(noSelection in c.opts) & (~inSel or extend or add or (obj = nil) & ~popup) then // select
+						c.TrackMarks(f, msg.x, msg.y, double, extend, add) 
+					end 
+					if popup then
+						Dialog.Call("HostMenus.PopupMenu", "", res) 
+					end  
+				end  
+			end  
+		end 
+	end Track
+	
+	proc CopyView(source: Controller; var view: Views.View; var w, h: integer) 
+		var 
+			s: Views.View
+			m: Model
+			v: View
+			p: Properties.BoundsPref
+	begin 
+		s := source.Singleton()
+		if s # nil then // create a copy of singular selection
+			view := Views.CopyOf(s, Views.deep)
+			s.context.GetSize(w, h) 
+		else  // create a copy of view with a copy of whole selection as contents
+			m := source.SelectionCopy()
+			v := Views.CopyWithNewModel(source.view, m)(View)
+			p.w := Views.undefined
+			p.h := Views.undefined
+			Views.HandlePropMsg(v, p)
+			view := v
+			w := p.w
+			h := p.h 
+		end 
+	end CopyView
+	
+	proc Paste(c: Controller; f: Views.Frame; v: Views.View; w, h: integer) 
+		var 
+			m: Models.Model
+	begin 
+		m := v.ThisModel()
+		if (m # nil) & c.NativeModel(m) then
+			// paste whole contents of source view
+			c.NativePaste(m, f) 
+		else 
+			// paste whole view
+			c.PasteView(f, v, (* Views.CopyOf(v, Views.deep) *)w, h) 
+		end 
+	end Paste
+	
+	proc GetValidOps(c: Controller; var valid: set) 
+	begin 
+		valid := {}
+		c.GetValidOps(valid)
+		if noCaret in c.opts then
+			valid := valid 
+				- {Controllers.pasteChar, Controllers.pasteChar, 
+				Controllers.paste, Controllers.cut} 
+		end 
+	end GetValidOps
+	
+	
+	proc Transfer(c: Controller; f: Views.Frame
+		var msg: Controllers.TransferMessage; var focus: Views.View) 
+		var 
+			g: Views.Frame
+			inSelection: boolean
+			dMsg: DropPref
+	begin 
+		focus := nil
+		g := Views.FrameAt(f, msg.x, msg.y)
+		with msg: Controllers.PollDropMsg do 
+			inSelection := c.InSelection(f, msg.x, msg.y)
+			dMsg.mode := c.opts
+			dMsg.okToDrop := false
+			if g # nil then
+				Views.HandlePropMsg(g.view, dMsg) 
+			end 
+			if (g # nil) & ~inSelection & (dMsg.okToDrop or ~(noFocus in c.opts)) then
+				focus := g.view 
+			elsif ~(noCaret in c.opts) & c.CanDrop(f, msg.x, msg.y) then 
+				msg.dest := f
+				if msg.mark then
+					c.MarkDropTarget(msg.source, f, msg.sourceX, msg.sourceY, msg.x, msg.y, msg.w, msg.h, msg.rx, msg.ry, 
+					msg.type_, msg.isSingle, msg.show) 
+				end  
+			end  
+		| msg: Controllers.DropMsg do 
+			inSelection := c.InSelection(f, msg.x, msg.y)
+			dMsg.mode := c.opts
+			dMsg.okToDrop := false
+			if g # nil then
+				Views.HandlePropMsg(g.view, dMsg) 
+			end 
+			if (g # nil) & ~inSelection & (dMsg.okToDrop or ~(noFocus in c.opts)) then
+				c.SetFocus(g.view)
+				focus := g.view 
+			elsif ~(noCaret in c.opts) & c.CanDrop(f, msg.x, msg.y) then 
+				c.Drop(msg.source, f, msg.sourceX, msg.sourceY, msg.x, msg.y, msg.w, msg.h, 
+				msg.rx, msg.ry, msg.view, msg.isSingle) 
+			end  
+		| msg: Properties.PollPickMsg do 
+			if g # nil then
+				focus := g.view 
+			else 
+				msg.dest := f
+				if msg.mark then
+					c.MarkPickTarget(msg.source, f, msg.sourceX, msg.sourceY, msg.x, msg.y, msg.show) 
+				end  
+			end  
+		| msg: Properties.PickMsg do 
+			if g # nil then
+				focus := g.view 
+			else 
+				c.PickNativeProp(f, msg.x, msg.y, msg.prop) 
+			end  
+		else 
+			if g # nil then
+				focus := g.view 
+			end  
+		end 
+	end Transfer
+	
+	proc FocusHasSel(): boolean 
+		var 
+			msg: Controllers.PollOpsMsg
+	begin 
+		Controllers.PollOps(msg)
+		return msg.selectable & (Controllers.copy_ in msg.valid)
+	end FocusHasSel
+	
+	proc FocusEditor(): Controller 
+		var 
+			msg: PollFocusMsg
+	begin 
+		msg.focus := nil
+		msg.ctrl := nil
+		msg.all := false
+		Controllers.Forward(msg)
+		return msg.ctrl
+	end FocusEditor
+	
+	proc Edit(c: Controller; f: Views.Frame
+		var msg: Controllers.EditMsg; var focus: Views.View) 
+		var 
+			g: Views.Frame
+			v: Views.View
+			res: integer
+			valid: set
+			select, units, getFocus, accepts: boolean
+			sel: Controllers.SelectMsg
+	begin 
+		if (c.opts * modeOpts # mask) & (focus = nil) then
+			if (msg.op = Controllers.pasteChar) & (msg.char_ = ESC) then
+				c.SelectAll(false) 
+			elsif (c.Singleton() # nil) & (msg.op = Controllers.pasteChar) & 
+				(msg.char_ = ENTER) then 
+				Dialog.Call("HostMenus.PrimaryVerb", "", res) 
+			else 
+				GetValidOps(c, valid)
+				if msg.op in valid then
+					case msg.op of 
+						| Controllers.pasteChar: 
+							if msg.char_ >= " " then
+								c.PasteChar(msg.char_) 
+							elsif (AL <= msg.char_) & (msg.char_ <= AD) or 
+								(PL <= msg.char_) & (msg.char_ <= DD) then 
+								select := Controllers.extend in msg.modifiers
+								units := Controllers.modify in msg.modifiers
+								c.ArrowChar(f, msg.char_, units, select) 
+							else 
+								c.ControlChar(f, msg.char_) 
+							end  
+						| Controllers.cut, Controllers.copy_: 
+							CopyView(c, msg.view, msg.w, msg.h)
+							msg.isSingle := c.Singleton() # nil
+							if msg.op = Controllers.cut then
+								c.DeleteSelection 
+							end  
+						| Controllers.paste: 
+							if msg.isSingle then
+								c.PasteView(f, msg.view, (* Views.CopyOf(msg.view, Views.deep) *)msg.w, msg.h) 
+							else 
+								Paste(c, f, msg.view, msg.w, msg.h) 
+							end  
+					else  
+					end  
+				end  
+			end  
+		elsif (c.opts * modeOpts # mask) 
+			& (msg.op = Controllers.pasteChar) & (msg.char_ = ESC) 
+			& (~(f is Views.RootFrame) or (31 in c.opts)) 
+			& (c = FocusEditor()) 
+			& ((Controllers.extend in msg.modifiers) or ~FocusHasSel()) then 
+			if 31 in c.opts then
+				incl(msg.modifiers, 31) 
+			else 
+				c.SetSingleton(focus) 
+			end 
+			focus := nil 
+		elsif (c.opts * modeOpts # mask) & (c = Focus()) then 
+			// do some generic processing for non-container views
+			if (msg.op = Controllers.pasteChar) & (msg.char_ = ESC) then
+				g := Views.ThisFrame(f, focus)
+				if g # nil then
+					sel.set_ := false
+					Views.ForwardCtrlMsg(g, sel) 
+				end  
+			end  
+		elsif (c.opts * modeOpts = mask) & (msg.op = Controllers.pasteChar) then 
+			if Controllers.pick in msg.modifiers then
+				CollectControlPref(c, nil, msg.char_, true, v, getFocus, accepts) 
+			else 
+				CollectControlPref(c, focus, msg.char_, true, v, getFocus, accepts) 
+			end 
+			if v = nil then
+				CheckMaskFocus(c, f, focus)
+				CollectControlPref(c, focus, msg.char_, true, v, getFocus, accepts) 
+			end 
+			if v # nil then
+				if getFocus & (v # focus) then
+					c.SetFocus(v) 
+				end 
+				if accepts then
+					g := Views.ThisFrame(f, v)
+					if g # nil then
+						Views.ForwardCtrlMsg(g, msg) 
+					end  
+				end 
+				focus := nil 
+			end  
+		end 
+	end Edit
+	
+	proc PollCursor(c: Controller; f: Views.Frame; var msg: Controllers.PollCursorMsg; var focus: Views.View) 
+		var 
+			l, t, r, b: integer
+			cursor: integer
+			sel: Views.View
+			obj: Views.Frame
+			inSel: boolean
+	begin 
+		cursor := Mechanisms.outside
+		sel := c.Singleton()
+		if focus # nil then
+			c.view.GetRect(f, focus, l, t, r, b)
+			if (BorderVisible(c, f) or (f is Views.RootFrame)) & ~(noSelection in c.opts) then
+				cursor := Mechanisms.FocusBorderCursor(f, focus, l, t, r, b, msg.x, msg.y) 
+			elsif (msg.x >= l) & (msg.x <= r) & (msg.y >= t) & (msg.y <= b) then 
+				cursor := Mechanisms.inside 
+			end  
+		elsif sel # nil then 
+			c.view.GetRect(f, sel, l, t, r, b)
+			cursor := Mechanisms.SelBorderCursor(f, sel, l, t, r, b, msg.x, msg.y) 
+		end 
+		if cursor >= 0 then
+			msg.cursor := cursor
+			focus := nil 
+		elsif (focus # nil) & (cursor = Mechanisms.inside) then 
+			msg.cursor := Ports.arrowCursor 
+		else 
+			if noCaret in c.opts then
+				msg.cursor := Ports.arrowCursor 
+			else  // if nothing else, use native cursor
+				msg.cursor := c.NativeCursorAt(f, msg.x, msg.y) 
+			end 
+			focus := nil
+			inSel := false
+			if ~(noSelection in c.opts) then
+				inSel := c.InSelection(f, msg.x, msg.y) 
+			end 
+			if ~inSel then
+				obj := Views.FrameAt(f, msg.x, msg.y)
+				if obj # nil then
+					if ~(noFocus in c.opts) & NeedFocusAt(obj.view, f, obj, msg.x, msg.y) then
+						focus := obj.view
+						msg.cursor := Ports.arrowCursor 
+					elsif ~(noSelection in c.opts) then 
+						inSel := true 
+					end  
+				end  
+			end 
+			if focus = nil then
+				if inSel then
+					msg.cursor := Ports.arrowCursor 
+				end  
+			end  
+		end 
+	end PollCursor
+	
+	proc PollOps(c: Controller; f: Views.Frame
+		var msg: Controllers.PollOpsMsg; var focus: Views.View) 
+	begin 
+		if focus = nil then
+			msg.type_ := ""
+			if ~(noSelection in c.opts) then
+				c.GetContextType(msg.type_) 
+			end 
+			msg.selectable := ~(noSelection in c.opts) & c.Selectable()
+			GetValidOps(c, msg.valid)
+			msg.singleton := c.Singleton() 
+		end 
+	end PollOps
+	
+	proc ReplaceView(c: Controller; old, new_: Views.View) 
+	begin 
+		assert(old.context # nil, 20)
+		assert((new_.context = nil) or (new_.context = old.context), 22)
+		if old.context.ThisModel() = c.model then
+			c.model.ReplaceView(old, new_) 
+		end 
+		if c.singleton = old then
+			c.singleton := new_ 
+		end 
+		if c.focus = old then
+			c.focus := new_ 
+		end 
+	end ReplaceView
+	
+	proc ViewProp(v: Views.View): Properties.Property 
+		var 
+			poll: Properties.PollMsg
+	begin 
+		poll.prop := nil
+		Views.HandlePropMsg(v, poll)
+		return poll.prop
+	end ViewProp
+	
+	proc SetViewProp(v: Views.View; old, p: Properties.Property) 
+		var 
+			set_: Properties.SetMsg
+	begin 
+		set_.old := old
+		set_.prop := p
+		Views.HandlePropMsg(v, set_)
+	end SetViewProp
+	
+	proc SizeProp(v: Views.View): Properties.Property 
+		var 
+			sp: Properties.SizeProp
+	begin 
+		new(sp)
+		sp.known := {Properties.width, Properties.height}
+		sp.valid := sp.known
+		v.context.GetSize(sp.width, sp.height)
+		return sp
+	end SizeProp
+	
+	proc SetSizeProp(v: Views.View; p: Properties.SizeProp) 
+		var 
+			w, h: integer
+	begin 
+		if p.valid # {Properties.width, Properties.height} then
+			v.context.GetSize(w, h) 
+		end 
+		if Properties.width in p.valid then
+			w := p.width 
+		end 
+		if Properties.height in p.valid then
+			h := p.height 
+		end 
+		v.context.SetSize(w, h)
+	end SetSizeProp
+	
+	proc ThisProp(c: Controller; direct: boolean): Properties.Property 
+		const  // 50 // bound number of polled embedded views
+			scanCutoff = max(integer)
+		var 
+			v: Views.View
+			np, vp, p: Properties.Property
+			k: integer
+			trunc, equal: boolean
+	begin 
+		trunc := false
+		k := 1
+		np := nil
+		c.PollNativeProp(direct, np, trunc)
+		v := nil
+		c.GetFirstView(direct, v)
+		if v # nil then
+			Properties.Insert(np, SizeProp(v))
+			vp := ViewProp(v)
+			k := scanCutoff
+			c.GetNextView(direct, v)
+			while (v # nil) & (k > 0) do 
+				dec(k)
+				Properties.Insert(np, SizeProp(v))
+				Properties.Intersect(vp, ViewProp(v), equal)
+				c.GetNextView(direct, v) 
+			end 
+			if c.singleton # nil then
+				Properties.Merge(np, vp)
+				vp := np 
+			else 
+				Properties.Merge(vp, np) 
+			end  
+		else 
+			vp := np 
+		end 
+		if trunc or (k = 0) then
+			p := vp
+			while p # nil do 
+				p.valid := {}
+				p := p.next 
+			end  
+		end 
+		if noCaret in c.opts then
+			p := vp
+			while p # nil do 
+				p.readOnly := p.valid
+				p := p.next 
+			end  
+		end 
+		return vp
+	end ThisProp
+	
+	proc SetProp(c: Controller; old, p: Properties.Property; direct: boolean) 
+		type 
+			ViewList = pointer to record next: ViewList; view: Views.View end 
+		var 
+			v: Views.View
+			q, sp: Properties.Property
+			equal: boolean
+			s: Stores.Operation
+			list, last: ViewList
+	begin 
+		if noCaret in c.opts then
+			return  
+		end 
+		Views.BeginScript(c.view, "#System:SetProp", s)
+		q := p
+		while (q # nil) & ~(q is Properties.SizeProp) do 
+			q := q.next 
+		end 
+		list := nil
+		v := nil
+		c.GetFirstView(direct, v)
+		while v # nil do 
+			if list = nil then
+				new(list)
+				last := list 
+			else 
+				new(last.next)
+				last := last.next 
+			end 
+			last.view := v
+			c.GetNextView(direct, v) 
+		end 
+		c.SetNativeProp(direct, old, p)
+		while list # nil do 
+			v := list.view
+			list := list.next
+			SetViewProp(v, old, p)
+			if direct & (q # nil) then
+				// q IS Properties.SizeProp
+				if old # nil then
+					sp := SizeProp(v)
+					Properties.Intersect(sp, old, equal)
+					Properties.Intersect(sp, old, equal) 
+				end 
+				if (old = nil) or equal then
+					SetSizeProp(v, q(Properties.SizeProp)) 
+				end  
+			end  
+		end 
+		Views.EndScript(c.view, s)
+	end SetProp
+	
+	proc (c: Controller) HandleCtrlMsg*(f: Views.Frame
+		var msg: Controllers.Message; var focus: Views.View)  // new extensible
+	begin 
+		focus := c.focus
+		with msg: Controllers.PollCursorMsg do 
+			PollCursor(c, f, msg, focus) 
+		| msg: Controllers.PollOpsMsg do 
+			PollOps(c, f, msg, focus) 
+		| msg: PollFocusMsg do 
+			if msg.all or (c.opts * modeOpts # mask) & (c.focus # nil) then
+				msg.ctrl := c 
+			end  
+		| msg: Controllers.TrackMsg do 
+			Track(c, f, msg, focus) 
+		| msg: Controllers.EditMsg do 
+			Edit(c, f, msg, focus) 
+		| msg: Controllers.TransferMessage do 
+			Transfer(c, f, msg, focus) 
+		| msg: Controllers.SelectMsg do 
+			if focus = nil then
+				c.SelectAll(msg.set_) 
+			end  
+		| msg: Controllers.TickMsg do 
+			FadeMarks(c, show)
+			CheckMaskFocus(c, f, focus) 
+		| msg: Controllers.MarkMsg do 
+			c.bVis := msg.show
+			c.Mark(f, f.l, f.t, f.r, f.b, msg.show) 
+		| msg: Controllers.ReplaceViewMsg do 
+			ReplaceView(c, msg.old, msg.new_) 
+		| msg: Properties.CollectMsg do 
+			if focus = nil then
+				msg.poll.prop := ThisProp(c, direct) 
+			end  
+		| msg: Properties.EmitMsg do 
+			if focus = nil then
+				SetProp(c, msg.set_.old, msg.set_.prop, direct) 
+			end  
+		else  
+		end 
+	end HandleCtrlMsg
+	
+	
+	// miscellaneous
+	
+	proc Focus*(): Controller 
+		var 
+			msg: PollFocusMsg
+	begin 
+		msg.focus := nil
+		msg.ctrl := nil
+		msg.all := true
+		Controllers.Forward(msg)
+		return msg.ctrl
+	end Focus
+	
+	proc FocusSingleton*(): Views.View 
+		var 
+			c: Controller
+			v: Views.View
+	begin 
+		c := Focus()
+		if c # nil then
+			v := c.Singleton() 
+		else 
+			v := nil 
+		end 
+		return v
+	end FocusSingleton
+	
+	proc CloneOf*(m: Model): Model 
+		var 
+			h: Model
+	begin 
+		assert(m # nil, 20)
+		K.NewObj(h, K.TypeOf(m))
+		h.InitFrom(m)
+		return h
+	end CloneOf
+
+end Containers

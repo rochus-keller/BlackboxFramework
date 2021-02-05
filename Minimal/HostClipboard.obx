@@ -1,0 +1,139 @@
+module HostClipboard
+	(* project	= "BlackBox"
+	   organization	= "www.oberon.ch"
+	   contributors	= "Oberon microsystems"
+	   version	= "System/Rsrc/About"
+	   copyright	= "System/Rsrc/About"
+	   license	= "Docu/BB-License"
+	   changes	= "##=>
+	   
+	   - YYYYMMDD, nn, ...
+	   ##<="
+	   issues	= "##=>
+	   
+	   - ...
+	   ##<=" *)
+	
+	
+	
+	
+	
+	import 
+		COM, WinApi, WinOle, 
+		Services, Stores, Views, Documents, OleData, HostWindows
+	
+	
+	type 
+		EmptyView = pointer to record (Views.View) end 
+	
+	
+	var 
+		cloneAttributes*: boolean // set by HostCmds, used by Importers
+		isText*: boolean // set by HostCmds, used by GetClipView
+		
+		doc: Documents.Document // contents of clipboard window
+		isSingleton: boolean // contents of clipboard is singleton view
+		width, height: integer // size of clipboard content
+		empty: Views.View // contents of empty clipboard
+		cbdata: WinOle.IDataObject // data object registred via OLE
+	
+	
+	proc Register*(v: Views.View; w, h: integer; isSingle: boolean) 
+		var 
+			res: COM.RESULT
+	begin 
+		doc.SetView(v, w, h)
+		width := w
+		height := h
+		isSingleton := isSingle
+		cbdata := OleData.ViewData(v, w, h, isSingle)
+		res := WinOle.OleSetClipboard(cbdata)
+	end Register
+	
+	proc GetClipView*(
+		type_: Stores.TypeName; var v: Views.View; var w, h: integer; var isSingle: boolean
+		) 
+		var 
+			dobj: WinOle.IDataObject
+			res: COM.RESULT
+	begin 
+		v := nil
+		if WinOle.OleIsCurrentClipboard(cbdata) = WinApi.S_OK then
+			v := Views.CopyOf(doc.ThisView(), Views.deep)
+			w := width
+			h := height
+			isSingle := isSingleton
+			if (type_ # "") & ~Services.Is(v, type_) then
+				v := nil 
+			end  
+		else 
+			res := WinOle.OleGetClipboard(dobj)
+			if res >= 0 then
+				if isText then
+					OleData.GetTextDataView(dobj, v, w, h, isSingle) 
+				else 
+					OleData.GetDataView(dobj, type_, v, w, h, isSingle) 
+				end 
+				if v # nil then
+					doc.SetView(Views.CopyOf(v, Views.deep), w, h)
+					width := w
+					height := h
+					isSingleton := isSingle 
+				end  
+			end  
+		end 
+	end GetClipView
+	
+	proc ConvertibleTo*(type_: Stores.TypeName): boolean 
+		var 
+			dobj: WinOle.IDataObject
+			res: COM.RESULT
+	begin 
+		if WinOle.OleIsCurrentClipboard(cbdata) = WinApi.S_OK then
+			return (type_ = "") or Services.Is(doc.ThisView(), type_) 
+		else 
+			res := WinOle.OleGetClipboard(dobj)
+			if res >= 0 then
+				return OleData.DataConvTo(dobj, type_) 
+			end  
+		end 
+		return false
+	end ConvertibleTo
+	
+	proc Flush*
+		var 
+			res: COM.RESULT
+	begin 
+		if WinOle.OleIsCurrentClipboard(cbdata) = WinApi.S_OK then
+			res := WinOle.OleFlushClipboard() 
+		end 
+	end Flush
+	
+	proc Dump*
+		var 
+			res: COM.RESULT
+			dobj: WinOle.IDataObject
+	begin 
+		res := WinOle.OleGetClipboard(dobj)
+		OleData.DumpData(dobj)
+	end Dump
+	
+	
+	proc (v: EmptyView) Restore(f: Views.Frame; l, t, r, b: integer) 
+	end Restore
+	
+	
+	proc Init
+		var 
+			e: EmptyView
+	begin 
+		new(e)
+		empty := e
+		// init document to be used to display the clipboard
+		doc := Documents.dir.New(empty, Views.undefined, Views.undefined)
+		HostWindows.OpenClipboard(doc)
+	end Init
+
+begin
+	Init
+end HostClipboard
