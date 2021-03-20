@@ -33,11 +33,8 @@ module StdInterpreter
 				bool: boolean 
 			end 
 		CallHook = pointer to record (Dialog.CallHook) end 
+		Ident = Kernel.Name
 	
-	
-	proc (hook: CallHook) Call(in proc_, errorMsg: array of wchar; var res: integer) 
-		type 
-			Ident = Kernel.Name
 		const 
 			modNotFound = 10
 			procNotFound = 11
@@ -67,12 +64,15 @@ module StdInterpreter
 			comma = 7
 			int_ = 8
 		var 
-			i, type_: integer
+			i, type_, res: integer
 			ch: wchar
 			id: Ident
 			x: integer
 			par: array 100 of pointer to Meta.Value
 			numPar: integer
+			
+	proc (hook: CallHook) Call(in proc_, errorMsg: array of wchar; var res_: integer) 
+
 		
 		proc Concat(a, b: array of wchar; var c: array of wchar) 
 			var 
@@ -101,7 +101,7 @@ module StdInterpreter
 			c[i] := 0x
 		end Concat
 		
-		proc Error(n: integer; msg, par0, par1: array of wchar) 
+		proc Error(in errorMsg: array of wchar; n: integer; msg, par0, par1: array of wchar) 
 			var 
 				e, f: array 256 of wchar
 		begin 
@@ -127,7 +127,7 @@ module StdInterpreter
 			end 
 		end Init
 		
-		proc ShowLoaderResult(in mod_: array of wchar) 
+		proc ShowLoaderResult(in errorMsg, mod_: array of wchar) 
 			var 
 				res: integer
 				importing, imported, object: array 256 of wchar
@@ -135,23 +135,23 @@ module StdInterpreter
 			Kernel.GetLoaderResult(res, importing, imported, object)
 			case res of 
 				| Kernel.fileNotFound: 
-					Error(Kernel.fileNotFound, "#System:CodeFileNotFound", imported, "") 
+					Error(errorMsg,Kernel.fileNotFound, "#System:CodeFileNotFound", imported, "") 
 				| Kernel.syntaxError: 
-					Error(Kernel.syntaxError, "#System:CorruptedCodeFileFor", imported, "") 
+					Error(errorMsg,Kernel.syntaxError, "#System:CorruptedCodeFileFor", imported, "") 
 				| Kernel.objNotFound: 
-					Error(Kernel.objNotFound, "#System:ObjNotFoundImpFrom", imported, importing) 
+					Error(errorMsg,Kernel.objNotFound, "#System:ObjNotFoundImpFrom", imported, importing) 
 				| Kernel.illegalFPrint: 
-					Error(Kernel.illegalFPrint, "#System:ObjInconsImpFrom", imported, importing) 
+					Error(errorMsg,Kernel.illegalFPrint, "#System:ObjInconsImpFrom", imported, importing) 
 				| Kernel.cyclicImport: 
-					Error(Kernel.cyclicImport, "#System:CyclicImpFrom", imported, importing) 
+					Error(errorMsg,Kernel.cyclicImport, "#System:CyclicImpFrom", imported, importing) 
 				| Kernel.noMem: 
-					Error(Kernel.noMem, "#System:NotEnoughMemoryFor", imported, "") 
+					Error(errorMsg,Kernel.noMem, "#System:NotEnoughMemoryFor", imported, "") 
 			else 
-				Error(res, "#System:CannotLoadModule", mod_, "") 
+				Error(errorMsg,res, "#System:CannotLoadModule", mod_, "") 
 			end 
 		end ShowLoaderResult
 		
-		proc CallProc(in mod_, proc_: array of wchar) 
+		proc CallProc(in errorMsg, mod_, proc_: array of wchar) 
 			var 
 				i, t: Meta.Item
 				ok: boolean
@@ -168,17 +168,17 @@ module StdInterpreter
 						ok := false 
 					end 
 					if ~ok then
-						Error(incompParList, "#System:IncompatibleParList", mod_, proc_) 
+						Error(errorMsg,incompParList, "#System:IncompatibleParList", mod_, proc_) 
 					end  
 				else 
-					Error(Kernel.commNotFound, "#System:CommandNotFoundIn", proc_, mod_) 
+					Error(errorMsg,Kernel.commNotFound, "#System:CommandNotFoundIn", proc_, mod_) 
 				end  
 			else 
-				ShowLoaderResult(mod_) 
+				ShowLoaderResult(errorMsg, mod_) 
 			end 
 		end CallProc
 		
-		proc GetCh
+		proc GetCh( in proc_, errorMsg: array of wchar )
 		begin 
 			if i < len(proc_) then
 				ch := proc_[i]
@@ -188,7 +188,7 @@ module StdInterpreter
 			end 
 		end GetCh
 		
-		proc Scan
+		proc Scan( in proc_, errorMsg: array of wchar )
 			var 
 				j: integer
 				num: array 32 of wchar
@@ -240,12 +240,12 @@ module StdInterpreter
 					end 
 					id[j] := 0x 
 				else 
-					Error(syntaxError, "#System:SyntaxError", "", "") 
+					Error(errorMsg,syntaxError, "#System:SyntaxError", "", "") 
 				end  
 			end 
 		end Scan
 		
-		proc String(var s: array of wchar) 
+		proc String(in errorMsg: array of wchar; var s: array of wchar) 
 			var 
 				j: integer
 		begin 
@@ -261,14 +261,14 @@ module StdInterpreter
 					GetCh
 					Scan 
 				else 
-					Error(quoteExpected, "#System:QuoteExpected", "", "") 
+					Error(errorMsg,quoteExpected, "#System:QuoteExpected", "", "") 
 				end  
 			else 
-				Error(quoteExpected, "#System:QuoteExpected", "", "") 
+				Error(errorMsg,quoteExpected, "#System:QuoteExpected", "", "") 
 			end 
 		end String
 		
-		proc ParamList() 
+		proc ParamList(in errorMsg: array of wchar) 
 			var 
 				iv: IntValue
 				sv: StrValue
@@ -280,7 +280,7 @@ module StdInterpreter
 				while (numPar < len(par)) & (type_ # rparen) & (res = 0) do 
 					if type_ = quote then
 						new(sv)
-						String(sv.str)
+						String(errorMsg, sv.str)
 						par[numPar] := sv
 						inc(numPar) 
 					elsif type_ = int_ then 
@@ -296,19 +296,19 @@ module StdInterpreter
 						par[numPar] := bv
 						inc(numPar) 
 					else 
-						Error(syntaxError, "#System:SyntaxError", "", "") 
+						Error(errorMsg,syntaxError, "#System:SyntaxError", "", "") 
 					end 
 					if type_ = comma then
 						Scan 
 					elsif type_ # rparen then 
-						Error(rparenExpected, "#System:RParenExpected", "", "") 
+						Error(errorMsg,rparenExpected, "#System:RParenExpected", "", "") 
 					end  
 				end 
 				Scan 
 			end 
 		end ParamList
 		
-		proc Command
+		proc Command( in errorMsg: array of wchar )
 			var 
 				left, right: Ident
 		begin 
@@ -322,21 +322,22 @@ module StdInterpreter
 				if type_ = ident then
 					right := id
 					Scan
-					ParamList()
+					ParamList(errorMsg)
 					if res = 0 then
-						CallProc(left, right) 
+						CallProc(errorMsg, left, right) 
 					end  
 				else 
-					Error(identExpected, "#System:IdentExpected", "", "") 
+					Error(errorMsg,identExpected, "#System:IdentExpected", "", "") 
 				end  
 			else 
-				Error(unknownIdent, "#System:UnknownIdent", id, "") 
+				Error(errorMsg,unknownIdent, "#System:UnknownIdent", id, "") 
 			end 
 		end Command
 	
 	begin 
 		// protect from parasitic anchors on stack
 		i := 0
+		res := res_
 		type_ := 0
 		Init(id)
 		x := 0
@@ -352,15 +353,16 @@ module StdInterpreter
 				Command 
 			end 
 			if type_ # eot then
-				Error(syntaxError, "#System:SyntaxError", "", "") 
+				Error(errorMsg,syntaxError, "#System:SyntaxError", "", "") 
 			end  
 		else 
-			Error(syntaxError, "#System:SyntaxError", "", "") 
+			Error(errorMsg,syntaxError, "#System:SyntaxError", "", "") 
 		end 
 		if (res = 0) & (Views.Available() > 0) then
-			Error(noDepositExpected, "#System:NoDepositExpected", "", "") 
+			Error(errorMsg,noDepositExpected, "#System:NoDepositExpected", "", "") 
 		end 
 		Views.ClearQueue
+		res_ := res
 	end Call
 	
 	proc Init

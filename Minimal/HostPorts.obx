@@ -438,6 +438,7 @@ module HostPorts
 		
 		type 
 			PAP = unsafe pointer to carray of WinApi.POINT
+			POP = pointer to array of Ports.Point
 		
 		var 
 			res, i, j, k: integer
@@ -446,10 +447,11 @@ module HostPorts
 			pap: PAP
 			pt: WinApi.POINT
 			poly: array 256 of WinApi.POINT
-			polyPtr: pointer to array of Ports.Point
+			polyPtr: POP
 			polyLen: integer
 		
-		proc Bezier(x0, y0, xd0, yd0, x1, y1, xd1, yd1: integer) 
+		proc Bezier(x0, y0, xd0, yd0, x1, y1, xd1, yd1: integer; 
+			var polyLen, k: integer; var pap: PAP; var polyPtr : POP) 
 			var 
 				x, y, xd, yd, i: integer
 		begin 
@@ -472,8 +474,8 @@ module HostPorts
 				y := ((yd0 - yd1) div 4 + y0 + y1 + 1) div 2
 				xd := ((x1 - x0) * 3 - (xd0 + xd1) div 2 + 2) div 4
 				yd := ((y1 - y0) * 3 - (yd0 + yd1) div 2 + 2) div 4
-				Bezier(x0, y0, xd0 div 2, yd0 div 2, x, y, xd, yd)
-				Bezier(x, y, xd, yd, x1, y1, xd1 div 2, yd1 div 2) 
+				Bezier(x0, y0, xd0 div 2, yd0 div 2, x, y, xd, yd, polyLen, k, pap, polyPtr )
+				Bezier(x, y, xd, yd, x1, y1, xd1 div 2, yd1 div 2, polyLen, k, pap, polyPtr ) 
 			end 
 		end Bezier
 	
@@ -515,8 +517,10 @@ module HostPorts
 					if j = n then
 						j := 0 
 					end 
-					Bezier(pts[i].x, pts[i].y, (pts[i + 1].x - pts[i].x) * 3, (pts[i + 1].y - pts[i].y) * 3, 
-					pts[j].x, pts[j].y, (pts[j].x - pts[i + 2].x) * 3, (pts[j].y - pts[i + 2].y) * 3)
+					Bezier(pts[i].x, pts[i].y, (pts[i + 1].x - pts[i].x) * 3, 
+						(pts[i + 1].y - pts[i].y) * 3, 
+						pts[j].x, pts[j].y, (pts[j].x - pts[i + 2].x) * 3, 
+						(pts[j].y - pts[i + 2].y) * 3, polyLen, k, pap, polyPtr )
 					inc(i, 3) 
 				end 
 				res := WinApi.Polygon(dc, pap, k) 
@@ -553,8 +557,10 @@ module HostPorts
 					if j = n then
 						j := 0 
 					end 
-					Bezier(pts[i].x, pts[i].y, (pts[i + 1].x - pts[i].x) * 3, (pts[i + 1].y - pts[i].y) * 3, 
-					pts[j].x, pts[j].y, (pts[j].x - pts[i + 2].x) * 3, (pts[j].y - pts[i + 2].y) * 3)
+					Bezier(pts[i].x, pts[i].y, (pts[i + 1].x - pts[i].x) * 3, 
+						(pts[i + 1].y - pts[i].y) * 3, 
+						pts[j].x, pts[j].y, (pts[j].x - pts[i + 2].x) * 3, 
+						(pts[j].y - pts[i + 2].y) * 3, polyLen, k, pap, polyPtr )
 					pap[k].x := pts[j].x
 					pap[k].y := pts[j].y
 					inc(k)

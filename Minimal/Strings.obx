@@ -896,14 +896,14 @@ module Strings
 		var 
 			len_, i: integer
 		
-		proc AppendChar(ch: wchar) 
+		proc AppendChar(ch: wchar; var len_: integer; var str: array of wchar) 
 		begin 
 			assert(len_ < len(str), 23)
 			str[len_] := ch
 			inc(len_)
 		end AppendChar
 		
-		proc AppendInt(x: integer) 
+		proc AppendInt(x: integer; len_: integer; var str: array of wchar) 
 			var 
 				i: integer
 				ch: wchar
@@ -913,7 +913,7 @@ module Strings
 			ch := buf[0]
 			i := 0
 			while ch # 0x do 
-				AppendChar(ch)
+				AppendChar(ch,len_,str)
 				inc(i)
 				ch := buf[i] 
 			end 
@@ -921,32 +921,32 @@ module Strings
 	
 	begin 
 		len_ := 0
-		AppendChar('{')
+		AppendChar('{',len_,str)
 		i := min(set)
 		while x # {} do 
 			if i in x then
-				AppendInt(i)
+				AppendInt(i,len_,str)
 				excl(x, i)
 				if (i <= max(set) - 2) & (i + 1 in x) & (i + 2 in x) then
-					AppendChar('.')
-					AppendChar('.')
+					AppendChar('.',len_,str)
+					AppendChar('.',len_,str)
 					x := x - {i + 1, i + 2}
 					inc(i, 3)
 					while (i <= max(set)) & (i in x) do 
 						excl(x, i)
 						inc(i) 
 					end 
-					AppendInt(i - 1) 
+					AppendInt(i - 1,len_,str) 
 				end 
 				if x # {} then
-					AppendChar(",")
-					AppendChar(" ") 
+					AppendChar(",",len_,str)
+					AppendChar(" ",len_,str) 
 				end  
 			end 
 			inc(i) 
 		end 
-		AppendChar("}")
-		AppendChar(0x)
+		AppendChar("}",len_,str)
+		AppendChar(0x,len_,str)
 	end SetToString
 	
 	proc StringToSet*(in s: array of wchar; var x: set; var res: integer) 
@@ -954,7 +954,7 @@ module Strings
 			next, x1: integer
 			ch: wchar
 		
-		proc NextChar
+		proc NextChar( var next: integer; var ch: wchar; in s: array of wchar )
 		begin 
 			ch := s[next]
 			while (ch <= " ") & (ch # 0x) do 
@@ -966,7 +966,7 @@ module Strings
 			end 
 		end NextChar
 		
-		proc ParseInt(): integer 
+		proc ParseInt(var next, res: integer; var ch: wchar; in s: array of wchar): integer 
 			var 
 				intval: integer
 		begin 
@@ -985,7 +985,7 @@ module Strings
 			return intval
 		end ParseInt
 		
-		proc ParseRange() 
+		proc ParseRange(var next, res: integer; var x: set; x1: integer; var ch: wchar; in s: array of wchar) 
 			var 
 				x2, i: integer
 		begin 
@@ -994,7 +994,7 @@ module Strings
 			if ch = "." then
 				NextChar
 				if ("0" <= ch) & (ch <= "9") then
-					x2 := ParseInt()
+					x2 := ParseInt(next,res,ch,s)
 					if res = 0 then
 						if x2 >= x1 then
 							for i:= x1 to x2 do 
@@ -1020,9 +1020,9 @@ module Strings
 		if ch = "{" then
 			NextChar
 			while ("0" <= ch) & (ch <= "9") & (res # 2) do 
-				x1 := ParseInt()
+				x1 := ParseInt(next,res,ch,s)
 				if ch = "." then
-					ParseRange() 
+					ParseRange(next,res,x,x1,ch,s) 
 				elsif res = 0 then 
 					incl(x, x1) 
 				end 

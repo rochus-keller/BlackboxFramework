@@ -85,7 +85,7 @@ module HostMechanisms
 		var 
 			u, s, w, h, mx, my, l0, t0, r0, b0: integer
 		
-		proc PaintHandle(x, y: integer; l, t, r, b: boolean) 
+		proc PaintHandle(x, y: integer; l, t, r, b: boolean; u, s: integer; f: Views.Frame) 
 		begin 
 			if l then
 				f.DrawRect(x - u, y, x, y + s, Ports.fill, Ports.background) 
@@ -120,19 +120,19 @@ module HostMechanisms
 		f.MarkRect(l - s, t - s, l, b + s, Ports.fill, HostPorts.focusPat, Ports.show)
 		f.MarkRect(r, t - s, r + s, b + s, Ports.fill, HostPorts.focusPat, Ports.show)
 		if ~Fixed(f, focus) then
-			PaintHandle(l - s, t - s, false, false, true, true)
-			PaintHandle(r, t - s, true, false, false, true)
-			PaintHandle(l - s, b, false, true, true, false)
-			PaintHandle(r, b, true, true, false, false)
+			PaintHandle(l - s, t - s, false, false, true, true, u, s, f)
+			PaintHandle(r, t - s, true, false, false, true, u, s, f)
+			PaintHandle(l - s, b, false, true, true, false, u, s, f)
+			PaintHandle(r, b, true, true, false, false, u, s, f)
 			if w > 2 * clipMiddleHandle then
 				mx := (l + r - s) div 2
-				PaintHandle(mx, t - s, true, false, true, false)
-				PaintHandle(mx, b, true, false, true, false) 
+				PaintHandle(mx, t - s, true, false, true, false, u, s, f)
+				PaintHandle(mx, b, true, false, true, false, u, s, f) 
 			end 
 			if h > 2 * clipMiddleHandle then
 				my := (t + b - s) div 2
-				PaintHandle(l - s, my, false, true, false, true)
-				PaintHandle(r, my, false, true, false, true) 
+				PaintHandle(l - s, my, false, true, false, true, u, s, f)
+				PaintHandle(r, my, false, true, false, true, u, s, f) 
 			end  
 		end 
 		f.DrawRect(l - u, t - u, r + u, b + u, u, Ports.defaultColor)
@@ -144,7 +144,7 @@ module HostMechanisms
 		var 
 			s, u, w, h, mx, my, cursor: integer
 		
-		proc CheckHandle(x0, y0: integer; c: integer) 
+		proc CheckHandle(x0, y0: integer; c: integer; x,y,u,s: integer; var cursor: integer) 
 		begin 
 			if (x >= x0 - u) & (x <= x0 + s) & (y >= y0 - u) & (y <= y0 + s) then
 				cursor := c 
@@ -162,19 +162,19 @@ module HostMechanisms
 		w := r - l
 		h := b - t
 		if ~Fixed(f, view) then
-			CheckHandle(l - s, t - s, HostPorts.resizeLCursor)
-			CheckHandle(r, t - s, HostPorts.resizeRCursor)
-			CheckHandle(l - s, b, HostPorts.resizeRCursor)
-			CheckHandle(r, b, HostPorts.resizeLCursor)
+			CheckHandle(l - s, t - s, HostPorts.resizeLCursor, x,y,u,s, cursor )
+			CheckHandle(r, t - s, HostPorts.resizeRCursor, x,y,u,s, cursor )
+			CheckHandle(l - s, b, HostPorts.resizeRCursor, x,y,u,s, cursor )
+			CheckHandle(r, b, HostPorts.resizeLCursor, x,y,u,s, cursor )
 			if w > 2 * clipMiddleHandle then
 				mx := (l + r - s) div 2
-				CheckHandle(mx, t - s, HostPorts.resizeVCursor)
-				CheckHandle(mx, b, HostPorts.resizeVCursor) 
+				CheckHandle(mx, t - s, HostPorts.resizeVCursor, x,y,u,s, cursor )
+				CheckHandle(mx, b, HostPorts.resizeVCursor, x,y,u,s, cursor ) 
 			end 
 			if h > 2 * clipMiddleHandle then
 				my := (t + b - s) div 2
-				CheckHandle(l - s, my, HostPorts.resizeHCursor)
-				CheckHandle(r, my, HostPorts.resizeHCursor) 
+				CheckHandle(l - s, my, HostPorts.resizeHCursor, x,y,u,s, cursor )
+				CheckHandle(r, my, HostPorts.resizeHCursor, x,y,u,s, cursor ) 
 			end  
 		end 
 		return cursor
@@ -228,7 +228,7 @@ module HostMechanisms
 			u, d, w, h, mx, my, l0, t0, r0, b0: integer
 			sizeable: boolean
 		
-		proc PaintHandle(x, y: integer) 
+		proc PaintHandle(x, y, d, u: integer; sizeable : boolean; f: Views.Frame) 
 			var 
 				s: integer
 				ci, co: Ports.Color
@@ -271,22 +271,22 @@ module HostMechanisms
 		f.DrawRect(l, t, r + u, b + u, u, HostPorts.selBackground)
 		if f.front then
 			if (w > clipMiddleHandle) & (h > clipMiddleHandle) then
-				PaintHandle(l, t)
-				PaintHandle(r, t)
-				PaintHandle(l, b)
-				PaintHandle(r, b)
+				PaintHandle(l, t, d, u, sizeable, f)
+				PaintHandle(r, t, d, u, sizeable, f)
+				PaintHandle(l, b, d, u, sizeable, f)
+				PaintHandle(r, b, d, u, sizeable, f)
 				if w > 2 * clipMiddleHandle then
 					mx := (l + r) div 2
-					PaintHandle(mx, t)
-					PaintHandle(mx, b) 
+					PaintHandle(mx, t, d, u, sizeable, f)
+					PaintHandle(mx, b, d, u, sizeable, f) 
 				end 
 				if h > 2 * clipMiddleHandle then
 					my := (t + b) div 2
-					PaintHandle(l, my)
-					PaintHandle(r, my) 
+					PaintHandle(l, my, d, u, sizeable, f)
+					PaintHandle(r, my, d, u, sizeable, f) 
 				end  
 			elsif sizeable then 
-				PaintHandle(r, b) 
+				PaintHandle(r, b, d, u, sizeable, f) 
 			end  
 		end 
 		f.rider.SetRect(l0, t0, r0, b0)
@@ -297,7 +297,7 @@ module HostMechanisms
 		var 
 			d, u, w, h, mx, my, cursor: integer
 		
-		proc CheckHandle(x0, y0: integer; c: integer) 
+		proc CheckHandle(x0, y0: integer; c: integer; x,y,d: integer; var cursor: integer) 
 		begin 
 			if (x >= x0 - d) & (x <= x0 + d) & (y >= y0 - d) & (y <= y0 + d) then
 				cursor := c 
@@ -318,22 +318,22 @@ module HostMechanisms
 			dec(l, u)
 			dec(t, u)
 			if (w > clipMiddleHandle) & (h > clipMiddleHandle) then
-				CheckHandle(l, t, HostPorts.resizeLCursor)
-				CheckHandle(r, t, HostPorts.resizeRCursor)
-				CheckHandle(l, b, HostPorts.resizeRCursor)
-				CheckHandle(r, b, HostPorts.resizeLCursor)
+				CheckHandle(l, t, HostPorts.resizeLCursor,x,y,d,cursor)
+				CheckHandle(r, t, HostPorts.resizeRCursor,x,y,d,cursor)
+				CheckHandle(l, b, HostPorts.resizeRCursor,x,y,d,cursor)
+				CheckHandle(r, b, HostPorts.resizeLCursor,x,y,d,cursor)
 				if w > 2 * clipMiddleHandle then
 					mx := (l + r) div 2
-					CheckHandle(mx, t, HostPorts.resizeVCursor)
-					CheckHandle(mx, b, HostPorts.resizeVCursor) 
+					CheckHandle(mx, t, HostPorts.resizeVCursor,x,y,d,cursor)
+					CheckHandle(mx, b, HostPorts.resizeVCursor,x,y,d,cursor) 
 				end 
 				if h > 2 * clipMiddleHandle then
 					my := (t + b) div 2
-					CheckHandle(l, my, HostPorts.resizeHCursor)
-					CheckHandle(r, my, HostPorts.resizeHCursor) 
+					CheckHandle(l, my, HostPorts.resizeHCursor,x,y,d,cursor)
+					CheckHandle(r, my, HostPorts.resizeHCursor,x,y,d,cursor) 
 				end  
 			else 
-				CheckHandle(r, b, HostPorts.resizeLCursor) 
+				CheckHandle(r, b, HostPorts.resizeLCursor,x,y,d,cursor) 
 			end  
 		end 
 		return cursor

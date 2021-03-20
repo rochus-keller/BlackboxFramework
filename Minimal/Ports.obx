@@ -254,7 +254,7 @@ module Ports
 	
 	proc (f: Frame) DrawPath*(in p: array of Point; n, s: integer; col: Color; path: integer)  // new
 		
-		proc Draw(p: array of Point) 
+		proc Draw(p: array of Point; f: Frame; n, s: integer; col: Color; path: integer) 
 			var 
 				i, u: integer
 		begin 
@@ -274,7 +274,7 @@ module Ports
 		assert(n <= len(p), 21)
 		assert((s # fill) or (path = closedPoly) or (path = closedBezier), 22)
 		assert(s >= fill, 23)
-		Draw(p)
+		Draw(p,f,n,s,col,path)
 	end DrawPath
 	
 	proc (f: Frame) MarkRect*(l, t, r, b, s: integer; mode: integer; show: boolean)  // new

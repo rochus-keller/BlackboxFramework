@@ -290,7 +290,7 @@ module Dialog
 			b: byte
 			p, q: StringPtr
 		
-		proc ReadInt(var x: integer) 
+		proc ReadInt(in_: Files.Reader; var x: integer) 
 			var 
 				b: byte
 		begin 
@@ -304,7 +304,7 @@ module Dialog
 			x := x + b * 1000000h
 		end ReadInt
 		
-		proc ReadHead(var next, down, end_: integer) 
+		proc ReadHead(in_: Files.Reader; var next, down, end_: integer) 
 			var 
 				b, t: byte
 				n: integer
@@ -313,23 +313,23 @@ module Dialog
 			repeat 
 				in_.ReadByte(t)
 				if t = -14 then
-					ReadInt(n) 
+					ReadInt(in_,n) 
 				else 
 					repeat 
 						in_.ReadByte(b) 
 					until b = 0  
 				end  
 			until t # -15 
-			ReadInt(n)
-			ReadInt(next)
+			ReadInt(in_,n)
+			ReadInt(in_,next)
 			next := next + in_.Pos()
-			ReadInt(down)
+			ReadInt(in_,down)
 			down := down + in_.Pos()
-			ReadInt(end_)
+			ReadInt(in_,end_)
 			end_ := end_ + in_.Pos()
 		end ReadHead
 		
-		proc CheckDuplicateKeys
+		proc CheckDuplicateKeys(n:integer;var tab: StringTab;subsys: Files.Name)
 			var 
 				i: integer
 		begin 
@@ -348,20 +348,20 @@ module Dialog
 			in1 := f.NewReader(nil)
 			if (in_ # nil) & (in1 # nil) then
 				in_.SetPos(8) // document view
-				ReadHead(next, down, end_)
+				ReadHead(in_,next, down, end_)
 				in_.SetPos(down) // document model
-				ReadHead(next, down, end_)
+				ReadHead(in_,next, down, end_)
 				in_.SetPos(down) // text view
-				ReadHead(next, down, end_)
+				ReadHead(in_,next, down, end_)
 				in_.SetPos(down) // text model
-				ReadHead(next, down, end_)
+				ReadHead(in_,next, down, end_)
 				in_.ReadByte(b) // versions
 				in_.ReadByte(b)
 				in_.ReadByte(b)
 				in_.ReadByte(b)
 				in_.ReadByte(b)
 				in_.ReadByte(b)
-				ReadInt(x) // text offset
+				ReadInt(in_,x) // text offset
 				in1.SetPos(in_.Pos() + x)
 				next := down
 				new(tab)
@@ -373,10 +373,10 @@ module Dialog
 				in_.ReadByte(b)
 				while b # -1 do 
 					if next = in_.Pos() then // skip attributes
-						ReadHead(next, down, end_)
+						ReadHead(in_,next, down, end_)
 						in_.SetPos(end_) 
 					end 
-					ReadInt(len_)
+					ReadInt(in_,len_)
 					if len_ > 0 then // shortchar run
 						while len_ > 0 do 
 							in1.ReadByte(b)
@@ -421,12 +421,12 @@ module Dialog
 							inc(len_, 2) 
 						end  
 					else  // view
-						ReadInt(x) // ignore
-						ReadInt(x)
+						ReadInt(in_,x) // ignore
+						ReadInt(in_,x)
 						in1.ReadByte(b) 
 					end 
 					if next = in_.Pos() then // skip view data
-						ReadHead(next, down, end_)
+						ReadHead(in_,next, down, end_)
 						in_.SetPos(end_) 
 					end 
 					in_.ReadByte(b) 

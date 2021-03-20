@@ -1397,7 +1397,7 @@ module HostMenus
 			i, l, t, r, b, res: integer
 			ok: boolean
 		
-		proc CopyName
+		proc CopyName(in line: carray of wchar; var i: integer; var name, opt: array 260 of wchar )
 			var 
 				ch, tch: wchar
 				j: integer

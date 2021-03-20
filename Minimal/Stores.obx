@@ -627,7 +627,7 @@ module Stores
 			i: integer
 			kind: char
 		
-		proc ReadUtf8(var x: array of wchar) 
+		proc ReadUtf8(var x: array of wchar; var rd: Reader; var h: TypeDict; var extId: integer) 
 			var 
 				utf8: Kernel.Utf8Name
 				res: integer
@@ -637,7 +637,7 @@ module Stores
 			assert(res = 0)
 		end ReadUtf8
 		
-		proc AddPathComp(var rd: Reader) 
+		proc AddPathComp(var rd: Reader; var h: TypeDict; var extId:integer; in path: TypePath; i:integer) 
 		begin 
 			if h # nil then
 				AddBaseId(h, extId, rd.nextTypeId) 
@@ -652,8 +652,8 @@ module Stores
 		i := 0
 		rd.ReadSChar(kind)
 		while kind = newExt do 
-			ReadUtf8(path[i])
-			AddPathComp(rd)
+			ReadUtf8(path[i],rd,h,extId)
+			AddPathComp(rd,h,extId,path,i)
 			inc(rd.nextTypeId)
 			if path[i] # elemTName then
 				inc(i) 
@@ -661,8 +661,8 @@ module Stores
 			rd.ReadSChar(kind) 
 		end 
 		if kind = newBase then
-			ReadUtf8(path[i])
-			AddPathComp(rd)
+			ReadUtf8(path[i],rd,h,extId)
+			AddPathComp(rd,h,extId,path,i)
 			inc(rd.nextTypeId)
 			inc(i) 
 		else 
@@ -688,7 +688,7 @@ module Stores
 			id, extId: integer
 			i, n: integer
 		
-		proc WriteUtf8(in x: array of wchar) 
+		proc WriteUtf8(in x: array of wchar; in wr: Writer) 
 			var 
 				utf8: Kernel.Utf8Name
 				res: integer
@@ -720,7 +720,7 @@ module Stores
 				else 
 					wr.WriteSChar(newBase) 
 				end 
-				WriteUtf8(path[i])
+				WriteUtf8(path[i],wr)
 				if h # nil then
 					AddBaseId(h, extId, wr.nextTypeId) 
 				end 
@@ -733,7 +733,7 @@ module Stores
 					assert(id < 0, 100)
 					assert(i + 2 = n, 101)
 					wr.WriteSChar(newExt)
-					WriteUtf8(elemTName)
+					WriteUtf8(elemTName,wr)
 					if h # nil then
 						AddBaseId(h, extId, wr.nextTypeId) 
 					end 

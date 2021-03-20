@@ -326,7 +326,9 @@ module HostRegistry
 			val_: array 256 of wchar
 			res: integer
 		
-		proc InheritRegEntry(in key: array of wchar) 
+		proc InheritRegEntry(in key: array of wchar;
+			appName, dbgName: array of wchar; var val_: array of wchar) 
+			var res: integer
 		begin 
 			Dialog.appName := appName
 			ReadString(key, val_, res)
@@ -339,13 +341,13 @@ module HostRegistry
 	begin 
 		ReadString("MainWindow", val_, res)
 		if res # 0 then // no registry keys for debugger
-			InheritRegEntry("MainWindow")
-			InheritRegEntry("language")
-			InheritRegEntry("DefFontName")
-			InheritRegEntry("DefFontSize")
-			InheritRegEntry("DlgFontName")
-			InheritRegEntry("DlgFontSize")
-			InheritRegEntry("DlgFontStyle") 
+			InheritRegEntry("MainWindow", appName, dbgName, val_)
+			InheritRegEntry("language", appName, dbgName, val_)
+			InheritRegEntry("DefFontName", appName, dbgName, val_)
+			InheritRegEntry("DefFontSize", appName, dbgName, val_)
+			InheritRegEntry("DlgFontName", appName, dbgName, val_)
+			InheritRegEntry("DlgFontSize", appName, dbgName, val_)
+			InheritRegEntry("DlgFontStyle", appName, dbgName, val_) 
 		end 
 	end SetDbgRegistry
 	
