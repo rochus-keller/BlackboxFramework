@@ -1,4 +1,4 @@
-module HostWindows
+module Windows
 	(* project	= "BlackBox"
 	   organization	= "www.oberon.ch"
 	   contributors	= "Oberon microsystems, Alexander Iljin, Josef Templ"
@@ -34,10 +34,11 @@ module HostWindows
 	
 	
 	import Log, 
-		SYSTEM, WinApi, Services, 
-		Kernel, Meta, Files, HostFiles, Ports, HostRegistry, HostPorts, Properties, 
+		SYSTEM, WinApi := Win.Api, Services, 
+		Kernel, Meta, Files, HostFiles := Host.Files, Ports,  
+		HostRegistry := Host.Registry, HostPorts := Host.Ports, Properties, 
 		Views, Controllers, Containers, Dialog, Converters, Documents, Windows, 
-		HostMechanisms // don't remove
+		HostMechanisms := Host.Mechanisms // don't remove
 	
 	const 
 		inPlace* = 31 // flag for in place windows
@@ -2642,4 +2643,4 @@ module HostWindows
 
 begin
 	Init
-end HostWindows
+end Windows

@@ -1,4 +1,4 @@
-module HostMenus
+module Menus
 	(* project	= "BlackBox"
 	   organization	= "www.oberon.ch"
 	   contributors	= "Oberon microsystems, Alexander Iljin, Josef Templ"
@@ -27,12 +27,15 @@ module HostMenus
 	
 	
 	
-	import SYSTEM, WinApi, Kernel, Log, Services, 
+	import SYSTEM, WinApi := Win.Api, Kernel, Log, Services, 
 		Fonts, Files, Strings, Ports, Stores, Properties, Printers, Dialog, 
 		Models, Views, Controllers, Containers, Converters, 
 		Documents, Windows, Controls, 
-		StdDialog, StdInterpreter, StdCmds, HostFonts, HostPorts, 
-		HostFiles, HostWindows, HostDialog, HostClipboard, HostCmds, HostCFrames
+		StdDialog := Std.Dialog, StdInterpreter := Std.Interpreter, 
+		StdCmds := Std.Cmds, HostFonts := Host.Fonts, HostPorts := Host.Ports, 
+		HostFiles := Host.Files, HostWindows := Host.Windows,  
+		HostDialog := Host.Dialog, HostClipboard := Host.Clipboard, 
+		HostCmds := Host.Cmds, HostCFrames := Host.CFrames
 	
 	const 
 		debug = false
@@ -1984,4 +1987,4 @@ begin
 (* CLOSE
 	Kernel.RemoveCleaner(Collect)
 	DestroyMenus *) 
-end HostMenus
+end Menus

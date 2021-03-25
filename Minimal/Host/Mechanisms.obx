@@ -1,4 +1,4 @@
-module HostMechanisms
+module Mechanisms
 	(* project	= "BlackBox"
 	   organization	= "www.oberon.ch"
 	   contributors	= "Oberon microsystems"
@@ -19,10 +19,10 @@ module HostMechanisms
 	
 	
 	import COM, 
-		WinApi, WinOle, OleData, 
+		WinApi := Win.Api, WinOle := Win.Ole, OleData, 
 		Services, Ports, Stores, Views, Controllers, Properties, 
 		Dialog, Mechanisms, Containers, Documents, Windows, 
-		HostPorts
+		HostPorts := Host.Ports
 	
 	
 	const 
@@ -997,4 +997,4 @@ module HostMechanisms
 
 begin
 	Init
-end HostMechanisms
+end Mechanisms

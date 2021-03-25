@@ -1,4 +1,4 @@
-module HostFiles
+module Files
 	(* project	= "BlackBox"
 	   organization	= "www.oberon.ch"
 	   contributors	= "Oberon microsystems"
@@ -23,7 +23,7 @@ module HostFiles
 	
 	
 	
-	import SYSTEM, WinApi, Files, Kernel
+	import SYSTEM, WinApi := Win.Api, Files, Kernel
 	
 	const 
 		tempName = "odcxxxxx.tmp"
@@ -1820,4 +1820,4 @@ module HostFiles
 
 begin
 	Init
-end HostFiles
+end Files

@@ -1,4 +1,4 @@
-module HostCmds
+module Cmds
 	(* project	= "BlackBox"
 	   organization	= "www.oberon.ch"
 	   contributors	= "Oberon microsystems"
@@ -21,8 +21,9 @@ module HostCmds
 		Kernel, Ports, Printers, Files, 
 		Stores, Views, Controllers, Dialog, Printing, 
 		Converters, Sequencers, Documents, Windows, 
-		StdDialog, StdCmds, 
-		HostFiles, HostWindows, HostDialog, HostClipboard
+		StdDialog := Std.Dialog, StdCmds := Std.Cmds, 
+		HostFiles := Host.Files, HostWindows := Host.Windows,  
+		HostDialog := Host.Dialog, HostClipboard := Host.Clipboard
 	
 	const 
 		// hints
@@ -599,4 +600,4 @@ module HostCmds
 
 begin
 	quit := false
-end HostCmds
+end Cmds

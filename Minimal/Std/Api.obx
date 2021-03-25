@@ -1,4 +1,4 @@
-module StdApi
+module Api
 	(* project	= "BlackBox"
 	   organization	= "www.oberon.ch"
 	   contributors	= "Oberon microsystems"
@@ -25,7 +25,7 @@ module StdApi
 	
 	import 
 		Kernel, Views, Files, Dialog, Converters, Windows, Sequencers, Stores, Meta, 
-		Containers, StdDialog, Documents, Strings
+		Containers, StdDialog := Std.Dialog, Documents, Strings
 	
 	var 
 		modeHook*: proc (c: Containers.Controller) // for setting nested forms to the container's mode
@@ -387,4 +387,4 @@ module StdApi
 		end 
 	end OpenToolDialog
 
-end StdApi
+end Api

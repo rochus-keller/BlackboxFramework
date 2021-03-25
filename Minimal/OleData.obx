@@ -3,7 +3,7 @@
 
 definition OleData
 
-	import WinOle, Stores, Views, Dialog
+	import WinOle := Win.Ole, Stores, Views, Dialog
 	
 	
 	proc GetDataType(_0: WinOle.IDataObject; _1: Stores.TypeName; _2: integer; _3: integer; _4: integer; _5: integer; _6: boolean)

@@ -1,4 +1,4 @@
-module HostDialog
+module Dialog
 	(* project	= "BlackBox"
 	   organization	= "www.oberon.ch"
 	   contributors	= "Oberon microsystems"
@@ -27,12 +27,13 @@ module HostDialog
 	
 	
 	import 
-		WinApi, WinDlg, SYSTEM, 
+		WinApi := Win.Api, WinDlg := Win.Dlg, SYSTEM, 
 		Kernel, Strings, Dates, Fonts, Ports, Files, Stores, Views, Controllers, Properties, 
 		Printers, Dialog, Windows, Converters, Services, 
-		HostFonts, HostFiles, HostRegistry, HostPorts, HostWindows, HostPrinters, 
-		StdCmds, 
-		HostCFrames // don't remove
+		HostFonts := Host.Fonts, HostFiles := Host.Files, HostRegistry := Host.Registry, 
+		HostPorts := Host.Ports, HostWindows := Host.Windows,  
+		HostPrinters := Host.Printers, StdCmds := Std.Cmds, 
+		HostCFrames := Host.CFrames // don't remove
 	
 	
 	const 
@@ -1635,4 +1636,4 @@ module HostDialog
 begin
 	Init
 	InitDialogs
-end HostDialog
+end Dialog

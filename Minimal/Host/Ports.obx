@@ -1,4 +1,4 @@
-module HostPorts
+module Ports
 	(* project	= "BlackBox"
 	   organization	= "www.oberon.ch"
 	   contributors	= "Oberon microsystems, Marco Ciot, Alexander Iljin"
@@ -29,7 +29,8 @@ module HostPorts
 	
 	
 	import 
-		SYSTEM, WinApi, Kernel, Fonts, Ports, Dialog, Services, HostFonts
+		SYSTEM, WinApi := Win.Api, Kernel, Fonts, Ports, Dialog, Services, 
+		HostFonts := Host.Fonts
 	
 	const 
 		resizeHCursor* = 16
@@ -1528,4 +1529,4 @@ module HostPorts
 
 begin
 	Init
-end HostPorts
+end Ports

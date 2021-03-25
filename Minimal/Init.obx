@@ -17,7 +17,7 @@ module Init
 	
 	
 	
-	import Kernel, Dialog, Converters, HostMenus
+	import Kernel, Dialog, Converters, HostMenus := Host.Menus
 	
 	proc Init
 		var 

@@ -1,4 +1,4 @@
-module StdDialog
+module Dialog
 	(* project	= "BlackBox"
 	   organization	= "www.oberon.ch"
 	   contributors	= "Oberon microsystems"
@@ -415,4 +415,4 @@ module StdDialog
 
 begin
 	Init
-end StdDialog
+end Dialog

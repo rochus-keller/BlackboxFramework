@@ -1,4 +1,4 @@
-module HostPrinters
+module Printers
 	(* project	= "BlackBox"
 	   organization	= "www.oberon.ch"
 	   contributors	= "Oberon microsystems, Josef Templ"
@@ -21,9 +21,10 @@ module HostPrinters
 	
 	
 	import 
-		SYSTEM, WinApi, WinDlg, 
-		Kernel, Files, Dialog, Ports, HostPorts, Stores, Models, Views, Controllers, 
-		Properties, Printers, Printing, Documents, Windows, HostWindows
+		SYSTEM, WinApi := Win.Api, WinDlg := Win.Dlg, 
+		Kernel, Files, Dialog, Ports, HostPorts := Host.Ports, 
+		Stores, Models, Views, Controllers, 
+		Properties, Printers, Printing, Documents, Windows, HostWindows := Host.Windows
 	
 	const 
 		eduMsgH = 30 * Ports.point
@@ -441,4 +442,4 @@ module HostPrinters
 
 begin
 	Init
-end HostPrinters
+end Printers

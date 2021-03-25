@@ -1,4 +1,4 @@
-module StdCmds
+module Cmds
 	(* project	= "BlackBox"
 	   organization	= "www.oberon.ch"
 	   contributors	= "Oberon microsystems"
@@ -20,7 +20,7 @@ module StdCmds
 	import 
 		Fonts, Ports, Services, Stores, Sequencers, Models, Views, 
 		Controllers, Containers, Properties, Dialog, Documents, Windows, Strings, 
-		StdDialog, StdApi
+		StdDialog := Std.Dialog, StdApi := Std.Api
 	
 	const 
 		illegalSizeKey = "#System:IllegalFontSize"
@@ -1308,4 +1308,4 @@ module StdCmds
 
 begin
 	Init
-end StdCmds
+end Cmds

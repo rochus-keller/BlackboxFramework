@@ -21,7 +21,7 @@ module Controls
 	
 	import 
 		Kernel, Dates, Dialog, Meta, Services, Stores, Views, Properties, 
-		Strings, Fonts, Ports, Controllers, Windows, StdCFrames
+		Strings, Fonts, Ports, Controllers, Windows, StdCFrames := Std.CFrames
 	
 	const 
 		// elements of Property.valid

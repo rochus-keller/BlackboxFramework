@@ -1,4 +1,4 @@
-module StdCFrames
+module CFrames
 	(* project	= "BlackBox"
 	   organization	= "www.oberon.ch"
 	   contributors	= "Oberon microsystems"
@@ -266,4 +266,4 @@ module StdCFrames
 
 begin
 	setFocus := false
-end StdCFrames
+end CFrames

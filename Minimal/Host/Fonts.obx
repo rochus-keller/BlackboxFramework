@@ -1,4 +1,4 @@
-module HostFonts
+module Fonts
 	(* project	= "BlackBox"
 	   organization	= "www.oberon.ch"
 	   contributors	= "Oberon microsystems"
@@ -21,7 +21,7 @@ module HostFonts
 	
 	
 	
-	import SYSTEM, WinApi, Kernel, Fonts, HostRegistry
+	import SYSTEM, WinApi := Win.Api, Kernel, Fonts, HostRegistry := Host.Registry
 	
 	const 
 		defSize = 10 * Fonts.point // size of default font
@@ -740,4 +740,4 @@ module HostFonts
 
 begin
 	Init
-end HostFonts
+end Fonts

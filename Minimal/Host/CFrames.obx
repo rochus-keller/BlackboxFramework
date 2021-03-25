@@ -1,4 +1,4 @@
-module HostCFrames
+module CFrames
 	(* project	= "BlackBox"
 	   organization	= "www.oberon.ch"
 	   contributors	= "Oberon microsystems"
@@ -26,9 +26,11 @@ module HostCFrames
 	// ColorField, DateField, TimeField, UpDownField
 	
 	import 
-		SYSTEM, WinApi, WinCtl, 
+		SYSTEM, WinApi := Win.Api, WinCtl := Win.Ctl, 
 		Kernel, Strings, Dates, Fonts, Ports, Views, 
-		Controllers, Dialog, HostFonts, HostRegistry, HostPorts, HostWindows, StdCFrames
+		Controllers, Dialog, HostFonts := Host.Fonts, HostRegistry := Host.Registry, 
+		HostPorts := Host.Ports, HostWindows := Host.Windows, 
+		StdCFrames := Std.CFrames
 	
 	const 
 		ENTER = 0dx
@@ -4640,4 +4642,4 @@ module HostCFrames
 
 begin
 	Init
-end HostCFrames
+end CFrames

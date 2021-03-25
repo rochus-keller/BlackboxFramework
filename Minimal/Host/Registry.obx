@@ -1,4 +1,4 @@
-module HostRegistry
+module Registry
 	(* project	= "BlackBox"
 	   organization	= "www.oberon.ch"
 	   contributors	= "Oberon microsystems"
@@ -21,7 +21,7 @@ module HostRegistry
 	
 	
 	
-	import WinApi, Files, HostFiles, Dialog, Strings
+	import WinApi := Win.Api, Files, HostFiles := Host.Files, Dialog, Strings
 	
 	var 
 		localeId*: integer
@@ -389,4 +389,4 @@ module HostRegistry
 
 begin
 	Init
-end HostRegistry
+end Registry

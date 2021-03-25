@@ -1,4 +1,4 @@
-module StdInterpreter
+module Interpreter
 	(* project	= "BlackBox"
 	   organization	= "www.oberon.ch"
 	   contributors	= "Oberon microsystems"
@@ -375,4 +375,4 @@ module StdInterpreter
 
 begin
 	Init
-end StdInterpreter
+end Interpreter
