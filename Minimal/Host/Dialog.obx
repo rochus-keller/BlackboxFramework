@@ -1333,16 +1333,7 @@ module Dialog
 		if hook.isWine then
 			return true 
 		else 
-			// http://habrahabr.ru/blogs/development/76131/
-			h := WinApi.LoadLibraryW("ntdll.dll")
-			if h # WinApi.NULL then
-				adr := WinApi.GetProcAddress(h, "wine_get_version")
-				res := WinApi.FreeLibrary(h)
-				if adr # nil then
-					hook.isWine := true
-					return true 
-				end  
-			end 
+			// RK: removed Wine detection
 			Dialog.SetWineHook(nil) // ~Dialog.IsWine()
 			return false 
 		end 

@@ -10,6 +10,6 @@ The original Blackbox framework source files are licensed under a BSD 2-clause l
 
 Here is a screenshot of the current state of the Oberon+ IDE with the Windows Blackbox framework loaded:
 
-![Oberon+ IDE Screenshot](http://software.rochus-keller.info/screenshot_obx_ide_0.3.png)
+![Oberon+ IDE Screenshot](http://software.rochus-keller.ch/screenshot_obx_ide_0.3.png)
 
 The ~96 kLOC (physical code lines, no whitespace or comment only lines) require less than two seconds to parse and validate on my HP EliteBook 2530p. See https://github.com/rochus-keller/Oberon for more information.
