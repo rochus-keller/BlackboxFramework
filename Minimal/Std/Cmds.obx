@@ -592,7 +592,7 @@ module Cmds
 			doc: Documents.Document
 			v: Views.View
 			title: Views.Title
-			seq: ANYPTR
+			seq: ^anyrec
 			clean: boolean
 	begin 
 		win := Windows.dir.Focus(Controllers.frontPath)

@@ -65,7 +65,7 @@ module Stores
 		OpName* = array 32 of wchar
 		
 		Domain* = pointer to (* limited *) record 
-				sequencer: ANYPTR
+				sequencer: ^anyrec
 				dlink: Domain
 				initialized, copyDomain: boolean
 				level, copyera, nextElemId: integer
@@ -169,13 +169,13 @@ module Stores
 		c.d.s := nil
 	end Cleanup
 	
-	proc (d: Domain) SetSequencer*(sequencer: ANYPTR)  // new
+	proc (d: Domain) SetSequencer*(sequencer: ^anyrec)  // new
 	begin 
 		assert(d.sequencer = nil)
 		d.sequencer := sequencer
 	end SetSequencer
 	
-	proc (d: Domain) GetSequencer*(): ANYPTR  // new
+	proc (d: Domain) GetSequencer*(): ^anyrec  // new
 	begin 
 		return d.sequencer
 	end GetSequencer
@@ -450,7 +450,7 @@ module Stores
 	
 	proc NewStore(t: Kernel.Type): Store 
 		var 
-			p: ANYPTR
+			p: ^anyrec
 	begin 
 		assert(t # nil, 20)
 		Kernel.NewObj(p, t)

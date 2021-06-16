@@ -267,7 +267,7 @@ module Dialog
 			i: integer
 			win: Windows.Window
 			c: Containers.Controller
-			seq: ANYPTR
+			seq: ^anyrec
 	begin 
 		if conv = nil then // use document converter
 			conv := Converters.list 

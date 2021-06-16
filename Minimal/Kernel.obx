@@ -80,7 +80,7 @@ definition Kernel
 				end 
 		Identifier = record 
 					typ: integer
-					obj-: ANYPTR
+					obj-: ^anyrec
 				end 
 		TrapCleaner = pointer to record 
 					next: TrapCleaner
@@ -105,9 +105,9 @@ definition Kernel
 		   trapCount-: integer
 		   mainWnd: integer
 	
-		proc (e: ItemExt) Lookup(name: array of wchar; var i: ANYREC) 
-		proc (e: ItemExt) Index(index: integer; var elem: ANYREC) 
-		proc (e: ItemExt) Deref(var ref: ANYREC) 
+		proc (e: ItemExt) Lookup(name: array of wchar; var i: anyrec) 
+		proc (e: ItemExt) Index(index: integer; var elem: anyrec) 
+		proc (e: ItemExt) Deref(var ref: anyrec) 
 		proc (e: ItemExt) Valid(): boolean 
 		proc (e: ItemExt) Size(): integer 
 		proc (e: ItemExt) BaseTyp(): integer 
@@ -115,8 +115,8 @@ definition Kernel
 		proc (e: ItemExt) Call(var ok: boolean) 
 		proc (e: ItemExt) BoolVal(): boolean 
 		proc (e: ItemExt) PutBoolVal(x: boolean) 
-		proc (e: ItemExt) CharVal(): wchar 
-		proc (e: ItemExt) PutCharVal(x: wchar) 
+		//proc (e: ItemExt) CharVal(): wchar 
+		//proc (e: ItemExt) PutCharVal(x: wchar) 
 		proc (e: ItemExt) IntVal(): integer 
 		proc (e: ItemExt) PutIntVal(x: integer) 
 		proc (e: ItemExt) LongVal(): longint 
@@ -125,10 +125,10 @@ definition Kernel
 		proc (e: ItemExt) PutRealVal(x: longreal) 
 		proc (e: ItemExt) SetVal(): set 
 		proc (e: ItemExt) PutSetVal(x: set) 
-		proc (e: ItemExt) PtrVal(): ANYPTR 
-		proc (e: ItemExt) PutPtrVal(x: ANYPTR) 
-		proc (e: ItemExt) GetSStringVal(var x: array of char; var ok: boolean) 
-		proc (e: ItemExt) PutSStringVal(in x: array of char; var ok: boolean) 
+		//proc (e: ItemExt) PtrVal(): ^anyrec 
+		//proc (e: ItemExt) PutPtrVal(x: ^anyrec) 
+		//proc (e: ItemExt) GetSStringVal(var x: array of char; var ok: boolean) 
+		//proc (e: ItemExt) PutSStringVal(in x: array of char; var ok: boolean) 
 		proc (e: ItemExt) GetStringVal(var x: array of wchar; var ok: boolean) 
 		proc (e: ItemExt) PutStringVal(in x: array of wchar; var ok: boolean) 
 		proc IsAlpha(ch: wchar): boolean 
@@ -142,7 +142,7 @@ definition Kernel
 		proc MakeFileName(var name: array of wchar; type_: array of wchar) 
 		proc Time(): longint 
 		proc Beep 
-		proc ThisFinObj(var id: Identifier): ANYPTR 
+		proc ThisFinObj(var id: Identifier): ^anyrec 
 		proc InstallReducer(r: Reducer) 
 		proc InstallTrapChecker(h: Handler) 
 		proc PushTrapCleaner(c: TrapCleaner) 
@@ -156,11 +156,11 @@ definition Kernel
 		proc ThisObject(mod_: Module; in name: array of wchar): Object 
 		proc ThisField(rec: Type; in name: array of wchar): Object 
 		proc ThisType(mod_: Module; in name: array of wchar): Type 
-		proc TypeOf(in rec: ANYREC): Type 
+		proc TypeOf(in rec: anyrec): Type 
 		proc LevelOf(t: Type): shortint 
 		proc NewObj(var o: S.PTR; t: Type) 
 		proc GetModName(mod_: Module; var name: Name) 
-		proc GetObjName(mod_: Module; obj: Object; var name: Name) 
+		//proc GetObjName(mod_: Module; obj: Object; var name: Name) 
 		proc GetTypeName(t: Type; var name: Name) 
 		proc Call(adr: integer; sig: Signature; in par: array of integer; n: integer): longint 
 		proc Collect 

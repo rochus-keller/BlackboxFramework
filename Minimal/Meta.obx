@@ -143,7 +143,7 @@ module Meta
 	
 	
 	
-	proc DescOf(in x: ANYREC): Kernel.Type 
+	proc DescOf(in x: anyrec): Kernel.Type 
 	begin 
 		return SYSTEM.VAL(Kernel.Type, SYSTEM.TYP(x))
 	end DescOf
@@ -273,6 +273,7 @@ module Meta
 		return TypOf(i.desc.base[0])
 	end BaseTyp
 	
+	(* not used
 	proc (in i: Item) Level*(): integer  // new
 	begin 
 		assert(i.ext = nil, 31)
@@ -288,6 +289,7 @@ module Meta
 		assert(i.typ = recTyp, 21)
 		return i.desc.id div 4 mod 4
 	end Attribute
+	*)
 	
 	proc (in i: Item) Size*(): integer  // new
 	begin 
@@ -364,6 +366,7 @@ module Meta
 	end SetMod
 	
 	
+	(* not used
 	proc GetItem*(obj: ANYPTR; var i: Item) 
 	begin 
 		assert(obj # nil, 28)
@@ -376,6 +379,7 @@ module Meta
 		i.desc := Kernel.TypeOf(obj)
 		i.ext := nil
 	end GetItem
+	*)
 	
 	proc Lookup*(in name: array of wchar; var mod_: Item) 
 		var 
@@ -462,6 +466,7 @@ module Meta
 		end 
 	end Lookup
 	
+	(* not used
 	proc (in i: Item) GetBaseType*(var base: Item)  // new
 		var 
 			n: integer
@@ -506,6 +511,7 @@ module Meta
 			SetUndef(base) 
 		end 
 	end GetThisBaseType
+	*)
 	
 	proc (in proc_: Item) NumParam*(): integer  // new
 		var 
@@ -522,6 +528,7 @@ module Meta
 		end 
 	end NumParam
 	
+	(* not used
 	proc (in proc_: Item) GetParam*(n: integer; var par: Item)  // new
 		var 
 			sig: Kernel.Signature
@@ -567,6 +574,7 @@ module Meta
 			name := "" 
 		end 
 	end GetParamName
+	*)
 	
 	proc (in proc_: Item) GetReturnType*(var type_: Item)  // new
 		var 
@@ -730,6 +738,7 @@ module Meta
 	
 	// ---------- Scanner ----------
 	
+	(* not used
 	proc (var s: Scanner) ConnectToMods* // new
 	begin 
 		SetUndef(s.this)
@@ -840,6 +849,7 @@ module Meta
 			name := n 
 		end 
 	end GetObjName
+	*)
 	
 	proc (var s: Scanner) Level*(): integer  // new
 	begin 
@@ -1163,6 +1173,7 @@ module Meta
 		Copy(x, dest, ok)
 	end GetResult
 	
+	(* not used
 	proc (in proc_: Item) ParamCall*(in par: array of Item; var dest: Item
 		var ok: boolean)  // new
 		var 
@@ -1200,6 +1211,7 @@ module Meta
 			end  
 		end 
 	end ParamCall
+	*)
 	
 	proc (in proc_: Item) ParamCallVal*(in par: array of pointer to Value; var dest: Value
 		var ok: boolean)  // new
@@ -1272,6 +1284,7 @@ module Meta
 		end 
 	end GetVal
 	
+	(* not used
 	proc (in var_: Item) PutVal*(in x: Value; var ok: boolean)  // new
 		var 
 			xi: Item
@@ -1291,6 +1304,7 @@ module Meta
 			Copy(xi, var_, ok) 
 		end 
 	end PutVal
+	*)
 	
 	proc (in var_: Item) GetStringVal*(var x: array of wchar; var ok: boolean)  // new
 		var 
@@ -1320,6 +1334,7 @@ module Meta
 		end 
 	end GetStringVal
 	
+	(* not used
 	proc (in var_: Item) GetSStringVal*(var x: array of char; var ok: boolean)  // new
 		var 
 			i, n: integer
@@ -1347,6 +1362,7 @@ module Meta
 			ok := false 
 		end 
 	end GetSStringVal
+	*)
 	
 	proc (in var_: Item) PutStringVal*(in x: array of wchar; var ok: boolean)  // new
 		var 
@@ -1375,6 +1391,7 @@ module Meta
 		end 
 	end PutStringVal
 	
+	(* not used
 	proc (in var_: Item) PutSStringVal*(in x: array of char; var ok: boolean)  // new
 		var 
 			i: integer
@@ -1437,6 +1454,7 @@ module Meta
 		end 
 		SYSTEM.PUT(var_.adr, x)
 	end PutPtrVal
+	*)
 	
 	proc (in var_: Item) IntVal*(): integer  // new
 		var 
@@ -1567,6 +1585,7 @@ module Meta
 		SYSTEM.PUT(var_.adr, x)
 	end PutLongVal
 	
+	(* not used
 	proc (in var_: Item) CharVal*(): wchar  // new
 		var 
 			x: wchar
@@ -1607,6 +1626,7 @@ module Meta
 			halt(21) 
 		end 
 	end PutCharVal
+	*)
 	
 	proc (in var_: Item) BoolVal*(): boolean  // new
 		var 
@@ -1666,6 +1686,7 @@ module Meta
 		SYSTEM.PUT(var_.adr, x)
 	end PutSetVal
 	
+	(* not used
 	proc (in type_: Item) New*(): ANYPTR  // new
 		var 
 			p: ANYPTR
@@ -1718,8 +1739,9 @@ module Meta
 		SYSTEM.MOVE(val_.adr, p, val_.desc.size_)
 		return p
 	end Copy
+	*)
 	
-	proc (in rec: Item) CallWith*(proc_: proc (var rec, par: ANYREC); var par: ANYREC)  // new
+	proc (in rec: Item) CallWith*(proc_: proc (var rec, par: anyrec); var par: anyrec)  // new
 	begin 
 		assert(rec.ext = nil, 31)
 		assert(rec.ptr # nil, 20)
@@ -1729,6 +1751,7 @@ module Meta
 		// TODO proc_(SYSTEM.THISRECORD(rec.adr, SYSTEM.VAL(integer, rec.desc)), par)
 	end CallWith
 	
+	(* not used:
 	
 	proc InstallFilter*(filter: LookupFilter) 
 		var 
@@ -1777,6 +1800,8 @@ module Meta
 			end  
 		end 
 	end GetThisItem
+	
+	*)
 
 begin
 	new(dummy)

@@ -304,7 +304,7 @@ module Windows
 			c: RootContext
 			s: Sequencers.Sequencer
 			f: Views.Frame
-			any: ANYPTR
+			any: ^anyrec
 	begin 
 		assert(w # nil, 20)
 		assert(doc # nil, 21)
@@ -574,7 +574,7 @@ module Windows
 	
 	// StdSequencer
 	
-	proc (s: StdSequencer) Handle(var msg: ANYREC) 
+	proc (s: StdSequencer) Handle(var msg: anyrec) 
 		// send message to all windows attached to s
 		var 
 			w: Window
@@ -1049,7 +1049,7 @@ module Windows
 	end SelectByTitle
 	
 	
-	proc (h: Hook) Omnicast(var msg: ANYREC) 
+	proc (h: Hook) Omnicast(var msg: anyrec) 
 		var 
 			w: Window
 	begin 
@@ -1078,7 +1078,7 @@ module Windows
 	
 	proc (h: Hook) RestoreDomain(d: Stores.Domain) 
 		var 
-			seq: ANYPTR
+			seq: ^anyrec
 	begin 
 		if d = nil then
 			RestoreSequencer(nil) 

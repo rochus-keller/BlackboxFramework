@@ -82,7 +82,7 @@ module Sequencers
 	proc (s: Sequencer) Undo*()  end // new abstract
 	proc (s: Sequencer) Redo*()  end // new abstract
 	
-	proc (s: Sequencer) Handle*(var msg: ANYREC)  end // new empty
+	proc (s: Sequencer) Handle*(var msg: anyrec)  end // new empty
 	
 	proc (s: Sequencer) Notify*(var msg: Message)  // new
 		var 

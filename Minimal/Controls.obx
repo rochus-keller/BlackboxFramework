@@ -2906,7 +2906,7 @@ module Controls
 		end 
 	end SetListBox
 	
-	proc GetFName(var rec, par: ANYREC) 
+	proc GetFName(var rec, par: anyrec) 
 	begin 
 		with par: Param do 
 			with rec: Dialog.List do 
@@ -3035,7 +3035,7 @@ module Controls
 	
 	// SelectionBox
 	
-	proc InLargeSet(var rec, par: ANYREC) 
+	proc InLargeSet(var rec, par: anyrec) 
 	begin 
 		with par: Param do 
 			with rec: Dialog.Selection do 
@@ -3067,7 +3067,7 @@ module Controls
 		end 
 	end GetSelectionBox
 	
-	proc InclLargeSet(var rec, par: ANYREC) 
+	proc InclLargeSet(var rec, par: anyrec) 
 	begin 
 		with par: Param do 
 			with rec: Dialog.Selection do 
@@ -3102,7 +3102,7 @@ module Controls
 		end 
 	end InclSelectionBox
 	
-	proc ExclLargeSet(var rec, par: ANYREC) 
+	proc ExclLargeSet(var rec, par: anyrec) 
 	begin 
 		with par: Param do 
 			with rec: Dialog.Selection do 
@@ -3587,7 +3587,7 @@ module Controls
 		wr.WriteVersion(tfVersion)
 	end Externalize2
 	
-	proc TVNofNodesF(var rec, par: ANYREC) 
+	proc TVNofNodesF(var rec, par: anyrec) 
 	begin 
 		with par: TVParam do 
 			with rec: Dialog.Tree do 
@@ -3611,7 +3611,7 @@ module Controls
 		return par.l
 	end TVNofNodes
 	
-	proc TVChildF(var rec, par: ANYREC) 
+	proc TVChildF(var rec, par: anyrec) 
 	begin 
 		with par: TVParam do 
 			with rec: Dialog.Tree do 
@@ -3636,7 +3636,7 @@ module Controls
 		return par.nodeOut
 	end TVChild
 	
-	proc TVParentF(var rec, par: ANYREC) 
+	proc TVParentF(var rec, par: anyrec) 
 	begin 
 		with par: TVParam do 
 			with rec: Dialog.Tree do 
@@ -3661,7 +3661,7 @@ module Controls
 		return par.nodeOut
 	end TVParent
 	
-	proc TVNextF(var rec, par: ANYREC) 
+	proc TVNextF(var rec, par: anyrec) 
 	begin 
 		with par: TVParam do 
 			with rec: Dialog.Tree do 
@@ -3686,7 +3686,7 @@ module Controls
 		return par.nodeOut
 	end TVNext
 	
-	proc TVSelectF(var rec, par: ANYREC) 
+	proc TVSelectF(var rec, par: anyrec) 
 	begin 
 		with par: TVParam do 
 			with rec: Dialog.Tree do 
@@ -3708,7 +3708,7 @@ module Controls
 		end 
 	end TVSelect
 	
-	proc TVSelectedF(var rec, par: ANYREC) 
+	proc TVSelectedF(var rec, par: anyrec) 
 	begin 
 		with par: TVParam do 
 			with rec: Dialog.Tree do 
@@ -3732,7 +3732,7 @@ module Controls
 		return par.nodeOut
 	end TVSelected
 	
-	proc TVSetExpansionF(var rec, par: ANYREC) 
+	proc TVSetExpansionF(var rec, par: anyrec) 
 	begin 
 		with par: TVParam do 
 			par.nodeIn.SetExpansion(par.e) 

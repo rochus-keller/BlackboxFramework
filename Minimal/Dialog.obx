@@ -125,7 +125,7 @@ module Dialog
 				name: String
 				parent, next, prev, firstChild: TreeNode
 				viewAsFolder, expanded: boolean
-				data: ANYPTR
+				data: ^anyrec
 				tree: integer 
 			end 
 		
@@ -1089,12 +1089,12 @@ module Dialog
 		name := tn.name
 	end GetName
 	
-	proc (tn: TreeNode) SetData*(data: ANYPTR)  // new
+	proc (tn: TreeNode) SetData*(data: ^anyrec)  // new
 	begin 
 		tn.data := data
 	end SetData
 	
-	proc (tn: TreeNode) Data*(): ANYPTR  // new
+	proc (tn: TreeNode) Data*(): ^anyrec  // new
 	begin 
 		return tn.data
 	end Data
@@ -1419,7 +1419,7 @@ module Dialog
 		notifyHook.Notify(id0, id1, opts)
 	end Notify
 	
-	proc Update*(in x: ANYREC) 
+	proc Update*(in x: anyrec) 
 		var 
 			type_: Kernel.Type
 			adr, size_: integer
@@ -1529,7 +1529,7 @@ module Dialog
 		Notify(adr, adr + len(x) * size(wchar), {update, guardCheck})
 	end UpdateString
 	
-	proc UpdateList*(in x: ANYREC) 
+	proc UpdateList*(in x: anyrec) 
 		var 
 			type_: Kernel.Type
 			adr, size_: integer

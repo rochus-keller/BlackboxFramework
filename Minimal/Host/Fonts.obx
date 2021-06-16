@@ -463,7 +463,7 @@ module Fonts
 		var 
 			f: Font
 			i: Identifier
-			p: ANYPTR
+			p: ^anyrec
 	begin 
 		assert(size_ > 0, 20)
 		style := style * {Fonts.italic, Fonts.underline, Fonts.strikeout}
@@ -553,7 +553,7 @@ module Fonts
 	
 	proc NofFonts*(): integer 
 		var 
-			p: ANYPTR
+			p: ^anyrec
 			cnt: Counter
 	begin 
 		cnt.typ := SYSTEM.TYP(Font)
@@ -586,7 +586,7 @@ module Fonts
 	proc SetTTMetric*(on: boolean) 
 		var 
 			t: Traverser
-			p: ANYPTR
+			p: ^anyrec
 	begin 
 		if useTTMetric # on then
 			useTTMetric := on
@@ -599,7 +599,7 @@ module Fonts
 	proc SetDefaultFont*(tf: Fonts.Typeface; size_: integer) 
 		var 
 			t: Traverser
-			p: ANYPTR
+			p: ^anyrec
 	begin 
 		assert(tf # "", 20)
 		assert(size_ > 0, 21)

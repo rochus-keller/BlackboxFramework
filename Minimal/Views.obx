@@ -223,7 +223,7 @@ module Views
 		viewHook := h
 	end SetViewHook
 	
-	proc (h: MsgHook) Omnicast*(var msg: ANYREC)  end // new abstract
+	proc (h: MsgHook) Omnicast*(var msg: anyrec)  end // new abstract
 	proc (h: MsgHook) RestoreDomain*(domain: Stores.Domain)  end // new abstract
 	
 	proc SetMsgHook*(h: MsgHook) 
@@ -515,7 +515,7 @@ module Views
 		var  // c: Models.Context;
 			d: Stores.Domain
 			seq: Sequencers.Sequencer
-			any: ANYPTR
+			any: ^anyrec
 	begin 
 		d := v.Domain()
 		seq := nil
@@ -660,7 +660,7 @@ module Views
 	proc Domaincast*(domain: Stores.Domain; var msg: Message) 
 		var 
 			g: integer
-			seq: ANYPTR
+			seq: ^anyrec
 	begin 
 		if domain # nil then
 			seq := domain.GetSequencer()
@@ -1838,7 +1838,7 @@ module Views
 		msgHook.Omnicast(msg)
 	end Notify
 	
-	proc Omnicast*(var msg: ANYREC) 
+	proc Omnicast*(var msg: anyrec) 
 	begin 
 		msgHook.Omnicast(msg)
 	end Omnicast

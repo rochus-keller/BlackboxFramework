@@ -249,7 +249,7 @@ module Services
 		return t
 	end ThisDesc
 	
-	proc GetTypeName*(in rec: ANYREC; var type_: array of wchar) 
+	proc GetTypeName*(in rec: anyrec; var type_: array of wchar) 
 		var 
 			i, j: integer
 			ch: wchar
@@ -285,12 +285,12 @@ module Services
 	
 	end GetTypeName
 	
-	proc SameType*(in ra, rb: ANYREC): boolean 
+	proc SameType*(in ra, rb: anyrec): boolean 
 	begin 
 		return Kernel.TypeOf(ra) = Kernel.TypeOf(rb)
 	end SameType
 	
-	proc IsExtensionOf*(in ra, rb: ANYREC): boolean 
+	proc IsExtensionOf*(in ra, rb: anyrec): boolean 
 		var 
 			ta, tb: Kernel.Type
 	begin 
@@ -299,7 +299,7 @@ module Services
 		return ta.base[tb.id div 16 mod 16] = tb
 	end IsExtensionOf
 	
-	proc Is*(in rec: ANYREC; in type_: array of wchar): boolean 
+	proc Is*(in rec: anyrec; in type_: array of wchar): boolean 
 		var 
 			ta, tb: Kernel.Type
 	begin 
@@ -334,7 +334,7 @@ module Services
 		return t.id div 16 mod 16
 	end Level
 	
-	proc TypeLevel*(in rec: ANYREC): integer 
+	proc TypeLevel*(in rec: anyrec): integer 
 		var 
 			t: Kernel.Type
 	begin 
@@ -346,7 +346,7 @@ module Services
 		end 
 	end TypeLevel
 	
-	proc AdrOf*(in rec: ANYREC): integer 
+	proc AdrOf*(in rec: anyrec): integer 
 	begin 
 		return SYSTEM.ADR(rec)
 	end AdrOf

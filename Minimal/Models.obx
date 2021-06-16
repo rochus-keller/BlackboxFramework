@@ -100,7 +100,7 @@ module Models
 	proc BeginScript*(m: Model; name: Stores.OpName; var script: Stores.Operation) 
 		// post: (script # NIL) iff (m.domain # NIL)
 		var 
-			seq: ANYPTR
+			seq: ^anyrec
 	begin 
 		assert(m # nil, 20)
 		if m.Domain() # nil then
@@ -121,7 +121,7 @@ module Models
 	proc Do*(m: Model; name: Stores.OpName; op: Stores.Operation) 
 		// pre: m # NIL, op # NIL, ~op.inUse
 		var 
-			seq: ANYPTR
+			seq: ^anyrec
 	begin 
 		assert(m # nil, 20) // ASSERT(~op.inUse, 22);
 		assert(op # nil, 21)
@@ -144,7 +144,7 @@ module Models
 	proc LastOp*(m: Model): Stores.Operation 
 		// pre: m # NIL
 		var 
-			seq: ANYPTR
+			seq: ^anyrec
 	begin 
 		assert(m # nil, 20)
 		if m.Domain() # nil then
@@ -166,7 +166,7 @@ module Models
 	proc Bunch*(m: Model) 
 		// pre: m # NIL, m.Domain() # NIL
 		var 
-			seq: ANYPTR
+			seq: ^anyrec
 	begin 
 		assert(m # nil, 20)
 		assert(m.Domain() # nil, 21)
@@ -181,7 +181,7 @@ module Models
 	proc StopBunching*(m: Model) 
 		// pre: m # NIL
 		var 
-			seq: ANYPTR
+			seq: ^anyrec
 	begin 
 		assert(m # nil, 20)
 		if m.Domain() # nil then
@@ -200,7 +200,7 @@ module Models
 	proc EndScript*(m: Model; script: Stores.Operation) 
 		// pre: (script # NIL) iff (m.seq # NIL)
 		var 
-			seq: ANYPTR
+			seq: ^anyrec
 	begin 
 		assert(m # nil, 20)
 		if m.Domain() # nil then
@@ -224,7 +224,7 @@ module Models
 	proc BeginModification*(type_: integer; m: Model) 
 		// pre: m # NIL
 		var 
-			seq: ANYPTR
+			seq: ^anyrec
 	begin 
 		assert(m # nil, 20)
 		if m.Domain() # nil then
@@ -243,7 +243,7 @@ module Models
 	proc EndModification*(type_: integer; m: Model) 
 		// pre: m # NIL
 		var 
-			seq: ANYPTR
+			seq: ^anyrec
 	begin 
 		assert(m # nil, 20)
 		if m.Domain() # nil then
@@ -262,7 +262,7 @@ module Models
 	proc SetDirty*(m: Model) 
 		// pre: m # NIL
 		var 
-			seq: ANYPTR
+			seq: ^anyrec
 	begin 
 		assert(m # nil, 20)
 		if m.Domain() # nil then
@@ -281,7 +281,7 @@ module Models
 	proc Domaincast*(d: Stores.Domain; var msg: Message) 
 		var 
 			g: integer
-			seq: ANYPTR
+			seq: ^anyrec
 	begin 
 		if d # nil then
 			seq := d.GetSequencer()
@@ -304,7 +304,7 @@ module Models
 		(* post: model.era > model.era', msg.model = model, msg.era = model.era' + 1,
 		   model.seq # NIL => msg sent to seq *)
 		var 
-			seq: ANYPTR
+			seq: ^anyrec
 			g: integer
 	begin 
 		assert(m # nil, 20)

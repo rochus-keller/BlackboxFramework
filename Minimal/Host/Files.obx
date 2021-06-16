@@ -394,7 +394,7 @@ module Files
 	proc ThisFile(in name: FullName): File 
 		var 
 			id: Identifier
-			p: ANYPTR
+			p: ^anyrec
 	begin 
 		id.typ := SYSTEM.TYP(File)
 		id.name := name
@@ -420,7 +420,7 @@ module Files
 	proc SearchFileToClose
 		var  // res: LONGINT;
 			s: Searcher
-			p: ANYPTR
+			p: ^anyrec
 	begin 
 		s.typ := SYSTEM.TYP(File)
 		s.f := nil
@@ -1645,7 +1645,7 @@ module Files
 	
 	proc NofFiles*(): integer 
 		var 
-			p: ANYPTR
+			p: ^anyrec
 			cnt: Counter
 	begin 
 		cnt.typ := SYSTEM.TYP(File)

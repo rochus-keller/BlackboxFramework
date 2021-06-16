@@ -1514,7 +1514,7 @@ module Documents
 			pd: Document
 			ct: Containers.Controller
 			dec_: boolean
-			seq: ANYPTR
+			seq: ^anyrec
 	begin 
 		v := d.ThisView()
 		
