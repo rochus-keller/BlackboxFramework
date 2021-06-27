@@ -1400,7 +1400,7 @@ module Menus
 			i, l, t, r, b, res: integer
 			ok: boolean
 		
-		proc CopyName(in line: carray of wchar; var i: integer; var name, opt: array 260 of wchar )
+		proc CopyName(in line: carray of wchar; var i: integer; var name, opt: array of wchar )
 			var 
 				ch, tch: wchar
 				j: integer
@@ -1447,18 +1447,18 @@ module Menus
 		r := 0
 		b := 0
 		i := 0
-		CopyName // skip program name
+		CopyName(line,i,name,opt) // skip program name
 		while line[i] > " " do 
-			CopyName
+			CopyName(line,i,name,opt)
 			if opt = "/LOAD" then // load module
-				CopyName
+				CopyName(line,i,name,opt)
 				if open then
 					Kernel.LoadMod(name) 
 				end  
 			elsif opt = "/USE" then  // use directory
-				CopyName  // working directory: handled in HostFiles
+				CopyName(line,i,name,opt)  // working directory: handled in HostFiles
 			elsif opt = "/P" then  // print file // to be completed !!!
-				CopyName
+				CopyName(line,i,name,opt)
 				if open then
 					OpenFile(name, 0, 0, 0, 0, ok)
 					if ok then
@@ -1466,10 +1466,10 @@ module Menus
 					end  
 				end  
 			elsif opt = "/PT" then  // print file to printer
-				CopyName // to be completed !!!
-				CopyName
-				CopyName
-				CopyName 
+				CopyName(line,i,name,opt) // to be completed !!!
+				CopyName(line,i,name,opt)
+				CopyName(line,i,name,opt)
+				CopyName(line,i,name,opt) 
 			elsif opt = "/EMBEDDING" then  // start as server
 				if ~open then
 					state := embedded 
@@ -1484,22 +1484,22 @@ module Menus
 			elsif opt = "/FULLSIZE" then 
 				HostWindows.fullSize := true 
 			elsif opt = "/LTRB" then  // window position
-				CopyName
+				CopyName(line,i,name,opt)
 				Strings.StringToInt(name, l, res)
-				CopyName
+				CopyName(line,i,name,opt)
 				Strings.StringToInt(name, t, res)
-				CopyName
+				CopyName(line,i,name,opt)
 				Strings.StringToInt(name, r, res)
-				CopyName
+				CopyName(line,i,name,opt)
 				Strings.StringToInt(name, b, res) 
 			elsif opt = "/LANG" then 
-				CopyName
+				CopyName(line,i,name,opt)
 				if len(name) = 2 then
 					Strings.ToLower(name, name)
 					Dialog.SetLanguage(name, Dialog.nonPersistent) 
 				end  
 			elsif opt = "/O" then  // open file
-				CopyName
+				CopyName(line,i,name,opt)
 				openUsed := true
 				if open then
 					OpenFile(name, l, t, r, b, ok) 
@@ -1510,10 +1510,10 @@ module Menus
 				r := 0
 				b := 0 
 			elsif opt = "/PAR" then 
-				CopyName
+				CopyName(line,i,name,opt)
 				Dialog.commandLinePars := name 
 			elsif opt = "/INIFILE" then  // use an INI-file instead of the Windows registry
-				CopyName  // path of INI-file: handled in HostRegistry because needed earlier
+				CopyName(line,i,name,opt)  // path of INI-file: handled in HostRegistry because needed earlier
 			elsif opt = "/PORTABLE" then   // use a default INI-file instead of the Windows registry
 			else  // open file
 				if open then

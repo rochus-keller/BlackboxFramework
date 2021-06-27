@@ -981,7 +981,7 @@ module Strings
 				inc(next)
 				ch := s[next] 
 			end 
-			NextChar
+			NextChar(next,ch,s)
 			return intval
 		end ParseInt
 		
@@ -992,7 +992,7 @@ module Strings
 			ch := s[next]
 			inc(next)
 			if ch = "." then
-				NextChar
+				NextChar(next,ch,s)
 				if ("0" <= ch) & (ch <= "9") then
 					x2 := ParseInt(next,res,ch,s)
 					if res = 0 then
@@ -1016,9 +1016,9 @@ module Strings
 		x := {}
 		res := 0
 		next := 0
-		NextChar
+		NextChar(next,ch,s)
 		if ch = "{" then
-			NextChar
+			NextChar(next,ch,s)
 			while ("0" <= ch) & (ch <= "9") & (res # 2) do 
 				x1 := ParseInt(next,res,ch,s)
 				if ch = "." then
@@ -1027,11 +1027,11 @@ module Strings
 					incl(x, x1) 
 				end 
 				if ch = "," then
-					NextChar 
+					NextChar(next,ch,s)
 				end  
 			end 
 			if ch = "}" then
-				NextChar
+				NextChar(next,ch,s)
 				if ch # 0x then
 					res := 2 
 				end  

@@ -472,7 +472,7 @@ module Dialog
 						end  
 					until h = 1 
 					if logDuplicateKeys then
-						CheckDuplicateKeys 
+						CheckDuplicateKeys(n,tab,subsys)
 					end  
 				end  
 			end  

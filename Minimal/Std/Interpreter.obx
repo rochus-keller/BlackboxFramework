@@ -196,35 +196,35 @@ module Interpreter
 		begin 
 			if res = 0 then
 				while (ch # 0x) & (ch <= " ") do 
-					GetCh 
+					GetCh(proc_, errorMsg)
 				end 
 				if ch = 0x then
 					type_ := eot 
 				elsif ch = "." then 
 					type_ := dot
-					GetCh 
+					GetCh(proc_, errorMsg)
 				elsif ch = ";" then 
 					type_ := semicolon
-					GetCh 
+					GetCh(proc_, errorMsg) 
 				elsif ch = "(" then 
 					type_ := lparen
-					GetCh 
+					GetCh(proc_, errorMsg) 
 				elsif ch = ")" then 
 					type_ := rparen
-					GetCh 
+					GetCh(proc_, errorMsg) 
 				elsif ch = "'" then 
 					type_ := quote
-					GetCh 
+					GetCh(proc_, errorMsg) 
 				elsif ch = "," then 
 					type_ := comma
-					GetCh 
+					GetCh(proc_, errorMsg) 
 				elsif (ch >= "0") & (ch <= "9") or (ch = "-") then 
 					type_ := int_
 					j := 0
 					repeat 
 						num[j] := ch
 						inc(j)
-						GetCh 
+						GetCh(proc_, errorMsg) 
 					until (ch < "0") or (ch > "9") & (ch < "A") or (ch > "H") 
 					num[j] := 0x
 					Strings.StringToInt(num, x, r) 
@@ -232,11 +232,11 @@ module Interpreter
 					type_ := ident
 					id[0] := ch
 					j := 1
-					GetCh
+					GetCh(proc_, errorMsg)
 					while (ch # 0x) & (i < len(proc_)) & Strings.IsIdent(ch) do 
 						id[j] := ch
 						inc(j)
-						GetCh 
+						GetCh(proc_, errorMsg) 
 					end 
 					id[j] := 0x 
 				else 
@@ -245,7 +245,7 @@ module Interpreter
 			end 
 		end Scan
 		
-		proc String(in errorMsg: array of wchar; var s: array of wchar) 
+		proc String(in proc_,errorMsg: array of wchar; var s: array of wchar) 
 			var 
 				j: integer
 		begin 
@@ -254,12 +254,12 @@ module Interpreter
 				while (ch # 0x) & (ch # "'") & (j < len(s) - 1) do 
 					s[j] := ch
 					inc(j)
-					GetCh 
+					GetCh(proc_, errorMsg) 
 				end 
 				s[j] := 0x
 				if ch = "'" then
-					GetCh
-					Scan 
+					GetCh(proc_, errorMsg)
+					Scan(proc_, errorMsg) 
 				else 
 					Error(errorMsg,quoteExpected, "#System:QuoteExpected", "", "") 
 				end  
@@ -268,7 +268,7 @@ module Interpreter
 			end 
 		end String
 		
-		proc ParamList(in errorMsg: array of wchar) 
+		proc ParamList(in proc_,errorMsg: array of wchar) 
 			var 
 				iv: IntValue
 				sv: StrValue
@@ -276,39 +276,39 @@ module Interpreter
 		begin 
 			numPar := 0
 			if type_ = lparen then
-				Scan
+				Scan(proc_, errorMsg)
 				while (numPar < len(par)) & (type_ # rparen) & (res = 0) do 
 					if type_ = quote then
 						new(sv)
-						String(errorMsg, sv.str)
+						String(proc_,errorMsg, sv.str)
 						par[numPar] := sv
 						inc(numPar) 
 					elsif type_ = int_ then 
 						new(iv)
 						iv.int_ := x
-						Scan
+						Scan(proc_, errorMsg)
 						par[numPar] := iv
 						inc(numPar) 
 					elsif (type_ = ident) & ((id = "TRUE") or (id = "FALSE")) then 
 						new(bv)
 						bv.bool := (id = "TRUE")
-						Scan
+						Scan(proc_, errorMsg)
 						par[numPar] := bv
 						inc(numPar) 
 					else 
 						Error(errorMsg,syntaxError, "#System:SyntaxError", "", "") 
 					end 
 					if type_ = comma then
-						Scan 
+						Scan(proc_, errorMsg) 
 					elsif type_ # rparen then 
 						Error(errorMsg,rparenExpected, "#System:RParenExpected", "", "") 
 					end  
 				end 
-				Scan 
+				Scan(proc_, errorMsg) 
 			end 
 		end ParamList
 		
-		proc Command( in errorMsg: array of wchar )
+		proc Command( in proc_,errorMsg: array of wchar )
 			var 
 				left, right: Ident
 		begin 
@@ -316,13 +316,13 @@ module Interpreter
 			Init(left)
 			Init(right)
 			left := id
-			Scan
+			Scan(proc_, errorMsg)
 			if type_ = dot then // Oberon command
-				Scan
+				Scan(proc_, errorMsg)
 				if type_ = ident then
 					right := id
-					Scan
-					ParamList(errorMsg)
+					Scan(proc_, errorMsg)
+					ParamList(proc_,errorMsg)
 					if res = 0 then
 						CallProc(errorMsg, left, right) 
 					end  
@@ -344,13 +344,13 @@ module Interpreter
 		Views.ClearQueue
 		res := 0
 		i := 0
-		GetCh
-		Scan
+		GetCh(proc_, errorMsg)
+		Scan(proc_, errorMsg)
 		if type_ = ident then
-			Command
+			Command(proc_,errorMsg)
 			while (type_ = semicolon) & (res = 0) do 
-				Scan
-				Command 
+				Scan(proc_, errorMsg)
+				Command(proc_,errorMsg)
 			end 
 			if type_ # eot then
 				Error(errorMsg,syntaxError, "#System:SyntaxError", "", "") 
