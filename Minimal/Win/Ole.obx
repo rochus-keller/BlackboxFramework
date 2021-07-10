@@ -2,7 +2,7 @@
 
 definition Ole
 	import
-		COM, WinApi := Win.Api
+		Ole.COM, WinApi := Win.Api
 	const 
 		DROPEFFECT_NONE = {}  
 		DROPEFFECT_COPY = {0}  

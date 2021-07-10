@@ -28,8 +28,9 @@ module Dialog
 	
 	import 
 		WinApi := Win.Api, WinDlg := Win.Dlg, SYSTEM, 
-		Kernel, Strings, Dates, Fonts, Ports, Files, Stores, Views, Controllers, Properties, 
-		Printers, Dialog, Windows, Converters, Services, 
+		System.Kernel, System.Strings, System.Dates, System.Fonts, System.Ports, System.Files, 
+		System.Stores, System.Views, System.Controllers, System.Properties, 
+		System.Printers, System.Dialog, System.Windows, System.Converters, System.Services, 
 		HostFonts := Host.Fonts, HostFiles := Host.Files, HostRegistry := Host.Registry, 
 		HostPorts := Host.Ports, HostWindows := Host.Windows,  
 		HostPrinters := Host.Printers, StdCmds := Std.Cmds, 

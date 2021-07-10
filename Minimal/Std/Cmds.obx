@@ -18,8 +18,10 @@ module Cmds
 	
 	
 	import 
-		Fonts, Ports, Services, Stores, Sequencers, Models, Views, 
-		Controllers, Containers, Properties, Dialog, Documents, Windows, Strings, 
+		System.Fonts, System.Ports, System.Services, System.Stores, System.Sequencers, 
+		System.Models, System.Views, 
+		System.Controllers, System.Containers, System.Properties, System.Dialog, 
+		System.Documents, System.Windows, System.Strings, 
 		StdDialog := Std.Dialog, StdApi := Std.Api
 	
 	const 

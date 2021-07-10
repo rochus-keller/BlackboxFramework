@@ -24,8 +24,9 @@ module Api
 	
 	
 	import 
-		Kernel, Views, Files, Dialog, Converters, Windows, Sequencers, Stores, Meta, 
-		Containers, StdDialog := Std.Dialog, Documents, Strings
+		System.Kernel, System.Views, System.Files, System.Dialog, System.Converters, 
+		System.Windows, System.Sequencers, System.Stores, System.Meta, 
+		System.Containers, StdDialog := Std.Dialog, System.Documents, System.Strings
 	
 	var 
 		modeHook*: proc (c: Containers.Controller) // for setting nested forms to the container's mode

@@ -29,7 +29,8 @@ module Ports
 	
 	
 	import 
-		SYSTEM, WinApi := Win.Api, Kernel, Fonts, Ports, Dialog, Services, 
+		SYSTEM, WinApi := Win.Api, System.Kernel, System.Fonts, System.Ports, 
+		System.Dialog, System.Services, 
 		HostFonts := Host.Fonts
 	
 	const 

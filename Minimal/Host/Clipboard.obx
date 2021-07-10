@@ -19,8 +19,9 @@ module Clipboard
 	
 	
 	import 
-		COM, WinApi := Win.Api, WinOle := Win.Ole, 
-		Services, Stores, Views, Documents, OleData, HostWindows := Host.Windows
+		Ole.COM, WinApi := Win.Api, WinOle := Win.Ole, 
+		System.Services, System.Stores, System.Views, System.Documents, 
+		OleData := Ole.Data, HostWindows := Host.Windows
 	
 	
 	type 

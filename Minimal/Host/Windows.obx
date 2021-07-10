@@ -33,11 +33,12 @@ module Windows
 	
 	
 	
-	import Log, 
-		SYSTEM, WinApi := Win.Api, Services, 
-		Kernel, Meta, Files, HostFiles := Host.Files, Ports,  
-		HostRegistry := Host.Registry, HostPorts := Host.Ports, Properties, 
-		Views, Controllers, Containers, Dialog, Converters, Documents, Windows, 
+	import System.Log, 
+		SYSTEM, WinApi := Win.Api, System.Services, 
+		System.Kernel, System.Meta, System.Files, HostFiles := Host.Files, System.Ports,  
+		HostRegistry := Host.Registry, HostPorts := Host.Ports, System.Properties, 
+		System.Views, System.Controllers, System.Containers, System.Dialog, 
+		System.Converters, System.Documents, System.Windows, 
 		HostMechanisms := Host.Mechanisms // don't remove
 	
 	const 

@@ -27,10 +27,12 @@ module Menus
 	
 	
 	
-	import SYSTEM, WinApi := Win.Api, Kernel, Log, Services, 
-		Fonts, Files, Strings, Ports, Stores, Properties, Printers, Dialog, 
-		Models, Views, Controllers, Containers, Converters, 
-		Documents, Windows, Controls, 
+	import SYSTEM, WinApi := Win.Api, System.Kernel, System.Log, System.Services, 
+		System.Fonts, System.Files, System.Strings, System.Ports, System.Stores, 
+		System.Properties, System.Printers, System.Dialog, 
+		System.Models, System.Views, System.Controllers, 
+		System.Containers, System.Converters, 
+		System.Documents, System.Windows, System.Controls, 
 		StdDialog := Std.Dialog, StdInterpreter := Std.Interpreter, 
 		StdCmds := Std.Cmds, HostFonts := Host.Fonts, HostPorts := Host.Ports, 
 		HostFiles := Host.Files, HostWindows := Host.Windows,  

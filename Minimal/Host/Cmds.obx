@@ -18,9 +18,9 @@ module Cmds
 	
 	
 	import 
-		Kernel, Ports, Printers, Files, 
-		Stores, Views, Controllers, Dialog, Printing, 
-		Converters, Sequencers, Documents, Windows, 
+		System.Kernel, System.Ports, System.Printers, System.Files, 
+		System.Stores, System.Views, System.Controllers, System.Dialog, System.Printing, 
+		System.Converters, System.Sequencers, System.Documents, System.Windows, 
 		StdDialog := Std.Dialog, StdCmds := Std.Cmds, 
 		HostFiles := Host.Files, HostWindows := Host.Windows,  
 		HostDialog := Host.Dialog, HostClipboard := Host.Clipboard

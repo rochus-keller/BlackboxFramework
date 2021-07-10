@@ -3,7 +3,7 @@
 
 definition Api
 	import
-		SYSTEM, COM
+		SYSTEM, Ole.COM
 	const 
 		HKEY_CURRENT_USER = 2147483649 
 		INVALID_HANDLE_VALUE = -1 

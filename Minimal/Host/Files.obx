@@ -23,7 +23,7 @@ module Files
 	
 	
 	
-	import SYSTEM, WinApi := Win.Api, Files, Kernel
+	import SYSTEM, WinApi := Win.Api, System.Files, System.Kernel
 	
 	const 
 		tempName = "odcxxxxx.tmp"

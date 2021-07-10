@@ -21,7 +21,8 @@ module Registry
 	
 	
 	
-	import WinApi := Win.Api, Files, HostFiles := Host.Files, Dialog, Strings
+	import WinApi := Win.Api, System.Files, HostFiles := Host.Files, 
+		System.Dialog, System.Strings
 	
 	var 
 		localeId*: integer

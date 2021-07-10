@@ -17,7 +17,7 @@ module CFrames
 	
 	
 	
-	import Fonts, Ports, Views, Dates, Dialog
+	import System.Fonts, System.Ports, System.Views, System.Dates, System.Dialog
 	
 	const 
 		lineUp* = 0

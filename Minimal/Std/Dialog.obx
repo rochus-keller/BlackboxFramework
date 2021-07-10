@@ -20,8 +20,10 @@ module Dialog
 	
 	
 	import 
-		Kernel, Meta, Strings, Files, Stores, Models, Sequencers, Views, 
-		Containers, Dialog, Properties, Documents, Converters, Windows
+		System.Kernel, System.Meta, System.Strings, System.Files, System.Stores, 
+		System.Models, System.Sequencers, System.Views, 
+		System.Containers, System.Dialog, System.Properties, System.Documents, 
+		System.Converters, System.Windows
 	
 	
 	type 

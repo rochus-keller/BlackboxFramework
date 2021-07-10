@@ -21,7 +21,8 @@ module Fonts
 	
 	
 	
-	import SYSTEM, WinApi := Win.Api, Kernel, Fonts, HostRegistry := Host.Registry
+	import SYSTEM, WinApi := Win.Api, System.Kernel, System.Fonts, 
+		HostRegistry := Host.Registry
 	
 	const 
 		defSize = 10 * Fonts.point // size of default font

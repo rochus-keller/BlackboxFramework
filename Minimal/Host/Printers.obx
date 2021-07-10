@@ -22,9 +22,10 @@ module Printers
 	
 	import 
 		SYSTEM, WinApi := Win.Api, WinDlg := Win.Dlg, 
-		Kernel, Files, Dialog, Ports, HostPorts := Host.Ports, 
-		Stores, Models, Views, Controllers, 
-		Properties, Printers, Printing, Documents, Windows, HostWindows := Host.Windows
+		System.Kernel, System.Files, System.Dialog, System.Ports, HostPorts := Host.Ports, 
+		System.Stores, System.Models, System.Views, System.Controllers, 
+		System.Properties, System.Printers, System.Printing, System.Documents, 
+		System.Windows, HostWindows := Host.Windows
 	
 	const 
 		eduMsgH = 30 * Ports.point

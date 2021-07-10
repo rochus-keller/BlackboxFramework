@@ -1,9 +1,9 @@
 // Generated/synthesized by OberonViewer 0.8.3 on 2021-01-15T17:28:40
 // manually modified
 
-definition OleData
+definition Data
 
-	import WinOle := Win.Ole, Stores, Views, Dialog
+	import WinOle := Win.Ole, System.Stores, System.Views, System.Dialog
 	
 	
 	proc GetDataType(_0: WinOle.IDataObject; _1: Stores.TypeName; _2: integer; _3: integer; _4: integer; _5: integer; _6: boolean)
@@ -14,4 +14,4 @@ definition OleData
 	proc DataConvTo(_0: WinOle.IDataObject; _1: Stores.TypeName)
 	proc DumpData(_0: WinOle.IDataObject)
 
-end OleData
+end Data

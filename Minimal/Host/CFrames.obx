@@ -27,8 +27,8 @@ module CFrames
 	
 	import 
 		SYSTEM, WinApi := Win.Api, WinCtl := Win.Ctl, 
-		Kernel, Strings, Dates, Fonts, Ports, Views, 
-		Controllers, Dialog, HostFonts := Host.Fonts, HostRegistry := Host.Registry, 
+		System.Kernel, System.Strings, System.Dates, System.Fonts, System.Ports, System.Views, 
+		System.Controllers, System.Dialog, HostFonts := Host.Fonts, HostRegistry := Host.Registry, 
 		HostPorts := Host.Ports, HostWindows := Host.Windows, 
 		StdCFrames := Std.CFrames
 	

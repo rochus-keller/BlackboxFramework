@@ -20,7 +20,7 @@ module Interpreter
 	
 	
 	
-	import Kernel, Meta, Strings, Views, Dialog
+	import System.Kernel, System.Meta, System.Strings, System.Views, System.Dialog
 	
 	type 
 		IntValue = pointer to record (Meta.Value) 

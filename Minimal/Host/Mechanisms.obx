@@ -18,10 +18,10 @@ module Mechanisms
 	
 	
 	
-	import COM, 
-		WinApi := Win.Api, WinOle := Win.Ole, OleData, 
-		Services, Ports, Stores, Views, Controllers, Properties, 
-		Dialog, Mechanisms, Containers, Documents, Windows, 
+	import Ole.COM, 
+		WinApi := Win.Api, WinOle := Win.Ole, OleData := Ole.Data, 
+		System.Services, System.Ports, System.Stores, System.Views, System.Controllers, System.Properties, 
+		System.Dialog, System.Mechanisms, System.Containers, System.Documents, System.Windows, 
 		HostPorts := Host.Ports
 	
 	
