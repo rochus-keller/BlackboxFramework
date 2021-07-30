@@ -817,7 +817,7 @@ module Ports
 			dc, old: WinApi.HANDLE
 			ch: char
 			df: HostFonts.DevFont
-			dx: array 1024 of integer
+			dx: carray 1024 of integer
 			s1: array 1024 of char
 			fsp: boolean
 	begin 
@@ -891,7 +891,7 @@ module Ports
 					a := b
 					inc(i) 
 				end 
-				res := WinApi.ExtTextOutA(dc, x, y, 0, nil, s1, n, dx) 
+				res := WinApi.ExtTextOutA(dc, x, y, 0, nil, addrof(s1), n, addrof(dx)) 
 			end  
 		end 
 		if p.wnd = 0 then
@@ -1005,7 +1005,7 @@ module Ports
 			p: Port
 			dc, old: WinApi.HANDLE
 			df: HostFonts.DevFont
-			dx: array 1024 of integer
+			dx: carray 1024 of integer
 			s1: array 1024 of wchar
 			fsp: boolean
 	begin 
@@ -1090,7 +1090,7 @@ module Ports
 				if df.noGap then // caret pos optimization
 					inc(x) 
 				end 
-				res := WinApi.ExtTextOutW(dc, x, y, 0, nil, s1, n, dx) 
+				res := WinApi.ExtTextOutW(dc, x, y, 0, nil, addrof(s1), n, addrof(dx)) 
 			end  
 		end 
 		if p.wnd = 0 then
@@ -1101,7 +1101,7 @@ module Ports
 	proc (rd: Rider) DrawSpace*(x, y, w: integer; col: Ports.Color; font: Fonts.Font) 
 		var 
 			right, res, u: integer
-			dx: array 1 of integer
+			dx: carray 1 of integer
 			p: Port
 			dc, old: WinApi.HANDLE
 			df: HostFonts.DevFont
@@ -1130,7 +1130,7 @@ module Ports
 			end 
 			res := WinApi.SetTextColor(dc, col)
 			dx[0] := w
-			res := WinApi.ExtTextOutA(dc, x, y, 0, nil, " ", 1, dx) 
+			res := WinApi.ExtTextOutA(dc, x, y, 0, nil, " ", 1, addrof(dx)) 
 		end 
 		if p.wnd = 0 then
 			res := WinApi.RestoreDC(dc, -1) 

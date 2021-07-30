@@ -33,7 +33,7 @@ module Fonts
 		figureSpace = 8fx
 	
 	type 
-		WTab = array 256 of integer
+		WTab = carray 256 of integer
 		DevFont* = pointer to record 
 				unit-: integer
 				id-: WinApi.HANDLE
@@ -69,7 +69,7 @@ module Fonts
 		Par = record 
 				first, last: Fonts.TypefaceInfo 
 			end 
-		ParPtr = unsafe pointer to Par
+		ParPtr = pointer to Par
 	
 	var 
 		sysFont-, defFont-, dlgFont-, dlgBoldFont-: Font
@@ -124,7 +124,7 @@ module Fonts
 		x := s.cx
 		while i < 256 do 
 			str[0] := wchr(i)
-			res := WinApi.GetTextExtentPoint32W(dc, str, 2, s)
+			res := WinApi.GetTextExtentPoint32W(dc, addrof(str), 2, s)
 			wtab[i] := s.cx - x
 			inc(i) 
 		end 
@@ -135,7 +135,7 @@ module Fonts
 			res, a, b, max_, x, i: integer
 			tm: WinApi.TEXTMETRICW
 			df: DevFont
-			abc: array 256 of WinApi.ABC
+			abc: carray 256 of WinApi.ABC
 			dc, old: WinApi.HANDLE
 	begin 
 		dc := WinApi.GetDC(0)
@@ -148,7 +148,7 @@ module Fonts
 			a := f.size_ mod grid
 			b := f.size_ div grid
 			f.id := df.id
-			res := WinApi.GetCharABCWidthsW(dc, 0, 255, abc)
+			res := WinApi.GetCharABCWidthsW(dc, 0, 255, addrof(abc))
 			if res # 0 then
 				i := 0
 				max_ := 0
@@ -227,22 +227,22 @@ module Fonts
 	proc (f: Font) wTab*(dc: WinApi.HANDLE; ch: wchar): integer  // new
 		var 
 			res, w: integer
-			abc: array 1 of WinApi.ABC
-			wt: array 1 of integer
+			abc: carray 1 of WinApi.ABC
+			wt: carray 1 of integer
 	begin 
 		if ch < 100x then
 			return f.wtab[ord(ch)] 
 		end 
-		res := WinApi.GetCharABCWidthsW(dc, ord(ch), ord(ch), abc)
+		res := WinApi.GetCharABCWidthsW(dc, ord(ch), ord(ch), addrof(abc))
 		if res # 0 then
 			w := abc[0].abcA + abc[0].abcB + abc[0].abcC
 			w := w * f.a div grid + w * f.b 
 		else 
-			res := WinApi.GetCharWidth32W(dc, ord(ch), ord(ch), wt)
+			res := WinApi.GetCharWidth32W(dc, ord(ch), ord(ch), addrof(wt))
 			if res # 0 then
 				w := wt[0] * f.a div grid + wt[0] * f.b 
 			else 
-				res := WinApi.GetCharWidthW(dc, ord(ch), ord(ch), wt)
+				res := WinApi.GetCharWidthW(dc, ord(ch), ord(ch), addrof(wt))
 				if res # 0 then
 					w := wt[0] * f.a div grid + wt[0] * f.b 
 				else 
@@ -256,12 +256,12 @@ module Fonts
 	proc (f: Font) fTab*(dc: WinApi.HANDLE; ch: wchar): integer  // new
 		var 
 			res, w: integer
-			abc: array 1 of WinApi.ABC
+			abc: carray 1 of WinApi.ABC
 	begin 
 		if ch < 100x then
 			return f.ftab[ord(ch)] 
 		end 
-		res := WinApi.GetCharABCWidthsW(dc, ord(ch), ord(ch), abc)
+		res := WinApi.GetCharABCWidthsW(dc, ord(ch), ord(ch), addrof(abc))
 		if (res # 0) & (abc[0].abcA < 0) then
 			w := -abc[0].abcA
 			w := w * f.a div grid + w * f.b 
@@ -274,12 +274,12 @@ module Fonts
 	proc (f: Font) tTab*(dc: WinApi.HANDLE; ch: wchar): integer  // new
 		var 
 			res, w: integer
-			abc: array 1 of WinApi.ABC
+			abc: carray 1 of WinApi.ABC
 	begin 
 		if ch < 100x then
 			return f.ttab[ord(ch)] 
 		end 
-		res := WinApi.GetCharABCWidthsW(dc, ord(ch), ord(ch), abc)
+		res := WinApi.GetCharABCWidthsW(dc, ord(ch), ord(ch), addrof(abc))
 		if (res # 0) & (abc[0].abcC < 0) then
 			w := -abc[0].abcC
 			w := w * f.a div grid + w * f.b 
@@ -292,14 +292,14 @@ module Fonts
 	proc (df: DevFont) wTab*(dc: WinApi.HANDLE; ch: wchar): integer  // new
 		var 
 			res, w: integer
-			wt: array 1 of integer
+			wt: carray 1 of integer
 	begin 
 		if ch < 100x then
 			return df.wtab[ord(ch)] 
 		end 
-		res := WinApi.GetCharWidth32W(dc, ord(ch), ord(ch), wt)
+		res := WinApi.GetCharWidth32W(dc, ord(ch), ord(ch), addrof(wt))
 		if res = 0 then
-			res := WinApi.GetCharWidthW(dc, ord(ch), ord(ch), wt) 
+			res := WinApi.GetCharWidthW(dc, ord(ch), ord(ch), addrof(wt)) 
 		end 
 		if res # 0 then
 			w := wt[0] 
@@ -380,12 +380,12 @@ module Fonts
 	proc SetupDevFont(dc: WinApi.HANDLE; df: DevFont) 
 		var 
 			res: integer
-			abc: array 1 of WinApi.ABC
+			abc: carray 1 of WinApi.ABC
 	begin 
-		res := WinApi.GetCharABCWidthsW(dc, ord("H"), ord("H"), abc)
+		res := WinApi.GetCharABCWidthsW(dc, ord("H"), ord("H"), addrof(abc))
 		if res # 0 then // true type
 			df.noGap := (res # 0) & (abc[0].abcA <= 0)
-			res := WinApi.GetCharWidth32W(dc, 0, 255, df.wtab) 
+			res := WinApi.GetCharWidth32W(dc, 0, 255, addrof(df.wtab)) 
 		else  // raster
 			df.noGap := false
 			GetRasterWidth(dc, df.wtab) 
@@ -413,7 +413,7 @@ module Fonts
 	begin 
 		dc := WinApi.GetDC(0)
 		old := WinApi.SelectObject(dc, f.dev.id)
-		res := WinApi.GetTextFaceW(dc, len(name), name)
+		res := WinApi.GetTextFaceW(dc, len(name), addrof(name))
 		res := WinApi.GetTextMetricsW(dc, tm)
 		f.alias := name
 		if typeface = Fonts.default then
@@ -507,9 +507,7 @@ module Fonts
 		return defFont
 	end Default
 	
-	proc CallBack(
-		var elf: WinApi.ENUMLOGFONTW; var ntm: WinApi.NEWTEXTMETRICW; type_, par: integer
-		): integer 
+	proc CallBack( elf: *WinApi.ENUMLOGFONTW; ntm: *WinApi.NEWTEXTMETRICW; type_, par: integer): integer 
 		var 
 			p: ParPtr
 			info: Fonts.TypefaceInfo

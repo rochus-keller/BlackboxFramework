@@ -1,7 +1,7 @@
 // Generated/synthesized by OberonViewer 0.8.3 on 2021-01-15T17:28:40
 // manually modified
 
-definition Data
+definition Data []
 
 	import WinOle := Win.Ole, System.Stores, System.Views, System.Dialog
 	

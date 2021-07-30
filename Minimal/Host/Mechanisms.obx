@@ -35,11 +35,11 @@ module Mechanisms
 	
 	
 	type 
-		IDropSource = pointer to record (WinOle.IDropSource) 
+		IDropSource = pointer to record // TODO (WinOle.IDropSource) 
 				key: set 
 			end 
 		
-		IDropTarget = pointer to record (WinOle.IDropTarget) 
+		IDropTarget = pointer to record // TODO (WinOle.IDropTarget) 
 				win: Windows.Window
 				wnd: WinApi.HWND
 				x, y: integer
@@ -540,7 +540,7 @@ module Mechanisms
 		new(drop)
 		drop.win := win
 		drop.wnd := wnd
-		res := WinOle.RegisterDragDrop(wnd, drop)
+		// TODO res := WinOle.RegisterDragDrop(wnd, drop)
 	end InstallDropTarget
 	
 	proc RemoveDropTarget*(wnd: WinApi.HWND) 
@@ -606,7 +606,7 @@ module Mechanisms
 			res: integer
 	begin 
 		Dialog.MapString(name, name)
-		res := WinApi.AppendMenuW(menu, {}, id, name)
+		res := WinApi.AppendMenuW(menu, {}, id, addrof(name))
 	end AppendMenu
 	
 	proc ShowPopup(f: Views.Frame; x, y: integer; var effect: set) 
@@ -839,7 +839,7 @@ module Mechanisms
 		if op # Mechanisms.copy_ then
 			mask := mask + WinOle.DROPEFFECT_MOVE 
 		end 
-		res := WinOle.DoDragDrop(data, dsrc, mask, mode)
+		// TODO res := WinOle.DoDragDrop(data, dsrc, mask, mode)
 		op := Mechanisms.cancelDrop
 		if res = WinApi.DRAGDROP_S_DROP then
 			if mode * WinOle.DROPEFFECT_MOVE # {} then
@@ -969,7 +969,7 @@ module Mechanisms
 				res := WinApi.AppendMenuW(menu, WinApi.MF_SEPARATOR, 0, nil) 
 			else 
 				Dialog.MapString(string[j], t)
-				res := WinApi.AppendMenuW(menu, {}, 32000 + j, t)
+				res := WinApi.AppendMenuW(menu, {}, 32000 + j, addrof(t))
 				if ~enabled[j] then
 					res := WinApi.EnableMenuItem(menu, 32000 + j, WinApi.MF_GRAYED) 
 				elsif checked[j] then 

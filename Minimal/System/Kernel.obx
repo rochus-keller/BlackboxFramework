@@ -95,7 +95,7 @@ definition Kernel
 					adr: integer
 					mod_: Module
 					desc: Type
-					ptr: S.PTR
+					ptr: *void // original S.PTR
 					ext: ItemExt
 				end 
 		Hook = pointer to record 
@@ -158,7 +158,7 @@ definition Kernel
 		proc ThisType(mod_: Module; in name: array of wchar): Type 
 		proc TypeOf(in rec: anyrec): Type 
 		proc LevelOf(t: Type): shortint 
-		proc NewObj(var o: S.PTR; t: Type) 
+		proc NewObj(VAR o: ^anyrec; t: Type) 
 		proc GetModName(mod_: Module; var name: Name) 
 		//proc GetObjName(mod_: Module; obj: Object; var name: Name) 
 		proc GetTypeName(t: Type; var name: Name) 

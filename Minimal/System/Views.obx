@@ -88,7 +88,7 @@ module Views
 		
 		// frames
 		
-		Frame* = pointer to (* abstract *) record (Ports.Frame) 
+		FrameDesc* = record (Ports.Frame) 
 				l-, t-, r-, b-: integer // l < r, t < b
 				view-: View // opened => view # NIL, view.context # NIL, view.seq # NIL
 				front-, mark-: boolean
@@ -99,6 +99,8 @@ module Views
 				next, down, up, focus: Frame
 				level: integer  // used for partial z-ordering
 			end 
+			
+		Frame* = pointer to (* abstract *) FrameDesc
 		
 		
 		Message* = (* abstract *) record 

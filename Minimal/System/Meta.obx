@@ -119,8 +119,8 @@ module Meta
 				len_: array 16 of integer  // dynamic array length table
 			end 
 		
-		SStringPtr = unsafe pointer to carray of char
-		StringPtr = unsafe pointer to carray of wchar
+		SStringPtr = pointer to array of char
+		StringPtr = pointer to array of wchar
 	
 	var 
 		dummy: ArrayPtr // dummy object for item.ptr

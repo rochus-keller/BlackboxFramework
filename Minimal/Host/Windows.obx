@@ -134,7 +134,7 @@ module Windows
 		whiteBrush, nullPen: WinApi.HANDLE
 		docIcon, dirtyIcon: WinApi.HANDLE
 		instance: WinApi.HANDLE // application instance
-		mpid: integer // main window process id
+		mpid: [1]integer // main window process id
 		cbViewer: Window // pseudo window for clipboard drawing
 		cbValid: boolean // clipboard contents is valid
 		mainActive: boolean // main is active window
@@ -864,7 +864,7 @@ module Windows
 		h := w
 		repeat 
 			GenTitle(h, title, t)
-			res := WinApi.SetWindowTextW(h.wnd, t)
+			res := WinApi.SetWindowTextW(h.wnd, addrof(t))
 			h := h.link(Window) 
 		until h = w 
 	end SetTitle2
@@ -894,7 +894,7 @@ module Windows
 		assert(w.wnd # 0, 20)
 		title := w.title
 		if title = "" then
-			res := WinApi.GetWindowTextW(w.wnd, title, len(title))
+			res := WinApi.GetWindowTextW(w.wnd, addrof(title), len(title))
 			StripTitle(title) 
 		end 
 	end GetTitle
@@ -1313,7 +1313,8 @@ module Windows
 	proc (d: Directory) GetThisWindow*(p: Ports.Port; px, py: integer
 		var x, y: integer; var w: Windows.Window) 
 		var 
-			res, wpid: integer
+			res: integer
+			wpid: [1]integer
 			wnd: WinApi.HANDLE
 			pt: WinApi.POINT
 			s: array 32 of wchar
@@ -1325,9 +1326,9 @@ module Windows
 			res := WinApi.ClientToScreen(wnd, pt) 
 		end 
 		wnd := WinApi.WindowFromPoint(pt)
-		res := WinApi.GetWindowThreadProcessId(wnd, wpid)
-		if (wnd # 0) & (wpid = mpid) then
-			res := WinApi.GetClassNameW(wnd, s, len(s))
+		res := WinApi.GetWindowThreadProcessId(wnd, addrof(wpid))
+		if (wnd # 0) & (wpid[0] = mpid[0]) then
+			res := WinApi.GetClassNameW(wnd, addrof(s), len(s))
 			if (s = "Oberon Doc") or (s = "Oberon Aux") or (s = "Oberon Dlg") then
 				res := WinApi.ScreenToClient(wnd, pt)
 				x := pt.x
@@ -1777,7 +1778,7 @@ module Windows
 	
 	proc InvalidateWin(wnd, dc: WinApi.HANDLE; paint: integer) 
 		type 
-			RectPtr = pointer to WinApi.RECT
+			RectPtr = unsafe pointer to WinApi.RECT
 		var 
 			w: Window
 			rp: RectPtr
@@ -2249,7 +2250,7 @@ module Windows
 			// Append(str, totalStr); AppendInt(str, total, useSeparators); Append(str, byteStr);
 			
 			
-			res := WinApi.SetWindowTextW(info, str) 
+			res := WinApi.SetWindowTextW(info, addrof(str)) 
 		end 
 	end UpdateInfo
 	(* PROCEDURE Check;
@@ -2535,13 +2536,13 @@ module Windows
 		res := WinApi.RegisterClassW(class)
 		// open main windows
 		if ~fullSize then
-			main := WinApi.CreateWindowExW({8, 9}, "Oberon App", Dialog.appName, 
+			main := WinApi.CreateWindowExW({8, 9}, "Oberon App", addrof(Dialog.appName), 
 				{16..19, 22, 23},  // maxbox, minbox, frame, sysmenu, title, border
 				WinApi.CW_USEDEFAULT, WinApi.CW_USEDEFAULT, 
 				WinApi.CW_USEDEFAULT, WinApi.CW_USEDEFAULT, 
 				0, menuBar, instance, 0) 
 		else 
-			main := WinApi.CreateWindowExW({8, 9}, "Oberon App", Dialog.appName, 
+			main := WinApi.CreateWindowExW({8, 9}, "Oberon App", addrof(Dialog.appName), 
 				WinApi.WS_MINIMIZEBOX + WinApi.WS_SYSMENU + WinApi.WS_CAPTION, 
 				WinApi.CW_USEDEFAULT, WinApi.CW_USEDEFAULT, 
 				WinApi.CW_USEDEFAULT, WinApi.CW_USEDEFAULT, 
@@ -2592,7 +2593,7 @@ module Windows
 		unit := Ports.inch div WinApi.GetDeviceCaps(dc, WinApi.LOGPIXELSY)
 		res := WinApi.ReleaseDC(main, dc)
 		
-		res := WinApi.GetWindowThreadProcessId(main, mpid)
+		res := WinApi.GetWindowThreadProcessId(main, addrof(mpid))
 		
 		Dialog.MapString(allocKey, allocStr)
 		Dialog.MapString(totalKey, totalStr)

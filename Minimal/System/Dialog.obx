@@ -500,14 +500,14 @@ module Dialog
 		while (mi < ml) or (ei < el) do 
 			inc(nofKeys)
 			if (mi < ml) & (ei < el) & (master.key[mi]^ = extra.key[ei]^) then
-				datalength := datalength + len(master.key[mi]^) + len(master.str[mi]^) + 2
+				datalength := datalength + strlen(master.key[mi]^) + strlen(master.str[mi]^) + 2
 				inc(mi)
 				inc(ei) 
 			elsif (ei < el) & ((mi >= ml) or (master.key[mi]^ > extra.key[ei]^)) then 
-				datalength := datalength + len(extra.key[ei]^) + len(extra.str[ei]^) + 2
+				datalength := datalength + strlen(extra.key[ei]^) + strlen(extra.str[ei]^) + 2
 				inc(ei) 
 			else 
-				datalength := datalength + len(master.key[mi]^) + len(master.str[mi]^) + 2
+				datalength := datalength + strlen(master.key[mi]^) + strlen(master.str[mi]^) + 2
 				inc(mi) 
 			end  
 		end 
