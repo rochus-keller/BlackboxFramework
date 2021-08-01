@@ -124,7 +124,7 @@ module Fonts
 		x := s.cx
 		while i < 256 do 
 			str[0] := wchr(i)
-			res := WinApi.GetTextExtentPoint32W(dc, addrof(str), 2, s)
+			res := WinApi.GetTextExtentPoint32W(dc, adr(str), 2, s)
 			wtab[i] := s.cx - x
 			inc(i) 
 		end 
@@ -148,7 +148,7 @@ module Fonts
 			a := f.size_ mod grid
 			b := f.size_ div grid
 			f.id := df.id
-			res := WinApi.GetCharABCWidthsW(dc, 0, 255, addrof(abc))
+			res := WinApi.GetCharABCWidthsW(dc, 0, 255, adr(abc))
 			if res # 0 then
 				i := 0
 				max_ := 0
@@ -233,16 +233,16 @@ module Fonts
 		if ch < 100x then
 			return f.wtab[ord(ch)] 
 		end 
-		res := WinApi.GetCharABCWidthsW(dc, ord(ch), ord(ch), addrof(abc))
+		res := WinApi.GetCharABCWidthsW(dc, ord(ch), ord(ch), adr(abc))
 		if res # 0 then
 			w := abc[0].abcA + abc[0].abcB + abc[0].abcC
 			w := w * f.a div grid + w * f.b 
 		else 
-			res := WinApi.GetCharWidth32W(dc, ord(ch), ord(ch), addrof(wt))
+			res := WinApi.GetCharWidth32W(dc, ord(ch), ord(ch), adr(wt))
 			if res # 0 then
 				w := wt[0] * f.a div grid + wt[0] * f.b 
 			else 
-				res := WinApi.GetCharWidthW(dc, ord(ch), ord(ch), addrof(wt))
+				res := WinApi.GetCharWidthW(dc, ord(ch), ord(ch), adr(wt))
 				if res # 0 then
 					w := wt[0] * f.a div grid + wt[0] * f.b 
 				else 
@@ -261,7 +261,7 @@ module Fonts
 		if ch < 100x then
 			return f.ftab[ord(ch)] 
 		end 
-		res := WinApi.GetCharABCWidthsW(dc, ord(ch), ord(ch), addrof(abc))
+		res := WinApi.GetCharABCWidthsW(dc, ord(ch), ord(ch), adr(abc))
 		if (res # 0) & (abc[0].abcA < 0) then
 			w := -abc[0].abcA
 			w := w * f.a div grid + w * f.b 
@@ -279,7 +279,7 @@ module Fonts
 		if ch < 100x then
 			return f.ttab[ord(ch)] 
 		end 
-		res := WinApi.GetCharABCWidthsW(dc, ord(ch), ord(ch), addrof(abc))
+		res := WinApi.GetCharABCWidthsW(dc, ord(ch), ord(ch), adr(abc))
 		if (res # 0) & (abc[0].abcC < 0) then
 			w := -abc[0].abcC
 			w := w * f.a div grid + w * f.b 
@@ -297,9 +297,9 @@ module Fonts
 		if ch < 100x then
 			return df.wtab[ord(ch)] 
 		end 
-		res := WinApi.GetCharWidth32W(dc, ord(ch), ord(ch), addrof(wt))
+		res := WinApi.GetCharWidth32W(dc, ord(ch), ord(ch), adr(wt))
 		if res = 0 then
-			res := WinApi.GetCharWidthW(dc, ord(ch), ord(ch), addrof(wt)) 
+			res := WinApi.GetCharWidthW(dc, ord(ch), ord(ch), adr(wt)) 
 		end 
 		if res # 0 then
 			w := wt[0] 
@@ -382,10 +382,10 @@ module Fonts
 			res: integer
 			abc: carray 1 of WinApi.ABC
 	begin 
-		res := WinApi.GetCharABCWidthsW(dc, ord("H"), ord("H"), addrof(abc))
+		res := WinApi.GetCharABCWidthsW(dc, ord("H"), ord("H"), adr(abc))
 		if res # 0 then // true type
 			df.noGap := (res # 0) & (abc[0].abcA <= 0)
-			res := WinApi.GetCharWidth32W(dc, 0, 255, addrof(df.wtab)) 
+			res := WinApi.GetCharWidth32W(dc, 0, 255, adr(df.wtab)) 
 		else  // raster
 			df.noGap := false
 			GetRasterWidth(dc, df.wtab) 
@@ -413,7 +413,7 @@ module Fonts
 	begin 
 		dc := WinApi.GetDC(0)
 		old := WinApi.SelectObject(dc, f.dev.id)
-		res := WinApi.GetTextFaceW(dc, len(name), addrof(name))
+		res := WinApi.GetTextFaceW(dc, len(name), adr(name))
 		res := WinApi.GetTextMetricsW(dc, tm)
 		f.alias := name
 		if typeface = Fonts.default then

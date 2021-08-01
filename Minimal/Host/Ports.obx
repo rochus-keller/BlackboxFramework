@@ -891,7 +891,7 @@ module Ports
 					a := b
 					inc(i) 
 				end 
-				res := WinApi.ExtTextOutA(dc, x, y, 0, nil, addrof(s1), n, addrof(dx)) 
+				res := WinApi.ExtTextOutA(dc, x, y, 0, nil, adr(s1), n, adr(dx)) 
 			end  
 		end 
 		if p.wnd = 0 then
@@ -1090,7 +1090,7 @@ module Ports
 				if df.noGap then // caret pos optimization
 					inc(x) 
 				end 
-				res := WinApi.ExtTextOutW(dc, x, y, 0, nil, addrof(s1), n, addrof(dx)) 
+				res := WinApi.ExtTextOutW(dc, x, y, 0, nil, adr(s1), n, adr(dx)) 
 			end  
 		end 
 		if p.wnd = 0 then
@@ -1130,7 +1130,7 @@ module Ports
 			end 
 			res := WinApi.SetTextColor(dc, col)
 			dx[0] := w
-			res := WinApi.ExtTextOutA(dc, x, y, 0, nil, " ", 1, addrof(dx)) 
+			res := WinApi.ExtTextOutA(dc, x, y, 0, nil, " ", 1, adr(dx)) 
 		end 
 		if p.wnd = 0 then
 			res := WinApi.RestoreDC(dc, -1) 

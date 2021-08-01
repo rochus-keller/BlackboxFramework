@@ -581,7 +581,7 @@ module CFrames
 			res: integer
 			nm: array 32 of wchar
 	begin 
-		res := WinApi.GetClassNameW(wnd, addrof(nm), len(nm))
+		res := WinApi.GetClassNameW(wnd, adr(nm), len(nm))
 		if res > 0 then
 			Strings.ToUpper(nm, nm) 
 		else 
@@ -798,9 +798,9 @@ module CFrames
 			lbl, s: Dialog.String
 	begin 
 		Dialog.MapString(label, lbl)
-		res := WinApi.GetWindowTextW(ctrl, addrof(s), len(s))
+		res := WinApi.GetWindowTextW(ctrl, adr(s), len(s))
 		if s # lbl then
-			res := WinApi.SetWindowTextW(ctrl, addrof(lbl)) 
+			res := WinApi.SetWindowTextW(ctrl, adr(lbl)) 
 		end 
 	end CheckLabel
 	
@@ -863,7 +863,7 @@ module CFrames
 			if f.default & ~f.disabled then // default
 				incl(style, 0) 
 			end 
-			Open(f, "BUTTON", addrof(lbl), style, {}, f.i) 
+			Open(f, adr("BUTTON"), adr(lbl), style, {}, f.i) 
 		end 
 		f.Update
 		if f.i.wnd # 0 then
@@ -975,7 +975,7 @@ module CFrames
 			
 			
 			style := {0, 2, 16, 30} // 3state, tabstop, child
-			Open(f, "BUTTON", addrof(lbl), style, {}, f.i) 
+			Open(f, adr("BUTTON"), adr(lbl), style, {}, f.i) 
 		end 
 		f.Update
 		if f.i.wnd # 0 then
@@ -1072,7 +1072,7 @@ module CFrames
 	begin 
 		SetLabel(f.label, lbl)
 		if f.i.ctrl = 0 then // lazy allocation
-			Open(f, "BUTTON", addrof(lbl), {0, 3, 16, 30}, {}, f.i)  // auto radiobutton, tabstop, child
+			Open(f, adr("BUTTON"), adr(lbl), {0, 3, 16, 30}, {}, f.i)  // auto radiobutton, tabstop, child
 		end 
 		f.Update
 		if f.i.wnd # 0 then
@@ -1191,7 +1191,7 @@ module CFrames
 			if h > w then // vertical
 				incl(style, 0) 
 			end 
-			Open(f, "SCROLLBAR", "", style, {}, f.i)
+			Open(f, adr("SCROLLBAR"), adr(""), style, {}, f.i)
 			res := WinApi.SetScrollRange(f.i.ctrl, WinApi.SB_CTL, 0, scrollRange, 1) 
 		end 
 		f.Update
@@ -1323,13 +1323,13 @@ module CFrames
 			else 
 				f.Get(f, s) 
 			end 
-			res := WinApi.GetWindowTextW(f.i.ctrl, addrof(s1), len(s1))
+			res := WinApi.GetWindowTextW(f.i.ctrl, adr(s1), len(s1))
 			if (WinApi.GetWindowTextLengthW(f.i.ctrl) >= len(s)) or ~Equal(f, s, s1) then
 				f.isUpdate := true
 				if f.multiLine then
 					InsLF(s) 
 				end 
-				res := WinApi.SetWindowTextW(f.i.ctrl, addrof(s))
+				res := WinApi.SetWindowTextW(f.i.ctrl, adr(s))
 				f.isUpdate := false 
 			end  
 		end 
@@ -1383,7 +1383,7 @@ module CFrames
 			if f.password then // password
 				incl(style, 5) 
 			end 
-			Open(f, "EDIT", "", style, WinApi.WS_EX_CLIENTEDGE, f.i)
+			Open(f, adr("EDIT"), adr(""), style, WinApi.WS_EX_CLIENTEDGE, f.i)
 			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_LIMITTEXT, f.maxLen, 0)
 			f.Update
 			if f.front & ~f.disabled then
@@ -1539,7 +1539,7 @@ module CFrames
 				s := "" 
 			else 
 				f.Get(f, val_)
-				res := WinApi.GetWindowTextW(f.i.ctrl, addrof(s1), len(s1))
+				res := WinApi.GetWindowTextW(f.i.ctrl, adr(s1), strlen(s1))
 				Strings.IntToString(val_, s)
 				upd := (val_ # f.val_) or (s1 # s) 
 			end 
@@ -1558,7 +1558,7 @@ module CFrames
 			end 
 			if upd then
 				f.isUpdate := true
-				res := WinApi.SetWindowTextW(f.i.ctrl, addrof(s))
+				res := WinApi.SetWindowTextW(f.i.ctrl, adr(s))
 				f.val_ := val_
 				f.isUpdate := false 
 			end 
@@ -1600,7 +1600,7 @@ module CFrames
 			f.i.readOnly := f.readOnly
 			f.i.undef := f.undef
 			f.val_ := 0
-			Open(f, "EDIT", "0", style, WinApi.WS_EX_CLIENTEDGE, f.i)
+			Open(f, adr("EDIT"), adr("0"), style, WinApi.WS_EX_CLIENTEDGE, f.i)
 			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_LIMITTEXT, 16, 0)
 			f.Update
 			if f.front & ~f.disabled then
@@ -1878,10 +1878,10 @@ module CFrames
 					res := WinApi.EnableWindow(f.i.ud, 1) 
 				end  
 			end 
-			res := WinApi.GetWindowTextW(f.i.ctrl, addrof(s1), len(s1))
+			res := WinApi.GetWindowTextW(f.i.ctrl, adr(s1), strlen(s1))
 			if s # s1 then
 				f.isUpdate := true
-				res := WinApi.SetWindowTextW(f.i.ctrl, addrof(s))
+				res := WinApi.SetWindowTextW(f.i.ctrl, adr(s))
 				f.isUpdate := false 
 			end 
 			style := bits(WinApi.GetWindowLongW(f.i.ctrl, -16)) // window style
@@ -1923,7 +1923,7 @@ module CFrames
 			
 			f.i.readOnly := f.readOnly
 			f.i.undef := f.undef
-			Open(f, "EDIT", "", style, WinApi.WS_EX_CLIENTEDGE, f.i)
+			Open(f, adr("EDIT"), adr(""), style, WinApi.WS_EX_CLIENTEDGE, f.i)
 			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_LIMITTEXT, 16, 0)
 			f.Update
 			if f.front & ~f.disabled then
@@ -2247,10 +2247,10 @@ module CFrames
 					res := WinApi.EnableWindow(f.i.ud, 1) 
 				end  
 			end 
-			res := WinApi.GetWindowTextW(f.i.ctrl, addrof(s1), len(s1))
+			res := WinApi.GetWindowTextW(f.i.ctrl, adr(s1), strlen(s1))
 			if s # s1 then
 				f.isUpdate := true
-				res := WinApi.SetWindowTextW(f.i.ctrl, addrof(s))
+				res := WinApi.SetWindowTextW(f.i.ctrl, adr(s))
 				f.isUpdate := false 
 			end 
 			style := bits(WinApi.GetWindowLongW(f.i.ctrl, -16)) // window style
@@ -2292,7 +2292,7 @@ module CFrames
 			
 			f.i.readOnly := f.readOnly
 			f.i.undef := f.undef
-			Open(f, "EDIT", "", style, WinApi.WS_EX_CLIENTEDGE, f.i)
+			Open(f, adr("EDIT"), adr(""), style, WinApi.WS_EX_CLIENTEDGE, f.i)
 			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_LIMITTEXT, 16, 0)
 			f.Update
 			if f.front & ~f.disabled then
@@ -2588,7 +2588,7 @@ module CFrames
 			f.i.readOnly := f.readOnly
 			// drop down list, auto scroll, ownerdrawn, tabstop, ver scroll, border, child
 			style := {0, 1, 4, 6, 16, 21, 23, 30}
-			Open(f, "COMBOBOX", "", style, WinApi.WS_EX_CLIENTEDGE, f.i)
+			Open(f, adr("COMBOBOX"), adr(""), style, WinApi.WS_EX_CLIENTEDGE, f.i)
 			i := 0
 			res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETEXTENDEDUI, 1, 0)
 			while i < numColors do 
@@ -2773,14 +2773,14 @@ module CFrames
 				if f.sorted then // sort
 					incl(style, 1) 
 				end 
-				Open(f, "LISTBOX", "", style, WinApi.WS_EX_CLIENTEDGE, f.i) 
+				Open(f, adr("LISTBOX"), adr(""), style, WinApi.WS_EX_CLIENTEDGE, f.i) 
 			else 
 				f.i.dropDown := true
 				style := {0, 1, 6, 16, 21, 23, 30} // drop down list, auto scroll, tabstop, ver scroll, border, child
 				if f.sorted then // sort
 					incl(style, 8) 
 				end 
-				Open(f, "COMBOBOX", "", style, WinApi.WS_EX_CLIENTEDGE, f.i)
+				Open(f, adr("COMBOBOX"), adr(""), style, WinApi.WS_EX_CLIENTEDGE, f.i)
 				res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETEXTENDEDUI, WinApi.TRUE_, 0) 
 			end 
 			f.UpdateList 
@@ -3031,7 +3031,7 @@ module CFrames
 			if f.sorted then // sort
 				incl(style, 1) 
 			end 
-			Open(f, "LISTBOX", "", style, WinApi.WS_EX_CLIENTEDGE, f.i)
+			Open(f, adr("LISTBOX"), adr(""), style, WinApi.WS_EX_CLIENTEDGE, f.i)
 			f.UpdateList 
 		else 
 			f.Update 
@@ -3123,13 +3123,13 @@ module CFrames
 			if WinApi.IsWindowEnabled(f.i.ctrl) = 0 then
 				res := WinApi.EnableWindow(f.i.ctrl, 1) 
 			end 
-			res := WinApi.GetWindowTextW(f.i.ctrl, addrof(s1), len(s1))
+			res := WinApi.GetWindowTextW(f.i.ctrl, adr(s1), len(s1))
 			if (WinApi.GetWindowTextLengthW(f.i.ctrl) >= len(s)) or (s # s1) then
 				if ~f.i.dropDown then
 					res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_FINDSTRINGEXACT, -1, SYSTEM.ADR(s))
 					res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETCURSEL, res, 0) 
 				end 
-				res := WinApi.SetWindowTextW(f.i.ctrl, addrof(s)) 
+				res := WinApi.SetWindowTextW(f.i.ctrl, adr(s)) 
 			end  
 		else 
 			if WinApi.IsWindowEnabled(f.i.ctrl) # 0 then
@@ -3180,7 +3180,7 @@ module CFrames
 			else 
 				incl(style, 0) 
 			end 
-			Open(f, "COMBOBOX", addrof(s), style, WinApi.WS_EX_CLIENTEDGE, f.i)
+			Open(f, adr("COMBOBOX"), adr(s), style, WinApi.WS_EX_CLIENTEDGE, f.i)
 			pt.x := 4
 			pt.y := 4
 			f.edit := WinApi.ChildWindowFromPoint(f.i.ctrl, pt) // hack found in win api manual !
@@ -3395,7 +3395,7 @@ module CFrames
 			else 
 				style := style + WinApi.SS_CENTER 
 			end 
-			Open(f, "STATIC", addrof(lbl), style, {}, f.i)  // left, child
+			Open(f, adr("STATIC"), adr(lbl), style, {}, f.i)  // left, child
 		end 
 		f.Update
 		if f.i.wnd # 0 then
@@ -3452,7 +3452,7 @@ module CFrames
 	begin 
 		SetLabel(f.label, lbl)
 		if f.i.ctrl = 0 then // lazy allocation
-			Open(f, "BUTTON", addrof(lbl), {0, 1, 2, 30}, {}, f.i)  // group box, child
+			Open(f, adr("BUTTON"), adr(lbl), {0, 1, 2, 30}, {}, f.i)  // group box, child
 		end 
 		f.Update
 		if f.i.wnd # 0 then
@@ -3511,7 +3511,7 @@ module CFrames
 		if f.atroot then
 			style := style + WinCtl.TVS_LINESATROOT 
 		end 
-		Open(f, WinCtl.WC_TREEVIEWW, "", style, {}, f.i) // 3
+		Open(f, adr(WinCtl.WC_TREEVIEWW), adr(""), style, {}, f.i) // 3
 		res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TV_FIRST + 033, 100, 0) // TVM_SETSCROLLTIME
 		if f.foldericons then
 			// Create an imagelist and associate it with the control
@@ -3617,7 +3617,7 @@ module CFrames
 		tvi.mask := WinCtl.TVIF_TEXT + WinCtl.TVIF_PARAM + WinCtl.TVIF_IMAGE + WinCtl.TVIF_SELECTEDIMAGE
 		tn.GetName(s)
 		Dialog.MapString(s, s)
-		tvi.pszText := addrof(s)
+		tvi.pszText := adr(s)
 		tvi.cchTextMax := len(s)
 		tvi.lParam := f.curindex
 		if tn.IsFolder() then
@@ -4172,7 +4172,7 @@ module CFrames
 								c.Set(c, ps^) 
 							end  
 						else 
-							res := WinApi.GetWindowTextW(c.i.ctrl, addrof(s), len(s))
+							res := WinApi.GetWindowTextW(c.i.ctrl, adr(s), strlen(s))
 							if c.multiLine then
 								DelLF(s) 
 							end 
@@ -4189,7 +4189,7 @@ module CFrames
 							end 
 							c.Set(c, ps^) 
 						else 
-							res := WinApi.GetWindowTextW(c.i.ctrl, addrof(s), len(s))
+							res := WinApi.GetWindowTextW(c.i.ctrl, adr(s), strlen(s))
 							if c.multiLine then
 								DelLF(s) 
 							end 
@@ -4201,7 +4201,7 @@ module CFrames
 		| c: UpDownField do 
 			if c.i.ctrl # 0 then
 				if (nc = WinApi.EN_CHANGE) & ~c.isUpdate then
-					res := WinApi.GetWindowTextW(c.i.ctrl, addrof(s), len(s))
+					res := WinApi.GetWindowTextW(c.i.ctrl, adr(s), strlen(s))
 					if (s = "") or (s = "-") then
 						c.val_ := 0
 						res := 0 
@@ -4298,7 +4298,7 @@ module CFrames
 		| c: ComboBox do 
 			if c.i.ctrl # 0 then
 				if nc = WinApi.CBN_EDITCHANGE then
-					res := WinApi.GetWindowTextW(c.i.ctrl, addrof(s), len(s))
+					res := WinApi.GetWindowTextW(c.i.ctrl, adr(s), strlen(s))
 					c.Set(c, s) 
 				elsif nc = WinApi.CBN_SELCHANGE then 
 					i := WinApi.SendMessageW(c.i.ctrl, WinApi.CB_GETCURSEL, 0, 0)
@@ -4565,7 +4565,7 @@ module CFrames
 		class.hCursor := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_ARROW))
 		class.hIcon := WinApi.LoadIconW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 1))
 		class.lpszMenuName := nil
-		class.lpszClassName := "Oberon Ctrl"
+		class.lpszClassName := adr("Oberon Ctrl")
 		class.hbrBackground := 0 // no background
 		class.style := {}
 		class.hInstance := instance
@@ -4580,11 +4580,11 @@ module CFrames
 			res: integer
 			str: array 8 of wchar
 	begin 
-		res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_SDATE, addrof(str), len(str))
+		res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_SDATE, adr(str), strlen(str))
 		dateSep := str[0]
-		res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_STIME, addrof(str), len(str))
+		res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_STIME, adr(str), strlen(str))
 		timeSep := str[0]
-		res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_IDATE, addrof(str), len(str))
+		res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_IDATE, adr(str), strlen(str))
 		if str = "1" then
 			dayPart := 1
 			monthPart := 2
@@ -4604,14 +4604,14 @@ module CFrames
 			del1 := 2
 			del2 := 5 
 		end 
-		res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_ITIME, addrof(str), len(str))
+		res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_ITIME, adr(str), strlen(str))
 		if str = "1" then
 			lastPart := 3 
 		else 
 			lastPart := 4
-			res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_S1159, addrof(str), len(str))
+			res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_S1159, adr(str), strlen(str))
 			desig[0] := str
-			res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_S2359, addrof(str), len(str))
+			res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_S2359, adr(str), strlen(str))
 			desig[1] := str 
 		end 
 	end InitNationalInfo

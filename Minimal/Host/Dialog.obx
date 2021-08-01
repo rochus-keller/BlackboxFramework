@@ -189,7 +189,7 @@ module Dialog
 			ShowOleStatus(w, " " + st) 
 		else 
 			st := " " + st
-			res := WinApi.SetWindowTextW(HostWindows.status, addrof(st))
+			res := WinApi.SetWindowTextW(HostWindows.status, adr(st))
 			res := WinApi.UpdateWindow(HostWindows.status) 
 		end 
 	end ShowParamStatus
@@ -201,7 +201,7 @@ module Dialog
 	begin 
 		assert(str # "", 20)
 		Dialog.MapParamString(str, p0, p1, p2, st)
-		res := WinApi.MessageBoxW(HostWindows.ActualWnd(), addrof(st), addrof(Dialog.appName), {4, 5})
+		res := WinApi.MessageBoxW(HostWindows.ActualWnd(), adr(st), adr(Dialog.appName), {4, 5})
 	end ShowParamMsg
 	
 	proc (h: ShowHook) ShowParamMsg(in str, p0, p1, p2: array of wchar) 
@@ -237,7 +237,7 @@ module Dialog
 				type_ := WinApi.MB_OK + WinApi.MB_ICONWARNING 
 			end  
 		end 
-		r := WinApi.MessageBoxW(HostWindows.ActualWnd(), addrof(st), addrof(Dialog.appName), type_)
+		r := WinApi.MessageBoxW(HostWindows.ActualWnd(), adr(st), adr(Dialog.appName), type_)
 		if r = WinApi.IDOK then
 			res := Dialog.ok 
 		elsif r = WinApi.IDCANCEL then 
@@ -506,7 +506,7 @@ module Dialog
 			edit: WinApi.HANDLE
 	begin 
 		if (msg = WinApi.WM_COMMAND) & (lParam # 0) & (wParam = 10470h) then
-			i := WinApi.GetWindowTextW(lParam, addrof(s), len(s))
+			i := WinApi.GetWindowTextW(lParam, adr(s), len(s))
 			dec(i)
 			if s[i] = ")" then
 				dec(i) 
@@ -522,7 +522,7 @@ module Dialog
 				t[i - j] := 0x
 				edit := WinApi.GetDlgItem(WinApi.GetParent(lParam), 480h)
 				if edit # 0 then
-					i := WinApi.GetWindowTextW(edit, addrof(s), len(s))
+					i := WinApi.GetWindowTextW(edit, adr(s), len(s))
 					j := i - 1
 					while (j >= 0) & (s[j] # ".") do 
 						dec(j) 
@@ -535,7 +535,7 @@ module Dialog
 					s[j + 2] := t[1]
 					s[j + 3] := t[2]
 					s[j + 4] := 0x
-					i := WinApi.SetWindowTextW(edit, addrof(s)) 
+					i := WinApi.SetWindowTextW(edit, adr(s)) 
 				end  
 			end  
 		end 
@@ -946,7 +946,7 @@ module Dialog
 	begin 
 		w.GetTitle(title)
 		Dialog.MapParamString(dirtyString, title, 0dx, 0dx, text)
-		r := WinApi.MessageBoxW(w(HostWindows.Window).wnd, addrof(text), addrof(Dialog.appName), {0, 1, 5})
+		r := WinApi.MessageBoxW(w(HostWindows.Window).wnd, adr(text), adr(Dialog.appName), {0, 1, 5})
 		if r = 6 then
 			res := save 
 		elsif r = 2 then 
@@ -1254,7 +1254,7 @@ module Dialog
 		elsif format = Dates.long_ then 
 			res := WinApi.GetDateFormatW(HostRegistry.localeId, WinApi.DATE_LONGDATE, time, nil, str, len(str)) 
 		else 
-			res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_SLONGDATE, addrof(fmt), len(fmt))
+			res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_SLONGDATE, adr(fmt), len(fmt))
 			if format # Dates.abbreviated then // remove weekday
 				Strings.Find(fmt, "dddd", 0, pos)
 				i := pos + 4
@@ -1279,7 +1279,7 @@ module Dialog
 					Strings.Replace(fmt, pos, 4, "MMM") 
 				end  
 			end 
-			res := WinApi.GetDateFormatW(HostRegistry.localeId, {}, time, addrof(fmt), str, len(str)) 
+			res := WinApi.GetDateFormatW(HostRegistry.localeId, {}, time, adr(fmt), str, len(str)) 
 		end 
 		if res = 0 then
 			str := "?" 
@@ -1350,11 +1350,11 @@ module Dialog
 			args: carray 4 of WinApi.PtrWSTR
 			res: integer
 	begin 
-		args[0] := arg1
-		args[1] := arg2
-		args[2] := arg3
+		args[0] := adr(arg1)
+		args[1] := adr(arg2)
+		args[2] := adr(arg3)
 		args[3] := nil
-		res := WinApi.FormatMessageW(format, 0, error, 0, errMsg, len(errMsg), addrof(args))
+		res := WinApi.FormatMessageW(format, 0, error, 0, errMsg, len(errMsg), adr(args))
 	end FormatErrorMsg
 	
 	// thread safe; error numbers as returned from WinApi.GetLastError
@@ -1365,7 +1365,7 @@ module Dialog
 	begin 
 		FormatErrorMsg(error, arg1, arg2, arg3, errMsg)
 		errMsg := msgPrefix + errMsg
-		res := WinApi.MessageBoxW(Kernel.mainWnd, addrof(errMsg), addrof(Dialog.appName), WinApi.MB_ICONERROR)
+		res := WinApi.MessageBoxW(Kernel.mainWnd, adr(errMsg), adr(Dialog.appName), WinApi.MB_ICONERROR)
 	end ShowErrorDialog
 	
 	proc Start*(name: array of wchar)  // deprecated; better use Dialog.RunExternal
@@ -1394,8 +1394,8 @@ module Dialog
 		sxinfo.cbSize := size(WinApi.SHELLEXECUTEINFOW)
 		sxinfo.fMask := {10} // SEE_MASK_DEFAULT + SEE_MASK_FLAG_NO_UI
 		sxinfo.hwnd := 0
-		sxinfo.lpVerb := "open"
-		sxinfo.lpFile := addrof(fileName)
+		sxinfo.lpVerb := adr("open")
+		sxinfo.lpFile := adr(fileName)
 		sxinfo.lpParameters := nil
 		sxinfo.lpDirectory := nil
 		sxinfo.nShow := WinApi.SW_SHOW
@@ -1408,7 +1408,7 @@ module Dialog
 		end 
 		if isWine & (error = WinApi.ERROR_NO_ASSOCIATION) then // retry with Linux desktop associations
 			fileName2 := "winebrowser " + fileName
-			sxinfo.lpFile := addrof(fileName2)
+			sxinfo.lpFile := adr(fileName2)
 			if WinApi.ShellExecuteExW(sxinfo) = 1 then
 				return 0 
 			end  
@@ -1470,7 +1470,7 @@ module Dialog
 				exeName := "wineconsole " + exeName 
 			end  
 		end 
-		if WinApi.CreateProcessW(nil, addrof(exeName), nil, nil, WinApi.FALSE_, opts, 0, nil, info, process) = 0 then
+		if WinApi.CreateProcessW(nil, adr(exeName), nil, nil, WinApi.FALSE_, opts, 0, nil, info, process) = 0 then
 			ShowErrorDialog(WinApi.GetLastError(), exeName, "%2", "%3", runExtErr + exeName + 0dx + 0dx) 
 		end 
 		return 0
@@ -1504,15 +1504,15 @@ module Dialog
 		fn.lStructSize := size(WinDlg.OPENFILENAMEW)
 		fn.hInstance := 0
 		fn.lpstrCustomFilter := nil
-		fn.lpstrFilter := addrof(filter)
+		fn.lpstrFilter := adr(filter)
 		fn.nFilterIndex := 1
-		i := WinApi.GetCurrentDirectoryW(len(actualPath), addrof(actualPath))
-		fn.lpstrInitialDir := addrof(actualPath)
+		i := WinApi.GetCurrentDirectoryW(len(actualPath), adr(actualPath))
+		fn.lpstrInitialDir := adr(actualPath)
 		fn.lpstrTitle := nil
 		fn.lpstrFileTitle := nil
-		fn.lpstrFile := addrof(fname)
+		fn.lpstrFile := adr(fname)
 		fn.nMaxFile := len(fname)
-		fn.lpstrDefExt := addrof(ftype)
+		fn.lpstrDefExt := adr(ftype)
 		ftype := "$"
 		fn.lpfnHook := HookProc
 		// print dialog data structure
@@ -1539,7 +1539,7 @@ module Dialog
 		logFont.lfPitchAndFamily := 0x
 		// color dialog data structure
 		col.lStructSize := size(WinDlg.CHOOSECOLORW)
-		col.lpCustColors := addrof(customColors)
+		col.lpCustColors := adr(customColors)
 		col.Flags := {0} // rgbInit
 		i := 0
 		while i < 16 do 

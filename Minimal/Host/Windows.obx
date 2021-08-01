@@ -438,11 +438,11 @@ module Windows
 			c: Containers.Controller
 	begin 
 		assert(~(Windows.isTool in w.flags), 20)
-		m.szTitle := ""
+		m.szTitle := adr("")
 		if Windows.isAux in w.flags then
-			m.szClass := "Oberon Aux" 
+			m.szClass := adr("Oberon Aux")
 		else 
-			m.szClass := "Oberon Doc" 
+			m.szClass := adr("Oberon Doc")
 		end 
 		m.hOwner := instance
 		m.x := WinApi.CW_USEDEFAULT
@@ -864,7 +864,7 @@ module Windows
 		h := w
 		repeat 
 			GenTitle(h, title, t)
-			res := WinApi.SetWindowTextW(h.wnd, addrof(t))
+			res := WinApi.SetWindowTextW(h.wnd, adr(t))
 			h := h.link(Window) 
 		until h = w 
 	end SetTitle2
@@ -894,7 +894,7 @@ module Windows
 		assert(w.wnd # 0, 20)
 		title := w.title
 		if title = "" then
-			res := WinApi.GetWindowTextW(w.wnd, addrof(title), len(title))
+			res := WinApi.GetWindowTextW(w.wnd, adr(title), strlen(title))
 			StripTitle(title) 
 		end 
 	end GetTitle
@@ -967,7 +967,7 @@ module Windows
 			p := WinApi.MulDiv(pos, scrollRange, size_ - sect)
 			i.cbSize := size(WinApi.SCROLLINFO) // range, page, pos
 			i.fMask := {0, 1, 2}
-			res := WinApi.GetScrollInfo(w.wnd, type_, i)
+			res := WinApi.GetScrollInfo(w.wnd, type_, adr(i))
 			if res # 0 then
 				if sect > 0 then
 					q := WinApi.MulDiv(sect, scrollRange, size_ - sect)
@@ -980,7 +980,7 @@ module Windows
 					i.nPos := p
 					i.nPage := q + 1
 					i.nMax := m
-					res := WinApi.SetScrollInfo(w.wnd, type_, i, 1) 
+					res := WinApi.SetScrollInfo(w.wnd, type_, adr(i), 1) 
 				end  
 			elsif p # WinApi.GetScrollPos(w.wnd, type_) then 
 				res := WinApi.SetScrollPos(w.wnd, type_, p, 1) 
@@ -1323,14 +1323,14 @@ module Windows
 		pt.y := py
 		if p # nil then
 			wnd := p(HostPorts.Port).wnd
-			res := WinApi.ClientToScreen(wnd, pt) 
+			res := WinApi.ClientToScreen(wnd, adr(pt))
 		end 
 		wnd := WinApi.WindowFromPoint(pt)
-		res := WinApi.GetWindowThreadProcessId(wnd, addrof(wpid))
+		res := WinApi.GetWindowThreadProcessId(wnd, adr(wpid))
 		if (wnd # 0) & (wpid[0] = mpid[0]) then
-			res := WinApi.GetClassNameW(wnd, addrof(s), len(s))
+			res := WinApi.GetClassNameW(wnd, adr(s), strlen(s))
 			if (s = "Oberon Doc") or (s = "Oberon Aux") or (s = "Oberon Dlg") then
-				res := WinApi.ScreenToClient(wnd, pt)
+				res := WinApi.ScreenToClient(wnd, adr(pt))
 				x := pt.x
 				y := pt.y
 				w := ThisWindow(wnd) 
@@ -1369,7 +1369,7 @@ module Windows
 			rect: WinApi.RECT
 			res: integer
 	begin 
-		res := WinApi.GetClientRect(client, rect)
+		res := WinApi.GetClientRect(client, adr(rect))
 		w := rect.right
 		h := rect.bottom
 	end GetBounds
@@ -1702,7 +1702,7 @@ module Windows
 		res := WinApi.SystemParametersInfoW(104, (* SPI_GETWHEELSCROLLLINES *)0, SYSTEM.ADR(lines), 0)
 		p.x := lParam mod 65536
 		p.y := lParam div 65536
-		res := WinApi.ScreenToClient(wnd, p)
+		res := WinApi.ScreenToClient(wnd, adr(p))
 		msg.x := p.x * w.port.unit
 		msg.y := p.y * w.port.unit
 		msg.nofLines := 0
@@ -1911,9 +1911,9 @@ module Windows
 				if ~w.minimized then
 					// clip region must be reset to ensure correct ps.paint !
 					res := WinApi.SelectClipRgn(w.port(HostPorts.Port).dc, 0)
-					x := WinApi.BeginPaint(w.wnd, ps)
+					x := WinApi.BeginPaint(w.wnd, adr(ps))
 					Kernel.Try(InvalidateWin, wnd, x, SYSTEM.ADR(ps.rcPaint))
-					res := WinApi.EndPaint(w.wnd, ps)
+					res := WinApi.EndPaint(w.wnd, adr(ps))
 					Kernel.Try(PaintWin, wnd, 0, 0)
 					Controllers.ResetCurrentPath()
 					return 0 
@@ -1995,8 +1995,8 @@ module Windows
 						st := bits(WinApi.GetWindowLongW(tWindow.wnd, -16))
 						st := st - {16, 17, 19} // minimize box, maximize box, sysmenu
 						res := WinApi.SetWindowLongW(tWindow.wnd, -16, ord(st))
-						res := WinApi.GetWindowRect(tWindow.wnd, rec)
-						x := WinApi.CreateRectRgnIndirect(rec)
+						res := WinApi.GetWindowRect(tWindow.wnd, adr(rec))
+						x := WinApi.CreateRectRgnIndirect(adr(rec))
 						res := WinApi.SendMessageW(tWindow.wnd, WinApi.WM_NCPAINT, x, 0) 
 					end 
 					if (w.flags * {Windows.isAux, Windows.isTool} = {}) then
@@ -2121,9 +2121,9 @@ module Windows
 				if ~w.minimized then
 					// clip region must be reset to ensure correct ps.paint !
 					res := WinApi.SelectClipRgn(w.port(HostPorts.Port).dc, 0)
-					x := WinApi.BeginPaint(w.wnd, ps)
+					x := WinApi.BeginPaint(w.wnd, adr(ps))
 					Kernel.Try(InvalidateWin, wnd, x, SYSTEM.ADR(ps.rcPaint))
-					res := WinApi.EndPaint(w.wnd, ps)
+					res := WinApi.EndPaint(w.wnd, adr(ps))
 					Kernel.Try(PaintWin, wnd, 0, 0)
 					Controllers.ResetCurrentPath()
 					return 0 
@@ -2250,7 +2250,7 @@ module Windows
 			// Append(str, totalStr); AppendInt(str, total, useSeparators); Append(str, byteStr);
 			
 			
-			res := WinApi.SetWindowTextW(info, addrof(str)) 
+			res := WinApi.SetWindowTextW(info, adr(str)) 
 		end 
 	end UpdateInfo
 	(* PROCEDURE Check;
@@ -2371,7 +2371,7 @@ module Windows
 		tBorder := t
 		rBorder := r
 		bBorder := b
-		res := WinApi.GetClientRect(main, rect)
+		res := WinApi.GetClientRect(main, adr(rect))
 		ResizeMainWindow(0, rect.right, rect.bottom)
 	end SetMainBorderWidth
 	
@@ -2380,7 +2380,7 @@ module Windows
 			res: integer
 			rect: WinApi.RECT
 	begin 
-		res := WinApi.GetClientRect(main, rect)
+		res := WinApi.GetClientRect(main, adr(rect))
 		l := 0
 		t := 0
 		r := rect.right
@@ -2398,7 +2398,7 @@ module Windows
 	begin 
 		if ~fullSize then
 			wp.length := size(WinApi.WINDOWPLACEMENT)
-			res := WinApi.GetWindowPlacement(main, wp)
+			res := WinApi.GetWindowPlacement(main, adr(wp))
 			if res # 0 then
 				list[0] := wp.rcNormalPosition.left
 				list[1] := wp.rcNormalPosition.top
@@ -2446,7 +2446,7 @@ module Windows
 			wp.ptMaxPosition.y := rect.top
 			wp.showCmd := WinApi.SW_HIDE
 			showState := WinApi.SW_SHOW
-			res := WinApi.SetWindowPlacement(main, wp) 
+			res := WinApi.SetWindowPlacement(main, adr(wp)) 
 		else 
 			HostRegistry.ReadIntList("MainWindow", list, res)
 			if res = 0 then
@@ -2471,7 +2471,7 @@ module Windows
 					end  
 				end 
 				si.cb := size(WinApi.STARTUPINFOW)
-				WinApi.GetStartupInfoW(si)
+				WinApi.GetStartupInfoW(adr(si))
 				if 0 in si.dwFlags then // showWindow valid
 					if si.wShowWindow > 1 then
 						wp.showCmd := si.wShowWindow 
@@ -2485,7 +2485,7 @@ module Windows
 				end 
 				showState := wp.showCmd
 				wp.showCmd := WinApi.SW_HIDE
-				res := WinApi.SetWindowPlacement(main, wp) 
+				res := WinApi.SetWindowPlacement(main, adr(wp)) 
 			end  
 		end 
 	end LoadWindowState
@@ -2505,23 +2505,23 @@ module Windows
 			class.hIcon := WinApi.LoadIconW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDI_APPLICATION)) 
 		end 
 		class.lpszMenuName := nil
-		class.lpszClassName := "Oberon App"
+		class.lpszClassName := adr("Oberon App")
 		class.hbrBackground := 0 // 12 + 1; // application workspace color
 		class.style := WinApi.CS_VREDRAW + WinApi.CS_HREDRAW + WinApi.CS_DBLCLKS + WinApi.CS_OWNDC
 		class.hInstance := instance
 		class.lpfnWndProc := Handler
 		class.cbClsExtra := 0
 		class.cbWndExtra := 4
-		res := WinApi.RegisterClassW(class)
+		res := WinApi.RegisterClassW(adr(class))
 		class.hCursor := 0 // no class cursor
 		class.lpszMenuName := nil
 		class.hbrBackground := 0 // no background
-		class.lpszClassName := "Oberon Dlg"
+		class.lpszClassName := adr("Oberon Dlg")
 		class.lpfnWndProc := DialogHandler
-		res := WinApi.RegisterClassW(class)
-		class.lpszClassName := "Oberon Aux"
+		res := WinApi.RegisterClassW(adr(class))
+		class.lpszClassName := adr("Oberon Aux")
 		class.lpfnWndProc := DocWinHandler
-		res := WinApi.RegisterClassW(class)
+		res := WinApi.RegisterClassW(adr(class))
 		docIcon := WinApi.LoadIconW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 2))
 		if (docIcon = 0) or (docIcon = 1) then
 			docIcon := WinApi.LoadIconW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDI_APPLICATION)) 
@@ -2531,18 +2531,18 @@ module Windows
 			dirtyIcon := docIcon 
 		end 
 		class.hIcon := docIcon
-		class.lpszClassName := "Oberon Doc"
+		class.lpszClassName := adr("Oberon Doc")
 		class.lpfnWndProc := DocWinHandler
-		res := WinApi.RegisterClassW(class)
+		res := WinApi.RegisterClassW(adr(class))
 		// open main windows
 		if ~fullSize then
-			main := WinApi.CreateWindowExW({8, 9}, "Oberon App", addrof(Dialog.appName), 
+			main := WinApi.CreateWindowExW({8, 9}, adr("Oberon App"), adr(Dialog.appName), 
 				{16..19, 22, 23},  // maxbox, minbox, frame, sysmenu, title, border
 				WinApi.CW_USEDEFAULT, WinApi.CW_USEDEFAULT, 
 				WinApi.CW_USEDEFAULT, WinApi.CW_USEDEFAULT, 
 				0, menuBar, instance, 0) 
 		else 
-			main := WinApi.CreateWindowExW({8, 9}, "Oberon App", addrof(Dialog.appName), 
+			main := WinApi.CreateWindowExW({8, 9}, adr("Oberon App"), adr(Dialog.appName), 
 				WinApi.WS_MINIMIZEBOX + WinApi.WS_SYSMENU + WinApi.WS_CAPTION, 
 				WinApi.CW_USEDEFAULT, WinApi.CW_USEDEFAULT, 
 				WinApi.CW_USEDEFAULT, WinApi.CW_USEDEFAULT, 
@@ -2551,28 +2551,28 @@ module Windows
 		ccs.hWindowMenu := winMenu
 		ccs.idFirstChild := 10000
 		if noClientScroll then
-			client := WinApi.CreateWindowExW({}, "MDICLIENT", nil, 
+			client := WinApi.CreateWindowExW({}, adr("MDICLIENT"), nil, 
 				{25, 30},  // clipchildren, child
 				0, 0, 0, 0, 
 				main, 32767, instance, SYSTEM.ADR(ccs)) 
 		else 
-			client := WinApi.CreateWindowExW({}, "MDICLIENT", nil, 
+			client := WinApi.CreateWindowExW({}, adr("MDICLIENT"), nil, 
 				{20, 21, 25, 30},  // scroll, clipchildren, child
 				0, 0, 0, 0, 
 				main, 32767, instance, SYSTEM.ADR(ccs)) 
 		end 
-		status := WinApi.CreateWindowExW({}, "STATIC", nil, 
+		status := WinApi.CreateWindowExW({}, adr("STATIC"), nil, 
 			{7, 23, 30},  // left, noprefix, border, child
 			0, 0, 0, 0, 
 			main, 32766, instance, 0)
-		info := WinApi.CreateWindowExW({}, "STATIC", nil, 
+		info := WinApi.CreateWindowExW({}, adr("STATIC"), nil, 
 			{7, 23, 30},  // left, noprefix, border, child
 			0, 0, 0, 0, 
 			main, 32765, instance, 0)
 		res := WinApi.SendMessageW(status, WinApi.WM_SETFONT, font, 1)
 		res := WinApi.SendMessageW(info, WinApi.WM_SETFONT, font, 1)
 		dc := WinApi.GetDC(status)
-		res := WinApi.GetTextMetricsW(dc, tm)
+		res := WinApi.GetTextMetricsW(dc, adr(tm))
 		res := WinApi.ReleaseDC(status, dc)
 		statusH := tm.tmHeight
 		showState := WinApi.SW_SHOW
@@ -2593,7 +2593,7 @@ module Windows
 		unit := Ports.inch div WinApi.GetDeviceCaps(dc, WinApi.LOGPIXELSY)
 		res := WinApi.ReleaseDC(main, dc)
 		
-		res := WinApi.GetWindowThreadProcessId(main, addrof(mpid))
+		res := WinApi.GetWindowThreadProcessId(main, adr(mpid))
 		
 		Dialog.MapString(allocKey, allocStr)
 		Dialog.MapString(totalKey, totalStr)

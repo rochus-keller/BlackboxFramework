@@ -292,7 +292,7 @@ module Printers
 				Kernel.PushTrapCleaner(p.clean)
 				// start printing
 				info.cbSize := size(WinApi.DOCINFOW)
-				info.lpszDocName := name
+				info.lpszDocName := adr(name)
 				info.lpszOutput := nil
 				p.res := Error(WinApi.StartDocW(port.dc, info))
 				HostPorts.SetPrinterColors

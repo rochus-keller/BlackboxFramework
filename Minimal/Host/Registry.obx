@@ -58,8 +58,8 @@ module Registry
 		WinApi.SetLastError(0)
 		notfound[0] := 0ffffx
 		notfound[1] := 0x
-		res := WinApi.GetPrivateProfileStringW(addrof(section), addrof(entry), 
-			addrof(notfound), str, len(str), addrof(iniFile^))
+		res := WinApi.GetPrivateProfileStringW(adr(section), adr(entry), 
+			adr(notfound), str, len(str), adr(iniFile^))
 		if str = notfound then
 			res := ERROR_NOT_FOUND 
 		else 
@@ -75,16 +75,16 @@ module Registry
 			len_: [1]integer
 			sw,comp,appl, vers: [1]WinApi.HKEY
 	begin 
-		res := WinApi.RegOpenKeyW(WinApi.HKEY_CURRENT_USER, "Software", addrof(sw))
+		res := WinApi.RegOpenKeyW(WinApi.HKEY_CURRENT_USER, "Software", adr(sw))
 		if res = 0 then
-			res := WinApi.RegOpenKeyW(sw[0], "Oberon", addrof(comp))
+			res := WinApi.RegOpenKeyW(sw[0], "Oberon", adr(comp))
 			if res = 0 then
-				res := WinApi.RegOpenKeyW(comp[0], addrof(Dialog.appName), addrof(appl))
+				res := WinApi.RegOpenKeyW(comp[0], adr(Dialog.appName), adr(appl))
 				if res = 0 then
-					res := WinApi.RegOpenKeyW(appl[0], "CurrentVersion", addrof(vers))
+					res := WinApi.RegOpenKeyW(appl[0], "CurrentVersion", adr(vers))
 					if res = 0 then
 						len_[0] := len(str) * 2
-						res := WinApi.RegQueryValueW(vers[0], key, str, addrof(len_))
+						res := WinApi.RegQueryValueW(vers[0], key, str, adr(len_))
 						r := WinApi.RegCloseKey(vers[0]) 
 					end 
 					r := WinApi.RegCloseKey(appl[0]) 
@@ -166,7 +166,7 @@ module Registry
 			section, entry: array 256 of wchar
 	begin 
 		Split(key, section, entry)
-		res := WinApi.WritePrivateProfileStringW(addrof(section), addrof(entry), str, addrof(iniFile^))
+		res := WinApi.WritePrivateProfileStringW(adr(section), adr(entry), str, adr(iniFile^))
 	end WriteFile
 	
 	proc WriteRegistry(in key: array of wchar; in str: array of wchar) 
@@ -174,13 +174,13 @@ module Registry
 			res: integer
 			sw, comp, appl, vers: [1]WinApi.HKEY
 	begin 
-		res := WinApi.RegCreateKeyW(WinApi.HKEY_CURRENT_USER, "Software", addrof(sw))
+		res := WinApi.RegCreateKeyW(WinApi.HKEY_CURRENT_USER, "Software", adr(sw))
 		if res = 0 then
-			res := WinApi.RegCreateKeyW(sw[0], "Oberon", addrof(comp))
+			res := WinApi.RegCreateKeyW(sw[0], "Oberon", adr(comp))
 			if res = 0 then
-				res := WinApi.RegCreateKeyW(comp[0], addrof(Dialog.appName), addrof(appl))
+				res := WinApi.RegCreateKeyW(comp[0], adr(Dialog.appName), adr(appl))
 				if res = 0 then
-					res := WinApi.RegCreateKeyW(appl[0], "CurrentVersion", addrof(vers))
+					res := WinApi.RegCreateKeyW(appl[0], "CurrentVersion", adr(vers))
 					if res = 0 then
 						res := WinApi.RegSetValueW(vers[0], key, WinApi.REG_SZ, str, len(str) * 2) 
 					end 
