@@ -448,7 +448,7 @@ module Ports
 			dc, oldp, oldb: WinApi.HANDLE
 			pap: PAP
 			pt: WinApi.POINT
-			poly: array 256 of WinApi.POINT
+			poly: carray 256 of WinApi.POINT
 			polyPtr: POP
 			polyLen: integer
 		

@@ -147,7 +147,7 @@ module Dialog
 		GuardProc* = proc (var par: Par)
 		NotifierProc* = proc (op, from, to_: integer)
 		
-		StringPtr = unsafe pointer to carray of wchar
+		StringPtr = pointer to array of wchar
 		StringTab = pointer to record 
 				next: StringTab
 				name: Files.Name

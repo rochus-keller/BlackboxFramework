@@ -33,7 +33,7 @@ module Fonts
 		figureSpace = 8fx
 	
 	type 
-		WTab = carray 256 of integer
+		WTab = array 256 of integer
 		DevFont* = pointer to record 
 				unit-: integer
 				id-: WinApi.HANDLE
