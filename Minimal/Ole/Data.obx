@@ -11,7 +11,7 @@ definition Data
 	proc GetDataView(_0: WinOle.IDataObject; _1: Stores.TypeName; _2: Views.View; _3: integer; _4: integer; _5: boolean)
 	proc ViewDropData(_0: Views.View; _1: integer; _2: integer; _3: integer; _4: integer; _5: boolean; _6: boolean): WinOle.IDataObject
 	proc ViewData(_0: Views.View; _1: integer; _2: integer; _3: boolean): WinOle.IDataObject
-	proc DataConvTo(_0: WinOle.IDataObject; _1: Stores.TypeName)
+	proc DataConvTo(_0: WinOle.IDataObject; _1: Stores.TypeName):boolean
 	proc DumpData(_0: WinOle.IDataObject)
 
 end Data
