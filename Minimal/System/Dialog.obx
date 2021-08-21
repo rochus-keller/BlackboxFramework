@@ -335,7 +335,7 @@ module Dialog
 		begin 
 			for i:= 0 to n - 2 do 
 				if tab.key[i]^ = tab.key[i + 1]^ then
-					Log.String('key not unique: "#' + subsys + ":" + tab.key[i] + '"')
+					Log.String('key not unique: "#' + subsys + ":" + tab.key[i]^ + '"')
 					Log.Ln 
 				end  
 			end 
