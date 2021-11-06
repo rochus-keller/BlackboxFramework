@@ -241,7 +241,7 @@ module Files
 			root[i - 1] := "\" 
 		end 
 		root[i] := 0x
-		res := WinApi.GetVolumeInformationW(adr(root), nil, 0, adr(n), adr(max_), adr(f), nil, 0)
+		res := WinApi.GetVolumeInformationW((root), nil, 0, (n), (max_), (f), nil, 0)
 		if res = 0 then
 			max_[0] := 12 // FAT values
 			f[0] := {} 
@@ -371,7 +371,7 @@ module Files
 		f.state := closed
 		CloseFileHandle(f, res)
 		if (s in {temp, new_, hidden}) & (f.name # "") then
-			res := WinApi.DeleteFileW(adr(f.name)) 
+			res := WinApi.DeleteFileW((f.name)) 
 		end 
 	end CloseFile
 	
@@ -439,13 +439,13 @@ module Files
 	proc NewFileRef(state: integer; var name: FullName): WinApi.HANDLE 
 	begin 
 		if state = create then
-			return WinApi.CreateFileW(adr(name), WinApi.GENERIC_READ + WinApi.GENERIC_WRITE, {}, 
+			return WinApi.CreateFileW((name), WinApi.GENERIC_READ + WinApi.GENERIC_WRITE, {}, 
 				nil, WinApi.CREATE_NEW, WinApi.FILE_ATTRIBUTE_TEMPORARY, 0) 
 		elsif state = shared then 
-			return WinApi.CreateFileW(adr(name), WinApi.GENERIC_READ, WinApi.FILE_SHARE_READ, 
+			return WinApi.CreateFileW((name), WinApi.GENERIC_READ, WinApi.FILE_SHARE_READ, 
 				nil, WinApi.OPEN_EXISTING, {}, 0) 
 		else 
-			return WinApi.CreateFileW(adr(name), WinApi.GENERIC_READ + WinApi.GENERIC_WRITE, {}, 
+			return WinApi.CreateFileW((name), WinApi.GENERIC_READ + WinApi.GENERIC_WRITE, {}, 
 				nil, WinApi.OPEN_EXISTING, {}, 0) 
 		end 
 	end NewFileRef
@@ -521,7 +521,7 @@ module Files
 		assert(fname # "", 100)
 		f := ThisFile(fname)
 		if f = nil then
-			if WinApi.DeleteFileW(adr(fname)) # 0 then
+			if WinApi.DeleteFileW((fname)) # 0 then
 				res := ok 
 			else 
 				res := WinApi.GetLastError() 
@@ -531,7 +531,7 @@ module Files
 				res := WinApi.CloseHandle(f.ref)
 				f.ref := invalid 
 			end 
-			attr := bits(WinApi.GetFileAttributesW(adr(fname)))
+			attr := bits(WinApi.GetFileAttributesW((fname)))
 			assert(attr # {0..max(set)}, 101)
 			if WinApi.FILE_ATTRIBUTE_READONLY * attr = {} then
 				s := f.state
@@ -541,7 +541,7 @@ module Files
 					GetTempFileName(path, new_, num)
 					inc(num)
 					dec(n)
-					if WinApi.MoveFileW(adr(fname), adr(new_)) # 0 then
+					if WinApi.MoveFileW((fname), (new_)) # 0 then
 						res := ok 
 					else 
 						res := WinApi.GetLastError() 
@@ -571,8 +571,8 @@ module Files
 			end 
 			if f.ref # invalid then
 				h[0] := 0
-				h[0] := WinApi.SetFilePointer(f.ref, buf.org, adr(h), 0)
-				if (WinApi.WriteFile(f.ref, SYSTEM.ADR(buf.data), buf.len_, adr(h), nil) = 0) or (h[0] < buf.len_) then
+				h[0] := WinApi.SetFilePointer(f.ref, buf.org, (h), 0)
+				if (WinApi.WriteFile(f.ref, SYSTEM.ADR(buf.data), buf.len_, (h), nil) = 0) or (h[0] < buf.len_) then
 					res := WinApi.GetLastError()
 					halt(101) 
 				end 
@@ -661,7 +661,7 @@ module Files
 		sec.nLength := size(WinApi.SECURITY_ATTRIBUTES)
 		sec.lpSecurityDescriptor := 0
 		sec.bInheritHandle := 0
-		res := WinApi.CreateDirectoryW(adr(path), sec)
+		res := WinApi.CreateDirectoryW((path), sec)
 		if res = 0 then
 			res := WinApi.GetLastError() 
 		else 
@@ -672,7 +672,7 @@ module Files
 			if path # p then
 				CreateDir(p, res) // recursive call
 				if res = ok then
-					res := WinApi.CreateDirectoryW(adr(path), sec)
+					res := WinApi.CreateDirectoryW((path), sec)
 					if res = 0 then
 						res := WinApi.GetLastError() 
 					else 
@@ -696,7 +696,7 @@ module Files
 				s := path
 				t := "Missing Directory" 
 			end 
-			res := WinApi.MessageBoxW(Kernel.mainWnd, adr(s), adr(t), {0, 6})  // ok cancel, icon information
+			res := WinApi.MessageBoxW(Kernel.mainWnd, (s), (t), {0, 6})  // ok cancel, icon information
 		else 
 			res := 1 
 		end 
@@ -731,7 +731,7 @@ module Files
 						s := fname
 						t := "File Error" 
 					end 
-					res := WinApi.MessageBoxW(Kernel.mainWnd, adr(s), adr(t), {0, 2, 4, 5}) // retry cancel, icon warning
+					res := WinApi.MessageBoxW(Kernel.mainWnd, (s), (t), {0, 2, 4, 5}) // retry cancel, icon warning
 					if res = 2 then
 						res := cancel 
 					elsif res = 4 then 
@@ -763,19 +763,19 @@ module Files
 				if res = ok then
 					f.state := exclusive
 					CloseFile(f, res)
-					b := WinApi.SetFileAttributesW(adr(f.name), WinApi.FILE_ATTRIBUTE_ARCHIVE) 
+					b := WinApi.SetFileAttributesW((f.name), WinApi.FILE_ATTRIBUTE_ARCHIVE) 
 				end  
 			else 
 				f.state := exclusive
 				CloseFile(f, res)
-				if WinApi.MoveFileW(adr(f.name), adr(fname)) # 0 then
+				if WinApi.MoveFileW((f.name), (fname)) # 0 then
 					res := ok
 					f.name := fname
-					b := WinApi.SetFileAttributesW(adr(f.name), WinApi.FILE_ATTRIBUTE_ARCHIVE) 
+					b := WinApi.SetFileAttributesW((f.name), WinApi.FILE_ATTRIBUTE_ARCHIVE) 
 				else 
 					res := WinApi.GetLastError()
 					assert(res # paramErr, 101)
-					b := WinApi.DeleteFileW(adr(f.name)) 
+					b := WinApi.DeleteFileW((f.name)) 
 				end  
 			end  
 		end 
@@ -908,8 +908,8 @@ module Files
 				end 
 				if f.ref # invalid then
 					ii[0] := 0
-					ii[0] := WinApi.SetFilePointer(f.ref, org, adr(ii), 0)
-					if (WinApi.ReadFile(f.ref, SYSTEM.ADR(buf.data), count, adr(ii), nil) = 0) or (ii[0] < count) then
+					ii[0] := WinApi.SetFilePointer(f.ref, org, (ii), 0)
+					if (WinApi.ReadFile(f.ref, SYSTEM.ADR(buf.data), count, (ii), nil) = 0) or (ii[0] < count) then
 						res := WinApi.GetLastError()
 						res := Error(res)
 						halt(101) 
@@ -1037,8 +1037,8 @@ module Files
 				end 
 				if f.ref # invalid then
 					ii[0] := 0
-					ii[0] := WinApi.SetFilePointer(f.ref, org, adr(ii), 0)
-					if (WinApi.ReadFile(f.ref, SYSTEM.ADR(buf.data), count, adr(ii), nil) = 0) 
+					ii[0] := WinApi.SetFilePointer(f.ref, org, (ii), 0)
+					if (WinApi.ReadFile(f.ref, SYSTEM.ADR(buf.data), count, (ii), nil) = 0) 
 						or (ii[0] < count) then
 						res := WinApi.GetLastError()
 						res := Error(res)
@@ -1136,7 +1136,7 @@ module Files
 		res := ok
 		with loc: Locator do 
 			if loc.path # "" then
-				attr := bits(WinApi.GetFileAttributesW(adr(loc.path)))
+				attr := bits(WinApi.GetFileAttributesW((loc.path)))
 				if attr = {0..max(set)} then // error
 					res := WinApi.GetLastError()
 					if (res = fileNotFoundErr) or (res = pathNotFoundErr) then
@@ -1256,7 +1256,7 @@ module Files
 				f.name := fname
 				f.state := s
 				f.t := Kernel.Time()
-				f.len_ := WinApi.GetFileSize(ref, adr(j))
+				f.len_ := WinApi.GetFileSize(ref, (j))
 				if (f.len_ < 0) or (j[0] # 0) then // file length exceeds MAX(INTEGER)
 					f.len_ := -1 
 				end  
@@ -1292,7 +1292,7 @@ module Files
 		with loc: Locator do 
 			Append(loc.path, old, "", loc.maxLen, oldname)
 			Append(loc.path, new_, "", loc.maxLen, newname)
-			attr := bits(WinApi.GetFileAttributesW(adr(oldname)))
+			attr := bits(WinApi.GetFileAttributesW((oldname)))
 			if ord(attr) # -1 then
 				f := ThisFile(oldname)
 				if (f # nil) & (f.ref # invalid) then
@@ -1302,7 +1302,7 @@ module Files
 				if Diff(oldname, newname, loc.caseSens) # 0 then
 					CheckDelete(newname, loc.path, ask, res)
 					if res = ok then
-						if WinApi.MoveFileW(adr(oldname), adr(newname)) # 0 then
+						if WinApi.MoveFileW((oldname), (newname)) # 0 then
 							if f # nil then // still in use => update file table
 								f.name := newname 
 							end  
@@ -1315,14 +1315,14 @@ module Files
 					i := len(tn) - 1
 					repeat 
 						tn[i] := wchr(ord(tn[i]) + 1)
-						if WinApi.MoveFileW(adr(oldname), adr(tn)) # 0 then
+						if WinApi.MoveFileW((oldname), (tn)) # 0 then
 							res := ok 
 						else 
 							res := WinApi.GetLastError() 
 						end  
 					until (res # fileExistsErr) & (res # alreadyExistsErr) & (res # paramErr) 
 					if res = ok then
-						if WinApi.MoveFileW(adr(tn), adr(newname)) = 0 then
+						if WinApi.MoveFileW((tn), (newname)) = 0 then
 							res := WinApi.GetLastError() 
 						end  
 					end  
@@ -1366,7 +1366,7 @@ module Files
 		last := nil
 		with loc: Locator do 
 			Append(loc.path, wildcard, wildcard, loc.maxLen, s)
-			find := WinApi.FindFirstFileW(adr(s), fd)
+			find := WinApi.FindFirstFileW((s), fd)
 			if find # invalid then
 				repeat 
 					if ~(WinApi.FILE_ATTRIBUTE_DIRECTORY * fd.dwFileAttributes # {}) 
@@ -1428,7 +1428,7 @@ module Files
 			if (loc.rootLen > 0) & ((res = ok) or (res = fileNotFoundErr) or (res = pathNotFoundErr)) then
 				GetShadowDir(loc, s)
 				Append(s, wildcard, wildcard, loc.maxLen, s)
-				find := WinApi.FindFirstFileW(adr(s), fd)
+				find := WinApi.FindFirstFileW((s), fd)
 				if find # invalid then
 					repeat 
 						if ~(WinApi.FILE_ATTRIBUTE_DIRECTORY * fd.dwFileAttributes # {}) 
@@ -1517,7 +1517,7 @@ module Files
 		last := nil
 		with loc: Locator do 
 			Append(loc.path, wildcard, wildcard, loc.maxLen, s)
-			find := WinApi.FindFirstFileW(adr(s), fd)
+			find := WinApi.FindFirstFileW((s), fd)
 			if find # invalid then
 				repeat 
 					if (WinApi.FILE_ATTRIBUTE_DIRECTORY * fd.dwFileAttributes # {}) 
@@ -1567,7 +1567,7 @@ module Files
 			if (loc.rootLen > 0) & ((res = ok) or (res = fileNotFoundErr) or (res = pathNotFoundErr)) then
 				GetShadowDir(loc, s)
 				Append(s, wildcard, wildcard, loc.maxLen, s)
-				find := WinApi.FindFirstFileW(adr(s), fd)
+				find := WinApi.FindFirstFileW((s), fd)
 				if find # invalid then
 					repeat 
 						if (WinApi.FILE_ATTRIBUTE_DIRECTORY * fd.dwFileAttributes # {}) 
@@ -1743,13 +1743,13 @@ module Files
 		ignoreAsk := false
 		wildcard := "*"
 		new(dir)
-		res := WinApi.GetModuleFileNameW(0, adr(path), len(path))
+		res := WinApi.GetModuleFileNameW(0, (path), len(path))
 		GetPath(path, startupDir)
 		dir.startup := NewLocator(startupDir)
 		dir.startup.rootLen := 0
 		i := len(startupDir)
 		startupLen := i
-		find := WinApi.FindFirstFileW(adr(path), fd)
+		find := WinApi.FindFirstFileW((path), fd)
 		if find # invalid then
 			appName := fd.cFileName
 			res := WinApi.FindClose(find) 
@@ -1780,18 +1780,18 @@ module Files
 			GetName(p, i, path, opt)
 			if opt = "/USE" then
 				GetName(p, i, path, opt)
-				res1 := WinApi.ExpandEnvironmentStringsW(adr(path), adr(s), len(s) - 2)
+				res1 := WinApi.ExpandEnvironmentStringsW((path), (s), len(s) - 2)
 				if (res1 = 0) or (res1 > len(s) - 2) then
 					s := path 
 				else 
 					path := s 
 				end 
-				res1 := WinApi.GetFullPathNameW(adr(s), len(path), adr(path), nil)
-				attr := bits(WinApi.GetFileAttributesW(adr(path)))
+				res1 := WinApi.GetFullPathNameW((s), len(path), (path), nil)
+				attr := bits(WinApi.GetFileAttributesW((path)))
 				if (attr # {0..max(set)}) & (WinApi.FILE_ATTRIBUTE_DIRECTORY * attr # {}) then
 					res := 0 
 				elsif (path[1] = ":") & ((path[2] = 0x) or (path[2] = "\") & (path[3] = 0x)) 
-					& (WinApi.GetDriveTypeW(adr(s)) >= 2) then 
+					& (WinApi.GetDriveTypeW((s)) >= 2) then 
 					res := 0 
 				end  
 			end  
@@ -1805,7 +1805,7 @@ module Files
 			dir.startup := NewLocator(path)
 			dir.startup.rootLen := i 
 		end 
-		res := WinApi.GetTempPathW(len(path), adr(path))
+		res := WinApi.GetTempPathW(len(path), (path))
 		dir.temp := NewLocator(path)
 		Files.SetDir(dir)
 	end Init

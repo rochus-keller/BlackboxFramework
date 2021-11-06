@@ -9,11 +9,11 @@ definition Ole []
 		DROPEFFECT_MOVE = {1}  
 		DROPEFFECT_LINK = {2}  
 	type 
-		IDataObject = unsafe pointer to cstruct (COM.IUnknown) 
+		IDataObject = unsafe pointer to cstruct // (COM.IUnknown) 
 				end 
-		IDropSource = unsafe pointer to cstruct (COM.IUnknown) 
+		IDropSource = unsafe pointer to cstruct // (COM.IUnknown) 
 				end 
-		IDropTarget = unsafe pointer to cstruct (COM.IUnknown) 
+		IDropTarget = unsafe pointer to cstruct // (COM.IUnknown) 
 				end 
 	
 		proc RegisterDragDrop(hwnd: WinApi.HWND; pDropTarget: IDropTarget): COM.RESULT 

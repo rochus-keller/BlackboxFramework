@@ -79,6 +79,7 @@ module Dialog
 	
 	type 
 		String* = array stringLen of wchar
+		UString* = carray stringLen of wchar
 		
 		Buf = pointer to record 
 				next: Buf

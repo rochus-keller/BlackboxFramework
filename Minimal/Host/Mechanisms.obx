@@ -606,7 +606,7 @@ module Mechanisms
 			res: integer
 	begin 
 		Dialog.MapString(name, name)
-		res := WinApi.AppendMenuW(menu, {}, id, adr(name))
+		res := WinApi.AppendMenuW(menu, {}, id, (name))
 	end AppendMenu
 	
 	proc ShowPopup(f: Views.Frame; x, y: integer; var effect: set) 
@@ -969,7 +969,7 @@ module Mechanisms
 				res := WinApi.AppendMenuW(menu, WinApi.MF_SEPARATOR, 0, nil) 
 			else 
 				Dialog.MapString(string[j], t)
-				res := WinApi.AppendMenuW(menu, {}, 32000 + j, adr(t))
+				res := WinApi.AppendMenuW(menu, {}, 32000 + j, (t))
 				if ~enabled[j] then
 					res := WinApi.EnableMenuItem(menu, 32000 + j, WinApi.MF_GRAYED) 
 				elsif checked[j] then 

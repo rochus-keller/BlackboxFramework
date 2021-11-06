@@ -465,7 +465,7 @@ module Menus
 			res: integer
 	begin 
 		Dialog.MapString(name, name)
-		res := WinApi.AppendMenuW(menu, {}, id, adr(name))
+		res := WinApi.AppendMenuW(menu, {}, id, (name))
 	end AppendMenu
 	
 	proc FirstMenu*(): Menu 
@@ -536,7 +536,7 @@ module Menus
 			res: integer
 			old: Dialog.String
 	begin 
-		res := WinApi.GetMenuStringW(m.menuH, i.id, adr(old), len(old), {})
+		res := WinApi.GetMenuStringW(m.menuH, i.id, (old), len(old), {})
 		UpdateHotkey(old, name)
 		SetShortcut(i, name)
 	end ChangeItem
@@ -587,9 +587,9 @@ module Menus
 				if i.item^ # "" then
 					SetShortcut(i, tab[j])
 					if i.id = iObject then
-						res := WinApi.AppendMenuW(curMenu.menuH, WinApi.MF_POPUP, objMenu, adr(tab[j])) 
+						res := WinApi.AppendMenuW(curMenu.menuH, WinApi.MF_POPUP, objMenu, (tab[j])) 
 					else 
-						res := WinApi.AppendMenuW(curMenu.menuH, {}, i.id, adr(tab[j])) 
+						res := WinApi.AppendMenuW(curMenu.menuH, {}, i.id, (tab[j])) 
 					end  
 				elsif i.next # nil then 
 					res := WinApi.AppendMenuW(curMenu.menuH, WinApi.MF_SEPARATOR, 0, nil) 
@@ -653,10 +653,10 @@ module Menus
 				submenu := FindSubmenu(item)
 				if submenu # nil then
 					label := "?"
-					res := WinApi.GetMenuStringW(menu.menuH, item(Item).id, adr(label), len(label), {})
+					res := WinApi.GetMenuStringW(menu.menuH, item(Item).id, (label), len(label), {})
 					res := WinApi.ModifyMenuW(menu.menuH, item(Item).id, 
 						WinApi.MF_BYCOMMAND + WinApi.MF_POPUP + WinApi.MF_STRING, 
-						submenu.menuH, adr(label)) 
+						submenu.menuH, (label)) 
 				end 
 				item := item.next 
 			end 
@@ -727,7 +727,7 @@ module Menus
 			m := firstMenu
 			while m # nil do 
 				if ((m.type_ = "") or (m.type_ = type_)) & ~m.isPopup & ~IsSubmenu(m) then
-					res := WinApi.AppendMenuW(newMenuBar, WinApi.MF_POPUP, m.menuH, adr(m.menu)) 
+					res := WinApi.AppendMenuW(newMenuBar, WinApi.MF_POPUP, m.menuH, (m.menu)) 
 				end 
 				m := m.next 
 			end 
@@ -1060,9 +1060,9 @@ module Menus
 								ChangeItem(m, i, str)
 								if i.id = iObject then
 									res := WinApi.ModifyMenuW(
-										m.menuH, n, WinApi.MF_BYPOSITION + WinApi.MF_POPUP, objMenu, adr(str)) 
+										m.menuH, n, WinApi.MF_BYPOSITION + WinApi.MF_POPUP, objMenu, (str)) 
 								else 
-									res := WinApi.ModifyMenuW(m.menuH, n, WinApi.MF_BYPOSITION, i.id, adr(str)) 
+									res := WinApi.ModifyMenuW(m.menuH, n, WinApi.MF_BYPOSITION, i.id, (str)) 
 								end 
 								if par.disabled then
 									res := WinApi.EnableMenuItem(
@@ -1314,7 +1314,7 @@ module Menus
 			f: Files.File
 	begin 
 		ok := false
-		res := WinApi.GetFullPathNameW(name, len(path), adr(path), np)
+		res := WinApi.GetFullPathNameW(name, len(path), (path), np)
 		if np # nil then
 			file := np^
 			if file # "" then
@@ -1538,10 +1538,10 @@ module Menus
 		if state = noAppWin then
 			return  
 		end 
-		n := WinApi.DragQueryFileW(wParam, -1, adr(name), len(name))
+		n := WinApi.DragQueryFileW(wParam, -1, (name), len(name))
 		i := 0
 		while i < n do 
-			res := WinApi.DragQueryFileW(wParam, i, adr(name), len(name))
+			res := WinApi.DragQueryFileW(wParam, i, (name), len(name))
 			OpenFile(name, 0, 0, 0, 0, ok)
 			if ok then
 				res := WinApi.SetForegroundWindow(HostWindows.main) 
@@ -1570,7 +1570,7 @@ module Menus
 		m := menus
 		while m # nil do 
 			if ((m.type_ = "") or (m.type_ = type_)) & ~m.isPopup & ~IsSubmenu(m) then
-				res := WinApi.AppendMenuW(menuBar, WinApi.MF_POPUP, m.menuH, adr(m.menu)) 
+				res := WinApi.AppendMenuW(menuBar, WinApi.MF_POPUP, m.menuH, (m.menu)) 
 			end 
 			m := m.next 
 		end 
@@ -1765,7 +1765,7 @@ module Menus
 					if WinApi.IsIconic(HostWindows.main) # 0 then
 						res := WinApi.ShowWindow(HostWindows.main, WinApi.SW_RESTORE) 
 					end 
-					res := WinApi.GlobalGetAtomNameW(short(wParam), adr(s), len(s))
+					res := WinApi.GlobalGetAtomNameW(short(wParam), (s), len(s))
 					ReadCommandLine(s, true)
 					res := WinApi.GlobalAddAtomW("<file_opened>")
 					res := WinApi.GlobalDeleteAtom(short(wParam)) 
@@ -1916,7 +1916,7 @@ module Menus
 		end 
 		ReadCommandLine(IncludingFileCommandLine(WinApi.GetCommandLineW()), false)
 		if openUsed then
-			atom := WinApi.GlobalAddAtomW(adr(openParam))
+			atom := WinApi.GlobalAddAtomW((openParam))
 			if atom # 0 then
 				res := WinApi.SendMessageW(-1, msgId, atom, 0)
 				WinApi.Sleep(100)
@@ -1979,8 +1979,8 @@ module Menus
 		Dialog.MapString("#Host:Space", spaceStr)
 		gc := 0
 		num := 10
-		res := WinApi.GetModuleFileNameW(0, adr(s), len(s))
-		msgId := WinApi.RegisterWindowMessageW(adr(s))
+		res := WinApi.GetModuleFileNameW(0, (s), len(s))
+		msgId := WinApi.RegisterWindowMessageW((s))
 	end Init
 
 begin

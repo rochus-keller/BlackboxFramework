@@ -272,6 +272,7 @@ module Printers
 			info: WinApi.DOCINFOW
 			s: Stores.Store
 			port: HostPorts.Port
+			tmp : carray 512 of wchar
 	begin 
 		if jobLevel = 0 then
 			aborted := false
@@ -292,7 +293,9 @@ module Printers
 				Kernel.PushTrapCleaner(p.clean)
 				// start printing
 				info.cbSize := size(WinApi.DOCINFOW)
-				info.lpszDocName := adr(name)
+				assert( len(tmp) > strlen(name) )
+				tmp := name
+				info.lpszDocName := tmp
 				info.lpszOutput := nil
 				p.res := Error(WinApi.StartDocW(port.dc, info))
 				HostPorts.SetPrinterColors
