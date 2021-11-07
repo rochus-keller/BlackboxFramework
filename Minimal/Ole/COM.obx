@@ -8,6 +8,6 @@ definition COM []
 		IUnknown = unsafe pointer to cstruct end
 		RESULT = integer
 
-	proc QUERY(_0: IUnknown; _1: GUID; _2: IUnknown): integer // boolean
+	proc QUERY(_0: IUnknown; _1: *GUID; _2: IUnknown): integer // boolean
 
 end COM
