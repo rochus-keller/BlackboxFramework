@@ -1,4 +1,5 @@
 [General]
+BuildDir=
 BuiltInOakwood=false
 BuiltInObSysInner=false
 MainModule=@ByteArray()
@@ -111,6 +112,23 @@ size=5
 9\RelPath=System/Fonts.obx
 size=26
 
+[.Text]
+1\AbsPath=/home/me/Entwicklung/Modules/BlackboxFramework/Minimal/Text/Cmds.obx
+1\RelPath=Text/Cmds.obx
+2\AbsPath=/home/me/Entwicklung/Modules/BlackboxFramework/Minimal/Text/Controllers.obx
+2\RelPath=Text/Controllers.obx
+3\AbsPath=/home/me/Entwicklung/Modules/BlackboxFramework/Minimal/Text/Mappers.obx
+3\RelPath=Text/Mappers.obx
+4\AbsPath=/home/me/Entwicklung/Modules/BlackboxFramework/Minimal/Text/Models.obx
+4\RelPath=Text/Models.obx
+5\AbsPath=/home/me/Entwicklung/Modules/BlackboxFramework/Minimal/Text/Rulers.obx
+5\RelPath=Text/Rulers.obx
+6\AbsPath=/home/me/Entwicklung/Modules/BlackboxFramework/Minimal/Text/Setters.obx
+6\RelPath=Text/Setters.obx
+7\AbsPath=/home/me/Entwicklung/Modules/BlackboxFramework/Minimal/Text/Views.obx
+7\RelPath=Text/Views.obx
+size=7
+
 [.Win]
 1\AbsPath=/home/me/Entwicklung/Modules/BlackboxFramework/Minimal/Win/Api.obx
 1\RelPath=Win/Api.obx
@@ -132,4 +150,5 @@ size=0
 4\Name=@ByteArray(Host)
 5\Name=@ByteArray(System)
 6\Name=@ByteArray(Ole)
-size=6
+7\Name=@ByteArray(Text)
+size=7
