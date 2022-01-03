@@ -283,7 +283,7 @@ module CFrames
 		return bgnd
 	end BkGndColor
 	
-	proc Open(f: StdCFrames.Frame; class, name: array of wchar
+	proc Open(f: StdCFrames.Frame;in class, name: array of wchar
 		style, ex: set; var i: Info) 
 		var 
 			res, x, y, w, h, cx, cy, cw, ch, udw: integer
@@ -501,7 +501,7 @@ module CFrames
 		end 
 	end PrintString
 	
-	proc Print(f: StdCFrames.Frame; d, x, y: integer; label: array of wchar) 
+	proc Print(f: StdCFrames.Frame; d, x, y: integer; in label: array of wchar) 
 		var 
 			w, h, sw, a, asc, dsc, fw: integer
 			font: Fonts.Font

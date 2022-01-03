@@ -214,7 +214,7 @@ module Views
 	
 	proc (h: ViewHook) OldView*(loc: Files.Locator; name: Files.Name
 		var conv: Converters.Converter): View  end // new abstract
-	proc (h: ViewHook) Open*(s: View; title: array of wchar
+	proc (h: ViewHook) Open*(s: View; in title: array of wchar
 		loc: Files.Locator; name: Files.Name; conv: Converters.Converter
 		asTool, asAux, noResize, allowDuplicates, neverDirty: boolean)  end // new abstract
 	proc (h: ViewHook) RegisterView*(s: View; loc: Files.Locator

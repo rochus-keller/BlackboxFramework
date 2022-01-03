@@ -507,7 +507,7 @@ module Cmds
 	
 	
 	
-	proc OpenDoc*(file: array of wchar) 
+	proc OpenDoc*(in file: array of wchar) 
 		var 
 			w: Windows.Window
 	begin 

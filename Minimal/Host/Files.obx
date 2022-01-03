@@ -134,7 +134,7 @@ module Files
 	
 	
 	var 
-		MapParamString*: proc (in_, p0, p1, p2: array of wchar; var out: array of wchar)
+		MapParamString*: proc (in in_, p0, p1, p2: array of wchar; var out: array of wchar)
 		appName-: FullName
 		ignoreAsk-: boolean // file/directory operations ignore the 'ask' parameter and don't ask; used for scripting
 		dir: Directory
@@ -1677,7 +1677,7 @@ module Files
 		second := st.wSecond
 	end GetModDate
 	
-	proc SetRootDir*(path: array of wchar) 
+	proc SetRootDir*(in path: array of wchar) 
 		var 
 			i: integer
 	begin 

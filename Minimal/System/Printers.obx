@@ -32,7 +32,7 @@ module Printers
 		dir-, stdDir-: Directory
 	
 	
-	proc (p: Printer) OpenJob*(var copies: integer; name: array of wchar)  end // new abstract
+	proc (p: Printer) OpenJob*(var copies: integer; in name: array of wchar)  end // new abstract
 	proc (p: Printer) CloseJob*()  end // new abstract
 	proc (p: Printer) OpenPage*()  end // new abstract
 	proc (p: Printer) ClosePage*()  end // new abstract

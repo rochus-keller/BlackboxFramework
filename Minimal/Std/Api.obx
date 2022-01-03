@@ -187,7 +187,7 @@ module Api
 		return v
 	end ThisDialog
 	
-	proc ThisMask(param: array of wchar; useLang: boolean): Views.View 
+	proc ThisMask(in param: array of wchar; useLang: boolean): Views.View 
 		var 
 			v: Views.View
 			c: Containers.Controller
@@ -239,7 +239,7 @@ module Api
 		end 
 	end CloseDialog
 	
-	proc OpenAux*(file, title: array of wchar; var v: Views.View) 
+	proc OpenAux*(in file, title: array of wchar; var v: Views.View) 
 		var 
 			loc: Files.Locator
 			name: Files.Name
@@ -261,7 +261,7 @@ module Api
 		end 
 	end OpenAux
 	
-	proc OpenAuxDialog*(file, title: array of wchar; var v: Views.View) 
+	proc OpenAuxDialog*(in file, title: array of wchar; var v: Views.View) 
 		var 
 			t0: Views.Title
 			done: boolean
@@ -282,7 +282,7 @@ module Api
 	   In order to be able to browse and edit at the same time, i.e. in two different domains, the
 	   isAux flag is used to distinguish between both. *)
 	
-	proc OpenBrowser*(file, title: array of wchar; var v: Views.View) 
+	proc OpenBrowser*(in file, title: array of wchar; var v: Views.View) 
 		var 
 			loc: Files.Locator
 			name: Files.Name
@@ -319,7 +319,7 @@ module Api
 		end 
 	end OpenBrowser
 	
-	proc OpenDoc*(file: array of wchar; var v: Views.View) 
+	proc OpenDoc*(in file: array of wchar; var v: Views.View) 
 		var 
 			loc: Files.Locator
 			name: Files.Name
@@ -343,7 +343,7 @@ module Api
 		end 
 	end OpenDoc
 	
-	proc OpenCopyOf*(file: array of wchar; var v: Views.View) 
+	proc OpenCopyOf*(in file: array of wchar; var v: Views.View) 
 		var 
 			loc: Files.Locator
 			name: Files.Name
@@ -373,7 +373,7 @@ module Api
 		end 
 	end OpenCopyOf
 	
-	proc OpenToolDialog*(file, title: array of wchar; var v: Views.View) 
+	proc OpenToolDialog*(in file, title: array of wchar; var v: Views.View) 
 		var 
 			t0: Views.Title
 			done: boolean

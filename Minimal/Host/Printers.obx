@@ -266,7 +266,7 @@ module Printers
 	   END NewRider; *)
 	
 	
-	proc (p: Printer) OpenJob(var copies: integer; name: array of wchar) 
+	proc (p: Printer) OpenJob(var copies: integer; in name: array of wchar) 
 		var 
 			res: integer
 			info: WinApi.DOCINFOW

@@ -84,7 +84,7 @@ module Fonts
 	// width tab setup
 	
 	proc NewDevFont(
-		typeface: array of wchar; size_, unit: integer; style: set; weight: integer
+		in typeface: array of wchar; size_, unit: integer; style: set; weight: integer
 		): DevFont 
 		var 
 			df: DevFont
@@ -404,7 +404,7 @@ module Fonts
 		font.dev.next := df
 	end InsertDevFont
 	
-	proc Setup(f: Font; typeface: array of wchar; size_: integer; style: set; weight: integer) 
+	proc Setup(f: Font;in typeface: array of wchar; size_: integer; style: set; weight: integer) 
 		var 
 			res: integer
 			tm: WinApi.TEXTMETRICW

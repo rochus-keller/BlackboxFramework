@@ -945,8 +945,8 @@ module Mechanisms
 	
 	proc (hook: Hook) PopUpAndSelect*(f: Views.Frame
 		n, this: integer
-		string: array of array of wchar
-		enabled, checked: array of boolean
+		in string: array of array of wchar
+		in enabled, checked: array of boolean
 		var i: integer
 		var x, y: integer; var buttons: set) 
 		var 

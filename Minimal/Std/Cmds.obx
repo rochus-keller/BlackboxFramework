@@ -61,7 +61,7 @@ module Cmds
 		return props
 	end StdProp
 	
-	proc Append(var s: array of wchar; t: array of wchar) 
+	proc Append(var s: array of wchar; in t: array of wchar) 
 		var 
 			len_, i, j: integer
 			ch: wchar
@@ -83,42 +83,42 @@ module Cmds
 	
 	// standard commands
 	
-	proc OpenAuxDialog*(file, title: array of wchar) 
+	proc OpenAuxDialog*(in file, title: array of wchar) 
 		var 
 			v: Views.View
 	begin 
 		StdApi.OpenAuxDialog(file, title, v)
 	end OpenAuxDialog
 	
-	proc OpenToolDialog*(file, title: array of wchar) 
+	proc OpenToolDialog*(in file, title: array of wchar) 
 		var 
 			v: Views.View
 	begin 
 		StdApi.OpenToolDialog(file, title, v)
 	end OpenToolDialog
 	
-	proc OpenDoc*(file: array of wchar) 
+	proc OpenDoc*(in file: array of wchar) 
 		var 
 			v: Views.View
 	begin 
 		StdApi.OpenDoc(file, v)
 	end OpenDoc
 	
-	proc OpenCopyOf*(file: array of wchar) 
+	proc OpenCopyOf*(in file: array of wchar) 
 		var 
 			v: Views.View
 	begin 
 		StdApi.OpenCopyOf(file, v)
 	end OpenCopyOf
 	
-	proc OpenAux*(file, title: array of wchar) 
+	proc OpenAux*(in file, title: array of wchar) 
 		var 
 			v: Views.View
 	begin 
 		StdApi.OpenAux(file, title, v)
 	end OpenAux
 	
-	proc OpenBrowser*(file, title: array of wchar) 
+	proc OpenBrowser*(in file, title: array of wchar) 
 		var 
 			v: Views.View
 	begin 

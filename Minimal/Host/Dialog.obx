@@ -92,7 +92,7 @@ module Dialog
 				language*: Dialog.Combo 
 			end 
 		
-		ShowOleStatus*: proc (w: Windows.Window; s: array of wchar)
+		ShowOleStatus*: proc (w: Windows.Window; in s: array of wchar)
 		
 		actualPath*: carray 256 of wchar
 		
@@ -136,7 +136,7 @@ module Dialog
 		s[idx] := 0x
 	end Append
 	
-	proc MapConv(cmd: array of wchar; var name: array of wchar) 
+	proc MapConv(in cmd: array of wchar; var name: array of wchar) 
 		var 
 			i: integer
 			sub, str: Dialog.String
@@ -1376,7 +1376,7 @@ module Dialog
 		res := WinApi.MessageBoxW(Kernel.mainWnd, (errMsg), (Dialog.appName), WinApi.MB_ICONERROR)
 	end ShowErrorDialog
 	
-	proc Start*(name: array of wchar)  // deprecated; better use Dialog.RunExternal
+	proc Start*(in name: array of wchar)  // deprecated; better use Dialog.RunExternal
 		var 
 			info: WinApi.STARTUPINFOW
 			process: WinApi.PROCESS_INFORMATION

@@ -295,7 +295,7 @@ module Windows
 		end 
 	end AppendInt
 	
-	proc Append(var s: array of wchar; t: array of wchar) 
+	proc Append(var s: array of wchar; in t: array of wchar) 
 		var 
 			len_: integer
 			i, j: integer
@@ -1382,7 +1382,7 @@ module Windows
 	
 	proc CallHeapShow*(a: integer) 
 		type 
-			P = proc (a: integer; t: array of wchar)
+			P = proc (a: integer; in t: array of wchar)
 			V = record (Meta.Value) p: P end 
 		var 
 			i: Meta.Item

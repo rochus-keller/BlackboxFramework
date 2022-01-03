@@ -324,13 +324,13 @@ module Registry
 		until (iniFile # nil) or (p[i] < " ") 
 	end SetIniFile
 	
-	proc SetDbgRegistry(appName, dbgName: array of wchar) 
+	proc SetDbgRegistry(in appName, dbgName: array of wchar) 
 		var 
 			val_: array 256 of wchar
 			res: integer
 		
 		proc InheritRegEntry(in key: array of wchar;
-			appName, dbgName: array of wchar; var val_: array of wchar) 
+			in appName, dbgName: array of wchar; var val_: array of wchar) 
 			var res: integer
 		begin 
 			Dialog.appName := appName

@@ -202,7 +202,7 @@ module Menus
 	
 	// shortcut support
 	
-	proc Append(var a: array of wchar; b: array of wchar)  // a := a + b
+	proc Append(var a: array of wchar; in b: array of wchar)  // a := a + b
 		var 
 			i, j: integer
 	begin 
@@ -485,7 +485,7 @@ module Menus
 		nextId := firstId
 	end DeleteAll
 	
-	proc Open*(menu, type_: array of wchar) 
+	proc Open*(in menu, type_: array of wchar) 
 	begin 
 		assert(curMenu = nil, 20)
 		assert(menu # "", 21)

@@ -45,7 +45,7 @@ module Dialog
 		curItem-: Item
 	
 	
-	proc GetSubLoc*(mod_: array of wchar; cat: Files.Name
+	proc GetSubLoc*(in mod_: array of wchar; cat: Files.Name
 		var loc: Files.Locator; var name: Files.Name) 
 		var 
 			sub: Files.Name
@@ -258,7 +258,7 @@ module Dialog
 	end RecalcView
 	
 	
-	proc Open*(v: Views.View; title: array of wchar
+	proc Open*(v: Views.View; in title: array of wchar
 		loc: Files.Locator; name: Files.Name; conv: Converters.Converter
 		asTool, asAux, noResize, allowDuplicates, neverDirty: boolean) 
 		var 
@@ -358,7 +358,7 @@ module Dialog
 		end 
 	end Open
 	
-	proc (h: ViewHook) Open(v: Views.View; title: array of wchar
+	proc (h: ViewHook) Open(v: Views.View; in title: array of wchar
 		loc: Files.Locator; name: Files.Name; conv: Converters.Converter
 		asTool, asAux, noResize, allowDuplicates, neverDirty: boolean) 
 	begin 
