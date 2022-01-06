@@ -1690,7 +1690,7 @@ module Files
 		startupLen := i
 	end SetRootDir
 	
-	proc GetName*(var p: WinApi.PtrWSTR; var i: integer; var name, opt: FullName) 
+	proc GetName*(p: WinApi.PtrWSTR; var i: integer; var name, opt: FullName) 
 		var 
 			ch, tch: wchar
 			j: integer

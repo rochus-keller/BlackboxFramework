@@ -149,8 +149,8 @@ module Menus
 		isCont*, isObj*: boolean
 		
 		UpdateOleMenus*: proc 
-		TranslateOleKeys1*: proc (var msg: WinApi.MSG; var done: boolean)
-		TranslateOleKeys2*: proc (var msg: WinApi.MSG; var done: boolean)
+		TranslateOleKeys1*: proc (msg: *WinApi.MSG; var done: boolean)
+		TranslateOleKeys2*: proc (msg: *WinApi.MSG; var done: boolean)
 	
 	
 	proc FINIT end // [code] 0DBH 0E3H
@@ -1188,7 +1188,7 @@ module Menus
 		return nil
 	end FindAccelerator
 	
-	proc TranslateAccelerators(var msg: WinApi.MSG; filter: set; var done: boolean) 
+	proc TranslateAccelerators(msg: *WinApi.MSG; filter: set; var done: boolean) 
 		var 
 			m: Menu
 			i: StdDialog.Item
@@ -1357,7 +1357,7 @@ module Menus
 	type StrPtr = pointer to array of wchar
 	
 	proc IncludingFileCommandLine(
-		in line: carray of wchar
+		line: *[]wchar
 		): StrPtr 
 		var 
 			f: Files.File
@@ -1396,13 +1396,13 @@ module Menus
 		return l2
 	end IncludingFileCommandLine
 	
-	proc ReadCommandLine(in line: carray of wchar; open: boolean) 
+	proc ReadCommandLine(line: *[]wchar; open: boolean) 
 		var 
 			name, opt: array 260 of wchar
 			i, l, t, r, b, res: integer
 			ok: boolean
 		
-		proc CopyName(in line: carray of wchar; var i: integer; var name, opt: array of wchar )
+		proc CopyName(line: *[]wchar; var i: integer; var name, opt: array of wchar )
 			var 
 				ch, tch: wchar
 				j: integer
@@ -1623,7 +1623,7 @@ module Menus
 			r: WinApi.RECT
 			hit: boolean
 			Proc: proc 
-			s: array 256 of wchar
+			s: carray 256 of wchar
 	begin 
 		Controllers.SetCurrentPath(Controllers.targetPath)
 		if (hookApplWinHandler # nil) & hookApplWinHandler(message, wParam, lParam, res) then
