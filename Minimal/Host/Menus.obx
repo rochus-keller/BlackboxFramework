@@ -1914,7 +1914,7 @@ module Menus
 				Proc(WinApi.GetModuleHandleW(nil)) 
 			end  
 		end 
-		ReadCommandLine(IncludingFileCommandLine(WinApi.GetCommandLineW()), false)
+		// TODO ReadCommandLine(IncludingFileCommandLine(WinApi.GetCommandLineW()), false)
 		if openUsed then
 			atom := WinApi.GlobalAddAtomW((openParam))
 			if atom # 0 then
@@ -1946,7 +1946,7 @@ module Menus
 	
 	proc Run*
 	begin 
-		ReadCommandLine(IncludingFileCommandLine(WinApi.GetCommandLineW()), true)
+		// TODO ReadCommandLine(IncludingFileCommandLine(WinApi.GetCommandLineW()), true)
 		Kernel.Start(Loop)
 	end Run
 	
