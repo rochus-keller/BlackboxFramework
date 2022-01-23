@@ -1233,7 +1233,7 @@ module Containers
 						c.TrackMarks(f, msg.x, msg.y, double, extend, add) 
 					end 
 					if popup then
-						Dialog.Call("HostMenus.PopupMenu", "", res) 
+						Dialog.Call("Host.Menus.PopupMenu", "", res) 
 					end  
 				end  
 			end  
@@ -1384,7 +1384,7 @@ module Containers
 				c.SelectAll(false) 
 			elsif (c.Singleton() # nil) & (msg.op = Controllers.pasteChar) & 
 				(msg.char_ = ENTER) then 
-				Dialog.Call("HostMenus.PrimaryVerb", "", res) 
+				Dialog.Call("Host.Menus.PrimaryVerb", "", res) 
 			else 
 				GetValidOps(c, valid)
 				if msg.op in valid then

@@ -105,7 +105,7 @@ definition Kernel
 		   trapCount-: integer
 		   mainWnd: integer
 	
-		proc (e: ItemExt) Lookup(name: array of wchar; var i: anyrec) 
+		proc (e: ItemExt) Lookup(in name: array of wchar; var i: anyrec) 
 		proc (e: ItemExt) Index(index: integer; var elem: anyrec) 
 		proc (e: ItemExt) Deref(var ref: anyrec) 
 		proc (e: ItemExt) Valid(): boolean 
@@ -138,8 +138,8 @@ definition Kernel
 		proc IsLower(ch: wchar): boolean 
 		proc Utf8ToString(in in_: array of char; var out: array of wchar; var res: integer) 
 		proc StringToUtf8(in in_: array of wchar; var out: array of char; var res: integer) 
-		proc SplitName(name: array of wchar; var head: array of wchar; var tail: array of wchar) 
-		proc MakeFileName(var name: array of wchar; type_: array of wchar) 
+		proc SplitName(in name: array of wchar; var head: array of wchar; var tail: array of wchar) 
+		proc MakeFileName(var name: array of wchar; in type_: array of wchar) 
 		proc Time(): longint 
 		proc Beep 
 		proc ThisFinObj(var id: Identifier): ^anyrec 

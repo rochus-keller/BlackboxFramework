@@ -140,8 +140,8 @@ module Mechanisms
 	
 	proc PopUpAndSelect*(f: Views.Frame
 		n, this: integer
-		s: array of array of wchar
-		enabled, checked: array of boolean
+		in s: array of array of wchar
+		in enabled, checked: array of boolean
 		var i: integer
 		var x, y: integer; var buttons: set) 
 	begin 

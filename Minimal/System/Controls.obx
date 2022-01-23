@@ -1664,7 +1664,7 @@ module Controls
 		end 
 	end StringToLong
 	
-	proc FixToInt(fix: array of wchar; var int_: array of wchar; scale: integer) 
+	proc FixToInt(in fix: array of wchar; var int_: array of wchar; scale: integer) 
 		var 
 			i, j: integer
 	begin 
@@ -1697,7 +1697,7 @@ module Controls
 		int_[j] := 0x
 	end FixToInt
 	
-	proc IntToFix(int_: array of wchar; var fix: array of wchar; scale: integer) 
+	proc IntToFix(in int_: array of wchar; var fix: array of wchar; scale: integer) 
 		var 
 			i, j, n: integer
 	begin 

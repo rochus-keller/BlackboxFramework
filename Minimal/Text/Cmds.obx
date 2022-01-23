@@ -311,7 +311,7 @@ module Cmds
 		end 
 	end FindPat
 	
-	proc OverrideSpecWithOption(var spec: FindSpec; option: array of wchar) 
+	proc OverrideSpecWithOption(var spec: FindSpec; in option: array of wchar) 
 		var 
 			i: integer
 			choice: boolean
@@ -344,7 +344,7 @@ module Cmds
 		end 
 	end OverrideSpecWithOption
 	
-	proc SetSpec(var spec: FindSpec; pos0, pos1: integer; option: array of wchar) 
+	proc SetSpec(var spec: FindSpec; pos0, pos1: integer; in option: array of wchar) 
 	begin 
 		assert(find.find # "", 20)
 		spec.valid := true
@@ -361,7 +361,7 @@ module Cmds
 		spec.find := find.find
 	end SetSpec
 	
-	proc SetFindSpec(c: TextControllers.Controller; first: boolean; option: array of wchar
+	proc SetFindSpec(c: TextControllers.Controller; first: boolean; in option: array of wchar
 		var spec: FindSpec
 		) 
 		var  // start,
@@ -499,7 +499,7 @@ module Cmds
 		t: TextModels.Model; mode: integer
 		firstBeg, firstEnd: integer
 		rngBeg, rngEnd: integer
-		option: array of wchar
+		in option: array of wchar
 		) 
 		var 
 			op: ReplOp
@@ -535,7 +535,7 @@ module Cmds
 		Models.Do(t, replacingKey, op)
 	end DoReplaceThis
 	
-	proc DoReplace(c: TextControllers.Controller; mode: integer; option: array of wchar) 
+	proc DoReplace(c: TextControllers.Controller; mode: integer; in option: array of wchar) 
 		var 
 			t: TextModels.Model
 			spec: FindSpec
@@ -1013,7 +1013,7 @@ module Cmds
 		end 
 	end GetFindPattern
 	
-	proc FindIn(c: TextControllers.Controller; first: boolean; option: array of wchar) 
+	proc FindIn(c: TextControllers.Controller; first: boolean; in option: array of wchar) 
 		var 
 			spec: FindSpec
 			beg, end_: integer
@@ -1047,7 +1047,7 @@ module Cmds
 		end 
 	end FindGuard
 	
-	proc FindFirst*(option: array of wchar) 
+	proc FindFirst*(in option: array of wchar) 
 	begin 
 		FindIn(TextControllers.Focus(), first, option)
 	end FindFirst
@@ -1062,7 +1062,7 @@ module Cmds
 		end 
 	end FindAgainGuard
 	
-	proc FindAgain*(option: array of wchar) 
+	proc FindAgain*(in option: array of wchar) 
 	begin 
 		FindIn(TextControllers.Focus(), again, option)
 	end FindAgain
@@ -1078,12 +1078,12 @@ module Cmds
 		end 
 	end ReplaceGuard
 	
-	proc Replace*(option: array of wchar) 
+	proc Replace*(in option: array of wchar) 
 	begin 
 		DoReplace(TextControllers.Focus(), replace, option)
 	end Replace
 	
-	proc ReplaceAndFindNext*(option: array of wchar) 
+	proc ReplaceAndFindNext*(in option: array of wchar) 
 	begin 
 		DoReplace(TextControllers.Focus(), replaceAndFind, option)
 	end ReplaceAndFindNext
@@ -1105,7 +1105,7 @@ module Cmds
 		end 
 	end ReplaceAllGuard
 	
-	proc ReplaceAll*(option: array of wchar) 
+	proc ReplaceAll*(in option: array of wchar) 
 	begin 
 		DoReplace(TextControllers.Focus(), replaceAll, option)
 	end ReplaceAll

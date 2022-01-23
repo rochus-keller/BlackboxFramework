@@ -2190,7 +2190,7 @@ module Views
 			a: TextModels.Attributes
 			res: integer
 	begin 
-		Dialog.Call("TextControllers.Install", "#Text:CntrlInstallFailed", res)
+		Dialog.Call("Text.Controllers.Install", "#Text:CntrlInstallFailed", res)
 		new(a) // use defaults
 		a.InitFromProp(nil)
 		new(d)

@@ -74,7 +74,7 @@ module Interpreter
 	proc (hook: CallHook) Call(in proc_, errorMsg: array of wchar; var res_: integer) 
 
 		
-		proc Concat(a, b: array of wchar; var c: array of wchar) 
+		proc Concat(in a, b: array of wchar; var c: array of wchar) 
 			var 
 				i, j: integer
 				ch: wchar
@@ -101,7 +101,7 @@ module Interpreter
 			c[i] := 0x
 		end Concat
 		
-		proc Error(in errorMsg: array of wchar; n: integer; msg, par0, par1: array of wchar) 
+		proc Error(in errorMsg: array of wchar; n: integer;in msg, par0, par1: array of wchar) 
 			var 
 				e, f: array 256 of wchar
 		begin 

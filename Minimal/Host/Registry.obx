@@ -386,6 +386,7 @@ module Registry
 		if Dialog.appName # name then
 			SetDbgRegistry(name, Dialog.appName) 
 		end 
+		// TODO: should this be Config.Setup?
 		Dialog.Call("Startup.Setup", "", res)
 		ReadMeasure
 	end Init

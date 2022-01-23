@@ -468,7 +468,7 @@ module Dialog
 				end 
 				impType.list.index := 0
 				impType.done := false
-				Dialog.Call("StdCmds.OpenToolDialog('HostDialog.impType', '#Host:OpenFile')", " ", res)
+				Dialog.Call("Std.Cmds.OpenToolDialog('HostDialog.impType', '#Host:OpenFile')", " ", res)
 				WaitDialogClose
 				if impType.done then
 					conv := typeList[impType.list.index] 
@@ -1166,9 +1166,9 @@ module Dialog
 		else 
 			Dialog.showsStatus := false 
 		end 
-		Dialog.Call("StdCmds.UpdateAll", "", res)
-		Dialog.Call("StdCmds.RecalcAllSizes", "", res)
-		Dialog.Call("TextCmds.UpdateDefaultAttr", "", res)
+		Dialog.Call("Std.Cmds.UpdateAll", "", res)
+		Dialog.Call("Std.Cmds.RecalcAllSizes", "", res)
+		Dialog.Call("Text.Cmds.UpdateDefaultAttr", "", res)
 		HostCFrames.SetDefFonts
 		HostRegistry.WriteBool("noStatus", ~Dialog.showsStatus)
 		HostRegistry.WriteBool("memStatus", HostWindows.memInStatus)

@@ -22,17 +22,20 @@ module Init
 	proc Init
 		var 
 			res: integer
-			m: Kernel.Module
+			// m: Kernel.Module
 	begin 
 		HostMenus.OpenApp
+		(* TODO
 		m := Kernel.ThisMod("DevDebug")
 		if m = nil then
 			Kernel.LoadMod("StdDebug") 
 		end 
-		Converters.Register("Documents.ImportDocument", "Documents.ExportDocument", "", "odc", {})
-		Dialog.Call("StdMenuTool.UpdateAllMenus", "", res)
-		Kernel.LoadMod("OleServer")
-		Dialog.Call("Config.Setup", "", res)
+		*)
+		Converters.Register("System.Documents.ImportDocument", 
+												 "System.Documents.ExportDocument", "", "odc", {})
+		Dialog.Call("Std.MenuTool.UpdateAllMenus", "", res)
+		// TODO Kernel.LoadMod("OleServer")
+		Dialog.Call("System.Config.Setup", "", res)
 		HostMenus.Run
 	end Init
 

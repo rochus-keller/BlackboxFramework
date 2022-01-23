@@ -1245,7 +1245,7 @@ module Strings
 		end 
 	end Replace
 	
-	proc Extract*(s: array of wchar; pos, len_: integer; var res: array of wchar) 
+	proc Extract*(in s: array of wchar; pos, len_: integer; var res: array of wchar) 
 		var 
 			i, j, max_: integer
 	begin 

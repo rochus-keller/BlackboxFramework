@@ -1139,7 +1139,7 @@ module Menus
 			| iExit: 
 				Exit 
 			| iUpdateMenus: 
-				Dialog.Call("StdMenuTool.UpdateAllMenus", "", res) 
+				Dialog.Call("Std.MenuTool.UpdateAllMenus", "", res) 
 			| iPopup: 
 				PopupMenu 
 			| iObjEdit: 

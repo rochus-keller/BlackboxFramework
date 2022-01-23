@@ -83,7 +83,7 @@ module Dialog
 	end GetSubLoc
 	
 	
-	proc Len(var str: array of wchar): integer 
+	proc Len(in str: array of wchar): integer 
 		var 
 			i: integer
 	begin 
@@ -94,7 +94,7 @@ module Dialog
 		return i
 	end Len
 	
-	proc AddItem*(i: Item; item, string, filter, shortcut: array of wchar) 
+	proc AddItem*(i: Item;in item, string, filter, shortcut: array of wchar) 
 		var 
 			j: integer
 			ch: wchar

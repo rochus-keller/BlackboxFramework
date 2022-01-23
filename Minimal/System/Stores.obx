@@ -1108,7 +1108,7 @@ module Stores
 		Report("#System:AlienCause ^0 ^1 ^2", s, e, "")
 	end AlienReport
 	
-	proc AlienTypeReport(cause: integer; t: array of wchar) 
+	proc AlienTypeReport(cause: integer; in t: array of wchar) 
 		var 
 			s: array 64 of wchar
 	begin 

@@ -175,7 +175,7 @@ module Printing
 		t := t + ":" + s
 	end GetDateAndTime
 	
-	proc Expand(s: array of wchar; in date: Dates.Date; in time: Dates.Time
+	proc Expand(in s: array of wchar; in date: Dates.Date; in time: Dates.Time
 		in title: Views.Title; pno: integer; printing: boolean; var line: Line) 
 		var 
 			i, l: integer

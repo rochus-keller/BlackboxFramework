@@ -719,7 +719,7 @@ module Mappers
 		f.WriteIntForm(x, decimal, 0, TextModels.digitspace, hideBase)
 	end WriteInt
 	
-	proc (in f: Formatter) WriteSString*(x: array of char)  // new
+	proc (in f: Formatter) WriteSString*(in x: array of char)  // new
 		var 
 			i: integer
 	begin 
@@ -730,7 +730,7 @@ module Mappers
 		end 
 	end WriteSString
 	
-	proc (in f: Formatter) WriteString*(x: array of wchar)  // new
+	proc (in f: Formatter) WriteString*(in x: array of wchar)  // new
 		var 
 			i: integer
 	begin 
@@ -813,7 +813,7 @@ module Mappers
 		f.rider.WriteView(v, w, h)
 	end WriteViewForm
 	
-	proc (in f: Formatter) WriteParamMsg*(msg, p0, p1, p2: array of wchar)  // new
+	proc (in f: Formatter) WriteParamMsg*(in msg, p0, p1, p2: array of wchar)  // new
 		var 
 			s: array 256 of wchar
 			i: integer
@@ -837,7 +837,7 @@ module Mappers
 		end 
 	end WriteParamMsg
 	
-	proc (in f: Formatter) WriteMsg*(msg: array of wchar)  // new
+	proc (in f: Formatter) WriteMsg*(in msg: array of wchar)  // new
 	begin 
 		f.WriteParamMsg(msg, "", "", "")
 	end WriteMsg

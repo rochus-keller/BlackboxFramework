@@ -55,7 +55,13 @@ size=2
 4\RelPath=Std/Dialog.obx
 5\AbsPath=/home/me/Entwicklung/Modules/BlackboxFramework/Minimal/Std/Interpreter.obx
 5\RelPath=Std/Interpreter.obx
-size=5
+6\AbsPath=/home/me/Entwicklung/Modules/BlackboxFramework/Minimal/Std/Log.obx
+6\RelPath=Std/Log.obx
+7\AbsPath=/home/me/Entwicklung/Modules/BlackboxFramework/Minimal/Std/Links.obx
+7\RelPath=Std/Links.obx
+8\AbsPath=/home/me/Entwicklung/Modules/BlackboxFramework/Minimal/Std/MenuTool.obx
+8\RelPath=Std/MenuTool.obx
+size=8
 
 [.System]
 1\AbsPath=/home/me/Entwicklung/Modules/BlackboxFramework/Minimal/System/Containers.obx
@@ -96,6 +102,8 @@ size=5
 25\RelPath=System/Views.obx
 26\AbsPath=/home/me/Entwicklung/Modules/BlackboxFramework/Minimal/System/Windows.obx
 26\RelPath=System/Windows.obx
+27\AbsPath=/home/me/Entwicklung/Modules/BlackboxFramework/Minimal/System/Config.obx
+27\RelPath=System/Config.obx
 3\AbsPath=/home/me/Entwicklung/Modules/BlackboxFramework/Minimal/System/Controls.obx
 3\RelPath=System/Controls.obx
 4\AbsPath=/home/me/Entwicklung/Modules/BlackboxFramework/Minimal/System/Converters.obx
@@ -110,7 +118,7 @@ size=5
 8\RelPath=System/Files.obx
 9\AbsPath=/home/me/Entwicklung/Modules/BlackboxFramework/Minimal/System/Fonts.obx
 9\RelPath=System/Fonts.obx
-size=26
+size=27
 
 [.Text]
 1\AbsPath=/home/me/Entwicklung/Modules/BlackboxFramework/Minimal/Text/Cmds.obx

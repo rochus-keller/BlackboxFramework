@@ -731,7 +731,7 @@ module Models
 	
 	proc (d: Directory) New*(): Model  end // new abstract
 	
-	proc (d: Directory) NewFromString*(s: array of wchar): Model  // new extensible
+	proc (d: Directory) NewFromString*(in s: array of wchar): Model  // new extensible
 		var 
 			m: Model
 			w: Writer
