@@ -811,21 +811,19 @@ module Views
 		// [l,r) for high-level clipping to tune update after small change
 		const 
 			cacheLen = 128
-		type
-			Cache = record  // initially: long = TRUE, len = 0
-					x, y: integer; color: Ports.Color; font: Fonts.Font
-					len_: integer
-					buf: array cacheLen of wchar 
-				end 
 		var 
 			rd: TextSetters.Reader
 			ra: TextRulers.Attributes
 			v1: Views.View
 			c: Containers.Controller
 			py, end_, skip: integer
-			cache: Cache
+			cache: record  // initially: long = TRUE, len = 0
+					x, y: integer; color: Ports.Color; font: Fonts.Font
+					len_: integer
+					buf: array cacheLen of wchar 
+				end 
 		
-		proc FlushCaches(var cache: Cache; f: Views.Frame)
+		proc FlushCaches
 		begin 
 			if cache.len_ > 0 then
 				cache.buf[cache.len_] := 0x
@@ -835,8 +833,8 @@ module Views
 		end FlushCaches
 		
 		proc CacheString(x, y: integer; c: integer; in s: array of wchar
-			f: Fonts.Font;
-			var cache: Cache; frame: Views.Frame	) 
+			f: Fonts.Font
+			) 
 			var 
 				i, j, len_: integer
 		begin 
@@ -845,7 +843,7 @@ module Views
 				inc(len_) 
 			end 
 			if (cache.len_ + len_ >= cacheLen) or (cache.y # y) or (cache.color # c) or (cache.font # f) then
-				FlushCaches(cache,frame)
+				FlushCaches 
 			end 
 			assert(cache.len_ + len_ < cacheLen, 100)
 			if cache.len_ = 0 then
@@ -902,7 +900,7 @@ module Views
 				if rd.x + rd.w > l then
 					v1 := rd.view
 					if v1 # nil then
-						FlushCaches(cache,f)
+						FlushCaches
 						if ~((TextModels.hideable in rd.textOpts) & v.hideMarks) then
 							c := v.ThisController()
 							Views.InstallFrame(f, v1, 
@@ -915,13 +913,13 @@ module Views
 						end 
 						py := y - rd.attr.offset
 						if rd.string[0] > " " then
-							CacheString(rd.x, py, rd.attr.color, rd.string, rd.attr.font, cache, f)
+							CacheString(rd.x, py, rd.attr.color, rd.string, rd.attr.font)
 							if ~v.hideMarks & (TextModels.hideable in rd.textOpts) then
 								f.DrawRect(rd.x, py - box.asc + f.dot, 
 								min(rd.x + rd.w, f.r), py + box.dsc - f.dot, 0, Ports.grey25) 
 							end  
 						elsif rd.string[0] # 0x then 
-							FlushCaches(cache, f)
+							FlushCaches
 							if ~v.hideMarks & (TextModels.hideable in rd.textOpts) then
 								f.DrawRect(rd.x, py - box.asc + f.dot, rd.x + rd.w, py + box.dsc - f.dot, 0, Ports.grey25) 
 							elsif ((rd.string[0] = ' ') or (rd.string[0] = TextModels.tab)) 
@@ -930,16 +928,16 @@ module Views
 								f.DrawSpace(rd.x, py, rd.w, rd.attr.color, rd.attr.font) 
 							end  
 						elsif rd.string[0] # 0x then 
-							CacheString(rd.x, py, rd.attr.color, rd.string, rd.attr.font, cache, f) 
+							CacheString(rd.x, py, rd.attr.color, rd.string, rd.attr.font) 
 						else 
-							FlushCaches(cache, f)
+							FlushCaches 
 						end  
 					end  
 				end 
 				inc(rd.x, rd.w)
 				rd.Read 
 			end 
-			FlushCaches(cache, f)
+			FlushCaches
 			CacheReader(v, rd) 
 		end 
 		if v.hideMarks & ~pageF then

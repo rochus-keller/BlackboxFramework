@@ -873,7 +873,7 @@ module Setters
 	begin 
 		ra := rd.ruler.style.attr
 		case ord(rd.string[0]) of 
-			| ord(tab): 
+			ord(tab): 
 				rd.textOpts := {TextModels.hideable}
 				rd.endW := minTabWidth
 				rd.adjStart := rd.pos
@@ -1208,8 +1208,7 @@ module Setters
 			h, asc, dsc, backup, pos, state: integer
 			isRuler: boolean
 		
-		proc FetchNextLine(s: StdSetter; var box: LineBox; var pos,asc,dsc,h: integer; 
-			isRuler: boolean; ra: TextRulers.Attributes)
+		proc FetchNextLine
 		begin 
 			s.GetLine(pos, box)
 			if box.len_ > 0 then
@@ -1221,7 +1220,7 @@ module Setters
 			end 
 		end FetchNextLine
 		
-		proc HandleRuler(isRuler: boolean;var pos,start,state,backup: integer;ra: TextRulers.Attributes)
+		proc HandleRuler
 			const 
 				norm = 0
 				nbi = 1
@@ -1290,7 +1289,7 @@ module Setters
 			end 
 		end HandleRuler
 		
-		proc IsEmptyLine(s: StdSetter;box: LineBox;isRuler: boolean;ra: TextRulers.Attributes): boolean 
+		proc IsEmptyLine(): boolean 
 		begin 
 			return (box.right = box.left) or s.hideMarks & isRuler & ~(pageBreak in ra.opts)
 		end IsEmptyLine
@@ -1301,26 +1300,26 @@ module Setters
 		assert(start <= s.text.Length(), 22)
 		pos := start
 		dsc := -1
-		FetchNextLine(s,box,pos,asc,dsc,h,isRuler,ra)
+		FetchNextLine
 		if box.len_ > 0 then
 			state := regular
 			repeat  // at least one line per page
-				HandleRuler(isRuler,pos,start,state,backup,ra)
+				HandleRuler
 				dec(pageH, h)
 				inc(pos, box.len_)
-				if (state = confirmSpace) & ~IsEmptyLine(s,box,isRuler,ra) then
+				if (state = confirmSpace) & ~IsEmptyLine() then
 					state := regular 
 				end 
-				FetchNextLine(s,box,pos,asc,dsc,h,isRuler,ra)
+				FetchNextLine 
 			until (box.len_ = 0) or (pageH - h < 0) or isRuler & (pageBreak in ra.opts) 
 			if ~isRuler or ~(pageBreak in ra.opts) then
-				while (box.len_ > 0) & IsEmptyLine(s,box,isRuler,ra) do  // skip empty lines at top of page
-					HandleRuler(isRuler,pos,start,state,backup,ra)
+				while (box.len_ > 0) & IsEmptyLine() do  // skip empty lines at top of page
+					HandleRuler
 					inc(pos, box.len_)
-					FetchNextLine(s,box,pos,asc,dsc,h,isRuler,ra)
+					FetchNextLine 
 				end  
 			end 
-			HandleRuler(isRuler,pos,start,state,backup,ra)
+			HandleRuler
 			if (state # regular) & ~(isRuler & (pageBreak in ra.opts) or (box.len_ = 0)) then
 				pos := backup 
 			end  
@@ -1492,7 +1491,7 @@ module Setters
 			ch: wchar
 			boxRadix, brkRadix: RadixData
 		
-		proc TrueW(var b: LineBox; w: integer; rd: StdReader; in boxRadix: RadixData): integer 
+		proc TrueW(var b: LineBox; w: integer): integer 
 			var 
 				i: integer
 				type_: set
@@ -1517,7 +1516,7 @@ module Setters
 			return w
 		end TrueW
 		
-		proc Enclose(var b: LineBox; w: integer; var radix: RadixData; rd: StdReader; start: integer) 
+		proc Enclose(var b: LineBox; w: integer; var radix: RadixData) 
 			var 
 				off, i, d: integer
 				type_: set
@@ -1635,7 +1634,7 @@ module Setters
 			rd := s.rd(StdReader)
 			rd.Set(s.r, s.text, box.left, start, box.ruler, box.rpos, s.vw, s.hideMarks)
 			rd.Read
-			while ~rd.eot & (box.right + (* rd.w *)TrueW(box, rd.w,rd, boxRadix) <= right) 
+			while ~rd.eot & (box.right + (* rd.w *)TrueW(box, rd.w) <= right) 
 				& ~(lineBreak in rd.setterOpts) do 
 				if ~(wordJoin in rd.setterOpts) & (box.right + rd.endW <= right) then
 					// brk := box;
@@ -1662,17 +1661,17 @@ module Setters
 					end 
 					brkRadix := boxRadix
 					// ---
-					Enclose(brk, rd.endW, brkRadix, rd, start)
+					Enclose(brk, rd.endW, brkRadix)
 					brk.eot := rd.r.eot  // rd.r.eot one ahead of rd.eot
 				end 
 				box.adjOff := rd.adjStart - start
 				box.spaces := rd.spaces
-				Enclose(box, rd.w, boxRadix, rd, start)
+				Enclose(box, rd.w, boxRadix)
 				rd.x := box.right
 				rd.Read 
 			end 
 			if (lineBreak in rd.setterOpts) (* & ~box.rbox *)then
-				Enclose(box, 0, boxRadix, rd, start) 
+				Enclose(box, 0, boxRadix) 
 			end 
 			box.eot := rd.eot
 			adj := false
@@ -1682,7 +1681,7 @@ module Setters
 					if rd.string[0] = " " then
 						dec(box.spaces) 
 					end 
-					Enclose(box, rd.endW, boxRadix, rd, start)
+					Enclose(box, rd.endW, boxRadix)
 					adj := true 
 				elsif brk.right > 0 then 
 					// box := brk;
@@ -1711,7 +1710,7 @@ module Setters
 					box.skipOff := box.len_ - 1
 					adj := true 
 				elsif box.right = box.left then 
-					Enclose(box, rd.w, boxRadix, rd, start)  // force at least one per line
+					Enclose(box, rd.w, boxRadix)  // force at least one per line
 				end  
 			elsif (box.right = box.left) & box.eot then 
 				box.asc := ra.asc // force empty line to ruler's default height
